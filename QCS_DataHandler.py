@@ -177,9 +177,11 @@ def read_ctd_profile_csv(file_path):
             b += 1
         n = b - a
         ms_interval = 60/n
+        initSeconds = 60 - ((a + 1) * ms_interval)
         for i in range(a + 1):
-            seconds = 60 - (((a + 1) * ms_interval) - (i * (a + 1)))
-            dataframe.loc[i, 'Datetime'] += DateOffset(seconds=seconds)
+            #seconds = 60 - (((a + 1) * ms_interval) - (i * (a + 1)))
+            dataframe.loc[i, 'Datetime'] += DateOffset(seconds=initSeconds)
+            initSeconds += ms_interval
         for i in range((a+1), len(dataframe)):
             if i <= n + (a + 1):
                 seconds = (i-(a+1)) * ms_interval

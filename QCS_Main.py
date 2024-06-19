@@ -1,4 +1,3 @@
-
 #modulos do sistema
 import os
 import re
@@ -63,7 +62,7 @@ if e == 1:
                 raw_data = raw_data.rename(columns={name:'Datetime'})
         if re.search('prof', name, re.IGNORECASE):
                 raw_data = raw_data.rename(columns={name:'Depth(m)'})
-elif e == 3:
+elif e == 2:
     fullFrame, tempFrame, lumiFrame = data.read_unified_hobo(INPUT['file_name'])
     raw_data = tempFrame
     for test in tsQualityTests:
@@ -81,7 +80,7 @@ INPUT['start_time'] = start_time
 INPUT['end_time'] = end_time
 
 # adjusting for GMT-3 hours
-if e == 2:
+if INPUT['correct_gmt3h'] == True:
     raw_data['Datetime'] = raw_data['Datetime'] - timedelta(hours=3)
     start_time = start_time - timedelta(hours=3)
     end_time = end_time - timedelta(hours=3)
@@ -160,57 +159,62 @@ from scipy import signal
 if INPUT['select_profile_data'] == True:
     for name in raw_data.columns:
         if re.search('pressure', name, re.IGNORECASE):
-            peak = int(signal.find_peaks(raw_data[name], width=20)[0])
-            fig1 = plt.figure()
-            ax1 = fig1.gca()
-            ax1.plot(raw_data[name], label='Pressure (dbar)')
-            ax1.plot(peak, raw_data[name].loc[peak], '.', c='red', linestyle='none')
-            ax1.set_ylabel('Pressure (dbar)')
-            plt.show(block=True)
-            for subname in raw_data.columns:
-                if re.search('temperature', subname, re.IGNORECASE):
-                    temp = subname
-                if re.search('depth', subname, re.IGNORECASE):
-                    dep = subname
-            desc = raw_data.loc[:peak]
-            asc = raw_data.loc[peak:]
+            try:
+                peak = int(signal.find_peaks(raw_data[name], width=100)[0])
+                fig1 = plt.figure()
+                ax1 = fig1.gca()
+                ax1.plot(raw_data[name], label='Pressure (dbar)')
+                ax1.plot(peak, raw_data[name].loc[peak], '.', c='red', linestyle='none')
+                ax1.set_ylabel('Pressure (dbar)')
+                plt.show(block=True)
+                for subname in raw_data.columns:
+                    if re.search('temperature', subname, re.IGNORECASE):
+                        temp = subname
+                    if re.search('depth', subname, re.IGNORECASE):
+                        dep = subname
+                desc = raw_data.loc[:peak]
+                asc = raw_data.loc[peak:]
 
 
-            fig2 = plt.figure()
-            ax2 = fig2.gca()
-            line1, = ax2.plot(raw_data.loc[desc.index, temp], raw_data.loc[desc.index, dep], label='descending data')
-            line2, = ax2.plot(raw_data.loc[asc.index, temp], raw_data.loc[asc.index, dep], c='red', label='ascending data')
-            ax2.set_title('click on the line to select it:')
-            ax2.set_ylabel('Temperature(degC)')
-            ax2.legend()
-            ax2.invert_yaxis()
-            ax2.grid()
-            fig2.show()
+                fig2 = plt.figure()
+                ax2 = fig2.gca()
+                line1, = ax2.plot(desc[temp], desc[dep], linestyle='None', marker='o', markersize=3, markerfacecolor='#1f77b4ff', markeredgecolor='#1f77b4ff', label='descending data')
+                line2, = ax2.plot(asc[temp], asc[dep], linestyle='None', marker='o', markersize=3, markerfacecolor='red', markeredgecolor='red', c='red', label='ascending data')
+                ax2.set_title('click on the dataset to select it:')
+                ax2.set_xlabel('Temperature(degC)')
+                ax2.set_ylabel('Depth(m)')
+                ax2.legend()
+                ax2.invert_yaxis()
+                ax2.grid()
+                fig2.show()
 
-            selected = None
-            buffer = 0.1
-            def on_pick(event):
-                # get selected label
-                global selected
-                selected = event.artist.get_label()
-                plt.close()
-                #fig.canvas.mpl_disconnect(cid)
+                selected = None
+                buffer = 0.1
+                def on_pick(event):
+                    # get selected label
+                    global selected
+                    selected = event.artist.get_label()
+                    plt.close()
+                    #fig.canvas.mpl_disconnect(cid)
 
-            line1.set_picker(True)
-            line2.set_picker(True)
-            fig2.canvas.mpl_connect('pick_event', on_pick)
-            fig2.canvas.mpl_connect('motion_notify_event', data.on_motion)
+                line1.set_picker(True)
+                line2.set_picker(True)
+                fig2.canvas.mpl_connect('pick_event', on_pick)
+                fig2.canvas.mpl_connect('motion_notify_event', data.on_motion)
 
-            ans = input('\ndo you accept the data peak?(y/n)\n\n select:')
+                ans = input('\ndo you accept the data peak?(y/n)\n\n select:')
 
-            if ans == 'y':
-                if selected == 'descending data':
-                    raw_data.loc[peak:] = np.nan
-                elif selected == 'ascending data':
-                    raw_data.loc[:peak] = np.nan
-            plt.close(fig1)
-            plt.close(fig2)
-
+                if ans == 'y':
+                    if selected == 'descending data':
+                        raw_data = desc.copy()
+                    elif selected == 'ascending data':
+                        raw_data = asc.copy()
+                raw_data.index=  np.arange(len(raw_data))
+                plt.close(fig1)
+                plt.close(fig2)
+            except TypeError:
+                print("Could not find turning point")
+                pass
 #if INPUT['check_pressure'] == True:
 #    raw_data = trim_selected_data(raw_data, name)
 if INPUT['check_variables'] == True:
