@@ -140,6 +140,27 @@ def linear_regression (y, degree):
         y_pred[idx] = np.nan
     return xi, y_pred
 
+def linear_regression_profile (x, y, degree):
+    yi, xi = identify_valid_interval(x)
+    yi = y.loc[yi.duplicated(keep=False)]
+    xi = np.asarray(xi)
+    idx = np.where(np.isnan(xi))[0]
+    if len(idx) > 0.25 * len(yi):
+        yi = np.delete(yi, idx)
+        xi = np.delete(xi, idx)
+    else:
+        xi[np.where(np.isnan(xi))] = np.nanmean(xi)
+    # adjust linear regression
+    coefficients = np.polyfit(yi, xi, degree)
+
+    # predict values
+    x_pred = np.polyval(coefficients, yi)
+    if len(idx) > 0.25 * len(xi):
+        pass
+    else:
+        x_pred[idx] = np.nan
+    return yi, x_pred
+
 def fill_NaT_gap (y):
     x, y = identify_valid_interval (y)
     delta = pd.Timedelta(hours=1)
@@ -340,6 +361,118 @@ def plot_database_panel2 (database, site_names, parameter_names, year, fit_lin_r
                     nDigits = len(re.search(r'\([^()]*\)', parameter, re.IGNORECASE).group())
                     parameter = parameter[:len(parameter)-nDigits]
                 plt.savefig('panel2_%s_%s_%d.png'%(parameter, semester, year))
+
+def plot_database_panel3 (database, site_names, parameter_names, year, fit_lin_regression, deg, points):
+    n_axis = len(parameter_names)
+    db_raw = database.copy()
+    # limit data to year
+    db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
+    db_raw.index = db_raw['Datetime']
+    db_raw = db_raw.rename_axis('dt_index')
+    db_raw = db_raw.sort_values(by='dt_index')
+    colors_p = ['blue', 'red', 'chocolate', 'blueviolet', 'limegreen', 'deepskyblue']
+    colors_l = ['royalblue', 'tomato', 'sandybrown', 'violet', 'lime', 'cyan']
+    for site in site_names:
+        # spliting data by semester and site
+        try:
+            db = {'1stSemester': db_raw[(db_raw.loc[:,'Datetime'].dt.month >= 1) & (db_raw.loc[:,'Datetime'].dt.month <= 6) & (db_raw.loc[:,'Site'] == site)],
+                  '2ndSemester': db_raw[(db_raw.loc[:,'Datetime'].dt.month >= 7) & (db_raw.loc[:,'Datetime'].dt.month <= 12) & (db_raw.loc[:,'Site'] == site)]}
+            #verify which semesters are empty
+            emptySemester = [key for key, value in db.items() if value.empty]
+            if len(emptySemester) == len(db):
+                emptySemester_str = ", ".join(emptySemester)
+                raise ValueError('Empty sequence for both semesters in current combination of selected sites and year. Double check inputs or select different sites/year.')
+        except ValueError as e:
+            print('SelectionError:', e)
+        for semester in db.keys():
+            # define list of dataframes for y axis parameters
+            x_list = []
+            for i in range(n_axis):
+                slice = db[semester].loc[:, parameter_names[i]].copy()
+                if slice.isna().all():
+                    print('\nNo %s data for %s during %d %s.'%(parameter_names[i], site, year, semester))
+                    pass
+                else:
+                    x_list.append(slice)
+            if len(x_list) > 0:
+                fig, ax1 = plt.subplots(figsize=(1350 / 100, 660 / 100))
+                ax1.invert_yaxis()
+                #plt.xticks(rotation=35)
+                plt.grid(True, linestyle='dotted', linewidth=0.5)
+                #define x and y
+                # defining x while removing datetime duplicates
+                x = x_list[0].loc[~(x_list[0].index.duplicated(keep=False) & x_list[0].isna())]
+                # filling gaps greater than 1 hour
+                x, gap_ids = fill_NaT_gap(x)
+                x.name = x_list[0].name
+                #defining y
+                y = (db[semester]['Depth(m)']).loc[~(x_list[0].index.duplicated(keep=False) & x_list[0].isna())]
+                # sorting by depth
+                sorted_df = pd.concat([x,y], axis=1).sort_values(by='Depth(m)')
+                x, y = (sorted_df[x.name], sorted_df[y.name])
+                if fit_lin_regression == True:
+                    yp, xp = linear_regression_profile(x, y, degree=deg)
+                    if points == True:
+                        ax1.plot(x, y, color=colors_p[0], linestyle='none', marker='.', markersize=3, label=x_list[0].name)
+                    ax1.plot(xp, yp, color=colors_l[0], linestyle='-', label=x_list[0].name)
+                else:
+                        ax1.plot(x, y, color=colors_p[0], linestyle='none', marker='.', markersize=3, label=x_list[0].name)
+                # set x label
+                ax1.set_xlabel(parameter_names[0], color=colors_l[0])
+                # set x label
+                ax1.set_ylabel('Depth(m)')
+                # set title
+                ax1.set_title('Parameters for %s over %s during %s'%(site, semester, year))
+                # set y axis color and position
+                ax1.spines['bottom'].set_color(colors_l[0])
+                ax1.spines['bottom'].set_position(('outward', 1))
+                ax1.spines['bottom'].set_linewidth(1.5)
+                # axis list
+                axes = {'y1': ax1}
+                n = len(x_list)
+                offset = -310
+                plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.4)
+                for i, x in enumerate(x_list[1:], start=2):
+                    # create aditional x axis
+                    ax = ax1.twiny()
+                    #defining x while removing datetime duplicates
+                    x = x.loc[~(x.index.duplicated(keep=False) & x.isna())]
+                    # filling gaps greater than 1 hour
+                    x, gap_ids = fill_NaT_gap(x)
+                    x.name = x_list[0].name
+                    #defining y
+                    y = (db[semester]['Depth(m)']).loc[~(x_list[i-1].index.duplicated(keep=False) & x_list[i-1].isna())]
+                    # sorting by depth
+                    sorted_df = pd.concat([x,y], axis=1).sort_values(by='Depth(m)')
+                    x, y = (sorted_df[x.name], sorted_df[y.name])
+                    # plot adicional axis
+                    if fit_lin_regression == True:
+                        yp, xp = linear_regression_profile (x, y, degree=deg)
+                        if points == True:
+                            ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=colors_p[i-1], label=x_list[i-1].name)
+                        ax.plot(xp, yp, linestyle='-', c=colors_l[i-1], label=x_list[i-1].name)
+                    else:
+                        ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=colors_p[i-1], label=x_list[i-1].name)
+                    # set x axis position
+                    ax.spines['top'].set_position(('outward', offset))
+                    offset -= 50
+                    # set axis label
+                    ax.set_xlabel(x_list[i-1].name, c=colors_l[i-1])
+                    axPosition = ax.spines['top'].get_position()[1]
+                    # set y axis colors
+                    ax.spines['top'].set_color(colors_l[i-1])
+                    # set y axis width
+                    ax.spines['top'].set_linewidth(1.5)
+                    # change tick colors
+                    ax.tick_params(axis='y', colors=colors_p[i-1])
+                    # save axis name
+                    axes[f'y{i}'] = ax
+            if slice.empty:
+                pass
+            else:
+                # fit to tight layout
+                plt.tight_layout()
+                plt.savefig('panel1_%s_%s_%d.png'%(site, semester, year))
 
 def plot_hobo_split_site (database, dataview_path):
     site_names = list(set(database['Site']))
