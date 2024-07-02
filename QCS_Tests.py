@@ -172,17 +172,20 @@ def single_flat_line_test (n_samples, n_cel, data, flags, rep_cnt_fail, rep_cnt_
                 flags[i_linha]+='%d'%QC_flags.GOOD_DATA
     return flags
 
-def vertical_gradient_test(n_samples, PO, n_cel, flags, ms_interval, time_window, rc_fail, rc_susp, DIR):
-    ms_interval = float(re.search('\d{1,}', ms_interval).group())
+def vertical_gradient_test(n_lines, PO, n_cel, flags, ms_interval, time_window, rc_fail, rc_susp, DIR):
+    ms_interval = ms_interval.item().total_seconds()
     if re.search('D', time_window, re.IGNORECASE):
-        ms_interval = ms_interval/86400
+        ms_interval = ms_interval.total_seconds()/86400
     elif re.search('H', time_window, re.IGNORECASE):
         ms_interval = ms_interval/3600
     elif re.search('M', time_window, re.IGNORECASE):
         ms_interval = ms_interval/60
     elif re.search('S', time_window, re.IGNORECASE):
         pass
-    n_samples = (int(int(re.search('\d{1,}', time_window).group())/ ms_interval)) * n_cel
+    if re.search('whole', time_window, re.IGNORECASE):
+        n_samples = n_lines
+    else:
+        n_samples = (int(int(re.search('\d{1,}', time_window).group())/ ms_interval)) * n_cel
     index = np.arange(n_samples)
     df_flags = pd.DataFrame({'flag': flags})
     PO = PO.copy()

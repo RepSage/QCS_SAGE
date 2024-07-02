@@ -114,18 +114,6 @@ for name in raw_data.columns:
 if dep == 0 and press == 1:
     raw_data = data.pressure_to_depth(raw_data, latitude=17.5, adjust_for_atm=True)
 
-# number of lines and cells
-n_cel = 1
-n_samples = len(raw_data)
-
-#trimming first and last 3 samples if number of samples is greater than 50
-
-#drop = list(range(n_samples)[:3])
-#drop += list(range(n_samples)[-3:])
-#if n_samples >= 50:
-#    raw_data = raw_data.drop(drop, axis=0)
-#    n_samples = len(raw_data)
-#    raw_data.index = np.arange(n_samples)
 
 # add sample number column
 raw_data['Sample Number'] = raw_data.index + 1
@@ -215,8 +203,11 @@ if INPUT['select_profile_data'] == True:
             except TypeError:
                 print("Could not find turning point")
                 pass
-#if INPUT['check_pressure'] == True:
-#    raw_data = trim_selected_data(raw_data, name)
+
+# number of lines and cells
+n_cel = 1
+n_samples = len(raw_data)
+
 if INPUT['check_variables'] == True:
     check_variables = ['O2 Level(uM)', 'Temperature(degC)','Conductivity(mS/cm)', 'Salinity(PSU)', 'Density(kg/m3)',
                        'PAR(umol/m2/s)', 'Turbidity(FTU)', 'Chlorophyll(ug/L)', 'Hydrogen Potential(pH)', 'Dissolved Organic Matter(ppb)']
@@ -681,7 +672,7 @@ if e != 4:
     if INPUT['profile'] == True:
         exceptions = ['Datetime', 'Expedition', 'Pressure(dbar)',
                       'Site', 'Longitude', 'Latitude', 'Depth(m)',
-                      'Battery Voltage(V)', 'flag', 'Sample Number']
+                      'Battery Voltage(V)', 'flag', 'Sample Number', 'QCS Version']
         for variable in qualified_data.keys():
             if variable not in exceptions:
                 view.plot_variable_profile(qualified_data, raw_data, variable, dataview_path, tsSettings, fixed_scale=True)
@@ -689,14 +680,14 @@ if e != 4:
         for variable in qualified_data.keys():
             exceptions = ['Datetime', 'Expedition',
                           'Site', 'Longitude', 'Latitude',
-                          'Battery Voltage(V)', 'flag', 'Sample Number']
+                          'Battery Voltage(V)', 'flag', 'Sample Number', 'QCS Version']
             if variable not in exceptions:
                 view.plot_variable(qualified_data, raw_data, variable, dataview_path, tsSettings, fixed_scale=True)
 
     if INPUT['profile'] == True:
         exceptions = ['Datetime', 'Expedition', 'Pressure(dbar)',
                       'Site', 'Longitude', 'Latitude', 'Depth(m)',
-                      'Battery Voltage(V)', 'flag', 'Sample Number']
+                      'Battery Voltage(V)', 'flag', 'Sample Number', 'QCS Version']
         for variable in qualified_data.keys():
             if variable not in exceptions:
                 view.plot_variable_profile(qualified_data, raw_data, variable, dataview_path2, tsSettings, fixed_scale=False)
@@ -704,7 +695,7 @@ if e != 4:
         for variable in qualified_data.keys():
             exceptions = ['Datetime', 'Expedition',
                           'Site', 'Longitude', 'Latitude',
-                          'Battery Voltage(V)', 'flag', 'Sample Number']
+                          'Battery Voltage(V)', 'flag', 'Sample Number', 'QCS Version']
             if variable not in exceptions:
                 view.plot_variable(qualified_data, raw_data, variable, dataview_path2, tsSettings, fixed_scale=False)
 elif e == 4:
