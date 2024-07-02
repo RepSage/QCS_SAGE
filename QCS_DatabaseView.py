@@ -4,6 +4,13 @@ import pandas as pd
 import QCS_DataHandler as data
 import QCS_DataView as view
 
+print('\nif you want to check avaible data types pass help')
+dType = input('\nWhat is the data type:')
+if re.search('help', dType, re.IGNORECASE):
+    print('tscp mooring\n')
+    print('tscp profile\n')
+    dType = input('\nWhat is the data type:')
+
 opt = input('\nDo you want to join files to database (y/n):')
 
 if re.search('y', opt, re.IGNORECASE):
@@ -38,62 +45,108 @@ if re.search('.xlsx', database_name, re.IGNORECASE):
     if re.search('.csv', database_name, re.IGNORECASE):
         database.to_csv(database_name)
 
-print('\nif you want to check avaible names type help')
-site_names = input('\nPass the site names you want to view (case sensitive):')
-if re.search('help', site_names, re.IGNORECASE):
-    print('\nAvailable site names:\n' )
-    for name in set(database['Site']):
-        print(name)
+
+if re.search('tscp mooring', dType, re.IGNORECASE):
+
+    print('\nif you want to check avaible names type help')
     site_names = input('\nPass the site names you want to view (case sensitive):')
-    #print(*set(database['Site']), sep=", ")
-else:
-    pass
-
-parameter_names = input('\nPass the parameter names you want to view (case sensitive):')
-if re.search('help', parameter_names, re.IGNORECASE):
-    print('\nAvailable parameter names:\n' )
-    for name in database.columns:
-        if re.search('unnamed|datetime|depth|pressure|soundspeed|expedition|site|longitude|latitude|battery|flag|sample|version', name, re.IGNORECASE):
-            pass
-        else:
+    if re.search('help', site_names, re.IGNORECASE):
+        print('\nAvailable site names:\n' )
+        for name in set(database['Site']):
             print(name)
+        site_names = input('\nPass the site names you want to view (case sensitive):')
+        #print(*set(database['Site']), sep=", ")
+    else:
+        pass
+
     parameter_names = input('\nPass the parameter names you want to view (case sensitive):')
-else:
-    pass
+    if re.search('help', parameter_names, re.IGNORECASE):
+        print('\nAvailable parameter names:\n' )
+        for name in database.columns:
+            if re.search('unnamed|datetime|depth|pressure|soundspeed|expedition|site|longitude|latitude|battery|flag|sample|version', name, re.IGNORECASE):
+                pass
+            else:
+                print(name)
+        parameter_names = input('\nPass the parameter names you want to view (case sensitive):')
+    else:
+        pass
 
+    site_names = site_names.split(',')
+    parameter_names = parameter_names.split(',')
 
-site_names = site_names.split(',')
-parameter_names = parameter_names.split(',')
+    q2 = input('\nPlot type 1 panel (y/n):')
+    q3 = input('\nPlot type 2 panel (y/n):')
 
-q2 = input('\nPlot type 1 panel (y/n):')
-q3 = input('\nPlot type 2 panel (y/n):')
+    year = int(input('\nYear you want to view:'))
+    q4 = input('\nFit tendency lines (y/n):')
+    if re.search('y', q4, re.IGNORECASE):
+        fit_lin_regression = True
+    else:
+        fit_lin_regression = False
+    deg = int(input('\nTendency lines degree:'))
+    q5 = input('\nPlot using only points (y/n):')
+    if re.search('y', q5, re.IGNORECASE):
+        points = True
+    else:
+        points = False
+    q6 = input('\nView time as elapsed time (y/n):')
+    if re.search('y', q6, re.IGNORECASE):
+        elapsed_time = True
+    else:
+        elapsed_time = False
+    q7 = input('\nDo you want to change the dates to stack sites data at the same initial time (y/n):')
+    if re.search('y', q7, re.IGNORECASE):
+        change_date = True
+    else:
+        change_date = False
 
-year = int(input('\nYear you want to view:'))
-q4 = input('\nFit tendency lines (y/n):')
-if re.search('y', q4, re.IGNORECASE):
-    fit_lin_regression = True
-else:
-    fit_lin_regression = False
-deg = int(input('\nTendency lines degree:'))
-q5 = input('\nPlot using only points (y/n):')
-if re.search('y', q5, re.IGNORECASE):
-    points = True
-else:
-    points = False
-q6 = input('\nView time as elapsed time (y/n):')
-if re.search('y', q6, re.IGNORECASE):
-    elapsed_time = True
-else:
-    elapsed_time = False
-q7 = input('\nDo you want to change the dates to stack sites data at the same initial time (y/n):')
-if re.search('y', q7, re.IGNORECASE):
-    change_date = True
-else:
-    change_date = False
+    if re.search('y', q2, re.IGNORECASE):
+        view.plot_database_panel1 (database, site_names, parameter_names, year, fit_lin_regression, deg, points)
+    if re.search('y', q3, re.IGNORECASE):
+        view.plot_database_panel2 (database, site_names, parameter_names, year, fit_lin_regression, deg, points, elapsed_time, change_date)
 
-if re.search('y', q2, re.IGNORECASE):
-    view.plot_database_panel1 (database, site_names, parameter_names, year, fit_lin_regression, deg, points)
-if re.search('y', q3, re.IGNORECASE):
-    view.plot_database_panel2 (database, site_names, parameter_names, year, fit_lin_regression, deg, points, elapsed_time, change_date)
+    plt.show()
+if re.search('tscp profile', dType, re.IGNORECASE):
 
-plt.show()
+    print('\nif you want to check avaible names type help')
+    site_names = input('\nPass the site names you want to view (case sensitive):')
+    if re.search('help', site_names, re.IGNORECASE):
+        print('\nAvailable site names:\n' )
+        for name in set(database['Site']):
+            print(name)
+        site_names = input('\nPass the site names you want to view (case sensitive):')
+        #print(*set(database['Site']), sep=", ")
+    else:
+        pass
+    
+    parameter_names = input('\nPass the parameter names you want to view (case sensitive):')
+    if re.search('help', parameter_names, re.IGNORECASE):
+        print('\nAvailable parameter names:\n' )
+        for name in database.columns:
+            if re.search('unnamed|datetime|depth|pressure|soundspeed|expedition|site|longitude|latitude|battery|flag|sample|version', name, re.IGNORECASE):
+                pass
+            else:
+                print(name)
+        parameter_names = input('\nPass the parameter names you want to view (case sensitive):')
+    else:
+        pass
+
+    site_names = site_names.split(',')
+    parameter_names = parameter_names.split(',')
+
+    q2 = input('\nPlot type 3 panel (y/n):')
+    year = int(input('\nYear you want to view:'))
+    q4 = input('\nFit tendency lines (y/n):')
+    if re.search('y', q4, re.IGNORECASE):
+        fit_lin_regression = True
+    else:
+        fit_lin_regression = False
+    deg = int(input('\nTendency lines degree:'))
+    q5 = input('\nPlot using only points (y/n):')
+    if re.search('y', q5, re.IGNORECASE):
+        points = True
+    else:
+        points = False
+
+    if re.search('y', q2, re.IGNORECASE):
+        view.plot_database_panel3 (database, site_names, parameter_names, year, fit_lin_regression, deg, points)
