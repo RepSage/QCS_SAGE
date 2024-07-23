@@ -1,4 +1,4 @@
-#modulos do sistema
+#system modules
 import os
 import re
 import time
@@ -9,11 +9,233 @@ from io import StringIO
 from string import Template
 from datetime import datetime as dt
 from datetime import timedelta
-#modulos do programa
+from tkinter import *
+import tkinter as tk
+from tkinter import ttk
+from tkinter import filedialog
+import warnings
+#software modules
 import QCS_DataHandler as data
 import QCS_DataView as view
 import QCS_Tests as QC
-import warnings
+
+# define functions
+def selectFiles ():
+    # Open a file dialog to select multiple files
+    filenames = filedialog.askopenfilenames(initialdir="/", title="Select files")
+    # Clear the entry widget for file names
+    fileNames_entry.delete(0, END)
+    # Insert the selected file names into the entry widget separated by semicolons
+    fileNames_entry.insert(0, ";".join(filenames))
+
+def selectOutputFolder ():
+    # Open a file dialog to select the output folder
+    folderPath = filedialog.askdirectory(initialdir="/", title="Select output folder")
+    # Clear the entry widget for the output path
+    outputPath_entry.delete(0, END)
+    # Insert the selected folder path into the entry widget
+    outputPath_entry.insert(0, folderPath)
+
+def selectInputConfigFolder ():
+    # Open a file dialog to select the output folder
+    folderPath = filedialog.askdirectory(initialdir="/", title="Select output folder")
+    # Clear the entry widget for the output path
+    inputConfigPath_entry.delete(0, END)
+    # Insert the selected folder path into the entry widget
+    inputConfigPath_entry.insert(0, folderPath)
+
+def doNotAcceptPeak ():
+    print('MESSAGE: Ignoring data peak, data qualification will continue with the whole dataset')
+    plt.close(fig1)
+    window.destroy()
+
+def acceptPeak ():
+    print('MESSAGE: Peak accepted, proceding to profile selection')
+    ans.append('y')
+    plt.close(fig1)
+    window.destroy()
+
+def saveInputSettings():
+    # reset inputSettings dictionary
+    #inputSettings = {}
+    # Save the settings into the inputSettings dictionary
+    INPUT['file_name'] = re.search(r'[^\\/]+$', fileNames_entry.get(), re.IGNORECASE).group()
+    INPUT['raw_data_path'] = fileNames_entry.get()
+    INPUT['raw_data_path'] = INPUT['raw_data_path'][:-len(INPUT['file_name'])]
+    INPUT['pressure_unit'] = pressure_unit_combobox.get()
+    INPUT['conductivity_unit'] = conductivity_unit_combobox.get()
+    INPUT['correct_gmt3h'] = correct_gmt3h.get()
+    INPUT['select_profile_data'] = select_profile_data.get()
+    INPUT['check_variables'] = check_variables.get()
+    INPUT['input_config_path'] = inputConfigPath_entry.get()
+    INPUT['input_type'] = inputType_combobox.get()
+    INPUT['data_type'] = dType_combobox.get()
+
+    OUTPUT['output_file_path'] = outputPath_entry.get()
+    OUTPUT['output_data_format'] = outputFilesFormat_combobox.get()
+    OUTPUT['output_file_name'] = outputName_entry.get() + OUTPUT['output_data_format']
+    OUTPUT['remove_bad'] = remove_bad.get()
+    OUTPUT['remove_suspect'] = remove_suspect.get()
+    # get site list from markers
+    selectedSites = []
+    for site in siteMarkers.keys():
+        if siteMarkers[site].get() == True:
+            if site in selectedSites:
+                pass
+            else:
+                selectedSites.append(site)
+    INPUT['site'] = selectedSites[0]
+    if INPUT['data_type'] == 'TSCP Profile':
+        INPUT['profile'] = True
+    else:
+        INPUT['profile'] = False
+    # Close the window
+    window.destroy()
+
+
+INPUT = {}
+OUTPUT = {}
+############################## interactive tools ###############################
+# Create window 1
+window = Tk()
+window.title("Input and Output Settings")
+window.geometry("1000x640")
+window.resizable(True, True)
+window.configure(bg="lightblue")
+font_style = ("Arial", 12, "bold")
+################################################################################
+###################### Create the components of the window #####################
+################################# column 1
+#### fileDialog
+# fileDialog upper label
+fileNames_label = Label(window, text="Select Data File:", bg=window["bg"])
+fileNames_label.grid(row=0, column=0, sticky='w', padx=15, pady=5)
+# fileDialog entry space
+fileNames_entry = Entry(window, width=25)
+fileNames_entry.grid(row=1, column=0, sticky='w', padx=15, pady=5)
+# fileDialog button
+search_button = Button(window, text="Search File", command=selectFiles)
+search_button.configure(bg="lightgray")
+search_button.grid(row=2, column=0, sticky='w', padx=15, pady=5)
+#### Input config folderDialog
+# Input folderDialog label
+inputConfigPath_label = Label(window, text="Configuration File Path:", bg=window["bg"])
+inputConfigPath_label.grid(row=3, column=0, sticky='w', padx=15, pady=5)
+# Input folderDialog entry space
+inputConfigPath_entry = Entry(window, width=40)
+inputConfigPath_entry.grid(row=4, column=0, sticky='w', padx=15, pady=5)
+# Input folderDialog button
+inputConfigPath_button = Button(window, text="Search Folder", command=selectInputConfigFolder)
+inputConfigPath_button.configure(bg="lightgray")
+inputConfigPath_button.grid(row=5, column=0, sticky='w', padx=15, pady=5)
+#### dataType drop-down list
+inputType_label = Label(window, text="Input Type:", bg=window["bg"])
+inputType_label.grid(row=6, column=0, sticky='w', padx=15, pady=5)
+
+inputType_combobox = ttk.Combobox(window, values=["Seaguard", "HOBO"])
+inputType_combobox.configure(width=25)
+inputType_combobox.grid(row=7, column=0, sticky='w', padx=15, pady=5)
+#### dataType drop-down list
+dType_label = Label(window, text="Data Type:", bg=window["bg"])
+dType_label.grid(row=8, column=0, sticky='w', padx=15, pady=5)
+
+dType_combobox = ttk.Combobox(window, values=["TSCP Profile", "TSCP Mooring"])
+dType_combobox.configure(width=25)
+dType_combobox.grid(row=9, column=0, sticky='w', padx=15, pady=5)
+#### marker for correcting time
+correct_gmt3h = BooleanVar(value=False)
+correct_gmt3hButton = Checkbutton(window, text="Correct GMT 3H", variable=correct_gmt3h, bg="lightblue")
+correct_gmt3hButton.grid(row=10, column=0, sticky='w', padx=15, pady=5)
+#### marker for selecting profile
+select_profile_data = BooleanVar(value=False)
+select_profile_dataButton = Checkbutton(window, text="Choose Ascending/ Descending Profile", variable=select_profile_data, bg="lightblue")
+select_profile_dataButton.grid(row=11, column=0, sticky='w', padx=15, pady=5)
+#### marker for checking variables
+check_variables = BooleanVar(value=False)
+check_variablesButton = Checkbutton(window, text="Check Variables", variable=check_variables, bg="lightblue")
+check_variablesButton.grid(row=12, column=0, sticky='w', padx=15, pady=5)
+#### dataType drop-down list
+pressure_unit_label = Label(window, text="Pressure Unit:", bg=window["bg"])
+pressure_unit_label.grid(row=13, column=0, sticky='w', padx=15, pady=5)
+
+pressure_unit_combobox = ttk.Combobox(window, values=["decibar", "bar", "kPa"])
+pressure_unit_combobox.configure(width=25)
+pressure_unit_combobox.grid(row=14, column=0, sticky='w', padx=15, pady=5)
+#### dataType drop-down list
+conductivity_unit_label = Label(window, text="Conductivity Unit:", bg=window["bg"])
+conductivity_unit_label.grid(row=15, column=0, sticky='w', padx=15, pady=5)
+
+conductivity_unit_combobox = ttk.Combobox(window, values=["mS/cm", "S/m"])
+conductivity_unit_combobox.configure(width=25)
+conductivity_unit_combobox.grid(row=16, column=0, sticky='w', padx=15, pady=5)
+################################# column 2
+#### Ouput folderDialog
+# Ouput folderDialog label
+outputPath_label = Label(window, text="Output Path:", bg=window["bg"])
+outputPath_label.grid(row=0, column=1, sticky='w', padx=15, pady=5)
+# Ouput folderDialog entry space
+outputPath_entry = Entry(window, width=40)
+outputPath_entry.grid(row=1, column=1, sticky='w', padx=15, pady=5)
+# Ouput folderDialog button
+outputPath_button = Button(window, text="Search Folder", command=selectOutputFolder)
+outputPath_button.configure(bg="lightgray")
+outputPath_button.grid(row=2, column=1, sticky='w', padx=15, pady=5)
+#### Output naming
+# Output naming upper label
+output_label = Label(window, text="Output File Name:", bg=window["bg"])
+output_label.grid(row=3, column=1, sticky='w', padx=15, pady=5)
+# Output naming entry space
+outputName_entry = Entry(window, width=40)
+outputName_entry.grid(row=4, column=1, sticky='w', padx=15, pady=5)
+#### Output format drop-down list
+outputFilesFormat_label = Label(window, text="Output Files Format:", bg=window["bg"])
+outputFilesFormat_label.grid(row=5, column=1, sticky='w', padx=15, pady=5)
+
+outputFilesFormat_combobox = ttk.Combobox(window, values=[".csv", ".xlsx"])
+outputFilesFormat_combobox.configure(width=25)
+outputFilesFormat_combobox.grid(row=6, column=1, sticky='w', padx=15, pady=5)
+#### marker for removing suspect data
+remove_bad = BooleanVar(value=False)
+remove_badButton = Checkbutton(window, text="Remove Bad Data", variable=remove_bad, bg="lightblue")
+remove_badButton.grid(row=7, column=1, sticky='w', padx=15, pady=5)
+#### marker for removing bad data
+remove_suspect = BooleanVar(value=False)
+remove_suspectButton = Checkbutton(window, text="Remove Suspect Data", variable=remove_suspect, bg="lightblue")
+remove_suspectButton.grid(row=8, column=1, sticky='w', padx=15, pady=5)
+####### column 3-->
+#### site selection
+#site selection label
+siteSelect_label = Label(window, text="Site:", bg=window["bg"])
+siteSelect_label.grid(row=0, column=3, sticky='w', padx=15, pady=5)
+# list with site names for markers
+site_names = ["A01", "A02", "A03", "A05", "A06", "B02", "B04", "B06", "BUR", "C01", "C02",
+              "C03", "C04", "C05", "C06", "C07", "C08", "C09", "CAL", "CBD", "CFD", "CFR",
+              "CFRIO1", "CBD",  "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08",
+              "D09", "D10", "D11", "D12", "D13", "PAB1", "PAB4", "PAB5", "RH18", "RH30",
+              "RH50", "VAC", "VAL"]
+selectedSites = []
+# dictionary to store boolean variables
+siteMarkers = {}
+for i, site in enumerate(site_names):
+    var = BooleanVar(value=False)
+    checkbutton = Checkbutton(window, text=site, variable=var, bg="lightblue")
+    if i+1 <= 12:
+        checkbutton.grid(row=i+1, column=2, sticky='w', padx=15, pady=5)
+    elif 12 < i+1 <= 24 :
+        checkbutton.grid(row=(i-12)+1, column=3, sticky='w', padx=15, pady=5)
+    elif 24 < i+1 <= 36:
+        checkbutton.grid(row=(i-24)+1, column=4, sticky='w', padx=15, pady=5)
+    elif 36 < i+1:
+        checkbutton.grid(row=(i-36)+1, column=5, sticky='w', padx=15, pady=5)
+    siteMarkers[site] = var
+
+
+#### button for saving settings
+run_button = Button(window, text="Save input Settings", command=saveInputSettings)
+run_button.configure(bg="lightgray")
+run_button.grid(row=17, column=0, sticky='w', padx=15, pady=25)
+#### Start the window
+window.mainloop()
 
 # ignore RuntimeWarning
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -22,24 +244,16 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 ################################################################################
 
 # input folder path
-input_folder_path = input('\nInput folder path:')
-print('\n')
+input_folder_path = INPUT['input_config_path']
 
-#select type of data
-opt = {
-       1:'Seaguard data',
-       2:'Unified hobo'
-       }
-
-for i in range(1, len(opt)+1):
-    print('%d: %s' %(i, opt[i]))
-
-e = int(input('\nSelect type of data:'))
+if INPUT['input_type'] == 'Seaguard':
+    e = 1
+elif INPUT['input_type'] == 'HOBO':
+    e = 2
 ################################################################################
 
 os.chdir(input_folder_path)
 #loading input
-from input_file import INPUT, OUTPUT
 from config_file import tsQualityTests, tsSettings, auxTests
 
 ################ QUALITY CONTROL FOR CTD AND AUXILIAR SENSORS ##################
@@ -154,52 +368,71 @@ if INPUT['select_profile_data'] == True:
                 ax1.plot(raw_data[name], label='Pressure (dbar)')
                 ax1.plot(peak, raw_data[name].loc[peak], '.', c='red', linestyle='none')
                 ax1.set_ylabel('Pressure (dbar)')
-                plt.show(block=True)
-                for subname in raw_data.columns:
-                    if re.search('temperature', subname, re.IGNORECASE):
-                        temp = subname
-                    if re.search('depth', subname, re.IGNORECASE):
-                        dep = subname
-                desc = raw_data.loc[:peak]
-                asc = raw_data.loc[peak:]
+                fig1.show()
+                #plt.show(block=True)
+                ans = []
+                # Create window 1
+                window = Tk()
+                window.title("Peak Validation")
+                window.geometry("225x80")
+                window.resizable(True, True)
+                window.configure(bg="lightblue")
+                font_style = ("Arial", 12, "bold")
+                # upper label
+                dPeak_label = Label(window, text="       Do you accept data peak?", bg=window["bg"])
+                dPeak_label.grid(row=0, column=0, sticky='w', padx=15, pady=5)
+                # buttons for yeas and no
+                yesButton = Button(window, text="Yes", command=acceptPeak)
+                yesButton.configure(bg="lightgray")
+                yesButton.grid(row=1, column=0, sticky='w', padx=5, pady=5)
+                noButton = Button(window, text="No", command=doNotAcceptPeak)
+                noButton.configure(bg="lightgray")
+                noButton.grid(row=1, column=1, sticky='w', padx=0, pady=5)
+                #### Start the window
+                window.mainloop()
 
+                if ans[0] == 'y':
+                    for subname in raw_data.columns:
+                        if re.search('temperature', subname, re.IGNORECASE):
+                            temp = subname
+                        if re.search('depth', subname, re.IGNORECASE):
+                            dep = subname
+                    desc = raw_data.loc[:peak]
+                    asc = raw_data.loc[peak:]
 
-                fig2 = plt.figure()
-                ax2 = fig2.gca()
-                line1, = ax2.plot(desc[temp], desc[dep], linestyle='None', marker='o', markersize=3, markerfacecolor='#1f77b4ff', markeredgecolor='#1f77b4ff', label='descending data')
-                line2, = ax2.plot(asc[temp], asc[dep], linestyle='None', marker='o', markersize=3, markerfacecolor='red', markeredgecolor='red', c='red', label='ascending data')
-                ax2.set_title('click on the dataset to select it:')
-                ax2.set_xlabel('Temperature(degC)')
-                ax2.set_ylabel('Depth(m)')
-                ax2.legend()
-                ax2.invert_yaxis()
-                ax2.grid()
-                fig2.show()
+                    #fig2 = plt.figure()
+                    #ax2 = fig2.gca()
+                    fig2, ax2 = plt.subplots()
+                    line1, = ax2.plot(desc[temp], desc[dep], linestyle='None', marker='o', markersize=3, markerfacecolor='#1f77b4ff', markeredgecolor='#1f77b4ff', label='descending data')
+                    line2, = ax2.plot(asc[temp], asc[dep], linestyle='None', marker='o', markersize=3, markerfacecolor='red', markeredgecolor='red', c='red', label='ascending data')
+                    ax2.set_title('click on the dataset to select it:')
+                    ax2.set_xlabel('Temperature(degC)')
+                    ax2.set_ylabel('Depth(m)')
+                    ax2.legend()
+                    ax2.invert_yaxis()
+                    ax2.grid()
 
-                selected = None
-                buffer = 0.1
-                def on_pick(event):
-                    # get selected label
-                    global selected
-                    selected = event.artist.get_label()
-                    plt.close()
-                    #fig.canvas.mpl_disconnect(cid)
+                    selected = None
+                    def on_pick(event):
+                        global selected
+                        selected = event.artist.get_label()
+                        plt.close(fig2)
 
-                line1.set_picker(True)
-                line2.set_picker(True)
-                fig2.canvas.mpl_connect('pick_event', on_pick)
-                fig2.canvas.mpl_connect('motion_notify_event', data.on_motion)
+                    line1.set_picker(True)
+                    line2.set_picker(True)
+                    fig2.canvas.mpl_connect('pick_event', on_pick)
+                    fig2.canvas.mpl_connect('motion_notify_event', data.on_motion)
+                    plt.show()
+                    while selected is None:
+                        plt.pause(0.1)
 
-                ans = input('\ndo you accept the data peak?(y/n)\n\n select:')
-
-                if ans == 'y':
                     if selected == 'descending data':
                         raw_data = desc.copy()
+                        
                     elif selected == 'ascending data':
                         raw_data = asc.copy()
-                raw_data.index=  np.arange(len(raw_data))
-                plt.close(fig1)
-                plt.close(fig2)
+                    plt.close(fig2)
+                    raw_data.index =  np.arange(len(raw_data))
             except TypeError:
                 print("Could not find turning point")
                 pass

@@ -710,7 +710,7 @@ def trim_selected_data_by_pressure (data, pressure):
 
 # concatanate files in database
 
-def join_files_to_database(path, database_name):
+def join_files_to_database(path, inputFilesFormat):
     folder_names = next(walk(path), (None, None, []))[1]
     folder_names = [item for item in folder_names if '__pycache__' not in item]
     dic = {}
@@ -723,25 +723,20 @@ def join_files_to_database(path, database_name):
             file_names = next(walk(path + '/' + folder + '/' + f), (None, None, []))[2]
             file_names = [item for item in file_names if '__pycache__' not in item]
             for file in file_names:
-                if re.search('.xlsx', database_name, re.IGNORECASE):
+                if re.search('xlsx', inputFilesFormat, re.IGNORECASE):
                     if re.search('.xlsx', file, re.IGNORECASE):
                         df = pd.read_excel(file, header=0)
                         #site = file[4:8] if file[4] == 'P' or file[4] == 'R' else file[4:7]
                         #df['Site'] = site
                         dic[file] = df
 
-                if re.search('.csv', database_name, re.IGNORECASE):
+                if re.search('csv', inputFilesFormat, re.IGNORECASE):
                     if re.search('.csv', file, re.IGNORECASE):
-                        df = pd.read_csv(file, header=0)
+                        df = pd.read_csv(file, header=1)
                         #site = file[4:8] if file[4] == 'P' or file[4] == 'R' else file[4:7]
                         #df['Site'] = site
                         dic[file] = df
 
     database = pd.concat(dic, ignore_index=True)
     database.index = np.arange(len(database))
-    #os.chdir(path)
-    #if re.search('.xlsx', database_name, re.IGNORECASE):
-    #    database.to_excel(database_name)
-    #if re.search('.csv', database_name, re.IGNORECASE):
-    #    database.to_csv(database_name)
     return database

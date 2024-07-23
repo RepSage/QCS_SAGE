@@ -11,6 +11,47 @@ import datetime
 #import windrose
 import matplotlib as mpl
 ####################################################################
+def renameParameters (parameter_names):
+    rParam = []
+    for param in parameter_names:
+        if param == 'Temperature(degC)':
+            rParam.append('Temperature (°C)')
+
+        elif param == 'Salinity(PSU)':
+            rParam.append('Salinity (PSU)')
+
+        elif param == 'Conductivity(mS/cm)':
+            rParam.append('Conductivity (mS/cm)')
+
+        elif param == 'Density(kg/m3)':
+            rParam.append('Density (kg/m³)')
+
+        elif param == 'CO2 Level(ppm)':
+            rParam.append('CO2 (ppm')
+
+        elif param == 'O2 Level(uM)':
+            rParam.append('O2 (µM)')
+
+        elif param == 'PAR(umol/m2/s)':
+            rParam.append('PAR (µmol/m²/s)')
+
+        elif param == 'Turbidity(FTU)':
+            rParam.append('Turbidity (FTU)')
+
+        elif param == 'Chlorophyll(ug/L)':
+            rParam.append('Chlorophyll (µg/L)')
+
+        elif param == 'Hydrogen Potential(pH)':
+            rParam.append('pH')    
+
+        elif param == 'Dissolved Organic Matter(ppb)':
+            rParam.append('Dissolved organic matter (ppb)')
+
+        elif param == 'Soundspeed(m/s)':
+            rParam.append('Soundspeed (m/s)')
+        else:
+            rParam(param)
+    return rParam
 
 def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, fixed_scale):
     fig = plt.figure()
@@ -50,7 +91,7 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
         ax1.invert_yaxis()
 
     ax1.set_title('Site: %s  /   year: %s   /  month: %s'%(qualified_data['Site'].iloc[0], year, month_firstday))
-    plt.savefig(dataview_path + '/' + re.search('^[^\(]+',variable, re.IGNORECASE).group() + ' series.png', bbox_inches='tight', dpi=100)
+    plt.savefig(dataview_path + '/' + re.search('^[^\(]+',variable, re.IGNORECASE).group() + ' series.svg', bbox_inches='tight', dpi=100)
     #plt.close('all')
 
 def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SETTINGS, fixed_scale):
@@ -108,7 +149,7 @@ def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SET
 
     ax1.invert_yaxis()
     ax1.set_title('Site: %s  /   year: %s   /  month: %s'%(qualified_data['Site'].iloc[0], year, month))
-    plt.savefig(dataview_path + '/' + re.search('^[^\(]+',variable, re.IGNORECASE).group() + ' profile.png', bbox_inches='tight', dpi=100)
+    plt.savefig(dataview_path + '/' + re.search('^[^\(]+',variable, re.IGNORECASE).group() + ' profile.svg', bbox_inches='tight', dpi=100)
     #plt.close('all')
 
 def identify_valid_interval (y):
@@ -118,6 +159,17 @@ def identify_valid_interval (y):
     lst_id = len(yi) - np.argmax(np.flip(~pn))
     yi = yi[fst_id:lst_id]
     xi = yi.index
+    return xi, yi
+
+def identify_valid_interval_profile (x, y):
+    xi = x.copy()
+    pn = np.isnan(xi)
+    fst_id = np.argmax(~pn)
+    lst_id = len(xi) - np.argmax(np.flip(~pn))
+    xi = xi[fst_id:lst_id]
+    yi = y.loc[xi.index]
+    xi = xi[~xi.index.duplicated(keep='first')]
+    yi = yi[~yi.index.duplicated(keep='first')]
     return xi, yi
 
 def linear_regression (y, degree):
@@ -134,31 +186,31 @@ def linear_regression (y, degree):
 
     # predict values
     y_pred = np.polyval(coefficients, np.arange(len(yi)))
-    if len(idx) > 0.25 * len(yi):
-        pass
-    else:
-        y_pred[idx] = np.nan
+    #if len(idx) > 0.25 * len(yi):
+    #    pass
+    #else:
+    #    y_pred[idx] = np.nan
     return xi, y_pred
 
 def linear_regression_profile (x, y, degree):
-    yi, xi = identify_valid_interval(x)
-    yi = y.loc[yi.duplicated(keep=False)]
+    xi, yi = identify_valid_interval_profile(x, y)
+    yi = np.asarray(yi)
     xi = np.asarray(xi)
     idx = np.where(np.isnan(xi))[0]
-    if len(idx) > 0.25 * len(yi):
-        yi = np.delete(yi, idx)
-        xi = np.delete(xi, idx)
-    else:
-        xi[np.where(np.isnan(xi))] = np.nanmean(xi)
+    #if len(idx) > 0.25 * len(yi):
+    yi = np.delete(yi, idx)
+    xi = np.delete(xi, idx)
+    #else:
+    #    xi[np.where(np.isnan(xi))] = np.nanmean(xi)
     # adjust linear regression
     coefficients = np.polyfit(yi, xi, degree)
 
     # predict values
     x_pred = np.polyval(coefficients, yi)
-    if len(idx) > 0.25 * len(xi):
-        pass
-    else:
-        x_pred[idx] = np.nan
+    #if len(idx) > 0.25 * len(xi):
+    #    pass
+    #else:
+    #    x_pred[idx] = np.nan
     return yi, x_pred
 
 def fill_NaT_gap (y):
@@ -167,7 +219,7 @@ def fill_NaT_gap (y):
     gap_i = np.where(y.index.to_series().diff() > delta)[0] - 1
     gap_ids = y.iloc[gap_i].index + delta
     new_lines = pd.Series(np.nan, index=gap_ids)
-    y = y.append(new_lines).sort_index()
+    y = pd.concat([y, new_lines]).sort_index()
     return y, gap_ids
 
 def plot_database_panel1 (database, site_names, parameter_names, year, fit_lin_regression, deg, points):
@@ -178,8 +230,9 @@ def plot_database_panel1 (database, site_names, parameter_names, year, fit_lin_r
     db_raw.index = db_raw['Datetime']
     db_raw = db_raw.rename_axis('dt_index')
     db_raw = db_raw.sort_values(by='dt_index')
-    colors_p = ['blue', 'red', 'chocolate', 'blueviolet', 'limegreen', 'deepskyblue']
-    colors_l = ['royalblue', 'tomato', 'sandybrown', 'violet', 'lime', 'cyan']
+    colors_p = ['blue', 'red', 'chocolate', 'blueviolet', 'limegreen', 'deepskyblue', 'goldenrod', 'lightseagreen']
+    colors_l = ['royalblue', 'tomato', 'sandybrown', 'violet', 'lime', 'cyan', 'gold', 'turquoise']
+    rParam = renameParameters (parameter_names)
     for site in site_names:
         # spliting data by semester and site
         try:
@@ -203,7 +256,7 @@ def plot_database_panel1 (database, site_names, parameter_names, year, fit_lin_r
                 else:
                     y_list.append(slice)
             if len(y_list) > 0:
-                fig, ax1 = plt.subplots(figsize=(1350 / 100, 660 / 100))
+                fig, ax1 = plt.subplots(figsize=(1960 / 100, 1000 / 100))
                 plt.xticks(rotation=35)
                 plt.grid(True, linestyle='dotted', linewidth=0.5)
                 #define x and y
@@ -216,12 +269,12 @@ def plot_database_panel1 (database, site_names, parameter_names, year, fit_lin_r
                 if fit_lin_regression == True:
                     xp, yp = linear_regression (y, degree=deg)
                     if points == True:
-                        ax1.plot(x, y, color=colors_p[0], linestyle='none', marker='.', markersize=3, label=y_list[0].name)
-                    ax1.plot(xp, yp, color=colors_l[0], linestyle='-', label=y_list[0].name)
+                        ax1.plot(x, y, color=colors_p[0], linestyle='none', marker='.', markersize=3, label=rParam[0])
+                    ax1.plot(xp, yp, color=colors_l[0], linestyle='-', label=rParam[0])
                 else:
-                    ax1.plot(x, y, color=colors_l[0], linestyle='-', marker='.', label=y_list[0].name)
+                    ax1.plot(x, y, color=colors_l[0], linestyle='-', marker='.', label=rParam[0])
                 # set y label
-                ax1.set_ylabel(parameter_names[0], color=colors_l[0])
+                ax1.set_ylabel(rParam[0], color=colors_l[0])
                 # set title
                 ax1.set_title('Parameters for %s over %s during %s'%(site, semester, year))
                 # set y axis color and position
@@ -244,12 +297,12 @@ def plot_database_panel1 (database, site_names, parameter_names, year, fit_lin_r
                     if fit_lin_regression == True:
                         xp, yp = linear_regression (y, degree=deg)
                         if points == True:
-                            ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=colors_p[i-1], label=y_list[i-1].name)
-                        ax.plot(xp, yp, linestyle='-', c=colors_l[i-1], label=y_list[i-1].name)
+                            ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=colors_p[i-1], label=rParam[i-1])
+                        ax.plot(xp, yp, linestyle='-', c=colors_l[i-1], label=rParam[i-1])
                     else:
-                        ax.plot(x, y, linestyle='-', marker='.', c=colors_l[i-1], label=y_list[i-1].name)
+                        ax.plot(x, y, linestyle='-', marker='.', c=colors_l[i-1], label=rParam[i-1])
                     # set axis label
-                    ax.set_ylabel(y_list[i-1].name, c=colors_l[i-1])
+                    ax.set_ylabel(rParam[i-1], c=colors_l[i-1])
                     # set y axis position
                     if i == 2:
                         pass
@@ -270,9 +323,8 @@ def plot_database_panel1 (database, site_names, parameter_names, year, fit_lin_r
             else:
                 #defining data format
                 plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m %H:%M'))
-                # fit to tight layout
-                plt.tight_layout()
-                plt.savefig('panel1_%s_%s_%d.png'%(site, semester, year))
+                plt.show()
+                plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year))
 
 def plot_database_panel2 (database, site_names, parameter_names, year, fit_lin_regression, deg, points, elapsed_time, change_date):
     n_axis = len(parameter_names)
@@ -284,16 +336,17 @@ def plot_database_panel2 (database, site_names, parameter_names, year, fit_lin_r
     db_raw = db_raw.sort_values(by='dt_index')
     colors_p = ['blue', 'red', 'chocolate', 'blueviolet', 'darkolivegreen', 'deepskyblue']
     colors_l = ['royalblue', 'tomato', 'sandybrown', 'violet', 'lime', 'cyan']
+    rParam = renameParameters (parameter_names)
     # spliting data by semester and site
     db = {'1stSemester': db_raw[(db_raw.loc[:,'Datetime'].dt.month >= 1) & (db_raw.loc[:,'Datetime'].dt.month <= 6)],
           '2ndSemester': db_raw[(db_raw.loc[:,'Datetime'].dt.month >= 7) & (db_raw.loc[:,'Datetime'].dt.month <= 12)]}
     for semester in db.keys():
         for parameter in parameter_names:
-            fig, ax1 = plt.subplots(figsize=(1350 / 100, 660 / 100))
-            plt.title('%s on %s for each site for %s'%(parameter, semester, str(year)))
-            ax1.set_ylabel(parameter)
-            plt.grid(True, linestyle='dotted', linewidth=0.5)
             i = 0
+            fig, ax1 = plt.subplots(figsize=(1960 / 100, 1000 / 100))
+            plt.title('%s on %s for each site for %s'%(parameter, semester, str(year)))
+            plt.grid(True, linestyle='dotted', linewidth=0.5)
+            ax1.set_ylabel(rParam[i])
             control = 0
             for site in site_names:
                 #define x and y
@@ -356,11 +409,11 @@ def plot_database_panel2 (database, site_names, parameter_names, year, fit_lin_r
                 plt.gca().set_xticklabels(new_labels)
                 ax1.legend(loc='upper left', bbox_to_anchor=(1, 1.01))
                 plt.subplots_adjust(left=0.06, right=0.86, top=0.88, bottom=0.11)
-                plt.tight_layout()
+                plt.show()
                 if re.search(r'\([^()]*\)', parameter, re.IGNORECASE):
                     nDigits = len(re.search(r'\([^()]*\)', parameter, re.IGNORECASE).group())
                     parameter = parameter[:len(parameter)-nDigits]
-                plt.savefig('panel2_%s_%s_%d.png'%(parameter, semester, year))
+                plt.savefig('panel2_%s_%s_%d.svg'%(parameter, semester, year))
 
 def plot_database_panel3 (database, site_names, parameter_names, year, fit_lin_regression, deg, points):
     n_axis = len(parameter_names)
@@ -370,8 +423,9 @@ def plot_database_panel3 (database, site_names, parameter_names, year, fit_lin_r
     db_raw.index = db_raw['Datetime']
     db_raw = db_raw.rename_axis('dt_index')
     db_raw = db_raw.sort_values(by='dt_index')
-    colors_p = ['blue', 'red', 'chocolate', 'blueviolet', 'limegreen', 'deepskyblue']
-    colors_l = ['royalblue', 'tomato', 'sandybrown', 'violet', 'lime', 'cyan']
+    colors_p = ['blue', 'red', 'chocolate', 'blueviolet', 'limegreen', 'deepskyblue', 'goldenrod', 'lightseagreen']
+    colors_l = ['royalblue', 'tomato', 'sandybrown', 'violet', 'lime', 'cyan', 'gold', 'turquoise']
+    rParam = renameParameters (parameter_names)
     for site in site_names:
         # spliting data by semester and site
         try:
@@ -395,10 +449,15 @@ def plot_database_panel3 (database, site_names, parameter_names, year, fit_lin_r
                 else:
                     x_list.append(slice)
             if len(x_list) > 0:
-                fig, ax1 = plt.subplots(figsize=(1350 / 100, 660 / 100))
+                figHeight = 1000
+                fig, ax1 = plt.subplots(figsize=(1960 / 100, figHeight / 100))
+                bottomAxis = - (0.325 * figHeight)
+                offset = bottomAxis - 50
+                plt.subplots_adjust(left=0.1, right=0.9, top=0.975, bottom=0.56)
+                #ax.xaxis.set_tick_params(bottom=True, top=False)  # Ticks apenas na parte de baixo
                 ax1.invert_yaxis()
                 #plt.xticks(rotation=35)
-                plt.grid(True, linestyle='dotted', linewidth=0.5)
+                plt.grid(True, axis='y', linestyle='dotted', linewidth=0.5)
                 #define x and y
                 # defining x while removing datetime duplicates
                 x = x_list[0].loc[~(x_list[0].index.duplicated(keep=False) & x_list[0].isna())]
@@ -418,28 +477,47 @@ def plot_database_panel3 (database, site_names, parameter_names, year, fit_lin_r
                 else:
                         ax1.plot(x, y, color=colors_p[0], linestyle='none', marker='.', markersize=3, label=x_list[0].name)
                 # set x label
-                ax1.set_xlabel(parameter_names[0], color=colors_l[0])
+                ax1.set_xlabel(rParam[0], color=colors_l[0])
                 # set x label
                 ax1.set_ylabel('Depth(m)')
                 # set title
                 ax1.set_title('Parameters for %s over %s during %s'%(site, semester, year))
+                ax1.set_ylim(ymax=0)
+                #marginMin = 0.05 * x.max()
+                marginMax = 0.05 * x.max()
+                ax1.set_xlim(xmax=x.max() + marginMax)
                 # set y axis color and position
                 ax1.spines['bottom'].set_color(colors_l[0])
-                ax1.spines['bottom'].set_position(('outward', 1))
                 ax1.spines['bottom'].set_linewidth(1.5)
+                ax1.tick_params(axis='x', which='both', colors=colors_l[0])
                 # axis list
                 axes = {'y1': ax1}
                 n = len(x_list)
-                offset = -310
-                plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.4)
+                spineOffset = 50
+                labelOffset = -0.25
                 for i, x in enumerate(x_list[1:], start=2):
                     # create aditional x axis
                     ax = ax1.twiny()
+                    # setting bottom axis as invisible
+                    #ax.spines['top'].set_visible(False)
+                    ax.tick_params(axis='x', which='both', colors=colors_l[i-1], top=False, bottom=True, labeltop=False, labelbottom=True, direction='out')
+                    # setting top axis position and color
+                    ax.spines['bottom'].set_position(('outward', spineOffset))
+                    ax.spines['bottom'].set_color(colors_l[i-1])
+                    spineOffset +=50
+                    #ax.tick_params(axis='x', which='both', colors=colors_l[i-1], direction='out')
+                    # set y axis width
+                    ax.spines['bottom'].set_linewidth(1.5)
+                    # set axis label
+                    ax.set_xlabel(rParam[i-1], c=colors_l[i-1])
+                    axPosition = ax.spines['bottom'].get_position()[1]
+                    ax.xaxis.set_label_coords(0.5, labelOffset)
+                    labelOffset += -0.17
                     #defining x while removing datetime duplicates
                     x = x.loc[~(x.index.duplicated(keep=False) & x.isna())]
                     # filling gaps greater than 1 hour
                     x, gap_ids = fill_NaT_gap(x)
-                    x.name = x_list[0].name
+                    x.name = x_list[i-1].name
                     #defining y
                     y = (db[semester]['Depth(m)']).loc[~(x_list[i-1].index.duplicated(keep=False) & x_list[i-1].isna())]
                     # sorting by depth
@@ -448,31 +526,23 @@ def plot_database_panel3 (database, site_names, parameter_names, year, fit_lin_r
                     # plot adicional axis
                     if fit_lin_regression == True:
                         yp, xp = linear_regression_profile (x, y, degree=deg)
+                        xp[np.where(xp<0)[0]] = np.nan
                         if points == True:
-                            ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=colors_p[i-1], label=x_list[i-1].name)
-                        ax.plot(xp, yp, linestyle='-', c=colors_l[i-1], label=x_list[i-1].name)
+                            ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=colors_p[i-1], label=rParam[i-1])
+                        ax.plot(xp, yp, linestyle='-', c=colors_l[i-1], label=rParam[i-1])
                     else:
-                        ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=colors_p[i-1], label=x_list[i-1].name)
-                    # set x axis position
-                    ax.spines['top'].set_position(('outward', offset))
-                    offset -= 50
-                    # set axis label
-                    ax.set_xlabel(x_list[i-1].name, c=colors_l[i-1])
-                    axPosition = ax.spines['top'].get_position()[1]
-                    # set y axis colors
-                    ax.spines['top'].set_color(colors_l[i-1])
-                    # set y axis width
-                    ax.spines['top'].set_linewidth(1.5)
-                    # change tick colors
-                    ax.tick_params(axis='y', colors=colors_p[i-1])
+                        ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=colors_p[i-1], label=rParam[i-1])
                     # save axis name
                     axes[f'y{i}'] = ax
+                    ax.set_ylim(ymax=0)
+                    #marginMin = 0.05 * x.max()
+                    marginMax = 0.05 * x.max()
+                    ax.set_xlim(xmax=x.max() + marginMax)
+                plt.show()
             if slice.empty:
                 pass
             else:
-                # fit to tight layout
-                plt.tight_layout()
-                plt.savefig('panel1_%s_%s_%d.png'%(site, semester, year))
+                plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year))
 
 def plot_hobo_split_site (database, dataview_path):
     site_names = list(set(database['Site']))
@@ -487,7 +557,7 @@ def plot_hobo_split_site (database, dataview_path):
         plt.title('%s'%site)
         plt.plot(siteDatabase['Datetime'], siteDatabase['Temperature(degC)'], linestyle='None', marker='.', markersize=3)
         plt.tight_layout()
-        plt.savefig(dataview_path + '/' + 'hobo_%s_temperature.png'%site, bbox_inches='tight', dpi=100)
+        plt.savefig(dataview_path + '/' + 'hobo_%s_temperature.svg'%site, bbox_inches='tight', dpi=100)
 
         fig = plt.figure()
         fig.set_size_inches(10,6)
@@ -497,4 +567,4 @@ def plot_hobo_split_site (database, dataview_path):
         plt.title('%s'%site)
         plt.plot(siteDatabase['Datetime'], siteDatabase['Luminosity(lux)'], linestyle='None', marker='.', markersize=3)
         plt.tight_layout()
-        plt.savefig(dataview_path + '/' + 'hobo_%s_luminosity.png'%site, bbox_inches='tight', dpi=100)
+        plt.savefig(dataview_path + '/' + 'hobo_%s_luminosity.svg'%site, bbox_inches='tight', dpi=100)
