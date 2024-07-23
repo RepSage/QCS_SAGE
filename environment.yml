@@ -1,4 +1,4 @@
-name: QCS_OCGF_teste1
+name: QCS_SAGE
 channels:
   - conda-forge
   - defaults
@@ -11,18 +11,20 @@ dependencies:
   - brotli-bin=1.0.9=hcfcfb64_9
   - brotli-python=1.0.9=py38hd3f51b4_9
   - bzip2=1.0.8=h8ffe710_4
-  - ca-certificates=2023.7.22=h56e8100_0
-  - certifi=2023.7.22=pyhd8ed1ab_0
+  - ca-certificates=2024.7.4=h56e8100_0
+  - certifi=2024.7.4=pyhd8ed1ab_0
   - charset-normalizer=3.2.0=pyhd8ed1ab_0
   - colorama=0.4.6=pyhd8ed1ab_0
   - contourpy=1.1.0=py38hb1fd069_0
   - cycler=0.11.0=pyhd8ed1ab_0
   - decorator=5.1.1=pyhd8ed1ab_0
+  - et_xmlfile=1.1.0=pyhd8ed1ab_0
   - executing=1.2.0=pyhd8ed1ab_0
   - fonttools=4.41.1=py38h91455d4_0
   - freetype=2.12.1=h546665d_1
   - geomag=0.9.2015=pyhd8ed1ab_0
   - gettext=0.21.1=h5728263_0
+  - git=2.45.2=h57928b3_1
   - glib=2.76.4=h12be248_0
   - glib-tools=2.76.4=h12be248_0
   - gst-plugins-base=1.22.5=h001b923_0
@@ -75,7 +77,8 @@ dependencies:
   - munkres=1.1.4=pyh9f0ad1d_0
   - numpy=1.24.4=py38h1d91fd2_0
   - openjpeg=2.5.0=ha2aaf27_2
-  - openssl=3.1.1=hcfcfb64_1
+  - openpyxl=3.1.4=py38h91455d4_0
+  - openssl=3.3.1=h2466b09_2
   - packaging=23.1=pyhd8ed1ab_0
   - pandas=2.0.3=py38hf08cf0d_1
   - parso=0.8.3=pyhd8ed1ab_0
@@ -132,4 +135,4 @@ dependencies:
   - xz=5.2.6=h8d14728_0
   - zipp=3.16.2=pyhd8ed1ab_0
   - zstd=1.5.2=h12be248_7
-prefix: C:\ProgramData\Anaconda3\envs\QCS_OCGF_teste1
+prefix: C:\ProgramData\anaconda3\envs\QCS_SAGE
