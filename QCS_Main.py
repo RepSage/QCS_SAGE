@@ -2,9 +2,9 @@
 import os
 import re
 import time
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np # type: ignore
+import pandas as pd # type: ignore
+import matplotlib.pyplot as plt # type: ignore
 from io import StringIO
 from string import Template
 from datetime import datetime as dt
@@ -19,6 +19,7 @@ import QCS_DataHandler as data
 import QCS_DataView as view
 import QCS_Tests as QC
 
+rootPath = os.getcwd()
 # define functions
 def selectFiles ():
     # Open a file dialog to select multiple files
@@ -254,7 +255,7 @@ elif INPUT['input_type'] == 'HOBO':
 
 os.chdir(input_folder_path)
 #loading input
-from config_file import tsQualityTests, tsSettings, auxTests
+from config_file import tsQualityTests, tsSettings, auxTests # type: ignore
 
 ################ QUALITY CONTROL FOR CTD AND AUXILIAR SENSORS ##################
 
@@ -357,7 +358,7 @@ if auxTests['depth range test'] == 'ON':
             raw_data = QC.depth_range_test (raw_data, tsSettings['depth_range'])
 
 #selecting samples based on descending or ascendig equipment
-from scipy import signal
+from scipy import signal # type: ignore
 if INPUT['select_profile_data'] == True:
     for name in raw_data.columns:
         if re.search('pressure', name, re.IGNORECASE):
@@ -933,3 +934,5 @@ if e != 4:
                 view.plot_variable(qualified_data, raw_data, variable, dataview_path2, tsSettings, fixed_scale=False)
 elif e == 4:
     view.plot_hobo_split_site (database, dataview_path2)
+plt.show()
+os.chdir(rootPath)

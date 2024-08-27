@@ -1,13 +1,13 @@
 import os
-import re
-import pandas as pd
+import pandas as pd # type: ignore
 import QCS_DataHandler as data
-import matplotlib.pyplot as plt
 import QCS_DataView as view
 from tkinter import *
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
+
+rootPath = os.getcwd()
 # define functions
 def selectFiles ():
     # Open a file dialog to select multiple files
@@ -56,11 +56,18 @@ def saveDataViewSettings():
     dataViewSettings['panel1'] = panel1.get()
     dataViewSettings['panel2'] = panel2.get()
     dataViewSettings['panel3'] = panel3.get()
+    
+    dataViewSettings['tsDiagram'] = tsDiagram.get()
+    if dataViewSettings['tsDiagram'] == True:
+        dataViewSettings['latitude'] = float(latitude_entry.get())
+        dataViewSettings['longitude'] = float(longitude_entry.get())
+        dataViewSettings['tsParam'] = tsParam_combobox.get()
+
     dataViewSettings['tendencyLines'] = tendency.get()
-    dataViewSettings['linearRegressionDegree'] = int(tendency_entry.get())
+    if dataViewSettings['tendencyLines'] == True:
+        dataViewSettings['linearRegressionDegree'] = int(tendency_entry.get())
+
     dataViewSettings['viewDataPoints'] = dataPoints.get()
-    dataViewSettings['stackDates'] = dateStack.get()
-    dataViewSettings['elapsedTime'] = False
     # get site list from markers
     selectedSites = []
     for site in siteMarkers.keys():
@@ -83,16 +90,18 @@ def saveDataViewSettings():
 def generatePanels():
     if dataViewSettings['dataType'] == 'mooring':
         if dataViewSettings['panel1'] == True:
-            view.plot_database_panel1 (database, dataViewSettings['siteList'], dataViewSettings['parameterList'], dataViewSettings['filterByYear'], dataViewSettings['tendencyLines'], dataViewSettings['linearRegressionDegree'], dataViewSettings['viewDataPoints'])
+            view.plot_database_panel1 (database, dataViewSettings)
         elif dataViewSettings['panel2'] == True:
-            view.plot_database_panel2 (database, dataViewSettings['siteList'], dataViewSettings['parameterList'], dataViewSettings['filterByYear'], dataViewSettings['tendencyLines'], dataViewSettings['linearRegressionDegree'], dataViewSettings['viewDataPoints'], dataViewSettings['elapsedTime'], dataViewSettings['stackDates'])
+            view.plot_database_panel2 (database, dataViewSettings)
         elif dataViewSettings['panel3'] == True:
             print('WARNING: Panel 3 is not suited for mooring data')
     elif dataViewSettings['dataType'] == 'tscp profile':
         if dataViewSettings['panel3'] == True:
-            view.plot_database_panel3 (database, dataViewSettings['siteList'], dataViewSettings['parameterList'], dataViewSettings['filterByYear'], dataViewSettings['tendencyLines'], dataViewSettings['linearRegressionDegree'], dataViewSettings['viewDataPoints'])
+            view.plot_database_panel3 (database, dataViewSettings)
         elif dataViewSettings['panel1'] == True or dataViewSettings['panel2'] == True:
-            print('WARNING: Panels 1/2 are not suited for mooring data')
+            print('WARNING: Panels 1/2 are not suited for profile data')
+    if dataViewSettings['tsDiagram'] == True:
+        view.plot_TS_diagram (database, dataViewSettings)
 ################################################################################
 # create input settings dictionary
 inputSettings = {}
@@ -240,6 +249,24 @@ panel2Button.grid(row=5, column=0, sticky='w', padx=15, pady=5)
 panel3 = BooleanVar(value=False)
 panel3Button = Checkbutton(window, text="Panel 3 (profile)", variable=panel3, bg="lightblue")
 panel3Button.grid(row=6, column=0, sticky='w', padx=15, pady=5)
+#### marker for TS diagram
+tsDiagram = BooleanVar(value=False)
+tsDiagramButton = Checkbutton(window, text="T-S Diagram", variable=tsDiagram, bg="lightblue")
+tsDiagramButton.grid(row=7, column=0, sticky='w', padx=15, pady=5)
+#### coordinates 
+# latitude upper label
+latitude_label = Label(window, text="Latitude (decimal degrees):", bg=window["bg"])
+latitude_label.grid(row=8, column=0, sticky='w', padx=15, pady=5)
+# latitude entry space
+latitude_entry = Entry(window)
+latitude_entry.grid(row=9, column=0, sticky='w', padx=15, pady=5)
+# longitude upper label
+longitude_label = Label(window, text="Longitude (decimal degrees):", bg=window["bg"])
+longitude_label.grid(row=10, column=0, sticky='w', padx=15, pady=5)
+# longitude entry space
+longitude_entry = Entry(window)
+longitude_entry.grid(row=11, column=0, sticky='w', padx=15, pady=5)
+
 ####### column 2
 #### marker for tendency lines
 tendency = BooleanVar(value=False)
@@ -252,14 +279,17 @@ tendency_label.grid(row=2, column=1, sticky='w', padx=15, pady=5)
 # tendency entry space
 tendency_entry = Entry(window)
 tendency_entry.grid(row=3, column=1, sticky='w', padx=15, pady=5)
-#### marker for date stacking
-dateStack = BooleanVar(value=False)
-dateStackButton = Checkbutton(window, text="Stack Dates", variable=dateStack, bg="lightblue")
-dateStackButton.grid(row=4, column=1, sticky='w', padx=15, pady=5)
 #### marker for data points
 dataPoints = BooleanVar(value=False)
 dateStackButton = Checkbutton(window, text="View Data Points", variable=dataPoints, bg="lightblue")
-dateStackButton.grid(row=5, column=1, sticky='w', padx=15, pady=5)
+dateStackButton.grid(row=4, column=1, sticky='w', padx=15, pady=5)
+#### ts parameters drop-down list
+tsParam_label = Label(window, text="T-S Parameters:", bg=window["bg"])
+tsParam_label.grid(row=8, column=1, sticky='w', padx=15, pady=5)
+
+tsParam_combobox = ttk.Combobox(window, values=["Conservative T & Absolute S", "Potential T & Pratical S"])
+tsParam_combobox.configure(width=25)
+tsParam_combobox.grid(row=9, column=1, sticky='w', padx=15, pady=5)
 ####### column 3 --> 6
 #### site selection
 #site selection label
@@ -312,3 +342,5 @@ run_button.configure(bg="lightgray")
 run_button.grid(row=13, column=1, sticky='w', padx=15, pady=5)
 # Start the window
 window.mainloop()
+
+os.chdir(rootPath)
