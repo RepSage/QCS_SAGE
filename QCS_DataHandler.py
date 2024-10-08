@@ -33,44 +33,116 @@ def search_values (whr_file, string):
             break
             return valor
 
-            def search_times (whr_file, string):
-                #search for values in string type data
-                #whr_file: input file in .whr format
-                #string: string type sentence in which to search
-                for linha in open(whr_file):
-                    m = re.search(string + "\s*(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})", linha, re.IGNORECASE)
-                    if m:
-                        time = m.group(1)
-                        break
-                        time = dt.strptime(m.group(1), '%d/%m/%Y %H:%M:%S')
-                        time = np.array(time, dtype='datetime64[us]')
-                        return time
+def search_times (whr_file, string):
+    #search for values in string type data
+    #whr_file: input file in .whr format
+    #string: string type sentence in which to search
+    for linha in open(whr_file):
+        m = re.search(string + "\s*(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})", linha, re.IGNORECASE)
+        if m:
+            time = m.group(1)
+            break
+            time = dt.strptime(m.group(1), '%d/%m/%Y %H:%M:%S')
+            time = np.array(time, dtype='datetime64[us]')
+            return time
 
-# Functions for opening input files
-def read_ctd_xlsx(file_path):
-    #open a ctd raw data file in xlsx format
-    #file_path: path to open excel file
-    dataframe = pd.read_excel(file_path,
-                               header=0,
-                               skiprows=15,
-                               parse_dates=[0])
-    names = {'Record Time': 'Datetime',
-             'Record Number': 'Sample Number',
-             'O2Concentration[uM]': 'O2 Level(uM)',
-             'AirSaturation[%]': '',
-             'Temperature[Deg.C]': 'Temperature(degC)',
-             'Pressure[kPa]': 'Pressure(dbar)',
-             'Temperature[DegC]': '',
-             'Conductivity[mS/cm]': '',
-             'Temperature[Deg.C].1': '',
-             'Salinity[PSU]': '',
-             'Density[kg/m3]': '',
-             'Soundspeed[m/s]': '',
-             'Timer[s]': '',
-             'PAR[umol/m2/s]': '',
-             'Pitch[Deg]': '',
-             'Roll[Deg]': '',
-             'Internal Temperature[Deg.C]': ''}
+def read_ctd(INPUT):
+    file_path = os.path.join(INPUT['raw_data_path'], INPUT['file_name'])
+
+    if INPUT['inputFileFormat'] == 'xlsx':
+        dataframe = pd.read_excel(file_path, header=0)
+    elif INPUT['inputFileFormat'] == 'csv':
+        dataframe = pd.read_csv(file_path, header=0, delimiter=';')
+
+    column_flags = {
+        'Datetime': False,
+        'Pressure(kPa)': False,
+        'Temperature(degC)': False,
+        'Conductivity(mS/cm)': False,
+        'Salinity(PSU)': False,
+        'Density(kg/m3)': False,
+        'Soundspeed(m/s)': False,
+        'Turbidity(FTU)': False,
+        'Chlorophyll(ug/L)': False,
+        'Dissolved Organic Matter(ppb)': False,
+        'Hydrogen Potential(pH)': False,
+        'PAR(umol/m2/s)': False,
+        'O2 Level(uM)': False
+    }
+
+    renamed_columns = []
+
+    for i in np.arange(len(dataframe.columns)):
+        column = dataframe.columns[i]
+
+        if not column_flags['Datetime'] and re.search('time', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'Datetime'})
+            column_flags['Datetime'] = True
+            renamed_columns.append('Datetime')
+
+        elif not column_flags['Pressure(kPa)'] and re.search('pressure', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'Pressure(kPa)'})
+            column_flags['Pressure(kPa)'] = True
+            renamed_columns.append('Pressure(kPa)')
+
+        elif not column_flags['Temperature(degC)'] and re.search('temperature', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'Temperature(degC)'})
+            column_flags['Temperature(degC)'] = True
+            renamed_columns.append('Temperature(degC)')
+
+        elif not column_flags['Conductivity(mS/cm)'] and re.search('conductivity', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'Conductivity(mS/cm)'})
+            column_flags['Conductivity(mS/cm)'] = True
+            renamed_columns.append('Conductivity(mS/cm)')
+
+        elif not column_flags['Salinity(PSU)'] and re.search('salinity', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'Salinity(PSU)'})
+            column_flags['Salinity(PSU)'] = True
+            renamed_columns.append('Salinity(PSU)')
+
+        elif not column_flags['Density(kg/m3)'] and re.search('density', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'Density(kg/m3)'})
+            column_flags['Density(kg/m3)'] = True
+            renamed_columns.append('Density(kg/m3)')
+
+        elif not column_flags['Soundspeed(m/s)'] and re.search('soundspeed|speed of sound', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'Soundspeed(m/s)'})
+            column_flags['Soundspeed(m/s)'] = True
+            renamed_columns.append('Soundspeed(m/s)')
+
+        elif not column_flags['Turbidity(FTU)'] and re.search('turbidity', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'Turbidity(FTU)'})
+            column_flags['Turbidity(FTU)'] = True
+            renamed_columns.append('Turbidity(FTU)')
+
+        elif not column_flags['Chlorophyll(ug/L)'] and re.search('chlorophyll', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'Chlorophyll(ug/L)'})
+            column_flags['Chlorophyll(ug/L)'] = True
+            renamed_columns.append('Chlorophyll(ug/L)')
+
+        elif not column_flags['Dissolved Organic Matter(ppb)'] and re.search('organic', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'Dissolved Organic Matter(ppb)'})
+            column_flags['Dissolved Organic Matter(ppb)'] = True
+            renamed_columns.append('Dissolved Organic Matter(ppb)')
+
+        elif not column_flags['Hydrogen Potential(pH)'] and re.search(r'^(?!.*raw).*pH.*$', column):
+            dataframe = dataframe.rename(columns={column: 'Hydrogen Potential(pH)'})
+            column_flags['Hydrogen Potential(pH)'] = True
+            renamed_columns.append('Hydrogen Potential(pH)')
+
+        elif not column_flags['PAR(umol/m2/s)'] and re.search('PAR', column):
+            dataframe = dataframe.rename(columns={column: 'PAR(umol/m2/s)'})
+            column_flags['PAR(umol/m2/s)'] = True
+            renamed_columns.append('PAR(umol/m2/s)')
+
+        elif not column_flags['O2 Level(uM)'] and re.search(r'^(?=.*O2)(?=.*uM).*$', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'O2 Level(uM)'})
+            column_flags['O2 Level(uM)'] = True
+            renamed_columns.append('O2 Level(uM)')
+
+    dataframe = dataframe[renamed_columns]
+    dataframe['Datetime'] = pd.to_datetime(dataframe['Datetime'])
+
     return dataframe
 
 def read_ctd_csv(file_path):

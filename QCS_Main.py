@@ -305,10 +305,8 @@ t = 0
 for name in raw_data.keys():
     if re.search('internal temperature', name, re.IGNORECASE):
         raw_data = raw_data.drop(columns={name})
-    elif re.search('temperature', name, re.IGNORECASE):
-        t += 1
-        if t > 1:
-            raw_data = raw_data.drop(columns={name})
+    elif re.search(r'(?i)\btemperature\b.*\d', name, re.IGNORECASE):
+        raw_data = raw_data.drop(columns={name})
 # converting units to software standards and calculating depth from pressure
 check = list()
 for var in raw_data.columns:
@@ -577,7 +575,7 @@ print('Chlorophyll environmental range test: %f s\nReproved: %i (%f%%)\n' %((tf 
 ti = time.time()
 a = 0
 for name in raw_data.columns:
-    if re.search('o2', name, re.IGNORECASE):
+    if re.search('o2 level', name, re.IGNORECASE):
         a = 1
         flags = QC.range_test (raw_data[name], flags, range_min=tsSettings['env_min_O2'], range_max=tsSettings['env_max_O2']) if tsQualityTests['dissolved oxygen environmental range'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
@@ -602,6 +600,7 @@ ti = time.time()
 a = 0
 for name in raw_data.columns:
     if re.search('turbidity\(ftu\)', name, re.IGNORECASE):
+        print(name)
         a = 1
         flags = QC.range_test (raw_data[name], flags, range_min=tsSettings['env_min_tur'], range_max=tsSettings['env_max_tur']) if tsQualityTests['turbidity environmental range'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
