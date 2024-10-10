@@ -91,6 +91,43 @@ def z_score_spike_test(df, var, n_cel, flags, time_window, sample_interval, fail
     flags = list(flag[0])
     return flags
 
+def outlier_test(df, var, n_cel, flags, time_window, sample_interval, fail, susp):
+    
+    outlier, suspect, missing, unknown = ([],[],[],[])
+
+    df_flags = pd.DataFrame({'flag': flags})
+    missing += list((y.loc[y.isna()]).index)
+
+    while y == True:
+        y = (df[var].copy()).loc[~(outlier)]
+        N = len(y)
+        sDescribe = y.describe()
+        q0 = sDescribe['min']
+        q25 = sDescribe['25%']
+        q50 = sDescribe['50%']
+        q75 = sDescribe['75%']
+        q100 = sDescribe['max']
+        y_std = sDescribe['std']
+        y_mean = sDescribe['mean']
+
+        medianDev = np.sqrt(((y-q50)**2).sum()/(N-1))
+        critical = 3 * medianDev
+        warning = 2.5 * medianDev
+
+        if (y.loc[y > critical].index).empty == True:
+            break
+        else:
+            outlier.extend([y.loc[y > critical].index])
+            suspect.extend([y.loc[(warning < y) & (y < critical)].index])
+
+    df_flags.iloc[unknown]+='%d'%QC_flags.UNKNOWN
+    df_flags.iloc[missing]+='%d'%QC_flags.MISSING
+    df_flags.iloc[outlier]+='%d'%QC_flags.BAD_DATA
+    df_flags.iloc[suspect]+='%d'%QC_flags.SUSPECT
+    df_flags.iloc[~df_flags.index.isin(list(dict.fromkeys(unknown+missing+bad+suspect)))]+='%d'%QC_flags.GOOD_DATA
+
+    return flags
+
 def sigma_rate_of_change_test (n_lines, ParamObs, n_cel, flags, ms_interval, time_window, rc_fail, rc_susp, DIR):
     ms_interval = ms_interval.item().total_seconds()
     if re.search('D', time_window, re.IGNORECASE):

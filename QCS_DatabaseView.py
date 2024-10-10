@@ -294,13 +294,9 @@ tsParam_combobox.grid(row=9, column=1, sticky='w', padx=15, pady=5)
 #### site selection
 #site selection label
 siteSelect_label = Label(window, text="Filter by Site:", bg=window["bg"])
-siteSelect_label.grid(row=0, column=4, sticky='w', padx=15, pady=5)
+siteSelect_label.grid(row=0, column=2, sticky='w', padx=15, pady=5)
 # list with site names for markers
-site_names = ["A01", "A02", "A03", "A05", "A06", "B02", "B04", "B06", "BUR", "C01", "C02",
-              "C03", "C04", "C05", "C06", "C07", "C08", "C09", "CAL", "CBD", "CFD", "CFR",
-              "CFRIO1", "CBD",  "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08",
-              "D09", "D10", "D11", "D12", "D13", "PAB1", "PAB4", "PAB5", "RH18", "RH30",
-              "RH50", "VAC", "VAL"]
+site_names = set(database['Site'])
 selectedSites = []
 # dictionary to store boolean variables
 siteMarkers = {}
@@ -322,8 +318,8 @@ for i, site in enumerate(site_names):
 parameterSelect_label = Label(window, text="Select Parameters:", bg=window["bg"])
 parameterSelect_label.grid(row=0, column=6, sticky='w', padx=40, pady=5)
 # list with site names for markers
-parameter_names = ['Temperature(degC)', 'Salinity(PSU)', 'Conductivity(mS/cm)', 'Density(kg/m3)',	'CO2 Level(ppm)', 'O2 Level(uM)', 'PAR(umol/m2/s)',
-                   'Turbidity(FTU)', 'Chlorophyll(ug/L)', 'Hydrogen Potential(pH)', 'Dissolved Organic Matter(ppb)', 'Soundspeed(m/s)']
+parameter_names = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)', 'Density (kg/m3)',	'CO2 level (ppm)', 'O2 level( uM)', 'PAR (umol/m2/s)',
+                   'Turbidity (FTU)', 'Chlorophyll (ug/L)', 'pH', 'Dissolved Organic Matter(ppb)', 'Soundspeed (m/s)']
 selectedParameters = []
 # dictionary to store boolean variables
 parameterMarkers = {}

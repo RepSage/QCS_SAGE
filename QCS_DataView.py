@@ -15,71 +15,71 @@ from matplotlib.lines import Line2D # type: ignore
 def renameParameters (parameter_names):
     rParam = []
     for param in parameter_names:
-        if param == 'Temperature(degC)':
+        if param == 'Temperature (degC)':
             rParam.append('Temperature (°C)')
 
-        elif param == 'Salinity(PSU)':
+        elif param == 'Salinity (PSU)':
             rParam.append('Salinity (PSU)')
 
-        elif param == 'Conductivity(mS/cm)':
+        elif param == 'Conductivity (mS/cm)':
             rParam.append('Conductivity (mS/cm)')
 
-        elif param == 'Density(kg/m3)':
+        elif param == 'Density (kg/m3)':
             rParam.append('Density (kg/m³)')
 
-        elif param == 'CO2 Level(ppm)':
+        elif param == 'CO2 level (ppm)':
             rParam.append('CO2 (ppm)')
 
-        elif param == 'O2 Level(uM)':
+        elif param == 'O2 level (uM)':
             rParam.append('O2 (µM)')
 
-        elif param == 'PAR(umol/m2/s)':
+        elif param == 'PAR (umol/m2/s)':
             rParam.append('PAR (µmol/m²/s)')
 
-        elif param == 'Turbidity(FTU)':
+        elif param == 'Turbidity (FTU)':
             rParam.append('Turbidity (FTU)')
 
-        elif param == 'Chlorophyll(ug/L)':
+        elif param == 'Chlorophyll (ug/L)':
             rParam.append('Chlorophyll (µg/L)')
 
-        elif param == 'Hydrogen Potential(pH)':
+        elif param == 'pH':
             rParam.append('pH')    
 
-        elif param == 'Dissolved Organic Matter(ppb)':
+        elif param == 'Dissolved organic matter (ppb)':
             rParam.append('Dissolved organic matter (ppb)')
 
-        elif param == 'Soundspeed(m/s)':
+        elif param == 'Soundspeed (m/s)':
             rParam.append('Soundspeed (m/s)')
         else:
-            rParam(param)
+            rParam.append(param)
     return rParam
 
 def getParamColors (parameter_names):
-    cParam =  {'Temperature(degC)': 'red',
-               'Salinity(PSU)': 'magenta',
-               'Conductivity(mS/cm)': 'y',
-               'Density(kg/m3)': 'aquamarine',                                              
-               'CO2 Level(ppm)': 'yellowgreen',
-               'O2 Level(uM)': 'deepskyblue',
-               'PAR(umol/m2/s)': 'peachpuff',
-               'Turbidity(FTU)': 'forestgreen',
-               'Chlorophyll(ug/L)': 'springgreen',
-               'Hydrogen Potential(pH)': 'mediumorchid',                                              
-               'Dissolved Organic Matter(ppb)': 'peru',
-               'Soundspeed(m/s)': 'navajowhite'
+    cParam =  {'Temperature (degC)': 'red',
+               'Salinity (PSU)': 'magenta',
+               'Conductivity (mS/cm)': 'y',
+               'Density (kg/m3)': 'aquamarine',                                              
+               'CO2 level (ppm)': 'yellowgreen',
+               'O2 level (uM)': 'deepskyblue',
+               'PAR (umol/m2/s)': 'peachpuff',
+               'Turbidity (FTU)': 'forestgreen',
+               'Chlorophyll (ug/L)': 'springgreen',
+               'pH': 'mediumorchid',                                              
+               'Dissolved organic matter (ppb)': 'peru',
+               'Soundspeed (m/s)': 'navajowhite'
                }
-    bcParam = {'Temperature(degC)': 'firebrick',
-               'Salinity(PSU)': 'darkmagenta',
-               'Conductivity(mS/cm)': 'olive',
-               'Density(kg/m3)': 'mediumaquamarine',                                              
-               'CO2 Level(ppm)': 'olivedrab',
-               'O2 Level(uM)': 'dodgerblue',
-               'PAR(umol/m2/s)': 'sandybrown',
-               'Turbidity(FTU)': 'limegreen',
-               'Chlorophyll(ug/L)': 'mediumseagreen',
-               'Hydrogen Potential(pH)': 'darkorchid',                                              
-               'Dissolved Organic Matter(ppb)': 'sienna',
-               'Soundspeed(m/s)': 'burlywood'
+    bcParam = {'Temperature (degC)': 'firebrick',
+               'Salinity (PSU)': 'darkmagenta',
+               'Conductivity (mS/cm)': 'olive',
+               'Density (kg/m3)': 'mediumaquamarine',                                              
+               'CO2 level (ppm)': 'olivedrab',
+               'O2 level (uM)': 'dodgerblue',
+               'PAR (umol/m2/s)': 'sandybrown',
+               'Turbidity (FTU)': 'limegreen',
+               'Chlorophyll (ug/L)': 'mediumseagreen',
+               'pH': 'darkorchid',                                              
+               'Dissolved organic matter (ppb)': 'sienna',
+               'Soundspeed (m/s)': 'burlywood'
                }    
     
     return cParam, bcParam
@@ -635,9 +635,9 @@ def plot_hobo_split_site (database, dataview_path):
         fig.set_size_inches(10,6)
         ax1 = fig.gca()
         plt.grid(axis='both', color='k', linestyle='--', linewidth=0.2)
-        ax1.set_ylabel('Temperature(degC)')
+        ax1.set_ylabel('Temperature (degC)')
         plt.title('%s'%site)
-        plt.plot(siteDatabase['Datetime'], siteDatabase['Temperature(degC)'], linestyle='None', marker='.', markersize=3)
+        plt.plot(siteDatabase['Datetime'], siteDatabase['Temperature (degC)'], linestyle='None', marker='.', markersize=3)
         plt.tight_layout()
         plt.savefig(dataview_path + '/' + 'hobo_%s_temperature.svg'%site, bbox_inches='tight', dpi=100)
 
@@ -690,10 +690,10 @@ def plot_TS_diagram (database, dataViewSettings):
             fig = plt.figure(figsize=(1960 / 100, 1000 / 100))  # Create figure with specified resolution
             ax = fig.add_subplot(111)  # Create axes
             # selecting semester
-            tspSemesterData = db[semester][['Pressure(dbar)', 'Depth(m)', 'Temperature(degC)', 'Salinity(PSU)', 'Site']].copy()
+            tspSemesterData = db[semester][['Pressure(dbar)', 'Depth(m)', 'Temperature (degC)', 'Salinity (PSU)', 'Site']].copy()
             # Convert temperature, salinity, and pressure data to arrays
-            salt = np.asarray(tspSemesterData['Salinity(PSU)'].copy())
-            temp = np.asarray(tspSemesterData['Temperature(degC)'].copy())
+            salt = np.asarray(tspSemesterData['Salinity (PSU)'].copy())
+            temp = np.asarray(tspSemesterData['Temperature (degC)'].copy())
             p = np.asarray(tspSemesterData['Pressure(dbar)'].copy())
             depth = np.asarray(tspSemesterData['Depth(m)'].copy())
             # Calculate absolute salinity from practical salinity
@@ -703,9 +703,9 @@ def plot_TS_diagram (database, dataViewSettings):
             # Calculate potential temperature from conservative temperature
             pt = gsw.pt_from_CT(SA,CT)
             # save results to dataframe
-            tspSemesterData['Absolute Salinity(PSU)'] = SA
-            tspSemesterData['Conservative Temperature(degC)'] = CT
-            tspSemesterData['Potential Temperature(degC)'] = pt
+            tspSemesterData['Absolute Salinity (PSU)'] = SA
+            tspSemesterData['Conservative Temperature (degC)'] = CT
+            tspSemesterData['Potential Temperature (degC)'] = pt
             # Figure out boundaries (mins and maxs)
             if re.search('conservative', tsParam, re.IGNORECASE):
                 smin = np.nanmin(SA) - (0.01 * np.nanmin(SA)/2)
@@ -756,11 +756,11 @@ def plot_TS_diagram (database, dataViewSettings):
                 else:
                     # plot x and y depending on selected parameters
                     if re.search('conservative', tsParam, re.IGNORECASE):
-                        TS = ax.scatter(tspData['Absolute Salinity(PSU)'], tspData['Conservative Temperature(degC)'], marker=markerList[a], c=tspData['Depth(m)'], lw=0, cmap=cm.plasma.reversed(), norm=norm, label=site)
+                        TS = ax.scatter(tspData['Absolute Salinity (PSU)'], tspData['Conservative Temperature (degC)'], marker=markerList[a], c=tspData['Depth(m)'], lw=0, cmap=cm.plasma.reversed(), norm=norm, label=site)
                         ax.set_xlabel('Absolute Salinity (kg/m³)')  # Label x-axis
                         ax.set_ylabel('Conservative Temperature (C°)')  # Label y-axis
                     elif re.search('potential', tsParam, re.IGNORECASE):
-                        TS = ax.scatter(tspData['Salinity(PSU)'], tspData['Potential Temperature(degC)'], marker=markerList[a], c=tspData['Depth(m)'], lw=0, cmap=cm.plasma.reversed(), norm=norm, label=site)
+                        TS = ax.scatter(tspData['Salinity (PSU)'], tspData['Potential Temperature (degC)'], marker=markerList[a], c=tspData['Depth(m)'], lw=0, cmap=cm.plasma.reversed(), norm=norm, label=site)
                         ax.set_xlabel('Salinity (PSU)')  # Label x-axis
                         ax.set_ylabel('Potential Temperature (C°)')  # Label y-axis
 

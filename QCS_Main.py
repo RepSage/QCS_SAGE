@@ -77,15 +77,17 @@ def saveInputSettings():
     OUTPUT['output_file_name'] = outputName_entry.get() + OUTPUT['output_data_format']
     OUTPUT['remove_bad'] = remove_bad.get()
     OUTPUT['remove_suspect'] = remove_suspect.get()
+
+    INPUT['site'] = siteSelect_entry.get().upper()
     # get site list from markers
-    selectedSites = []
-    for site in siteMarkers.keys():
-        if siteMarkers[site].get() == True:
-            if site in selectedSites:
-                pass
-            else:
-                selectedSites.append(site)
-    INPUT['site'] = selectedSites[0]
+    #selectedSites = []
+    #for site in siteMarkers.keys():
+    #    if siteMarkers[site].get() == True:
+    #        if site in selectedSites:
+    #            pass
+    #        else:
+    #            selectedSites.append(site)
+    #INPUT['site'] = selectedSites[0]
     if INPUT['data_type'] == 'TSCP Profile':
         INPUT['profile'] = True
     else:
@@ -100,7 +102,7 @@ OUTPUT = {}
 # Create window 1
 window = Tk()
 window.title("Input and Output Settings")
-window.geometry("1000x640")
+window.geometry("720x640")
 window.resizable(True, True)
 window.configure(bg="lightblue")
 font_style = ("Arial", 12, "bold")
@@ -207,28 +209,31 @@ remove_suspectButton.grid(row=8, column=1, sticky='w', padx=15, pady=5)
 #### site selection
 #site selection label
 siteSelect_label = Label(window, text="Site:", bg=window["bg"])
-siteSelect_label.grid(row=0, column=3, sticky='w', padx=15, pady=5)
+siteSelect_label.grid(row=9, column=1, sticky='w', padx=15, pady=5)
+# site entry space
+siteSelect_entry = Entry(window, width=25)
+siteSelect_entry.grid(row=10, column=1, sticky='w', padx=15, pady=5)
 # list with site names for markers
-site_names = ["A01", "A02", "A03", "A05", "A06", "B02", "B04", "B06", "BUR", "C01", "C02",
-              "C03", "C04", "C05", "C06", "C07", "C08", "C09", "CAL", "CBD", "CFD", "CFR",
-              "CFRIO1", "CBD",  "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08",
-              "D09", "D10", "D11", "D12", "D13", "PAB1", "PAB4", "PAB5", "RH18", "RH30",
-              "RH50", "VAC", "VAL"]
-selectedSites = []
+#site_names = ["A01", "A02", "A03", "A05", "A06", "B02", "B04", "B06", "BUR", "C01", "C02",
+#              "C03", "C04", "C05", "C06", "C07", "C08", "C09", "CAL", "CBD", "CFD", "CFR",
+#              "CFRIO1", "CBD",  "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08",
+#              "D09", "D10", "D11", "D12", "D13", "PAB1", "PAB4", "PAB5", "RH18", "RH30",
+#              "RH50", "VAC", "VAL"]
+#selectedSites = []
 # dictionary to store boolean variables
-siteMarkers = {}
-for i, site in enumerate(site_names):
-    var = BooleanVar(value=False)
-    checkbutton = Checkbutton(window, text=site, variable=var, bg="lightblue")
-    if i+1 <= 12:
-        checkbutton.grid(row=i+1, column=2, sticky='w', padx=15, pady=5)
-    elif 12 < i+1 <= 24 :
-        checkbutton.grid(row=(i-12)+1, column=3, sticky='w', padx=15, pady=5)
-    elif 24 < i+1 <= 36:
-        checkbutton.grid(row=(i-24)+1, column=4, sticky='w', padx=15, pady=5)
-    elif 36 < i+1:
-        checkbutton.grid(row=(i-36)+1, column=5, sticky='w', padx=15, pady=5)
-    siteMarkers[site] = var
+#siteMarkers = {}
+#for i, site in enumerate(site_names):
+#    var = BooleanVar(value=False)
+#    checkbutton = Checkbutton(window, text=site, variable=var, bg="lightblue")
+#    if i+1 <= 12:
+#        checkbutton.grid(row=i+1, column=2, sticky='w', padx=15, pady=5)
+#    elif 12 < i+1 <= 24 :
+#        checkbutton.grid(row=(i-12)+1, column=3, sticky='w', padx=15, pady=5)
+#    elif 24 < i+1 <= 36:
+#        checkbutton.grid(row=(i-24)+1, column=4, sticky='w', padx=15, pady=5)
+#    elif 36 < i+1:
+#        checkbutton.grid(row=(i-36)+1, column=5, sticky='w', padx=15, pady=5)
+#    siteMarkers[site] = var
 
 
 #### button for saving settings
@@ -268,7 +273,7 @@ if e == 1:
     if INPUT['profile'] == True:
         raw_data = data.read_ctd_profile_csv(INPUT['file_name'])
     else:
-        raw_data = data.read_ctd_csv(INPUT['file_name'])
+        raw_data = data.read_ctd(INPUT)
     for name in raw_data.columns:
         if re.search('time', name, re.IGNORECASE):
             if re.search('timer', name, re.IGNORECASE):
@@ -276,7 +281,7 @@ if e == 1:
             else:
                 raw_data = raw_data.rename(columns={name:'Datetime'})
         if re.search('prof', name, re.IGNORECASE):
-                raw_data = raw_data.rename(columns={name:'Depth(m)'})
+                raw_data = raw_data.rename(columns={name:'Depth (m)'})
 elif e == 2:
     fullFrame, tempFrame, lumiFrame = data.read_unified_hobo(INPUT['file_name'])
     raw_data = tempFrame
@@ -316,7 +321,7 @@ if len(check) >= 1:
     raw_data = data.convert_tscp_units (raw_data, pressure_unit=INPUT['pressure_unit'], conductivity_unit=INPUT['conductivity_unit'])
     for name in raw_data.columns:
         if re.search('pressure', name, re.IGNORECASE):
-            raw_data = raw_data.rename(columns={name:'Pressure(dbar)'})
+            raw_data = raw_data.rename(columns={name:'Pressure (dbar)'})
 
 dep, press = (0,0)
 for name in raw_data.columns:
@@ -328,11 +333,11 @@ if dep == 0 and press == 1:
     raw_data = data.pressure_to_depth(raw_data, latitude=17.5, adjust_for_atm=True)
 
 
-# add sample number column
-raw_data['Sample Number'] = raw_data.index + 1
+# add Sample number column
+raw_data['Sample number'] = raw_data.index + 1
 
 #removing data equal (except for PAR) and under 0
-exceptions = ['Datetime', 'Sample Number', 'Pitch[Deg]', 'Roll[Deg]', 'Timer[s]', 'Site']
+exceptions = ['Datetime', 'Sample number', 'Pitch[Deg]', 'Roll[Deg]', 'Timer[s]', 'Site']
 for name in raw_data.columns:
     if re.search('par', name, re.IGNORECASE):
         raw_data.loc[raw_data[name]<0, name] = np.nan
@@ -344,7 +349,7 @@ for name in raw_data.columns:
 if INPUT['profile'] == True:
     for name in raw_data.columns:
         if name not in exceptions:
-            raw_data.loc[raw_data['Depth(m)'] < 0.5, name] = np.nan
+            raw_data.loc[raw_data['Depth (m)'] < 0.5, name] = np.nan
 
 #removing data reproved in depth range test
 if auxTests['depth range test'] == 'ON':
@@ -405,8 +410,8 @@ if INPUT['select_profile_data'] == True:
                     line1, = ax2.plot(desc[temp], desc[dep], linestyle='None', marker='o', markersize=3, markerfacecolor='#1f77b4ff', markeredgecolor='#1f77b4ff', label='descending data')
                     line2, = ax2.plot(asc[temp], asc[dep], linestyle='None', marker='o', markersize=3, markerfacecolor='red', markeredgecolor='red', c='red', label='ascending data')
                     ax2.set_title('click on the dataset to select it:')
-                    ax2.set_xlabel('Temperature(degC)')
-                    ax2.set_ylabel('Depth(m)')
+                    ax2.set_xlabel('Temperature (degC)')
+                    ax2.set_ylabel('Depth (m)')
                     ax2.legend()
                     ax2.invert_yaxis()
                     ax2.grid()
@@ -441,8 +446,8 @@ n_cel = 1
 n_samples = len(raw_data)
 
 if INPUT['check_variables'] == True:
-    check_variables = ['O2 Level(uM)', 'Temperature(degC)','Conductivity(mS/cm)', 'Salinity(PSU)', 'Density(kg/m3)',
-                       'PAR(umol/m2/s)', 'Turbidity(FTU)', 'Chlorophyll(ug/L)', 'Hydrogen Potential(pH)', 'Dissolved Organic Matter(ppb)']
+    check_variables = ['O2 level (uM)', 'Temperature (degC)','Conductivity (mS/cm)', 'Salinity (PSU)', 'Density (kg/m3)',
+                       'PAR (umol/m2/s)', 'Turbidity (FTU)', 'Chlorophyll (ug/L)', 'pH', 'Dissolved organic matter (ppb)']
     for name in check_variables:
         if name in raw_data.columns:
             raw_data = data.trim_selected_variable(raw_data, name)
@@ -551,7 +556,7 @@ print('Pressure environmental range test: %f s\nReproved: %i (%f%%)\n' %((tf - t
 ti = time.time()
 a = 0
 for name in raw_data.columns:
-    if re.search('hydrogen potential\(pH\)', name, re.IGNORECASE):
+    if re.search('pH', name):
         a = 1
         flags = QC.range_test (raw_data[name], flags, range_min=tsSettings['env_min_pH'], range_max=tsSettings['env_max_pH']) if tsQualityTests['pH environmental range'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
@@ -563,7 +568,7 @@ print('pH environmental range test: %f s\nReproved: %i (%f%%)\n' %((tf - ti), N,
 ti = time.time()
 a = 0
 for name in raw_data.columns:
-    if re.search('chlorophyll\(ug/L\)', name, re.IGNORECASE):
+    if re.search('chlorophyll \(ug/L\)', name, re.IGNORECASE):
         a = 1
         flags = QC.range_test (raw_data[name], flags, range_min=tsSettings['env_min_chl'], range_max=tsSettings['env_max_chl']) if tsQualityTests['chlorophyll environmental range'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
@@ -575,7 +580,7 @@ print('Chlorophyll environmental range test: %f s\nReproved: %i (%f%%)\n' %((tf 
 ti = time.time()
 a = 0
 for name in raw_data.columns:
-    if re.search('o2 level', name, re.IGNORECASE):
+    if re.search(r'^(?=.*O2)(?=.*uM).*$', name, re.IGNORECASE):
         a = 1
         flags = QC.range_test (raw_data[name], flags, range_min=tsSettings['env_min_O2'], range_max=tsSettings['env_max_O2']) if tsQualityTests['dissolved oxygen environmental range'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
@@ -599,7 +604,7 @@ print('Dissolved organic matter environmental range test: %f s\nReproved: %i (%f
 ti = time.time()
 a = 0
 for name in raw_data.columns:
-    if re.search('turbidity\(ftu\)', name, re.IGNORECASE):
+    if re.search('turbidity \(ftu\)', name, re.IGNORECASE):
         print(name)
         a = 1
         flags = QC.range_test (raw_data[name], flags, range_min=tsSettings['env_min_tur'], range_max=tsSettings['env_max_tur']) if tsQualityTests['turbidity environmental range'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
@@ -661,7 +666,7 @@ print('Pressure spikes test: %f s\nReproved: %i (%f%%)\n' %((tf - ti), N, (N/n_s
 ti = time.time()
 a = 0
 for name in raw_data.columns:
-    if re.search('hydrogen potential\(pH\)', name, re.IGNORECASE):
+    if re.search('pH', name):
         a = 1
         flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['pH spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
@@ -673,7 +678,7 @@ print('pH spikes test: %f s\nReproved: %i (%f%%)\n' %((tf - ti), N, (N/n_samples
 ti = time.time()
 a = 0
 for name in raw_data.columns:
-    if re.search('chlorophyll\(ug/L\)', name, re.IGNORECASE):
+    if re.search('chlorophyll \(ug/L\)', name, re.IGNORECASE):
         a = 1
         flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['chlorophyll spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
@@ -685,7 +690,7 @@ print('Chlorophyll spikes test: %f s\nReproved: %i (%f%%)\n' %((tf - ti), N, (N/
 ti = time.time()
 a = 0
 for name in raw_data.columns:
-    if re.search('O2', name, re.IGNORECASE):
+    if re.search(r'^(?=.*O2)(?=.*uM).*$', name, re.IGNORECASE):
         a = 1
         flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['dissolved oxygen spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
@@ -709,7 +714,7 @@ print('Dissolved organic matter spikes test: %f s\nReproved: %i (%f%%)\n' %((tf 
 ti = time.time()
 a = 0
 for name in raw_data.columns:
-    if re.search('turbidity\(ftu\)', name, re.IGNORECASE):
+    if re.search('turbidity \(ftu\)', name, re.IGNORECASE):
         a = 1
         flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['turbidity spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
@@ -862,13 +867,13 @@ qualified_data, raw_data, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdat
 
 # add luminosity data to dataframe if input is hobo
 if e == 4:
-    qualified_data['Luminosity(lux)'] = lumiFrame['Luminosity(lux)']
+    qualified_data['Luminosity (lux)'] = lumiFrame['Luminosity (lux)']
 
 qualified_data = data.order_var (qualified_data, n_cel, data_type='tscp')
 # Fill column with site information
 qualified_data['Site'] = INPUT['site']
 # Fill column with site information
-qualified_data['QCS Version'] = 'v1.0'
+qualified_data['QCS version'] = 'v1.0'
 # Export qualified data to .csv/.xlsx file
 os.chdir(OUTPUT['output_file_path'])
 root_path = OUTPUT['output_file_path'] + '/' + re.search('^[^\.]+',INPUT['file_name']).group()
@@ -903,9 +908,9 @@ QCS_report.to_csv(path + '/QCS_report.csv')
 
 if e != 4:
     if INPUT['profile'] == True:
-        exceptions = ['Datetime', 'Expedition', 'Pressure(dbar)',
-                      'Site', 'Longitude', 'Latitude', 'Depth(m)',
-                      'Battery Voltage(V)', 'flag', 'Sample Number', 'QCS Version']
+        exceptions = ['Datetime', 'Expedition', 'Pressure (dbar)',
+                      'Site', 'Longitude', 'Latitude', 'Depth (m)',
+                      'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
         for variable in qualified_data.keys():
             if variable not in exceptions:
                 view.plot_variable_profile(qualified_data, raw_data, variable, dataview_path, tsSettings, fixed_scale=True)
@@ -913,14 +918,14 @@ if e != 4:
         for variable in qualified_data.keys():
             exceptions = ['Datetime', 'Expedition',
                           'Site', 'Longitude', 'Latitude',
-                          'Battery Voltage(V)', 'flag', 'Sample Number', 'QCS Version']
+                          'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
             if variable not in exceptions:
                 view.plot_variable(qualified_data, raw_data, variable, dataview_path, tsSettings, fixed_scale=True)
 
     if INPUT['profile'] == True:
-        exceptions = ['Datetime', 'Expedition', 'Pressure(dbar)',
-                      'Site', 'Longitude', 'Latitude', 'Depth(m)',
-                      'Battery Voltage(V)', 'flag', 'Sample Number', 'QCS Version']
+        exceptions = ['Datetime', 'Expedition', 'Pressure (dbar)',
+                      'Site', 'Longitude', 'Latitude', 'Depth (m)',
+                      'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
         for variable in qualified_data.keys():
             if variable not in exceptions:
                 view.plot_variable_profile(qualified_data, raw_data, variable, dataview_path2, tsSettings, fixed_scale=False)
@@ -928,7 +933,7 @@ if e != 4:
         for variable in qualified_data.keys():
             exceptions = ['Datetime', 'Expedition',
                           'Site', 'Longitude', 'Latitude',
-                          'Battery Voltage(V)', 'flag', 'Sample Number', 'QCS Version']
+                          'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
             if variable not in exceptions:
                 view.plot_variable(qualified_data, raw_data, variable, dataview_path2, tsSettings, fixed_scale=False)
 elif e == 4:
