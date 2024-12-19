@@ -39,7 +39,7 @@ def selectOutputFolder ():
 
 def selectInputConfigFolder ():
     # Open a file dialog to select the output folder
-    folderPath = filedialog.askdirectory(initialdir="/", title="Select output folder")
+    folderPath = filedialog.askdirectory(initialdir="/", title="Select input file folder")
     # Clear the entry widget for the output path
     inputConfigPath_entry.delete(0, END)
     # Insert the selected folder path into the entry widget
@@ -332,7 +332,6 @@ for name in raw_data.columns:
 if dep == 0 and press == 1:
     raw_data = data.pressure_to_depth(raw_data, latitude=17.5, adjust_for_atm=True)
 
-
 # add Sample number column
 raw_data['Sample number'] = raw_data.index + 1
 
@@ -441,13 +440,17 @@ if INPUT['select_profile_data'] == True:
                 print("Could not find turning point")
                 pass
 
+
+if INPUT['profile'] == False and 'Depth (m)' in raw_data.columns:
+    raw_data = data.trim_by_depth(raw_data)
+    
 # number of lines and cells
 n_cel = 1
 n_samples = len(raw_data)
 
 if INPUT['check_variables'] == True:
     check_variables = ['O2 level (uM)', 'Temperature (degC)','Conductivity (mS/cm)', 'Salinity (PSU)', 'Density (kg/m3)',
-                       'PAR (umol/m2/s)', 'Turbidity (FTU)', 'Chlorophyll (ug/L)', 'pH', 'Dissolved organic matter (ppb)']
+                        'PAR (umol/m2/s)', 'Turbidity (FTU)', 'Chlorophyll (ug/L)', 'pH', 'Dissolved organic matter (ppb)']
     for name in check_variables:
         if name in raw_data.columns:
             raw_data = data.trim_selected_variable(raw_data, name)
@@ -620,7 +623,7 @@ a = 0
 for name in raw_data.columns:
     if re.search('temperature', name, re.IGNORECASE):
         a = 1
-        flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['temperature spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flags = QC.outlier_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['temperature spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
     flags = [flags[n]+'%d'%QC.QC_flags.UNKNOWN for n in range(n_samples)]
 tf = time.time()
@@ -632,7 +635,7 @@ a = 0
 for name in raw_data.columns:
     if re.search('salinity', name, re.IGNORECASE):
         a = 1
-        flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['salinity spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flags = QC.outlier_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['salinity spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
     flags = [flags[n]+'%d'%QC.QC_flags.UNKNOWN for n in range(n_samples)]
 tf = time.time()
@@ -644,7 +647,7 @@ a = 0
 for name in raw_data.columns:
     if re.search('conductivity', name, re.IGNORECASE):
         a = 1
-        flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['conductivity spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flags = QC.outlier_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['conductivity spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
     flags = [flags[n]+'%d'%QC.QC_flags.UNKNOWN for n in range(n_samples)]
 tf = time.time()
@@ -656,7 +659,7 @@ a = 0
 for name in raw_data.columns:
     if re.search('pressure', name, re.IGNORECASE):
         a = 1
-        flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['pressure spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flags = QC.outlier_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['pressure spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
     flags = [flags[n]+'%d'%QC.QC_flags.UNKNOWN for n in range(n_samples)]
 tf = time.time()
@@ -668,7 +671,7 @@ a = 0
 for name in raw_data.columns:
     if re.search('pH', name):
         a = 1
-        flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['pH spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flags = QC.outlier_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['pH spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
     flags = [flags[n]+'%d'%QC.QC_flags.UNKNOWN for n in range(n_samples)]
 tf = time.time()
@@ -680,7 +683,7 @@ a = 0
 for name in raw_data.columns:
     if re.search('chlorophyll \(ug/L\)', name, re.IGNORECASE):
         a = 1
-        flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['chlorophyll spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flags = QC.outlier_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['chlorophyll spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
     flags = [flags[n]+'%d'%QC.QC_flags.UNKNOWN for n in range(n_samples)]
 tf = time.time()
@@ -692,7 +695,7 @@ a = 0
 for name in raw_data.columns:
     if re.search(r'^(?=.*O2)(?=.*uM).*$', name, re.IGNORECASE):
         a = 1
-        flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['dissolved oxygen spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flags = QC.outlier_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['dissolved oxygen spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
     flags = [flags[n]+'%d'%QC.QC_flags.UNKNOWN for n in range(n_samples)]
 tf = time.time()
@@ -704,7 +707,7 @@ a = 0
 for name in raw_data.columns:
     if re.search('organic matter', name, re.IGNORECASE):
         a = 1
-        flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['dissolved organic matter spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flags = QC.outlier_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['dissolved organic matter spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
     flags = [flags[n]+'%d'%QC.QC_flags.UNKNOWN for n in range(n_samples)]
 tf = time.time()
@@ -716,7 +719,7 @@ a = 0
 for name in raw_data.columns:
     if re.search('turbidity \(ftu\)', name, re.IGNORECASE):
         a = 1
-        flags = QC.z_score_spike_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['turbidity spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flags = QC.outlier_test(raw_data, name, n_cel, flags, tsSettings['time_window'], ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor']) if tsQualityTests['turbidity spikes'] == 'ON' else [flags[n]+'%d'%QC.QC_flags.DISMISSED for n in range(n_samples)]
 if a == 0:
     flags = [flags[n]+'%d'%QC.QC_flags.UNKNOWN for n in range(n_samples)]
 tf = time.time()
@@ -897,43 +900,43 @@ stat_table = data.tscp_stats_table (qualified_data)
 stat_table.to_csv(path + '/QCS_tscp_stat.csv', index=False)
 print('\nExporting report to: %s\n' %path)
 QCS_report = pd.DataFrame({'start': start_time,
-                           'end': end_time,
-                           'Total': len(qualified_data),
-                           'Valid': len(qualified_data) - (len(T_bdata) + len(S_bdata) + len(C_bdata) + len(P_bdata)),
-                           'T_bdata': len(T_bdata),
-                           'S_bdata': len(S_bdata),
-                           'C_bdata': len(C_bdata),
-                           'P_bdata': len(P_bdata)}, index=[0])
+                            'end': end_time,
+                            'Total': len(qualified_data),
+                            'Valid': len(qualified_data) - (len(T_bdata) + len(S_bdata) + len(C_bdata) + len(P_bdata)),
+                            'T_bdata': len(T_bdata),
+                            'S_bdata': len(S_bdata),
+                            'C_bdata': len(C_bdata),
+                            'P_bdata': len(P_bdata)}, index=[0])
 QCS_report.to_csv(path + '/QCS_report.csv')
 
 if e != 4:
     if INPUT['profile'] == True:
         exceptions = ['Datetime', 'Expedition', 'Pressure (dbar)',
-                      'Site', 'Longitude', 'Latitude', 'Depth (m)',
-                      'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
+                        'Site', 'Longitude', 'Latitude', 'Depth (m)',
+                        'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
         for variable in qualified_data.keys():
             if variable not in exceptions:
                 view.plot_variable_profile(qualified_data, raw_data, variable, dataview_path, tsSettings, fixed_scale=True)
     else:
         for variable in qualified_data.keys():
             exceptions = ['Datetime', 'Expedition',
-                          'Site', 'Longitude', 'Latitude',
-                          'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
+                            'Site', 'Longitude', 'Latitude',
+                            'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
             if variable not in exceptions:
                 view.plot_variable(qualified_data, raw_data, variable, dataview_path, tsSettings, fixed_scale=True)
 
     if INPUT['profile'] == True:
         exceptions = ['Datetime', 'Expedition', 'Pressure (dbar)',
-                      'Site', 'Longitude', 'Latitude', 'Depth (m)',
-                      'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
+                        'Site', 'Longitude', 'Latitude', 'Depth (m)',
+                        'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
         for variable in qualified_data.keys():
             if variable not in exceptions:
                 view.plot_variable_profile(qualified_data, raw_data, variable, dataview_path2, tsSettings, fixed_scale=False)
     else:
         for variable in qualified_data.keys():
             exceptions = ['Datetime', 'Expedition',
-                          'Site', 'Longitude', 'Latitude',
-                          'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
+                            'Site', 'Longitude', 'Latitude',
+                            'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
             if variable not in exceptions:
                 view.plot_variable(qualified_data, raw_data, variable, dataview_path2, tsSettings, fixed_scale=False)
 elif e == 4:

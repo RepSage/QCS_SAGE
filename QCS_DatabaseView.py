@@ -318,8 +318,8 @@ for i, site in enumerate(site_names):
 parameterSelect_label = Label(window, text="Select Parameters:", bg=window["bg"])
 parameterSelect_label.grid(row=0, column=6, sticky='w', padx=40, pady=5)
 # list with site names for markers
-parameter_names = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)', 'Density (kg/m3)',	'CO2 level (ppm)', 'O2 level( uM)', 'PAR (umol/m2/s)',
-                   'Turbidity (FTU)', 'Chlorophyll (ug/L)', 'pH', 'Dissolved Organic Matter(ppb)', 'Soundspeed (m/s)']
+parameter_names = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)', 'Density (kg/m3)',	'CO2 level (ppm)', 'O2 level (uM)', 'PAR (umol/m2/s)',
+                    'Turbidity (FTU)', 'Chlorophyll (ug/L)', 'pH', 'Dissolved organic matter (ppb)', 'Soundspeed (m/s)', 'Pressure (dbar)']
 selectedParameters = []
 # dictionary to store boolean variables
 parameterMarkers = {}

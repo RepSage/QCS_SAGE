@@ -47,16 +47,27 @@ def search_times (whr_file, string):
             return time
 
 def read_ctd(INPUT):
+    # define file path
     file_path = os.path.join(INPUT['raw_data_path'], INPUT['file_name'])
 
+    # open file as text and find header line
+    i=0
+    for line in open(file_path):
+        m = re.search('record time', line, re.IGNORECASE)
+        if m:
+            break
+        else:
+            i += 1
+    # open .xlsx or .csv files
     if INPUT['file_name'][-4:] == 'xlsx':
-        dataframe = pd.read_excel(file_path, header=0)
+        dataframe = pd.read_excel(file_path, skiprows=i, header=0)
     elif INPUT['file_name'][-3:] == 'csv':
-        dataframe = pd.read_csv(file_path, header=0, delimiter=';')
-
+        dataframe = pd.read_csv(file_path, skiprows=i,  header=0, delimiter=';')
+    # set flags for identified columns
     column_flags = {
         'Datetime': False,
         'Pressure (kPa)': False,
+        'Depth (m)': False,
         'Temperature (degC)': False,
         'Conductivity (mS/cm)': False,
         'Salinity (PSU)': False,
@@ -71,10 +82,10 @@ def read_ctd(INPUT):
         'O2 level (uM)': False,
         'O2 content (mg/L)': False
     }
-
+    # create renamed columns list
     renamed_columns = []
-
-    for i in np.arange(len(dataframe.columns)):
+    # enter loop for finding and renaming columns
+    for i in np.arange(len(dataframe.columns)):   
         column = dataframe.columns[i]
 
         if not column_flags['Datetime'] and re.search('time', column, re.IGNORECASE):
@@ -86,6 +97,11 @@ def read_ctd(INPUT):
             dataframe = dataframe.rename(columns={column: 'Pressure (kPa)'})
             column_flags['Pressure (kPa)'] = True
             renamed_columns.append('Pressure (kPa)')
+
+        elif not column_flags['Pressure (kPa)'] and re.search('prof|depth', column, re.IGNORECASE):
+            dataframe = dataframe.rename(columns={column: 'Depth (m)'})
+            column_flags['Depth (m)'] = True
+            renamed_columns.append('Depth (m)')
 
         elif not column_flags['Temperature (degC)'] and re.search('temperature', column, re.IGNORECASE):
             dataframe = dataframe.rename(columns={column: 'Temperature (degC)'})
@@ -151,9 +167,10 @@ def read_ctd(INPUT):
             dataframe = dataframe.rename(columns={column: 'O2 content (mg/L)'})
             column_flags['O2 content (mg/L)'] = True
             renamed_columns.append('O2 content (mg/L)')
-
+    # keep only identified columns
     dataframe = dataframe[renamed_columns]
-    dataframe['Datetime'] = pd.to_datetime(dataframe['Datetime'])
+    # set datetime column
+    dataframe['Datetime'] = pd.to_datetime(dataframe['Datetime'], dayfirst=True)
 
     return dataframe
 
@@ -174,24 +191,24 @@ def read_ctd_csv(file_path):
     dataframe['Record Time'] = pd.to_datetime(dataframe['Record Time'], dayfirst=True)
 
     dataframe = dataframe.rename(columns={'Record Time': 'Datetime',
-                                          'Record Number': 'Sample number',
-                                          'O2Concentration[uM]': 'O2 level (uM)',
-                                          'AirSaturation[%]': 'AirSaturation(%)',
-                                          'Temperature[Deg.C]': 'Temperature (degC)',
-                                          'Pressure[kPa]': 'Pressure (kPa)',
-                                          'Temperature[DegC]': 'Temperature (degC)2',
-                                          'Conductivity[mS/cm]': 'Conductivity (mS/cm)',
-                                          'Temperature[Deg.C].1': 'Temperature (degC)3',
-                                          'Salinity[PSU]': 'Salinity (PSU)',
-                                          'Density[kg/m3]': 'Density (kg/m3)',
-                                          'Soundspeed[m/s]': 'Soundspeed (m/s)',
-                                          'PAR[umol/m2/s]': 'PAR (umol/m2/s)',
-                                          'Internal Temperature[Deg.C]': 'Internal Temperature (degC)',
-                                          'Turbidity#16280[FTU]': 'Turbidity (FTU)',
-                                          'Cyclops-7F  Chlorophyll#21180217[ug/L]': 'Chlorophyll (ug/L)',
-                                          'AMT pH#18051103[pH]': 'pH',
-                                          'AMT pH#18051103 Raw data[V]': 'Hydrogen Potential Raw Data(pH)',
-                                          'Cyclops-7F Colored Dissolved Organic #21180228[ppb]': 'Dissolved organic matter (ppb)'})
+                                            'Record Number': 'Sample number',
+                                            'O2Concentration[uM]': 'O2 level (uM)',
+                                            'AirSaturation[%]': 'AirSaturation(%)',
+                                            'Temperature[Deg.C]': 'Temperature (degC)',
+                                            'Pressure[kPa]': 'Pressure (kPa)',
+                                            'Temperature[DegC]': 'Temperature (degC)2',
+                                            'Conductivity[mS/cm]': 'Conductivity (mS/cm)',
+                                            'Temperature[Deg.C].1': 'Temperature (degC)3',
+                                            'Salinity[PSU]': 'Salinity (PSU)',
+                                            'Density[kg/m3]': 'Density (kg/m3)',
+                                            'Soundspeed[m/s]': 'Soundspeed (m/s)',
+                                            'PAR[umol/m2/s]': 'PAR (umol/m2/s)',
+                                            'Internal Temperature[Deg.C]': 'Internal Temperature (degC)',
+                                            'Turbidity#16280[FTU]': 'Turbidity (FTU)',
+                                            'Cyclops-7F  Chlorophyll#21180217[ug/L]': 'Chlorophyll (ug/L)',
+                                            'AMT pH#18051103[pH]': 'pH',
+                                            'AMT pH#18051103 Raw data[V]': 'Hydrogen Potential Raw Data(pH)',
+                                            'Cyclops-7F Colored Dissolved Organic #21180228[ppb]': 'Dissolved organic matter (ppb)'})
 
     if dataframe['Datetime'].iloc[0] == dataframe['Datetime'].iloc[1]:
         i = 0
@@ -287,27 +304,27 @@ def read_unified_excel(file_path):
     #open a file in unified table format
     #file_path: path to open excel file
     dataframe = pd.read_excel(file_path,
-                               header=0,
-                               na_values='N/A',
-                               parse_dates=[0],
-                               names=['Time_ISO8601',
-                                      'Expedition',
-                                      'Site',
-                                      'Longitude',
-                                      'Latitude',
-                                      'CO2 Level(ppm)',
-                                      'O2 level (uM)',
-                                      'Temperature (degC)',
-                                      'Depth (m)',
-                                      'Conductivity (mS/cm)',
-                                      'Salinity (PSU)',
-                                      'Density (kg/m3)',
-                                      'PAR (umol/m2/s)',
-                                      'Turbidity (FTU)',
-                                      'Chlorophyll (ug/L)',
-                                      'pH',
-                                      'Dissolved organic matter (ppb)',
-                                      'Sample number'])
+                            header=0,
+                            na_values='N/A',
+                            parse_dates=[0],
+                            names=['Time_ISO8601',
+                                    'Expedition',
+                                    'Site',
+                                    'Longitude',
+                                    'Latitude',
+                                    'CO2 Level(ppm)',
+                                    'O2 level (uM)',
+                                    'Temperature (degC)',
+                                    'Depth (m)',
+                                    'Conductivity (mS/cm)',
+                                    'Salinity (PSU)',
+                                    'Density (kg/m3)',
+                                    'PAR (umol/m2/s)',
+                                    'Turbidity (FTU)',
+                                    'Chlorophyll (ug/L)',
+                                    'pH',
+                                    'Dissolved organic matter (ppb)',
+                                    'Sample number'])
     return dataframe
 
 def read_unified_hobo(file_path):
@@ -588,7 +605,7 @@ def handle_output_file (input_df, flags, remove_suspect, remove_bad, Profile):
 def order_var (qualified_data, n_cel, data_type):
     if data_type == 'tscp':
         var_priority = {'Sample number': 0, 'Datetime': 1, 'Depth (m)': 2, 'Temperature (degC)': 3, 'Salinity (PSU)': 4,
-                        'Conductivity (mS/cm)': 5, 'Pressure(dbar)': 6, 'Density (kg/m3)': 7, 'CO2 Level(ppm)': 8,
+                        'Conductivity (mS/cm)': 5, 'Pressure (dbar)': 6, 'Density (kg/m3)': 7, 'CO2 Level (ppm)': 8,
                         'O2 level (uM)': 9, 'O2 content (mg/L)': 10, 'PAR (umol/m2/s)': 11, 'Turbidity (FTU)': 12, 'TSS (mg/L)': 13, 
                         'Chlorophyll (ug/L)': 14, 'pH': 15, 'Dissolved organic matter (ppb)': 16, 'Luminosity (lux)': 17,
                         'Soundspeed (m/s)': 18, 'Expedition': 19, 'Site': 20, 'Longitude': 21, 'Latitude': 22,
@@ -630,15 +647,15 @@ def order_var (qualified_data, n_cel, data_type):
 def tscp_stats_table (qualified_data):
     check = []
     for var in qualified_data.columns:
-        if re.match('temperature\(degC\)|salinity\(psu\)|pressure\(dbar\)', var, re.IGNORECASE):
+        if re.match('temperature \(degC\)|salinity \(psu\)|pressure \(dbar\)', var, re.IGNORECASE):
             check.append(var)
     if len(check) == 3:
-        stat = pd.DataFrame({'Variable':['Temperature (degC)','Salinity (PSU)','Pressure(dbar)'],
-                              'Max':[np.nanmax(qualified_data['Temperature (degC)']),np.nanmax(qualified_data['Salinity (PSU)']),np.nanmax(qualified_data['Pressure(dbar)'])],
-                              'Min':[np.nanmin(qualified_data['Temperature (degC)']),np.nanmin(qualified_data['Salinity (PSU)']),np.nanmin(qualified_data['Pressure(dbar)'])],
-                              'Mean':[np.nanmean(qualified_data['Temperature (degC)']),np.nanmean(qualified_data['Salinity (PSU)']),np.nanmean(qualified_data['Pressure(dbar)'])],
-                              'Median':[np.nanmedian(qualified_data['Temperature (degC)']),np.nanmedian(qualified_data['Salinity (PSU)']),np.nanmedian(qualified_data['Pressure(dbar)'])],
-                              'std':[np.nanstd(qualified_data['Temperature (degC)']),np.nanstd(qualified_data['Salinity (PSU)']),np.nanstd(qualified_data['Pressure(dbar)'])]})
+        stat = pd.DataFrame({'Variable':['Temperature (degC)','Salinity (PSU)','Pressure (dbar)'],
+                              'Max':[np.nanmax(qualified_data['Temperature (degC)']),np.nanmax(qualified_data['Salinity (PSU)']),np.nanmax(qualified_data['Pressure (dbar)'])],
+                              'Min':[np.nanmin(qualified_data['Temperature (degC)']),np.nanmin(qualified_data['Salinity (PSU)']),np.nanmin(qualified_data['Pressure (dbar)'])],
+                              'Mean':[np.nanmean(qualified_data['Temperature (degC)']),np.nanmean(qualified_data['Salinity (PSU)']),np.nanmean(qualified_data['Pressure (dbar)'])],
+                              'Median':[np.nanmedian(qualified_data['Temperature (degC)']),np.nanmedian(qualified_data['Salinity (PSU)']),np.nanmedian(qualified_data['Pressure (dbar)'])],
+                              'std':[np.nanstd(qualified_data['Temperature (degC)']),np.nanstd(qualified_data['Salinity (PSU)']),np.nanstd(qualified_data['Pressure (dbar)'])]})
     elif len(check) == 1:
         stat = pd.DataFrame({'Variable':['Temperature (degC)'],
                               'Max':np.nanmax(qualified_data['Temperature (degC)']),
@@ -675,10 +692,86 @@ def on_motion(event):
                 # update plot
                 event.inaxes.figure.canvas.draw_idle()
 
-def trim_selected_variable (data, name):
-    #select x and y data
-    y = data[name]
-    x = data[name].index
+def trim_by_depth(data):
+    # copy input dataframe
+    trimmed_data = data.copy()
+    
+    # define x and y
+    y = data['Depth (m)']
+    x = data['Depth (m)'].index
+
+    # create plot
+    fig, ax = plt.subplots()
+    ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
+    ax.set_title('Depth (m)')
+    ax.set_ylabel('Depth (m)')
+    ax.set_xlabel('Sample number')
+
+    # store removed index
+    removed_indices = set()  # Usamos um set para garantir que não haja duplicatas
+
+    #function to remove selected data
+    def on_select(eclick, erelease):
+        # get selection coordinates
+        x0, y0 = eclick.xdata, eclick.ydata
+        x1, y1 = erelease.xdata, erelease.ydata  
+
+        mask = (x > min(x0, x1)) & (x < max(x0, x1)) & \
+                (y > min(y0, y1)) & (y < max(y0, y1))
+
+        # refresh removed index list
+        current_indices = np.arange(len(y))[mask]  # Índices dos pontos selecionados
+        removed_indices.update(current_indices)  # Adiciona os índices ao conjunto
+
+        # remove lines of selected index
+        trimmed_data.drop(index=current_indices, inplace=True)
+
+        # update data for the plot
+        remaining_mask = np.isin(np.arange(len(y)), list(removed_indices), invert=True)
+        new_x = x[remaining_mask]
+        new_y = y[remaining_mask]
+        
+        # refresh plot
+        ax.clear()  # clean plot
+        ax.plot(new_x, new_y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
+        ax.set_title('Depth (m)')
+        ax.set_ylabel('Depth (m)')
+        ax.set_xlabel('Sample number')
+        fig.canvas.draw()  # redraw plot
+
+    def on_key_press(event):
+        if event.key == 'enter':
+            fig.canvas.mpl_disconnect(cid)
+            plt.close()
+
+    # selection widget
+    selector = RectangleSelector(ax, on_select,
+                                useblit=True,
+                                button=[1],  
+                                minspanx=5, minspany=5,
+                                spancoords='pixels',
+                                interactive=True)
+
+    ax.set_xlim(np.nanmin(x) - 0.1, np.nanmax(x) + 0.1)
+    ax.set_ylim(np.nanmin(y) - 0.1, np.nanmax(y) + 0.1)
+    plt.show()  
+
+    cid = fig.canvas.mpl_connect('key_press_event', on_key_press)
+
+    trigger = False
+    while not trigger:
+        trigger = plt.waitforbuttonpress()
+        if trigger:
+            plt.close(fig)
+    #reindex
+    trimmed_data.index = np.arange(len(trimmed_data))
+    
+    return trimmed_data
+
+def trim_selected_variable(data, name):
+    # Faz uma cópia explícita da coluna para evitar o alerta de SettingWithCopyWarning
+    y = data[name].copy()
+    x = data.index  # Usar o índice diretamente sem copiar
 
     # Criação do gráfico
     fig, ax = plt.subplots()
@@ -686,16 +779,15 @@ def trim_selected_variable (data, name):
     ax.set_title(name)
     ax.set_ylabel(name)
     ax.set_xlabel('Sample number')
+
     # Função para remover pontos selecionados
-    selected_points = []
     def on_select(eclick, erelease):
-        #global x, y
         x0, y0 = eclick.xdata, eclick.ydata
         x1, y1 = erelease.xdata, erelease.ydata
         mask = (x > min(x0, x1)) & (x < max(x0, x1)) & \
-               (y > min(y0, y1)) & (y < max(y0, y1))
-        y[mask] = np.nan # Substitui pontos selecionados por NaN
-        #x, y = x[~mask], y[~mask]  # Remove os pontos selecionados
+                (y > min(y0, y1)) & (y < max(y0, y1))
+        y[mask] = np.nan  # Substitui pontos selecionados por NaN
+
         ax.clear()  # Limpa o gráfico
         ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)  # Desenha os pontos restantes
         ax.set_title(name)
@@ -704,31 +796,31 @@ def trim_selected_variable (data, name):
         fig.canvas.draw()  # Redesenha o gráfico
 
     def on_key_press(event):
-        if event.key =='enter':
+        if event.key == 'enter':
             fig.canvas.mpl_disconnect(cid)
             plt.close()
 
     # Criação do widget de seleção de pontos
     selector = RectangleSelector(ax, on_select,
-                                 useblit=True,
-                                 button=[1],  # Somente botão esquerdo do mouse
-                                 minspanx=5, minspany=5,
-                                 spancoords='pixels',
-                                 interactive=True)
+                                useblit=True,
+                                button=[1],  # Somente botão esquerdo do mouse
+                                minspanx=5, minspany=5,
+                                spancoords='pixels',
+                                interactive=True)
 
-    ax.set_xlim(np.nanmin(x)-0.1,np.nanmax(x)+0.1)
-    ax.set_ylim(np.nanmin(y)-0.1,np.nanmax(y)+0.1)
+    ax.set_xlim(np.nanmin(x)-0.1, np.nanmax(x)+0.1)
+    ax.set_ylim(np.nanmin(y)-0.1, np.nanmax(y)+0.1)
     plt.show()  # Exibe o gráfico
 
     cid = fig.canvas.mpl_connect('key_press_event', on_key_press)
 
     trigger = False
-    while trigger == False:
+    while not trigger:
         trigger = plt.waitforbuttonpress()
-        if trigger == True:
-            data[name] = y
-            #data.to_csv(filename + '_trim.csv')
+        if trigger:
+            data[name] = y  # Substitui os dados originais pelos modificados
             plt.close(fig)
+
     return data
 
 def join_files_to_database(path, inputFilesFormat):

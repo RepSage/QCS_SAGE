@@ -56,31 +56,33 @@ def renameParameters (parameter_names):
 
 def getParamColors (parameter_names):
     cParam =  {'Temperature (degC)': 'red',
-               'Salinity (PSU)': 'magenta',
-               'Conductivity (mS/cm)': 'y',
-               'Density (kg/m3)': 'aquamarine',                                              
-               'CO2 level (ppm)': 'yellowgreen',
-               'O2 level (uM)': 'deepskyblue',
-               'PAR (umol/m2/s)': 'peachpuff',
-               'Turbidity (FTU)': 'forestgreen',
-               'Chlorophyll (ug/L)': 'springgreen',
-               'pH': 'mediumorchid',                                              
-               'Dissolved organic matter (ppb)': 'peru',
-               'Soundspeed (m/s)': 'navajowhite'
-               }
+                'Salinity (PSU)': 'magenta',
+                'Conductivity (mS/cm)': 'y',
+                'Density (kg/m3)': 'aquamarine',                                              
+                'CO2 level (ppm)': 'yellowgreen',
+                'O2 level (uM)': 'deepskyblue',
+                'PAR (umol/m2/s)': 'peachpuff',
+                'Turbidity (FTU)': 'forestgreen',
+                'Chlorophyll (ug/L)': 'springgreen',
+                'pH': 'mediumorchid',                                              
+                'Dissolved organic matter (ppb)': 'peru',
+                'Soundspeed (m/s)': 'navajowhite',
+                'Pressure (dbar)': 'gray'
+                }
     bcParam = {'Temperature (degC)': 'firebrick',
-               'Salinity (PSU)': 'darkmagenta',
-               'Conductivity (mS/cm)': 'olive',
-               'Density (kg/m3)': 'mediumaquamarine',                                              
-               'CO2 level (ppm)': 'olivedrab',
-               'O2 level (uM)': 'dodgerblue',
-               'PAR (umol/m2/s)': 'sandybrown',
-               'Turbidity (FTU)': 'limegreen',
-               'Chlorophyll (ug/L)': 'mediumseagreen',
-               'pH': 'darkorchid',                                              
-               'Dissolved organic matter (ppb)': 'sienna',
-               'Soundspeed (m/s)': 'burlywood'
-               }    
+                'Salinity (PSU)': 'darkmagenta',
+                'Conductivity (mS/cm)': 'olive',
+                'Density (kg/m3)': 'mediumaquamarine',                                              
+                'CO2 level (ppm)': 'olivedrab',
+                'O2 level (uM)': 'dodgerblue',
+                'PAR (umol/m2/s)': 'sandybrown',
+                'Turbidity (FTU)': 'limegreen',
+                'Chlorophyll (ug/L)': 'mediumseagreen',
+                'pH': 'darkorchid',                                              
+                'Dissolved organic matter (ppb)': 'sienna',
+                'Soundspeed (m/s)': 'burlywood',
+                'Pressure (dbar)': 'gray'
+                }    
     
     return cParam, bcParam
 
@@ -90,26 +92,29 @@ def getSiteColors (site_names):
     everyColor = list(mcolors.CSS4_COLORS.keys())
     
     cSite = {'A01': 'firebrick',
-              'A02': 'darkmagenta',
-              'A03': 'olive',
-              'A04': 'mediumaquamarine',
-              'A05': 'olivedrab',
-              'A06': 'dodgerblue',
-              'A07': 'sandybrown',
-              'A08': 'forestgreen',
-              'B01': 'mediumseagreen',
-              'B02': 'darkorchid',
-              'B03': 'sienna',
-              'B04': 'burlywood',
-              'B05': 'mediumvioletred',
-              'B06': 'teal'}
+                'A02': 'darkmagenta',
+                'A03': 'olive',
+                'A04': 'mediumaquamarine',
+                'A05': 'olivedrab',
+                'A06': 'dodgerblue',
+                'A07': 'sandybrown',
+                'A08': 'forestgreen',
+                'B01': 'mediumseagreen',
+                'B02': 'darkorchid',
+                'B03': 'sienna',
+                'B04': 'burlywood',
+                'B05': 'mediumvioletred',
+                'B06': 'teal',
+                'RH18': 'maroon',
+                'RH30': 'darkslategrey'}
     
     availableColors = [cor for cor in everyColor if cor not in cSite.values()]   
     mainSites = list(cSite.keys())
     colors = {}
     for i in range(len(site_names)):
         if site_names[i] in mainSites:
-            colors[mainSites[i]] = cSite[mainSites[i]]
+            colors[site_names[i]] = cSite[site_names[i]]
+            print()
         else:
             colors[site_names[i]] = random.choice(availableColors)
     return colors
@@ -332,7 +337,7 @@ def plot_database_panel1 (database, dataViewSettings):
         # spliting data by semester and site
         try:
             db = {'1stSemester': db_raw[(db_raw.loc[:,'Datetime'].dt.month >= 1) & (db_raw.loc[:,'Datetime'].dt.month <= 6) & (db_raw.loc[:,'Site'] == site)],
-                  '2ndSemester': db_raw[(db_raw.loc[:,'Datetime'].dt.month >= 7) & (db_raw.loc[:,'Datetime'].dt.month <= 12) & (db_raw.loc[:,'Site'] == site)]}
+                    '2ndSemester': db_raw[(db_raw.loc[:,'Datetime'].dt.month >= 7) & (db_raw.loc[:,'Datetime'].dt.month <= 12) & (db_raw.loc[:,'Site'] == site)]}
             #verify which semesters are empty
             emptySemester = [key for key, value in db.items() if value.empty]
             if len(emptySemester) == len(db):
@@ -347,7 +352,7 @@ def plot_database_panel1 (database, dataViewSettings):
             if len(y_list) > 0:
                 fig, ax1 = plt.subplots(figsize=(1960 / 100, 1000 / 100))
                 plt.xticks(rotation=35)
-                plt.subplots_adjust(left=0.030, right=0.620)
+                plt.subplots_adjust(left=0.050, right=0.620)
                 plt.grid(True, linestyle='dotted', linewidth=0.5)
                 #define x and y
                 # defining y while removing datetime duplicates
@@ -361,8 +366,9 @@ def plot_database_panel1 (database, dataViewSettings):
                     if points == True:
                         ax1.plot(x, y, color=cParam[y_list[0].name], linestyle='none', marker='.', markersize=3, label=rParam[0])
                     ax1.plot(xp, yp, color=bcParam[y_list[0].name], linestyle='-', label=rParam[0])
+                    ax1.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
                 else:
-                    ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='-', marker='.', label=rParam[0])
+                    ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='None', marker='.', label=rParam[0])
                 # set y label
                 ax1.set_ylabel(rParam[0], color=bcParam[y_list[0].name])
                 # set title
@@ -385,13 +391,18 @@ def plot_database_panel1 (database, dataViewSettings):
                     #defining x
                     x = y.index
                     # plot adicional axis
-                    if fit_lin_regression == True:
+                    if fit_lin_regression == True and y_list[i-1].name != 'Pressure (dbar)':
                         xp, yp = linear_regression (y, degree=deg)
                         if points == True:
                             ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=cParam[y_list[i-1].name], label=rParam[i-1])
                         ax.plot(xp, yp, linestyle='-', c=bcParam[y_list[i-1].name], label=rParam[i-1])
+                        ax.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
+
                     else:
-                        ax.plot(x, y, linestyle='-', marker='.', c=bcParam[y_list[i-1].name], label=rParam[i-1])
+                        if y_list[i-1].name == 'Pressure (dbar)':
+                            ax.plot(x, y, linestyle='--', marker='None', c=bcParam[y_list[i-1].name], label=rParam[i-1])
+                        else:
+                            ax.plot(x, y, linestyle='None', marker='.', c=bcParam[y_list[i-1].name], label=rParam[i-1])
                     # set axis label
                     ax.set_ylabel(rParam[i-1], c=bcParam[y_list[i-1].name])
                     # set y axis position
@@ -415,7 +426,7 @@ def plot_database_panel1 (database, dataViewSettings):
                 #defining data format
                 plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m %H:%M'))
                 plt.show()
-                plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year))
+                plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year), bbox_inches='tight')
 
 def plot_database_panel2 (database, dataViewSettings):
     site_names = dataViewSettings['siteList']
