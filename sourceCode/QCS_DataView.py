@@ -164,11 +164,13 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
     #mirror_var.loc[not_nan, variable] = np.nan
     #ax1.plot(mirror_var['Datetime'], mirror_var[variable], marker='o', c='red', linestyle='none', markersize=2, label='Reproved data')
 
-    year = qualified_data['Datetime'].iloc[0].year
-    month_firstday = qualified_data['Datetime'].iloc[0].month
-    month_finalday = qualified_data['Datetime'].iloc[-1].month
-    firstday = qualified_data['Datetime'].iloc[0].day
-    finalday = qualified_data['Datetime'].iloc[-1].day
+    # use only valid timestamps: a NaT at the edges would break datetime()
+    valid_times = qualified_data['Datetime'].dropna()
+    year = valid_times.iloc[0].year
+    month_firstday = valid_times.iloc[0].month
+    month_finalday = valid_times.iloc[-1].month
+    firstday = valid_times.iloc[0].day
+    finalday = valid_times.iloc[-1].day
     x_inflim = pd.Timestamp(datetime.datetime(year, month_firstday, firstday, 0, 0))
     x_suplim = pd.Timestamp(datetime.datetime(year, month_finalday, finalday, 23, 59))
     ax1.set_xlim(x_inflim, x_suplim)
@@ -211,8 +213,9 @@ def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SET
     ax1.plot(qualified_data[variable], qualified_data['Depth (m)'], marker='o', linestyle='none', markersize=2, color=plot_color, label='Approved data')
     ax1.set_ylabel('Depth (m)')
 
-    year = qualified_data['Datetime'].iloc[0].year
-    month = qualified_data['Datetime'].iloc[0].month
+    valid_times = qualified_data['Datetime'].dropna()
+    year = valid_times.iloc[0].year
+    month = valid_times.iloc[0].month
 
     if fixed_scale == True:
         if re.search('temperature', variable, re.IGNORECASE):

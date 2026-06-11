@@ -191,6 +191,15 @@ def read_ctd(INPUT):
     # set datetime column
     dataframe['Datetime'] = pd.to_datetime(dataframe['Datetime'], dayfirst=True)
 
+    # discard records without a valid timestamp (e.g. truncated trailing rows
+    # left by interrupted sensor exports) — they cannot be qualified
+    n_invalid = int(dataframe['Datetime'].isna().sum())
+    if n_invalid > 0:
+        print('WARNING: %d record(s) without valid timestamp discarded from %s'
+              % (n_invalid, INPUT['file_name']))
+        dataframe = dataframe[dataframe['Datetime'].notna()]
+        dataframe.index = np.arange(len(dataframe))
+
     return dataframe
 
 def read_unified_excel(file_path):

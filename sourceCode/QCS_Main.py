@@ -462,8 +462,9 @@ def start_qualification():
         traceback.print_exc()
         messagebox.showerror("Erro na qualificação",
                              "A qualificação foi interrompida por um erro:\n\n%s\n\n"
-                             "Nenhum resultado foi salvo para esta execução. Verifique o "
-                             "arquivo e as configurações e tente novamente." % e)
+                             "Alguns arquivos podem ter sido gerados parcialmente na pasta "
+                             "de saída antes do erro. Verifique o arquivo de entrada e as "
+                             "configurações e tente novamente." % e)
     finally:
         plt.close('all')
         os.chdir(rootPath)
