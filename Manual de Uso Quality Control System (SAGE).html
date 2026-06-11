@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Completo do Sistema QCS (Quality Control System)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        h1, h2, h3, h4 {
+            color: #2c3e50;
+        }
+        h1 {
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+        h3 {
+            margin-top: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        code {
+            background-color: #f5f5f5;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .note {
+            background-color: #e7f4ff;
+            padding: 15px;
+            border-left: 4px solid #3498db;
+            margin: 20px 0;
+        }
+        .warning {
+            background-color: #fff3e0;
+            padding: 15px;
+            border-left: 4px solid #ff9800;
+            margin: 20px 0;
+        }
+        .indice {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .indice ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .indice li {
+            margin-bottom: 5px;
+        }
+        .indice a {
+            text-decoration: none;
+            color: #3498db;
+        }
+        .indice a:hover {
+            text-decoration: underline;
+        }
+    </style>
+    <style>
+        .code-block {
+            background-color: #f5f5f5;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 20px 0;
+            overflow-x: auto;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .code-block pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+        
+        .code-block code {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9em;
+            line-height: 1.5;
+            color: #333;
+        }
+        
+        .language-bash {
+            color: #d63384;
+        }
+        
+        .code-block code .flag {
+            color: #007bff;
+        }
+        
+        .code-block code .file {
+            color: #28a745;
+        }
+    </style>
+    <style>
+        .code-container {
+            position: relative;
+            margin: 20px 0;
+        }
+        
+        .copy-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            padding: 3px 8px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+        
+        .copy-btn:hover {
+            opacity: 1;
+        }
+        
+        .code-block {
+            background-color: #f5f5f5;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            overflow-x: auto;
+            border-radius: 0 4px 4px 0;
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Manual Completo do Sistema QCS (Quality Control System)</h1>
+
+    <div class="indice">
+        <h2>Índice</h2>
+        <ul>
+            <li><a href="#introducao">1. Introdução</a></li>
+            <li><a href="#instalacao">2. Instalação</a></li>
+            <li><a href="#interface_qcs_main">3. Interface do QCS_Main</a></li>
+            <li><a href="#interface_qcs_databaseview">4. Interface do QCS_DatabaseView</a></li>
+            <li><a href="#flags_qualificacao">5. Flags de Qualificação</a></li>
+            <li><a href="#gerenciamento_configuracoes">6. Gerenciamento de Configurações</a></li>
+            <li><a href="#parametros_configuracao">7. Parâmetros de Configuração Detalhados</a></li>
+            <li><a href="#testes_qualificacao">8. Testes de Qualificação</a></li>
+            <li><a href="#produtos_gerados">9. Produtos Gerados</a></li>
+            <li><a href="#visualizacao_dados">10. Visualização de dados</a></li>
+            <li><a href="#boas_praticas">11. Boas Práticas</a></li>
+            <li><a href="#compilacao_avancada">12. Compilação para Usuários Avançados</a></li>
+            <li><a href="#solucao_problemas">13. Solução de Problemas</a></li>
+        </ul>
+    </div>
+
+    <h2 id="introducao">1. Introdução</h2>
+    <p>O QCS (Quality Control System) é uma solução completa para qualificação e visualização de dados oceanográficos. Este manual cobre todos os aspectos do sistema, desde a instalação até operações avançadas.</p>
+
+    <h2 id="instalacao">2. Instalação</h2>
+    <h3>Requisitos Mínimos</h3>
+    <ul>
+        <li>Windows 10 ou superior (64-bit)</li>
+    </ul>
+
+    <h3>Instalação Básica</h3>
+    <ol>
+        <li>Baixe os executáveis (QCS_Qualification_Tool.exe e QCS_Visualization_Tool.exe)</li>
+        <li>Crie uma pasta dedicada para o QCS</li>
+        <li>Coloque ambos executáveis na pasta criada</li>
+        <li>(Opcional) Crie atalhos no desktop</li>
+    </ol>
+
+    <h2 id="interface_qcs_main">3. Interface do QCS_Main</h2>
+    <h3>Seção INPUT SETTINGS</h3>
+    <table>
+        <tr>
+            <th>Elemento</th>
+            <th>Descrição</th>
+        </tr>
+        <tr>
+            <td>Data File</td>
+            <td>Seleciona o arquivo de dados brutos (CSV, XLSX, TXT). Tooltip explica formatos suportados.</td>
+        </tr>
+        <tr>
+            <td>Browse...</td>
+            <td>Abre o explorador de arquivos para seleção.</td>
+        </tr>
+        <tr>
+            <td>Config File</td>
+            <td>(Opcional) Caminho para arquivo JSON com configurações salvas.</td>
+        </tr>
+        <tr>
+            <td>Browse...</td>
+            <td>Abre o explorador para selecionar arquivo JSON.</td>
+        </tr>
+        <tr>
+            <td>Input Type</td>
+            <td>Dropdown para selecionar tipo de instrumento (Seaguard ou HOBO).</td>
+        </tr>
+        <tr>
+            <td>Data Type</td>
+            <td>Dropdown para selecionar tipo de dados (TSCP Profile ou TSCP Mooring).</td>
+        </tr>
+        <tr>
+            <td>Pressure Unit</td>
+            <td>Dropdown para selecionar unidade de pressão nos dados brutos.</td>
+        </tr>
+        <tr>
+            <td>Conductivity Unit</td>
+            <td>Dropdown para selecionar unidade de condutividade.</td>
+        </tr>
+        <tr>
+            <td>Correct GMT-3</td>
+            <td>Checkbox para aplicar correção de fuso horário GMT-3.</td>
+        </tr>
+        <tr>
+            <td>Select Profile Data</td>
+            <td>Checkbox (habilitado apenas para perfis) para selecionar fase de descida/subida.</td>
+        </tr>
+        <tr>
+            <td>Check Variables</td>
+            <td>Checkbox para ativar verificação manual dos limites das variáveis.</td>
+        </tr>
+    </table>
+
+    <h3>Seção OUTPUT SETTINGS</h3>
+    <table>
+        <tr>
+            <th>Elemento</th>
+            <th>Descrição</th>
+        </tr>
+        <tr>
+            <td>Output Folder</td>
+            <td>Define pasta onde os resultados serão salvos.</td>
+        </tr>
+        <tr>
+            <td>Browse...</td>
+            <td>Abre explorador para selecionar pasta.</td>
+        </tr>
+        <tr>
+            <td>Output File Name</td>
+            <td>Define nome base para arquivos de saída.</td>
+        </tr>
+        <tr>
+            <td>Output Format</td>
+            <td>Dropdown para selecionar formato (CSV ou XLSX).</td>
+        </tr>
+        <tr>
+            <td>Remove Bad Data</td>
+            <td>Checkbox para excluir automaticamente dados com flag 4.</td>
+        </tr>
+        <tr>
+            <td>Remove Suspect Data</td>
+            <td>Checkbox para excluir automaticamente dados com flag 3.</td>
+        </tr>
+        <tr>
+            <td>Site Code</td>
+            <td>Campo para inserir código de identificação do local (até 5 caracteres).</td>
+        </tr>
+    </table>
+
+    <h3>Botões de Ação</h3>
+    <table>
+        <tr>
+            <th>Botão</th>
+            <th>Função</th>
+        </tr>
+        <tr>
+            <td>Help</td>
+            <td>Abre janela com informações básicas de uso.</td>
+        </tr>
+        <tr>
+            <td>Settings</td>
+            <td>Abre janela de configuração detalhada dos testes.</td>
+        </tr>
+        <tr>
+            <td>RUN QUALIFICATION</td>
+            <td>Inicia o processo de qualificação com os parâmetros configurados.</td>
+        </tr>
+    </table>
+
+    <h2 id="interface_qcs_databaseview">4. Interface do QCS_DatabaseView</h2>
+    <h3>Janela Database Input Settings</h3>
+    <table>
+        <tr>
+            <th>Elemento</th>
+            <th>Descrição</th>
+        </tr>
+        <tr>
+            <td>Database File(s)</td>
+            <td>Seleciona arquivos de banco de dados existentes.</td>
+        </tr>
+        <tr>
+            <td>Browse...</td>
+            <td>Abre explorador para seleção múltipla de arquivos.</td>
+        </tr>
+        <tr>
+            <td>Input Path</td>
+            <td>Define pasta contendo arquivos para combinar.</td>
+        </tr>
+        <tr>
+            <td>Browse...</td>
+            <td>Abre explorador para selecionar pasta.</td>
+        </tr>
+        <tr>
+            <td>Join Data Files</td>
+            <td>Checkbox para ativar modo de combinação de arquivos.</td>
+        </tr>
+        <tr>
+            <td>Sort by Time</td>
+            <td>Checkbox para ordenar dados cronologicamente.</td>
+        </tr>
+        <tr>
+            <td>Input Format</td>
+            <td>Dropdown para formato dos arquivos de entrada.</td>
+        </tr>
+        <tr>
+            <td>Output Name</td>
+            <td>Nome para o banco de dados processado.</td>
+        </tr>
+        <tr>
+            <td>Output Path</td>
+            <td>Pasta de saída para resultados.</td>
+        </tr>
+        <tr>
+            <td>Browse...</td>
+            <td>Abre explorador para selecionar pasta de saída.</td>
+        </tr>
+        <tr>
+            <td>Save Input Settings</td>
+            <td>Salva configurações e avança para visualização.</td>
+        </tr>
+    </table>
+
+    <h3>Janela Data View Settings</h3>
+    <table>
+        <tr>
+            <th>Elemento</th>
+            <th>Descrição</th>
+        </tr>
+        <tr>
+            <td>Data Type</td>
+            <td>Dropdown para selecionar tipo de dados (profile/mooring).</td>
+        </tr>
+        <tr>
+            <td>Filter by Year</td>
+            <td>Campo para filtrar dados por ano específico.</td>
+        </tr>
+        <tr>
+            <td>Panel 1</td>
+            <td>Checkbox para ativar painel de comparação entre parâmetros.</td>
+        </tr>
+        <tr>
+            <td>Panel 2</td>
+            <td>Checkbox para ativar painel de comparação entre locais.</td>
+        </tr>
+        <tr>
+            <td>Panel 3</td>
+            <td>Checkbox para ativar painel de perfil vertical.</td>
+        </tr>
+        <tr>
+            <td>T-S Diagram</td>
+            <td>Checkbox para gerar diagrama temperatura-salidade.</td>
+        </tr>
+        <tr>
+            <td>Latitude/Longitude</td>
+            <td>Campos para coordenadas de referência do diagrama T-S.</td>
+        </tr>
+        <tr>
+            <td>T-S Parameters</td>
+            <td>Dropdown para selecionar tipo de parâmetros T-S.</td>
+        </tr>
+        <tr>
+            <td>Trend Lines</td>
+            <td>Checkbox para adicionar linhas de tendência.</td>
+        </tr>
+        <tr>
+            <td>Degree</td>
+            <td>Campo para grau do polinômio da tendência.</td>
+        </tr>
+        <tr>
+            <td>Show Data Points</td>
+            <td>Checkbox para mostrar pontos individuais nos gráficos.</td>
+        </tr>
+        <tr>
+            <td>Filter by Site</td>
+            <td>Lista de checkboxes para selecionar locais a incluir.</td>
+        </tr>
+        <tr>
+            <td>Select Parameters</td>
+            <td>Lista de checkboxes para selecionar parâmetros a incluir.</td>
+        </tr>
+        <tr>
+            <td>Save View Settings</td>
+            <td>Salva configurações de visualização.</td>
+        </tr>
+        <tr>
+            <td>Generate Panels</td>
+            <td>Gera os gráficos com as configurações atuais.</td>
+        </tr>
+    </table>
+
+    <h2 id="flags_qualificacao">5. Flags de Qualificação</h2>
+    <h3>Estrutura das Flags</h3>
+    <p>Cada dado recebe uma string de flags no formato [TEST1][TEST2]...[TESTN], onde cada teste é representado por um dígito:</p>
+    <table>
+        <tr>
+            <th>Código</th>
+            <th>Significado</th>
+            <th>Descrição</th>
+        </tr>
+        <tr>
+            <td>1</td>
+            <td>GOOD_DATA</td>
+            <td>Dado aprovado no teste</td>
+        </tr>
+        <tr>
+            <td>2</td>
+            <td>UNKNOWN</td>
+            <td>Teste não pôde ser aplicado (dados insuficientes)</td>
+        </tr>
+        <tr>
+            <td>3</td>
+            <td>SUSPECT</td>
+            <td>Dado suspeito (reprovado com margem)</td>
+        </tr>
+        <tr>
+            <td>4</td>
+            <td>BAD_DATA</td>
+            <td>Dado reprovado no teste</td>
+        </tr>
+        <tr>
+            <td>5</td>
+            <td>DISMISSED</td>
+            <td>Teste foi desativado pelo usuário</td>
+        </tr>
+        <tr>
+            <td>9</td>
+            <td>MISSING</td>
+            <td>Dado faltante/NaN</td>
+        </tr>
+    </table>
+
+    <h3>Construção das Flags</h3>
+    <ul>
+        <li>Os testes são aplicados sequencialmente</li>
+        <li>Cada teste adiciona seu código ao final da string de flags</li>
+        <li>A ordem dos testes é fixa (range tests → spike tests → rate tests → flat line tests)</li>
+        <li>Flags são acumulativas - um dado pode ter múltiplos códigos</li>
+    </ul>
+
+    <h4>Exemplo</h4>
+    <p>Flag <code>1942</code> significa:</p>
+    <ul>
+        <li>1: Aprovado no primeiro teste (sensor range)</li>
+        <li>9: Dado faltante no segundo teste</li>
+        <li>4: Reprovado no terceiro teste</li>
+        <li>2: Teste desconhecido no quarto teste</li>
+    </ul>
+
+    <h2 id="gerenciamento_configuracoes">6. Gerenciamento de Configurações</h2>
+    <h3>Exportando Configurações</h3>
+    <ol>
+        <li>Clique no botão Settings na janela principal</li>
+        <li>Na janela de configurações, vá para a aba desejada</li>
+        <li>Ajuste os parâmetros conforme necessário</li>
+        <li>Clique em Export Settings</li>
+        <li>Selecione o local e nome para salvar o arquivo JSON</li>
+    </ol>
+
+    <h3>Importando Configurações</h3>
+    <ol>
+        <li>No campo Config File, clique em Browse...</li>
+        <li>Selecione o arquivo JSON previamente exportado</li>
+        <li>Os parâmetros serão carregados automaticamente</li>
+    </ol>
+
+    <h3>Estrutura do Arquivo JSON</h3>
+    <pre><code>{
+    "tsQualityTests": {
+        "temperature sensor range": "ON",
+        "salinity sensor range": "ON",
+        ...
+    },
+    "tsSettings": {
+        "sensor_min_temp": -5,
+        "sensor_max_temp": 35,
+        ...
+    }
+}</code></pre>
+
+    <h2 id="parametros_configuracao">7. Parâmetros de Configuração Detalhados</h2>
+    <h3>time_window</h3>
+    <p>Define a janela temporal para cálculos de desvio padrão em testes de spike e taxa de variação.</p>
+    <p><strong>Formatos aceitos:</strong></p>
+    <ul>
+        <li>"WHOLE": Usa todo o dataset</li>
+        <li>"Xd": X dias (ex: "7d")</li>
+        <li>"Xh": X horas (ex: "24h")</li>
+        <li>"Xm": X minutos (ex: "30m")</li>
+        <li>"Xs": X segundos (ex: "300s")</li>
+    </ul>
+
+    <p><strong>Efeitos:</strong></p>
+    <ul>
+        <li>Janelas menores são mais sensíveis a variações locais</li>
+        <li>Janelas maiores suavizam variações mas podem mascarar anomalias</li>
+        <li>Para dados de fundeio longo, recomenda-se 1h-12h (a depender do intervalo amostral)</li>
+        <li>Para perfis, 1m-6m é geralmente adequado</li>
+    </ul>
+
+    <h3>fail_factor e susp_factor</h3>
+    <p>Multiplicadores do desvio padrão para classificação de dados.</p>
+    <p><strong>Comportamento:</strong></p>
+    <ul>
+        <li>fail_factor > susp_factor (tipicamente 3 e 2.5)</li>
+        <li>Valores altos reduzem falsos positivos mas podem deixar passar erros</li>
+        <li>Valores baixos aumentam sensibilidade mas também falsos positivos</li>
+        <li>Para dados ruidosos, aumentar ambos em 0.5-1.0</li>
+        <li>Para dados muito estáveis, pode reduzir em 0.5</li>
+    </ul>
+
+    <h3>Como Acessar Ajuda</h3>
+    <ul>
+        <li><strong>Tooltips:</strong> Passe o mouse sobre qualquer elemento da interface para ver uma dica</li>
+        <li><strong>Menu Help:</strong> No canto superior direito, menu "Help" contém:
+            <ul>
+                <li>Instruções básicas</li>
+                <li>Informações sobre o software</li>
+            </ul>
+        </li>
+        <li><strong>Botão Help:</strong> Na barra de ferramentas inferior</li>
+    </ul>
+
+    <h2 id="testes_qualificacao">8. Testes de Qualificação</h2>
+    <h3>Fluxo de Processamento</h3>
+    <ol>
+        <li>Pré-processamento (correções de unidades, GMT-3)</li>
+        <li>Testes de Faixa (sensor e ambiental)</li>
+        <li>Testes de Spike</li>
+        <li>Testes de Taxa de Variação</li>
+        <li>Testes de Linha Plana</li>
+        <li>(Para perfis) Testes de Gradiente Vertical</li>
+        <li>Geração de saídas</li>
+    </ol>
+
+    <h3>Ordem Sequencial dos Testes de Qualificação</h3>
+    <ol>
+        <li><strong>Testes de Faixa do Sensor</strong>
+            <ul>
+                <li>Temperatura</li>
+                <li>Salinidade</li>
+                <li>Condutividade</li>
+                <li>Pressão</li>
+            </ul>
+        </li>
+        <li><strong>Testes de Faixa Ambiental</strong>
+            <ul>
+                <li>Temperatura</li>
+                <li>Salinidade</li>
+                <li>Condutividade</li>
+                <li>Pressão</li>
+                <li>pH</li>
+                <li>Clorofila</li>
+                <li>Oxigênio Dissolvido</li>
+                <li>Matéria Orgânica Dissolvida</li>
+                <li>Turbidez</li>
+            </ul>
+        </li>
+        <li><strong>Testes de Spikes (Valores Espúrios)</strong>
+            <ul>
+                <li>Temperatura</li>
+                <li>Salinidade</li>
+                <li>Condutividade</li>
+                <li>Pressão</li>
+                <li>pH</li>
+                <li>Clorofila</li>
+                <li>Oxigênio Dissolvido</li>
+                <li>Matéria Orgânica Dissolvida</li>
+                <li>Turbidez</li>
+            </ul>
+        </li>
+        <li><strong>Testes de Taxa de Variação</strong>
+            <ul>
+                <li>Temperatura</li>
+                <li>Salinidade</li>
+                <li>Condutividade</li>
+                <li>Pressão</li>
+            </ul>
+        </li>
+        <li><strong>Testes de Linha Plana (Flat Line)</strong>
+            <ul>
+                <li>Temperatura</li>
+                <li>Salinidade</li>
+                <li>Condutividade</li>
+                <li>Pressão</li>
+            </ul>
+        </li>
+        <li><strong>Testes de Gradiente Vertical (Apenas para dados de perfil)</strong>
+            <ul>
+                <li>Temperatura</li>
+                <li>Salinidade</li>
+                <li>Condutividade</li>
+            </ul>
+        </li>
+    </ol>
+
+    <h3>Detalhes dos Testes</h3>
+    <p>Cada teste gera logs detalhados no console, incluindo:</p>
+    <ul>
+        <li>Tempo de execução</li>
+        <li>Número de dados reprovados</li>
+        <li>Percentual de reprovação</li>
+    </ul>
+
+    <h3>Seção: Junção de Arquivos no QCS_DatabaseView</h3>
+    <h4>Funcionalidade "Join Data Files"</h4>
+    <p>A opção Join Data Files no módulo QCS_DatabaseView permite combinar automaticamente múltiplos arquivos de dados em um único banco de dados unificado, seguindo uma estrutura de pastas específica.</p>
+
+    <h4>Estrutura de Pastas Requerida</h4>
+    <p>Para usar corretamente a função de junção, seus dados devem estar organizados na seguinte estrutura:</p>
+    <pre>Pasta_Principal/
+├── Pasta_Projeto1/
+│   ├── QCS qualified tscp data/  # Nome exato requerido
+│   │   ├── arquivo1.xlsx (ou .csv)
+│   │   └── arquivo2.xlsx (ou .csv)
+│
+├── Pasta_Projeto2/
+│   ├── QCS qualified tscp data/
+│   │   ├── arquivo3.xlsx
+│   │   └── arquivo4.xlsx
+│
+└── Pasta_ProjetoN/
+    ├── QCS qualified tscp data/
+    │   └── arquivoN.xlsx</pre>
+
+    <h4>Como Usar a Função de Junção</h4>
+    <ol>
+        <li><strong>Ative a opção Join Data Files:</strong>
+            <ul>
+                <li>Marque a checkbox "Join Data Files" na janela Database Input Settings</li>
+                <li>Isso desabilitará a seleção individual de arquivos</li>
+            </ul>
+        </li>
+        <li><strong>Especifique o Input Path:</strong>
+            <ul>
+                <li>Selecione a pasta principal que contém todas as subpastas de projetos</li>
+                <li>Use o botão "Browse..." ao lado do campo Input Path</li>
+            </ul>
+        </li>
+        <li><strong>Selecione o Formato de Entrada:</strong>
+            <ul>
+                <li>Escolha entre CSV ou XLSX no dropdown "Input Format"</li>
+                <li>Todos os arquivos devem estar no mesmo formato</li>
+            </ul>
+        </li>
+        <li><strong>Processamento:</strong>
+            <ul>
+                <li>O sistema percorrerá automaticamente todas as subpastas</li>
+                <li>Somente arquivos dentro de pastas chamadas exatamente "QCS qualified tscp data" serão processados</li>
+                <li>Arquivos com extensão diferente da selecionada serão ignorados</li>
+            </ul>
+        </li>
+    </ol>
+
+    <h4>Comportamento da Função join_files_to_database()</h4>
+    <p>A função realiza as seguintes operações:</p>
+    <ol>
+        <li><strong>Varredura de Diretórios:</strong>
+            <ul>
+                <li>Identifica todas as pastas de primeiro nível (projetos)</li>
+                <li>Em cada projeto, busca pela subpasta "QCS qualified tscp data"</li>
+            </ul>
+        </li>
+        <li><strong>Filtragem de Arquivos:</strong>
+            <ul>
+                <li>Ignora pastas especiais como __pycache__</li>
+                <li>Processa apenas arquivos com a extensão selecionada (.xlsx ou .csv)</li>
+            </ul>
+        </li>
+        <li><strong>Leitura de Dados:</strong>
+            <ul>
+                <li>Para arquivos Excel (.xlsx):
+                    <ul>
+                        <li>Usa pd.read_excel() com header=0 (primeira linha como cabeçalho)</li>
+                    </ul>
+                </li>
+                <li>Para arquivos CSV:
+                    <ul>
+                        <li>Usa pd.read_csv() com header=1 (segunda linha como cabeçalho)</li>
+                    </ul>
+                </li>
+            </ul>
+        </li>
+        <li><strong>Combinação dos Dados:</strong>
+            <ul>
+                <li>Concatena todos os DataFrames em um único banco de dados</li>
+                <li>Reseta os índices para manter sequência contínua</li>
+                <li>Preserva a estrutura original de colunas</li>
+            </ul>
+        </li>
+    </ol>
+
+    <h4>Pré-requisitos dos Arquivos de Entrada</h4>
+    <p>Para garantir uma junção correta:</p>
+    <ul>
+        <li><strong>Estrutura Consistente:</strong>
+            <ul>
+                <li>Todos os arquivos devem ter a mesma estrutura de colunas</li>
+                <li>Cabeçalhos idênticos em todos os arquivos</li>
+            </ul>
+        </li>
+        <li><strong>Formatação Padrão:</strong>
+            <ul>
+                <li>Arquivos devem ser saídas do QCS_Main</li>
+                <li>Manter a estrutura "QCS qualified tscp data" como subpasta</li>
+            </ul>
+        </li>
+        <li><strong>Tratamento de Dados:</strong>
+            <ul>
+                <li>Coluna "Site" será mantida se já existir nos arquivos originais</li>
+                <li>Datas devem estar no formato datetime consistente</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h4>Dicas para Uso Eficiente</h4>
+    <ul>
+        <li><strong>Organização Prévia:</strong>
+            <ul>
+                <li>Agrupe dados semelhantes na mesma pasta principal</li>
+                <li>Verifique consistência entre arquivos antes da junção</li>
+            </ul>
+        </li>
+        <li><strong>Pós-processamento:</strong>
+            <ul>
+                <li>Após junção, use os filtros por Site no módulo de visualização</li>
+                <li>Salve o banco combinado para uso futuro</li>
+            </ul>
+        </li>
+        <li><strong>Solução de Problemas:</strong>
+            <ul>
+                <li>Se a junção falhar, verifique:
+                    <ul>
+                        <li>Nomes das subpastas (devem ser exatos)</li>
+                        <li>Permissões de leitura nos arquivos</li>
+                        <li>Consistência dos cabeçalhos</li>
+                    </ul>
+                </li>
+            </ul>
+        </li>
+    </ul>
+
+    <h4>Exemplo de Fluxo de Trabalho</h4>
+    <ol>
+        <li>Colete dados de três campanhas diferentes (Camp1, Camp2, Camp3)</li>
+        <li>Processe cada campanha separadamente no QCS_Main</li>
+        <li>Organize as saídas em:
+            <pre>Dados_Completos/
+├── Camp1/
+│   └── QCS qualified tscp data/
+│       └── dados_camp1.xlsx
+├── Camp2/
+│   └── QCS qualified tscp data/
+│       └── dados_camp2.xlsx
+└── Camp3/
+    └── QCS qualified tscp data/
+        └── dados_camp3.xlsx</pre>
+        </li>
+        <li>No QCS_DatabaseView:
+            <ul>
+                <li>Ative "Join Data Files"</li>
+                <li>Selecione "Dados_Completos" como Input Path</li>
+                <li>Escolha formato XLSX</li>
+                <li>Execute a junção</li>
+            </ul>
+        </li>
+        <li>Visualize o banco combinado com todos os dados das três campanhas</li>
+    </ol>
+
+    <p>Esta função é particularmente útil para:</p>
+    <ul>
+        <li>Análises temporais de longa duração</li>
+        <li>Comparação entre múltiplas campanhas</li>
+        <li>Consolidação de dados de diferentes fontes</li>
+        <li>Criação de bancos de dados históricos</li>
+    </ul>
+
+    <h2 id="produtos_gerados">9. Produtos Gerados</h2>
+    <h3>Estrutura de Pastas</h3>
+    <pre>Raiz/
+├── QCS qualified tscp data/
+│   ├── Dados qualificados (CSV/XLSX)
+│   ├── QCS_report.csv
+│   └── QCS_tscp_stat.csv
+├── QCS DataView (fixed scale)/
+│   └── Gráficos com escala fixa
+└── QCS DataView (unfixed scale)/
+    └── Gráficos com escala automática</pre>
+
+    <h3>Conteúdo dos Arquivos</h3>
+    <ul>
+        <li><strong>Arquivo Qualificado:</strong>
+            <ul>
+                <li>Todos os dados brutos</li>
+                <li>Coluna adicional "Flag" com códigos de qualidade</li>
+                <li>Metadados (local, versão QCS)</li>
+            </ul>
+        </li>
+        <li><strong>Relatório (QCS_report.csv):</strong>
+            <ul>
+                <li>Estatísticas de qualificação</li>
+                <li>Contagem por tipo de falha</li>
+            </ul>
+        </li>
+        <li><strong>Estatísticas (QCS_tscp_stat.csv):</strong>
+            <ul>
+                <li>Média, mediana, desvio padrão</li>
+                <li>Valores mínimos e máximos</li>
+                <li>Contagem de dados válidos</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h2 id="visualizacao_dados">10. Visualização de Dados</h2>
+    <p>O módulo QCS_DatabaseView oferece ferramentas avançadas para visualização e análise de dados oceanográficos qualificados.</p>
+
+    <h3>Painéis de Visualização</h3>
+    <table>
+        <tr>
+            <th>Painel</th>
+            <th>Descrição</th>
+            <th>Tipo de Dados Recomendado</th>
+        </tr>
+        <tr>
+            <td>Painel 1</td>
+            <td>Comparação entre parâmetros no mesmo local</td>
+            <td>Dados de fundeio (mooring)</td>
+        </tr>
+        <tr>
+            <td>Painel 2</td>
+            <td>Comparação do mesmo parâmetro entre locais</td>
+            <td>Dados de fundeio (mooring)</td>
+        </tr>
+        <tr>
+            <td>Painel 3</td>
+            <td>Perfil vertical de parâmetros</td>
+            <td>Dados de perfil (profile)</td>
+        </tr>
+        <tr>
+            <td>Diagrama T-S</td>
+            <td>Diagrama Temperatura-Salidade</td>
+            <td>Ambos (com configuração adequada)</td>
+        </tr>
+    </table>
+
+    <h3>Configuração de Escalas</h3>
+    <p>Controle avançado sobre as escalas dos gráficos através do painel "SCALE SETTINGS".</p>
+
+    <h4>Escalas Fixas vs. Automáticas</h4>
+    <table>
+        <tr>
+            <th>Tipo</th>
+            <th>Descrição</th>
+            <th>Quando Usar</th>
+        </tr>
+        <tr>
+            <td>Escala Fixa</td>
+            <td>Permite definir valores mínimos e máximos manuais para cada parâmetro</td>
+            <td>
+                <ul>
+                    <li>Comparação direta entre diferentes conjuntos de dados</li>
+                    <li>Manter consistência visual entre gráficos</li>
+                    <li>Destacar variações específicas em faixas conhecidas</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>Escala Automática</td>
+            <td>O sistema ajusta automaticamente para mostrar todos os dados</td>
+            <td>
+                <ul>
+                    <li>Análise exploratória inicial</li>
+                    <li>Quando a amplitude dos dados varia significativamente</li>
+                    <li>Para visualizar a distribuição completa dos dados</li>
+                </ul>
+            </td>
+        </tr>
+    </table>
+
+    <h4>Como Configurar Escalas Fixas</h4>
+    <ol>
+        <li>Marque a opção "Fixed Scale" na seção de visualização</li>
+        <li>Selecione os parâmetros desejados na seção "Select Parameters"</li>
+        <li>Para cada parâmetro selecionado:
+            <ul>
+                <li>Digite o valor mínimo no campo correspondente na coluna "Min Value"</li>
+                <li>Digite o valor máximo no campo correspondente na coluna "Max Value"</li>
+            </ul>
+        </li>
+        <li>Salve as configurações com "Save View Settings"</li>
+    </ol>
+
+    <div class="note">
+        <p><strong>Dica:</strong> Os campos de escala só ficam habilitados quando:
+        <ol>
+            <li>A opção "Fixed Scale" está marcada</li>
+            <li>O parâmetro correspondente está selecionado</li>
+            <li>Pelo menos um painel de visualização está ativo</li>
+        </ol>
+        </p>
+    </div>
+
+    <h3>Filtros e Seleção de Dados</h3>
+    <p>O sistema oferece múltiplas opções para focar em subconjuntos específicos dos dados:</p>
+    
+    <h4>Filtro Temporal</h4>
+    <ul>
+        <li><strong>Por Ano:</strong> Digite um ano específico no campo "Filter by Year"</li>
+        <li><strong>Por Data/Hora:</strong> Utilize a ordenação cronológica ("Sort by Time" na janela de entrada)</li>
+    </ul>
+    
+    <h4>Filtro Espacial</h4>
+    <ul>
+        <li>Selecione locais específicos na lista "Filter by Site"</li>
+        <li>Para perfis, as coordenadas podem ser usadas no Diagrama T-S</li>
+    </ul>
+    
+    <h4>Seleção de Parâmetros</h4>
+    <ul>
+        <li>Ative/desative parâmetros individualmente conforme necessidade analítica</li>
+        <li>Combine parâmetros relevantes para análise multivariada</li>
+    </ul>
+
+    <h3>Opções de Visualização Avançada</h3>
+    <table>
+        <tr>
+            <th>Opção</th>
+            <th>Descrição</th>
+            <th>Aplicação</th>
+        </tr>
+        <tr>
+            <td>Trend Lines</td>
+            <td>Adiciona linhas de tendência polinomial</td>
+            <td>Identificar padrões temporais</td>
+        </tr>
+        <tr>
+            <td>Show Data Points</td>
+            <td>Exibe pontos individuais além da linha</td>
+            <td>Visualizar densidade de dados</td>
+        </tr>
+        <tr>
+            <td>Fixed Scale</td>
+            <td>Mantém escalas consistentes entre gráficos</td>
+            <td>Comparação quantitativa</td>
+        </tr>
+    </table>
+
+    <div class="warning">
+        <p><strong>Atenção:</strong> Escalas fixas mal configuradas podem:
+        <ul>
+            <li>Ocultar variações importantes se a faixa for muito ampla</li>
+            <li>Cortar dados válidos se a faixa for muito estreita</li>
+            <li>Distorcer a visualização se mínimos/máximos estiverem invertidos</li>
+        </ul>
+        Sempre verifique os dados brutos antes de definir escalas fixas.
+        </p>
+    </div>
+
+    <h3>Fluxo de Trabalho Recomendado</h3>
+    <ol>
+        <li>Comece com visualizações em escala automática para exploração inicial</li>
+        <li>Identifique faixas típicas para cada parâmetro</li>
+        <li>Aplique filtros para focar nos dados relevantes</li>
+        <li>Configure escalas fixas para comparações sistemáticas</li>
+        <li>Use linhas de tendência para identificar padrões</li>
+        <li>Salve configurações úteis para reutilização</li>
+    </ol>
+    
+    <h2 id="boas_praticas">11. Boas Práticas</h2>
+    <h3>Para Qualificação de Dados</h3>
+    <ul>
+        <li>Sempre verifique os logs no console após processamento</li>
+        <li>Comece com configurações padrão e ajuste conforme necessário</li>
+        <li>Para novos locais, revise as faixas ambientais</li>
+        <li>Exporte configurações bem-sucedidas para reuso</li>
+    </ul>
+
+    <h3>Para Visualização</h3>
+    <ul>
+        <li>Use escala fixa para comparar diferentes conjuntos</li>
+        <li>Filtre por ano/site para análise focada</li>
+        <li>Combine painéis 1 e 2 para análise multivariada</li>
+        <li>Salve configurações de visualização frequentes</li>
+    </ul>
+
+    <h2 id="compilacao_avancada">12. Compilação para Usuários Avançados</h2>
+
+    <h3>Instalação do PyInstaller</h3>
+    <p>Antes de compilar, instale o PyInstaller usando o pip:</p>
+    <pre>pip install pyinstaller</pre>
+    
+    <h3>Requisitos</h3>
+    <ul>
+        <li>Python 3.8+</li>
+        <li>PyInstaller instalado</li>
+        <li>Todas as dependências do projeto instaladas</li>
+    </ul>
+    
+    <h3>Preparação</h3>
+    <p>Certifique-se de:</p>
+    <ul>
+        <li>Estar na pasta <strong>sourceCode</strong> do projeto</li>
+        <li>Ter todos os arquivos de ícone no diretório</li>
+    </ul>
+    
+    <h3>Compilando QCS_Main</h3>
+    <p>Execute no prompt de comando:</p>
+    <div class="code-container">
+        <button class="copy-btn" onclick="copyToClipboard('qcs-main-code')">Copiar</button>
+        <div class="code-block" id="qcs-main-code">
+        <pre><code class="language-bash">pyinstaller --onefile --windowed \
+        --icon=qcsMainIcon.ico \
+        --name QCS_Qualification_Tool \
+        --hidden-import QCS_DataHandler \
+        --hidden-import QCS_DataView \
+        --hidden-import QCS_Tests \
+        --hidden-import openpyxl \
+        --hidden-import openpyxl.cell._writer \
+        --hidden-import openpyxl.styles.stylesheet \
+        --hidden-import openpyxl.worksheet._writer \
+        --hidden-import matplotlib.backends.backend_qt5agg \
+        --hidden-import matplotlib.backends.backend_tkagg \
+        --collect-all openpyxl \
+        --collect-all matplotlib.backends \
+        --add-data "qcsMainIcon.ico;." \
+        QCS_Main.py</code></pre>
+        </div>
+    </div>
+    
+    <h3>Compilando QCS_DatabaseView</h3>
+    <p>Execute no prompt de comando:</p>
+    <div class="code-container">
+        <button class="copy-btn" onclick="copyToClipboard('qcs-dbview-code')">Copiar</button>
+        <div class="code-block" id="qcs-dbview-code">
+        <pre><code class="language-bash">pyinstaller --onefile --windowed \
+        --icon=qcsDataViewIcon.ico \
+        --name QCS_Visualization_Tool \
+        --hidden-import QCS_DataHandler \
+        --hidden-import QCS_DataView \
+        --hidden-import openpyxl \
+        --hidden-import openpyxl.cell._writer \
+        --hidden-import openpyxl.styles.stylesheet \
+        --hidden-import openpyxl.worksheet._writer \
+        --hidden-import matplotlib.backends.backend_qt5agg \
+        --hidden-import matplotlib.backends.backend_tkagg \
+        --collect-all openpyxl \
+        --collect-all matplotlib.backends \
+        --add-data "qcsDataViewIcon.ico;." \
+        QCS_DatabaseView.py</code></pre>
+        </div>
+    </div>
+
+    <h3>Notas de Compilação</h3>
+    <ul>
+        <li>O processo pode demorar vários minutos</li>
+        <li>O executável final estará na pasta <strong>dist/</strong></li>
+        <li>Para distribuição, inclua todos os arquivos na pasta <strong>dist/</strong></li>
+        <li>Verifique se todos os caminhos para arquivos de ícone estão corretos</li>
+    </ul>
+    <h2 id="solucao_problemas">13. Solução de Problemas</h2>
+    <h3>Problemas Comuns e Soluções</h3>
+    <table>
+        <tr>
+            <th>Problema</th>
+            <th>Solução</th>
+        </tr>
+        <tr>
+            <td>Arquivo não carrega</td>
+            <td>Verifique formato e codificação (usar UTF-8)</td>
+        </tr>
+        <tr>
+            <td>Testes não aplicados</td>
+            <td>Confira se o nome do parâmetro bate com o esperado</td>
+        </tr>
+        <tr>
+            <td>Gráficos não gerados</td>
+            <td>Verifique se dados possuem valores válidos</td>
+        </tr>
+        <tr>
+            <td>Erro de memória</td>
+            <td>Reduza tamanho do dataset ou aumente memória</td>
+        </tr>
+        <tr>
+            <td>Ícones não aparecem</td>
+            <td>Certifique-se que os arquivos .ico estão no mesmo diretório</td>
+        </tr>
+    </table>
+
+    <h3>Contato para Suporte</h3>
+    <p>Para questões não resolvidas neste manual, entre em contato com:</p>
+    <p><em>JPedro.ocn@oceanica.ufrj.br</em></p>
+
+    <div class="note">
+        <p>Este manual cobre todas as funcionalidades do sistema QCS. Para atualizações e versões mais recentes, consulte o repositório oficial do projeto.</p>
+    </div>
+    <script>
+        function copyToClipboard(id) {
+            // Pega o elemento que contém o código
+            const codeElement = document.getElementById(id);
+            
+            // Obtém o texto e remove:
+            // - Barras invertidas no final da linha (\)
+            // - Quebras de linha (\n)
+            // - Espaços extras no início/fim de cada linha
+            const textToCopy = codeElement.textContent
+                .replace(/\\\n\s*/g, ' ')  // Remove \ e quebras, substituindo por espaço
+                .trim();                   // Remove espaços extras no início/fim
+            
+            // Copia para a área de transferência
+            navigator.clipboard.writeText(textToCopy)
+                .then(() => {
+                    alert("Comando copiado com sucesso!");
+                })
+                .catch(err => {
+                    console.error("Falha ao copiar: ", err);
+                    alert("Erro ao copiar. Tente manualmente.");
+                });
+        }
+        </script>
+</body>
+</html>
