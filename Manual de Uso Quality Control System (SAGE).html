@@ -152,6 +152,7 @@
 </head>
 <body>
     <h1>Manual Completo do Sistema QCS (Quality Control System)</h1>
+    <p style="text-align:center; opacity:0.7;"><em>Referente à versão v2.2.1</em></p>
 
     <div class="indice">
         <h2>Índice</h2>
@@ -167,7 +168,7 @@
             <li><a href="#produtos_gerados">9. Produtos Gerados</a></li>
             <li><a href="#visualizacao_dados">10. Visualização de dados</a></li>
             <li><a href="#boas_praticas">11. Boas Práticas</a></li>
-            <li><a href="#compilacao_avancada">12. Compilação para Usuários Avançados</a></li>
+            <li><a href="#compilacao_avancada">12. Execução a partir do Código-Fonte</a></li>
             <li><a href="#solucao_problemas">13. Solução de Problemas</a></li>
         </ul>
     </div>
@@ -179,15 +180,21 @@
     <h3>Requisitos Mínimos</h3>
     <ul>
         <li>Windows 10 ou superior (64-bit)</li>
+        <li>Python (recomenda-se o Anaconda) com os pacotes do arquivo <code>sourceCode/requirements.txt</code>:
+            <code>numpy</code>, <code>pandas</code>, <code>matplotlib</code>, <code>scipy</code>, <code>openpyxl</code> e <code>gsw</code></li>
     </ul>
 
     <h3>Instalação Básica</h3>
+    <p>O QCS roda diretamente a partir dos scripts Python (não há mais executáveis). Para preparar:</p>
     <ol>
-        <li>Baixe os executáveis (QCS_Qualification_Tool.exe e QCS_Visualization_Tool.exe)</li>
-        <li>Crie uma pasta dedicada para o QCS</li>
-        <li>Coloque ambos executáveis na pasta criada</li>
-        <li>(Opcional) Crie atalhos no desktop</li>
+        <li>Obtenha a pasta do projeto (contendo a subpasta <strong>sourceCode</strong> e os atalhos <code>.bat</code>)</li>
+        <li>Instale as dependências, executando no terminal:
+            <pre><code>python -m pip install -r sourceCode/requirements.txt</code></pre></li>
+        <li>Para qualificar dados, abra <strong>QCS - Qualificacao de Dados.bat</strong></li>
+        <li>Para visualizar dados, abra <strong>QCS - Visualizacao de Dados.bat</strong></li>
     </ol>
+    <p>Uma janela de terminal abre junto e mostra o progresso; ela fecha sozinha ao encerrar o programa
+    (permanece aberta apenas se ocorrer um erro, para que a mensagem possa ser lida).</p>
 
     <h2 id="interface_qcs_main">3. Interface do QCS_Main</h2>
     <h3>Seção INPUT SETTINGS</h3>
@@ -198,7 +205,7 @@
         </tr>
         <tr>
             <td>Data File</td>
-            <td>Seleciona o arquivo de dados brutos (CSV, XLSX, TXT). Tooltip explica formatos suportados.</td>
+            <td>Seleciona o arquivo de dados brutos (CSV ou XLSX). Tooltip explica formatos suportados.</td>
         </tr>
         <tr>
             <td>Browse...</td>
@@ -239,6 +246,11 @@
         <tr>
             <td>Check Variables</td>
             <td>Checkbox para ativar verificação manual dos limites das variáveis.</td>
+        </tr>
+        <tr>
+            <td>Latitude (deg)</td>
+            <td>Latitude do ponto de coleta, em graus. Usada para converter pressão em profundidade
+            quando o arquivo não traz a profundidade. Valor padrão: 17.5.</td>
         </tr>
     </table>
 
@@ -294,7 +306,9 @@
         </tr>
         <tr>
             <td>RUN QUALIFICATION</td>
-            <td>Inicia o processo de qualificação com os parâmetros configurados.</td>
+            <td>Inicia o processo de qualificação com os parâmetros configurados. A janela principal
+            permanece aberta ao final, permitindo selecionar outro arquivo e qualificar novamente sem
+            reabrir o programa. Uma mensagem confirma a conclusão (ou explica o erro, se houver).</td>
         </tr>
     </table>
 
@@ -363,7 +377,9 @@
         </tr>
         <tr>
             <td>Filter by Year</td>
-            <td>Campo para filtrar dados por ano específico.</td>
+            <td>Caixas de seleção com os anos efetivamente presentes na planilha carregada (detectados
+            automaticamente). É possível marcar mais de um ano — os painéis são gerados para cada ano
+            marcado. Se nenhum for marcado, um aviso lista os anos disponíveis.</td>
         </tr>
         <tr>
             <td>Panel 1</td>
@@ -402,6 +418,18 @@
             <td>Checkbox para mostrar pontos individuais nos gráficos.</td>
         </tr>
         <tr>
+            <td>Fixed Scale</td>
+            <td>Checkbox para usar escalas fixas (definidas em SCALE SETTINGS), permitindo comparação
+            direta entre gráficos.</td>
+        </tr>
+        <tr>
+            <td>X-Axis Start / X-Axis End (mooring)</td>
+            <td>(Opcional) Início e fim do eixo de tempo nos gráficos de fundeio, no formato
+            <code>DD/MM/AAAA HH:MM</code>. Padroniza a escala temporal entre gráficos, mesmo onde não há
+            dados (ex.: das 09:00 de um dia às 09:00 do dia seguinte). Esmaecidos quando o tipo é perfil.
+            Uma etiqueta abaixo informa o período de datas disponível na planilha carregada.</td>
+        </tr>
+        <tr>
             <td>Filter by Site</td>
             <td>Lista de checkboxes para selecionar locais a incluir.</td>
         </tr>
@@ -410,8 +438,13 @@
             <td>Lista de checkboxes para selecionar parâmetros a incluir.</td>
         </tr>
         <tr>
+            <td>&lt; Change Database</td>
+            <td>Volta à janela de seleção para carregar outro banco de dados sem fechar o programa.</td>
+        </tr>
+        <tr>
             <td>Save View Settings</td>
-            <td>Salva configurações de visualização.</td>
+            <td>Salva as configurações de visualização. As escolhas (painéis, sites, variáveis, escalas,
+            anos e janela de tempo) ficam guardadas entre execuções e sessões.</td>
         </tr>
         <tr>
             <td>Generate Panels</td>
@@ -464,7 +497,7 @@
     <ul>
         <li>Os testes são aplicados sequencialmente</li>
         <li>Cada teste adiciona seu código ao final da string de flags</li>
-        <li>A ordem dos testes é fixa (range tests → spike tests → rate tests → flat line tests)</li>
+        <li>A ordem dos testes é fixa (faixa do sensor → faixa ambiental → spikes → taxa de variação → linha plana → gradiente vertical, este último apenas para perfis)</li>
         <li>Flags são acumulativas - um dado pode ter múltiplos códigos</li>
     </ul>
 
@@ -1013,80 +1046,41 @@
         <li>Salve configurações de visualização frequentes</li>
     </ul>
 
-    <h2 id="compilacao_avancada">12. Compilação para Usuários Avançados</h2>
+    <h2 id="compilacao_avancada">12. Execução a partir do Código-Fonte</h2>
 
-    <h3>Instalação do PyInstaller</h3>
-    <p>Antes de compilar, instale o PyInstaller usando o pip:</p>
-    <pre>pip install pyinstaller</pre>
-    
+    <p>A partir da versão 2.2, o QCS é executado diretamente pelos scripts Python — não há mais
+    geração de executáveis (<code>.exe</code>). Isso significa que qualquer correção nos scripts vale
+    imediatamente, sem necessidade de recompilar.</p>
+
     <h3>Requisitos</h3>
     <ul>
-        <li>Python 3.8+</li>
-        <li>PyInstaller instalado</li>
-        <li>Todas as dependências do projeto instaladas</li>
+        <li>Python (recomenda-se o Anaconda)</li>
+        <li>Dependências do projeto instaladas (ver seção 2): <code>numpy</code>, <code>pandas</code>,
+            <code>matplotlib</code>, <code>scipy</code>, <code>openpyxl</code>, <code>gsw</code></li>
     </ul>
-    
-    <h3>Preparação</h3>
-    <p>Certifique-se de:</p>
-    <ul>
-        <li>Estar na pasta <strong>sourceCode</strong> do projeto</li>
-        <li>Ter todos os arquivos de ícone no diretório</li>
-    </ul>
-    
-    <h3>Compilando QCS_Main</h3>
-    <p>Execute no prompt de comando:</p>
+
+    <h3>Como executar</h3>
+    <p>O modo recomendado é pelos atalhos <code>.bat</code> na pasta principal, que já chamam o Python
+    correto. Alternativamente, na pasta <strong>sourceCode</strong>, é possível rodar os scripts
+    diretamente:</p>
     <div class="code-container">
-        <button class="copy-btn" onclick="copyToClipboard('qcs-main-code')">Copiar</button>
-        <div class="code-block" id="qcs-main-code">
-        <pre><code class="language-bash">pyinstaller --onefile --windowed \
-        --icon=qcsMainIcon.ico \
-        --name QCS_Qualification_Tool \
-        --hidden-import QCS_DataHandler \
-        --hidden-import QCS_DataView \
-        --hidden-import QCS_Tests \
-        --hidden-import openpyxl \
-        --hidden-import openpyxl.cell._writer \
-        --hidden-import openpyxl.styles.stylesheet \
-        --hidden-import openpyxl.worksheet._writer \
-        --hidden-import matplotlib.backends.backend_qt5agg \
-        --hidden-import matplotlib.backends.backend_tkagg \
-        --collect-all openpyxl \
-        --collect-all matplotlib.backends \
-        --add-data "qcsMainIcon.ico;." \
-        QCS_Main.py</code></pre>
-        </div>
-    </div>
-    
-    <h3>Compilando QCS_DatabaseView</h3>
-    <p>Execute no prompt de comando:</p>
-    <div class="code-container">
-        <button class="copy-btn" onclick="copyToClipboard('qcs-dbview-code')">Copiar</button>
-        <div class="code-block" id="qcs-dbview-code">
-        <pre><code class="language-bash">pyinstaller --onefile --windowed \
-        --icon=qcsDataViewIcon.ico \
-        --name QCS_Visualization_Tool \
-        --hidden-import QCS_DataHandler \
-        --hidden-import QCS_DataView \
-        --hidden-import openpyxl \
-        --hidden-import openpyxl.cell._writer \
-        --hidden-import openpyxl.styles.stylesheet \
-        --hidden-import openpyxl.worksheet._writer \
-        --hidden-import matplotlib.backends.backend_qt5agg \
-        --hidden-import matplotlib.backends.backend_tkagg \
-        --collect-all openpyxl \
-        --collect-all matplotlib.backends \
-        --add-data "qcsDataViewIcon.ico;." \
-        QCS_DatabaseView.py</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard('qcs-run-code')">Copiar</button>
+        <div class="code-block" id="qcs-run-code">
+        <pre><code class="language-bash">python QCS_Main.py          # ferramenta de qualificacao
+python QCS_DatabaseView.py  # ferramenta de visualizacao</code></pre>
         </div>
     </div>
 
-    <h3>Notas de Compilação</h3>
-    <ul>
-        <li>O processo pode demorar vários minutos</li>
-        <li>O executável final estará na pasta <strong>dist/</strong></li>
-        <li>Para distribuição, inclua todos os arquivos na pasta <strong>dist/</strong></li>
-        <li>Verifique se todos os caminhos para arquivos de ícone estão corretos</li>
-    </ul>
+    <h3>Verificação rápida (autotestes)</h3>
+    <p>Para conferir que as funções de qualificação estão íntegras após alguma alteração, execute na
+    pasta <strong>sourceCode</strong>:</p>
+    <div class="code-container">
+        <button class="copy-btn" onclick="copyToClipboard('qcs-test-code')">Copiar</button>
+        <div class="code-block" id="qcs-test-code">
+        <pre><code class="language-bash">python QCS_SelfTest.py</code></pre>
+        </div>
+    </div>
+
     <h2 id="solucao_problemas">13. Solução de Problemas</h2>
     <h3>Problemas Comuns e Soluções</h3>
     <table>
@@ -1111,8 +1105,12 @@
             <td>Reduza tamanho do dataset ou aumente memória</td>
         </tr>
         <tr>
-            <td>Ícones não aparecem</td>
-            <td>Certifique-se que os arquivos .ico estão no mesmo diretório</td>
+            <td>A janela de terminal fica aberta após o uso</td>
+            <td>Indica que o programa terminou com erro; leia a mensagem exibida no terminal</td>
+        </tr>
+        <tr>
+            <td>"No year selected" ao gerar painéis</td>
+            <td>Marque pelo menos um ano em "Filter by Year" e clique em "Save View Settings" novamente</td>
         </tr>
     </table>
 
