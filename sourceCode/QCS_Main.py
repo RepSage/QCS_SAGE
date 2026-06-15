@@ -219,15 +219,6 @@ class ToolTip:
             self.tooltip.destroy()
             self.tooltip = None
 
-def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-
-    return os.path.join(base_path, relative_path)
 
 # ----- user preferences: last folders and last choices, kept between sessions -----
 def settings_store_path():
@@ -254,7 +245,7 @@ def save_user_prefs():
         with open(settings_store_path(), 'w', encoding='utf-8') as f:
             json.dump(USER_PREFS, f, indent=4)
     except Exception as e:
-        print('Aviso: nao foi possivel salvar as preferencias do usuario: %s' % e)
+        print('Warning: could not save user preferences: %s' % e)
 
 load_user_prefs()
 
@@ -344,32 +335,32 @@ def collect_input_settings():
     """Valida e coleta as configuracoes da interface. Retorna True se tudo ok."""
     data_path = fileNames_entry.get().strip()
     if not data_path:
-        messagebox.showwarning("Atenção", "Selecione o arquivo de dados a ser qualificado\n(campo 'Data File').")
+        messagebox.showwarning("Warning", "Select the data file to be qualified\n('Data File' field).")
         return False
     if not os.path.isfile(data_path):
-        messagebox.showerror("Erro", "Arquivo de dados não encontrado:\n%s" % data_path)
+        messagebox.showerror("Error", "Data file not found:\n%s" % data_path)
         return False
     if not re.search(r'\.(csv|xlsx)$', data_path, re.IGNORECASE):
-        messagebox.showwarning("Atenção", "Formato de arquivo não suportado.\nUse arquivos .csv ou .xlsx.")
+        messagebox.showwarning("Warning", "Unsupported file format.\nUse .csv or .xlsx files.")
         return False
     if inputType_combobox.get() not in ('Seaguard', 'HOBO'):
-        messagebox.showwarning("Atenção", "Selecione o tipo de equipamento\n(campo 'Input Type').")
+        messagebox.showwarning("Warning", "Select the instrument type\n('Input Type' field).")
         return False
     if dType_combobox.get() not in ('TSCP Profile', 'TSCP Mooring'):
-        messagebox.showwarning("Atenção", "Selecione o tipo de coleta\n(campo 'Data Type').")
+        messagebox.showwarning("Warning", "Select the data collection type\n('Data Type' field).")
         return False
     out_dir = outputPath_entry.get().strip()
     if not out_dir:
-        messagebox.showwarning("Atenção", "Selecione a pasta onde os resultados serão salvos\n(campo 'Output Folder').")
+        messagebox.showwarning("Warning", "Select the folder where results will be saved\n('Output Folder' field).")
         return False
     if not os.path.isdir(out_dir):
-        messagebox.showerror("Erro", "A pasta de saída não existe:\n%s" % out_dir)
+        messagebox.showerror("Error", "The output folder does not exist:\n%s" % out_dir)
         return False
     if not outputName_entry.get().strip():
-        messagebox.showwarning("Atenção", "Defina um nome para os arquivos de saída\n(campo 'Output File Name').")
+        messagebox.showwarning("Warning", "Define a name for the output files\n('Output File Name' field).")
         return False
     if outputFilesFormat_combobox.get() not in ('.csv', '.xlsx'):
-        messagebox.showwarning("Atenção", "Selecione o formato de saída\n(.csv ou .xlsx).")
+        messagebox.showwarning("Warning", "Select the output format\n(.csv or .xlsx).")
         return False
 
     file_name_match = re.search(r'[^\\/]+$', data_path, re.IGNORECASE)
@@ -399,7 +390,7 @@ def collect_input_settings():
                 CONFIG['tsSettings'].update(config_data['tsSettings'])
 
         except Exception as e:
-            messagebox.showerror("Erro", f"Não foi possível carregar o arquivo de configuração:\n{str(e)}")
+            messagebox.showerror("Error", f"Could not load the configuration file:\n{str(e)}")
             return False
 
     OUTPUT['output_file_path'] = out_dir
@@ -453,18 +444,18 @@ def start_qualification():
     window.update_idletasks()
     try:
         run_full_qualification()
-        messagebox.showinfo("Concluído",
-                            "Qualificação concluída com sucesso!\n\n"
-                            "Resultados salvos em:\n%s\n\n"
-                            "Você pode selecionar outro arquivo e qualificar novamente "
-                            "sem fechar o programa." % OUTPUT.get('last_output_root', ''))
+        messagebox.showinfo("Done",
+                            "Qualification completed successfully!\n\n"
+                            "Results saved to:\n%s\n\n"
+                            "You can select another file and run a new qualification "
+                            "without closing the program." % OUTPUT.get('last_output_root', ''))
     except Exception as e:
         traceback.print_exc()
-        messagebox.showerror("Erro na qualificação",
-                             "A qualificação foi interrompida por um erro:\n\n%s\n\n"
-                             "Alguns arquivos podem ter sido gerados parcialmente na pasta "
-                             "de saída antes do erro. Verifique o arquivo de entrada e as "
-                             "configurações e tente novamente." % e)
+        messagebox.showerror("Qualification error",
+                             "The qualification was interrupted by an error:\n\n%s\n\n"
+                             "Some files may have been partially generated in the output "
+                             "folder before the error. Check the input file and the "
+                             "settings and try again." % e)
     finally:
         plt.close('all')
         os.chdir(rootPath)
@@ -532,12 +523,6 @@ def open_settings_window():
     settings_win = Toplevel()
     settings_win.title(" Quality Control Settings")
     settings_win.geometry("900x700")
-
-    try:
-        # Try to load icon
-        settings_win.iconbitmap(resource_path("qcsMainIcon.ico"))
-    except Exception as e:
-        print(f"Não foi possível carregar o ícone: {e}")
 
     notebook = ttk.Notebook(settings_win)
     notebook.pack(fill='both', expand=True)
@@ -713,12 +698,6 @@ rootPath = os.getcwd()
 window = Tk()
 window.title("QCS - Data Qualification Tool %s" % data.QCS_VERSION)
 
-try:
-    # Try to load icon
-    window.iconbitmap(resource_path("qcsMainIcon.ico"))
-except Exception as e:
-    print(f"Não foi possível carregar o ícone: {e}")
-
 window.geometry("750x650")
 window.resizable(True, True)
 
@@ -750,7 +729,7 @@ style.map('Help.TButton',
 menubar = Menu(window)
 helpmenu = Menu(menubar, tearoff=0)
 helpmenu.add_command(label="Help", command=show_help)
-helpmenu.add_command(label="About QCS", command=lambda: messagebox.showinfo("Sobre",
+helpmenu.add_command(label="About QCS", command=lambda: messagebox.showinfo("About",
                        "QCS - Quality Control System\nVersion %s\nDeveloped for automatic data qualification\n" % data.QCS_VERSION))
 menubar.add_cascade(label="Menu", menu=helpmenu)
 window.config(menu=menubar)
@@ -1058,12 +1037,6 @@ def run_full_qualification():
                         print('MESSAGE: Ignoring data peak, data qualification will continue with the whole dataset')
                         plt.close(fig1)
                         peak_window.destroy()
-
-                    try:
-                        # Try to load icon
-                        peak_window.iconbitmap(resource_path("qcsMainIcon.ico"))
-                    except Exception as e:
-                        print(f"Não foi possível carregar o ícone: {e}")   
 
                     peak_window.title("Peak Validation")
                     peak_window.geometry("225x80")

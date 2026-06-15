@@ -22,10 +22,16 @@ def renameParameters (parameter_names):
             rParam.append('Density (kg/m³)')
 
         elif param == 'CO2 level (ppm)':
-            rParam.append('CO2 (ppm)')
+            rParam.append('CO₂ (ppm)')
+
+        elif param == 'CO2 Level (ppm)':
+            rParam.append('CO₂ (ppm)')
 
         elif param == 'O2 level (uM)':
-            rParam.append('O2 (µM)')
+            rParam.append('O₂ (µM)')
+
+        elif param == 'O2 content (mg/L)':
+            rParam.append('O₂ content (mg/L)')
 
         elif param == 'PAR (umol/m2/s)':
             rParam.append('PAR (µmol/m²/s)')
@@ -152,11 +158,12 @@ def setParam (dataViewSettings, db, semester, site):
 def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, fixed_scale):
     cParam, bcParam = getParamColors()
     plot_color = bcParam.get(variable, '#1f77b4')
+    display_name = renameParameters([variable])[0]
     fig = plt.figure()
     fig.set_size_inches(10,6)
     ax1 = fig.gca()
     plt.grid(axis='both', color='k', linestyle='--', linewidth=0.2)
-    ax1.set_ylabel(variable)
+    ax1.set_ylabel(display_name)
     ax1.plot(qualified_data['Datetime'], qualified_data[variable], marker='o', linestyle='none', markersize=2, color=plot_color, label='Approved data')
 
     #not_nan = np.asarray(qualified_data.index[~np.isnan(qualified_data[variable])])
@@ -205,11 +212,12 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
 def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SETTINGS, fixed_scale):
     cParam, bcParam = getParamColors()
     plot_color = bcParam.get(variable, '#1f77b4')
+    display_name = renameParameters([variable])[0]
     fig = plt.figure()
     fig.set_size_inches(10,6)
     ax1 = fig.gca()
     plt.grid(axis='both', color='k', linestyle='--', linewidth=0.2)
-    ax1.set_xlabel(variable)
+    ax1.set_xlabel(display_name)
     ax1.plot(qualified_data[variable], qualified_data['Depth (m)'], marker='o', linestyle='none', markersize=2, color=plot_color, label='Approved data')
     ax1.set_ylabel('Depth (m)')
 
@@ -427,6 +435,10 @@ def plot_database_panel1 (database, dataViewSettings):
             #if slice.empty:
             #    pass
             #else:
+                # optional fixed time window standardizes the X axis across plots
+                if dataViewSettings.get('xAxisStart') is not None and dataViewSettings.get('xAxisEnd') is not None:
+                    ax1.set_xlim(pd.Timestamp(dataViewSettings['xAxisStart']),
+                                 pd.Timestamp(dataViewSettings['xAxisEnd']))
                 #defining data format
                 plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m %H:%M'))
                 plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year), bbox_inches='tight')
@@ -570,10 +582,11 @@ def plot_database_panel2(database, dataViewSettings):
     # Loop principal de plotagem
     for semester in db.keys():
         for parameter in parameter_names:
+            display_param = rParam[parameter_names.index(parameter)]
             fig, ax1 = plt.subplots(figsize=(980/100, 500/100))
-            plt.title(f'{parameter} on {semester} for each site - {year}')
+            plt.title(f'{display_param} on {semester} for each site - {year}')
             plt.grid(True, linestyle='dotted', linewidth=0.5)
-            ax1.set_ylabel(rParam[parameter_names.index(parameter)])
+            ax1.set_ylabel(display_param)
             control = 0
             
             for site in site_names:
@@ -588,9 +601,11 @@ def plot_database_panel2(database, dataViewSettings):
                 
                 control += 1
                 y, gap_ids = fill_NaT_gap(y)  # Preenche gaps
-                
-                # Calcula horas decorridas desde o início da coleta
-                time_origin = y.index.min()
+
+                # Calcula horas decorridas desde o início da coleta (ou desde o
+                # início da janela de tempo fixa, quando definida pelo usuário)
+                x_start = dataViewSettings.get('xAxisStart')
+                time_origin = pd.Timestamp(x_start) if x_start is not None else y.index.min()
                 x_hours = (y.index - time_origin).total_seconds() / 3600  # Converte para horas
                 
                 # Plotagem dos dados
@@ -615,9 +630,20 @@ def plot_database_panel2(database, dataViewSettings):
                 plt.close(fig)
                 continue
                 
-            ax1.set_xlabel('Elapsed Time (hours)')
-            ax1.set_xlim(0, 48)  # Fixa em 48 horas
-            ax1.set_xticks(np.arange(0, 49, 6))  # Ticks a cada 6 horas
+            x_start = dataViewSettings.get('xAxisStart')
+            x_end = dataViewSettings.get('xAxisEnd')
+            if x_start is not None and x_end is not None:
+                # user-defined window: same X axis in every plot, even where
+                # there is no data, so different sites/files can be compared
+                total_hours = (pd.Timestamp(x_end) - pd.Timestamp(x_start)).total_seconds() / 3600
+                tick_step = max(1, int(round(total_hours / 8)))
+                ax1.set_xlabel('Elapsed Time (hours) since %s' % pd.Timestamp(x_start).strftime('%d/%m/%Y %H:%M'))
+                ax1.set_xlim(0, total_hours)
+                ax1.set_xticks(np.arange(0, total_hours + tick_step * 0.5, tick_step))
+            else:
+                ax1.set_xlabel('Elapsed Time (hours)')
+                ax1.set_xlim(0, 48)  # padrao: 48 horas
+                ax1.set_xticks(np.arange(0, 49, 6))  # Ticks a cada 6 horas
             
             # Legenda e layout
             ax1.legend(loc='upper left', bbox_to_anchor=(1, 1.01), fontsize=7)

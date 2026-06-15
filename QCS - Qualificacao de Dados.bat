@@ -1,7 +1,9 @@
 @echo off
-title QCS - Qualificacao de Dados
+title QCS - Data Qualification Tool
 cd /d "%~dp0sourceCode"
 "%USERPROFILE%\anaconda3\python.exe" QCS_Main.py
-echo.
-echo Programa encerrado. Pressione qualquer tecla para fechar esta janela.
-pause >nul
+if errorlevel 1 (
+    echo.
+    echo The program ended with an error. Press any key to close this window.
+    pause >nul
+)
