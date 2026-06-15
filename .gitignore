@@ -2,12 +2,11 @@
 __pycache__/
 *.pyc
 
-# arquivos gerados pelo PyInstaller (executaveis)
-sourceCode/build/
-sourceCode/dist/
-
 # preferencias pessoais do usuario (geradas pelo programa)
 qcs_user_settings.json
 
 # atalhos do Windows (contem caminhos especificos desta maquina)
 *.lnk
+
+# configuracao local do Claude Code
+.claude/
