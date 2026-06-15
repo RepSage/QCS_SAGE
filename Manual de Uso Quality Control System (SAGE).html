@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Manual Completo do Sistema QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>Referente à versão v2.2.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>Referente à versão v3.0</em></p>
 
     <div class="indice">
         <h2>Índice</h2>
@@ -593,6 +593,7 @@
         <li>Testes de Taxa de Variação</li>
         <li>Testes de Linha Plana</li>
         <li>(Para perfis) Testes de Gradiente Vertical</li>
+        <li>(Para perfis) Teste de Inversão de Densidade</li>
         <li>Geração de saídas</li>
     </ol>
 
@@ -655,7 +656,21 @@
                 <li>Condutividade</li>
             </ul>
         </li>
+        <li><strong>Teste de Inversão de Densidade (Apenas para dados de perfil)</strong>
+            <ul>
+                <li>Verifica a estabilidade da coluna d'água: a densidade potencial
+                (calculada de T, S e pressão) não pode diminuir com a profundidade além de
+                uma tolerância (0,03 kg/m³). Uma inversão indica dado fisicamente
+                implausível e implica temperatura e salinidade.</li>
+            </ul>
+        </li>
     </ol>
+
+    <p><strong>Nota (v3.0):</strong> os critérios de qualificação foram revisados nesta versão
+    para serem amplos e gerais (válidos de toda a costa brasileira, do Sul aos recifes
+    amazônicos). O teste de spike passou a usar o método de 3 pontos (|V₂ − (V₁+V₃)/2|),
+    e foi adicionado o teste de inversão de densidade para perfis. Por alterar os resultados
+    da qualificação em relação às versões 2.x, é uma versão maior (v3.0).</p>
 
     <h3>Detalhes dos Testes</h3>
     <p>Cada teste gera logs detalhados no console, incluindo:</p>

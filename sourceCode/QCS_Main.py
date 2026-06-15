@@ -70,7 +70,7 @@ CONFIG = {
         'sensor_max_cond': 75,
         'sensor_min_pres': 0,
         'sensor_max_pres': 6000,
-        # Faixas ambientais (envelope climatologico amplo - toda a costa brasileira, v2.3)
+        # Faixas ambientais (envelope climatologico amplo - toda a costa brasileira, v3.0)
         'env_min_temp': 8,
         'env_max_temp': 32,
         'env_min_sal': 20,
