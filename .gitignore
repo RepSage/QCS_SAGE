@@ -10,3 +10,9 @@ qcs_user_settings.json
 
 # configuracao local do Claude Code
 .claude/
+
+# arquivos temporarios de trabalho (mensagens de commit/PR, diagnosticos)
+_commitmsg.txt
+_prbody.md
+_diag_*.py
+_smoke_test.py
