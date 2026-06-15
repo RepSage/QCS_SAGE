@@ -13,35 +13,6 @@ class QC_flags:
     MISSING = 9
 #############################
 
-#def range_test (dataframe, parameter, range_min, range_max):
-#    """All sensors have a limited output range, and this can form the most rudimentary gross range check. 
-#        No values less than a minimum value or greater than the maximum value the sensor can output
-#        are acceptable. Additionally, the operator can select a smaller span based upon local knowledge 
-#        or a desire to draw attention to extreme values
-#
-#    Args:
-#        dataframe (pandas.core.frame.DataFrame): dataframe containing raw data
-#        parameter (str): name of the parameter to be tested
-#        range_min (float): minimum value of the range
-#        range_max (float): maximum value of the range
-#
-#    Returns:
-#        df (pandas.core.frame.DataFrame): qualified parameter with nan placed in bad data points
-#        flags (pandas.core.frame.DataFrame): output flags for each data point
-#    """    
-#    df = dataframe[parameter].copy()
-#    flags = pd.DataFrame({'flag':['' for n in range(len(dataframe))]})
-#
-#    missing = np.where(df.isna())[0]
-#    bad = np.concatenate((np.where(range_max < df)[0], np.where((df < range_min))[0]))
-#
-#    flags.iloc[missing] += "%d" % QC_flags.MISSING
-#    flags.iloc[bad] += "%d" % QC_flags.BAD_DATA
-#    flags.iloc[~flags.index.isin(np.concatenate((bad, missing)))] += ("%d" % QC_flags.GOOD_DATA)
-#
-#    delete =  np.concatenate((missing, bad))
-#    df.iloc[delete] = np.nan
-#    return df, flags
 
 def get_eps(series):
     clean_series = series.dropna().astype(str)
@@ -114,96 +85,6 @@ def range_test(parameter, flags, range_min, range_max):
     flag.iloc[
         ~flag.index.isin(list(dict.fromkeys(np.concatenate((bad, missing)))))
     ] += ("%d" % QC_flags.GOOD_DATA)
-    flags = list(flag[0])
-    return flags
-
-def depth_range_test(data, depth_range):
-    mean_depth = np.nanmean(data["Depth (m)"])
-    missing = np.where(data["Depth (m)"].isna())[0]
-    bad = np.concatenate(
-        (
-            np.where(data["Depth (m)"] < mean_depth - depth_range)[0],
-            np.where((data["Depth (m)"] > mean_depth + depth_range))[0],
-        )
-    )
-    bad = [i for i in bad if i not in missing]
-    exceptions = ["Datetime", "Sample Number", "Pitch[Deg]", "Roll[Deg]", "Timer[s]"]
-    for name in data.columns:
-        if name not in exceptions:
-            data.loc[bad, name] = np.nan
-    return data
-
-
-def z_score_method(df, var, time_window, sample_interval, fail, susp):
-    series = df[["Datetime", var]].copy()
-    threshold = fail
-    susp_threshold = susp
-    z = []
-    index = []
-    outlier = []
-    suspect = []
-    if time_window == "WHOLE":
-        sample = series[var]
-        z = np.abs(
-            (sample - sample.mean(skipna=True)) / sample.std(skipna=True, ddof=0)
-        )
-    else:
-        measurement_interval = sample_interval / np.timedelta64(1, 's')
-        if re.search("\\d+d", time_window, re.IGNORECASE):
-            time_period = 24 * 3600 * (int(re.search("\\d+", time_window).group()))
-        elif re.search("\\d+h", time_window, re.IGNORECASE):
-            time_period = 3600 * (int(re.search("\\d+", time_window).group()))
-        elif re.search("\\d+m", time_window, re.IGNORECASE):
-            time_period = 60 * (int(re.search("\\d+", time_window).group()))
-        elif re.search("\\d+s", time_window, re.IGNORECASE):
-            time_period = int(re.search("\\d+", time_window).group())
-        sample_length = int(time_period / measurement_interval)
-        for i in range(len(series[var])):
-            if i < sample_length - 1:
-                sample = series[var].iloc[i : i + sample_length]
-                zi = (
-                    np.abs(
-                        (sample.iloc[0] - sample.mean(skipna=True))
-                        / sample.std(skipna=True, ddof=0)
-                    )
-                    if sample.std(skipna=True, ddof=0) > 0
-                    else float(0)
-                )
-            elif i >= sample_length - 1:
-                sample = series[var].iloc[i - sample_length : i + 1]
-                zi = (
-                    np.abs(
-                        (sample.iloc[-1] - sample.mean(skipna=True))
-                        / sample.std(skipna=True, ddof=0)
-                    )
-                    if sample.std(skipna=True, ddof=0) > 0
-                    else float(0)
-                )
-            z.append(zi)
-    series["z_score"] = z
-    outlier = np.where(series["z_score"] >= threshold)[0]
-    suspect = np.where(
-        (susp_threshold <= series["z_score"]) & (series["z_score"] < threshold)
-    )[0]
-    return outlier, suspect
-
-
-def z_score_spike_test(df, var, n_cel, flags, time_window, sample_interval, fail, susp):
-    outlier, suspect = ([], [])
-    for b in range(n_cel):
-        outlier_b, suspect_b = z_score_method(
-            df[b::n_cel], var, time_window, sample_interval, fail, susp
-        )
-        for item in outlier_b:
-            outlier.append(b + (item * n_cel))
-        for item in suspect_b:
-            suspect.append(b + (item * n_cel))
-    flag = pd.DataFrame(flags)
-    flag.iloc[outlier] += "%d" % QC_flags.BAD_DATA
-    flag.iloc[suspect] += "%d" % QC_flags.SUSPECT
-    flag.iloc[~flag.index.isin(list(dict.fromkeys(outlier + suspect)))] += (
-        "%d" % QC_flags.GOOD_DATA
-    )
     flags = list(flag[0])
     return flags
 

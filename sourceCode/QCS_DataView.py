@@ -349,7 +349,6 @@ def plot_database_panel1 (database, dataViewSettings):
             #verify which semesters are empty
             emptySemester = [key for key, value in db.items() if value.empty]
             if len(emptySemester) == len(db):
-                emptySemester_str = ", ".join(emptySemester)
                 raise ValueError('Empty sequence for both semesters in current combination of selected sites and year. Double check inputs or select different sites/year.')
         except ValueError as e:
             print('SelectionError:', e)
@@ -444,96 +443,6 @@ def plot_database_panel1 (database, dataViewSettings):
                 plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year), bbox_inches='tight')
                 plt.show()
 
-def plot_database_panel2_DEPRECATED (database, dataViewSettings):
-    site_names = dataViewSettings['siteList']
-    parameter_names = dataViewSettings['parameterList']
-    year = dataViewSettings['filterByYear']
-    fit_lin_regression = dataViewSettings['tendencyLines']
-    deg = dataViewSettings['linearRegressionDegree']
-    points = dataViewSettings['viewDataPoints']  
-    
-    n_axis = len(parameter_names)
-    db_raw = database.copy()
-    # limit data to year
-    db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
-    db_raw.index = db_raw['Datetime']
-    db_raw = db_raw.rename_axis('dt_index')
-    db_raw = db_raw.sort_values(by='dt_index')
-
-    colors = getSiteColors (site_names)
-    #colors = ['blue', 'red', 'chocolate', 'blueviolet', 'darkolivegreen', 'deepskyblue']
-    #colors = ['royalblue', 'tomato', 'sandybrown', 'violet', 'lime', 'cyan']
-    rParam = renameParameters (parameter_names)
-    # spliting data by semester and site
-    db = {'1stSemester': db_raw[(db_raw.loc[:,'Datetime'].dt.month >= 1) & (db_raw.loc[:,'Datetime'].dt.month <= 6)],
-          '2ndSemester': db_raw[(db_raw.loc[:,'Datetime'].dt.month >= 7) & (db_raw.loc[:,'Datetime'].dt.month <= 12)]}
-    for semester in db.keys():
-        for parameter in parameter_names:
-            i = 0
-            fig, ax1 = plt.subplots(figsize=(980 / 100, 500 / 100))
-            plt.title('%s on %s for each site for %s'%(parameter, semester, str(year)))
-            plt.grid(True, linestyle='dotted', linewidth=0.5)
-            ax1.set_ylabel(rParam[i])
-            control = 0
-            for site in site_names:
-                #define x and y
-                y = db[semester].copy()
-                y = y[parameter][(y.loc[:,'Site'] == site)]
-                # defining y while removing datetime duplicates
-                y = y.loc[~(y.index.duplicated(keep=False) & y.isna())]
-                if y.isna().all():
-                    print('\nNo %s data for %s during %d %s.'%(parameter_names[i], site, year, semester))
-                    pass
-                else:
-                    control += 1
-                    # filling gaps greater than 1 hour
-                    y, gap_ids = fill_NaT_gap(y)
-                    #defining x
-                    new_date = pd.to_datetime('%s-01-01'%str(year))
-                    first_time = y.index[0].replace(hour=0, minute=0, second=0, microsecond=0)
-                    timedelta = (y.index - first_time)
-                    x = new_date + pd.Series(timedelta)
-                    ax1.set_xlabel('Daytime')
-                    if fit_lin_regression == True:
-                        xp, yp = linear_regression (y, degree=deg)
-                        if points == True:
-                            ax1.plot(x, y, linestyle='none', marker='.', color= colors[site], markersize=3, label=site + ' data')
-                            ax1.plot(x, yp, linestyle='-', color= colors[site], label=site + ' tendency')
-
-                            new_date = pd.to_datetime('%s-01-01'%str(year))
-                            first_time = xp[0].replace(hour=0, minute=0, second=0, microsecond=0)
-                            timedelta = (xp - first_time)
-                            x = new_date + pd.Series(timedelta)
-                            numerical_ticks = plt.gca().get_xticks()
-                            datetime_ticks = pd.to_datetime(numerical_ticks, unit='D', origin='unix')
-                            new_labels = [pd.to_datetime(tick).strftime('%H:%M') for tick in datetime_ticks]
-                            plt.gca().set_xticks(numerical_ticks)
-                            plt.gca().set_xticklabels(new_labels)
-                        else:
-                            ax1.plot(xp, yp, linestyle='-', color= colors[site], label=site + ' tendency')
-                    else:
-                        ax1.plot(x, y, linestyle='-', color = colors[site], label=site)
-                    i += 1
-            if control == 0:
-                plt.close(fig)
-            else:
-                datelist = pd.date_range(new_date, periods=9,freq='6H')
-                start = int(numerical_ticks[0])
-                end = int(numerical_ticks[0]) + 2
-                xticks = np.arange(start, end + 0.25, 0.25)
-                new_labels = [pd.to_datetime(tick).strftime('%H:%M') for tick in datelist]
-                plt.gca().set_xticks(xticks)
-                plt.gca().set_xticklabels(new_labels)
-                ax1.legend(loc='upper left', bbox_to_anchor=(1, 1.01), fontsize=7)
-                plt.subplots_adjust(left=0.06, right=0.80, top=0.88, bottom=0.11)
-                if re.search(r'\([^()]*\)', parameter, re.IGNORECASE):
-                    nDigits = len(re.search(r'\([^()]*\)', parameter, re.IGNORECASE).group())
-                    parameter_r = parameter[:len(parameter)-nDigits]
-                if dataViewSettings['fixedScale'] == True:
-                    ax1.set_ylim(dataViewSettings['scaleSettings'][parameter]['min'], dataViewSettings['scaleSettings'][parameter]['max'])
-                plt.savefig('panel2_%s_%s_%d.svg'%(parameter_r, semester, year))
-                plt.show()
-
 def plot_database_panel2(database, dataViewSettings):
     """
     Gera gráficos de séries temporais para múltiplos parâmetros e sites, adaptado para coletas de até 48 horas.
@@ -562,7 +471,6 @@ def plot_database_panel2(database, dataViewSettings):
     points = dataViewSettings['viewDataPoints']  
     
     # Pré-processamento dos dados
-    n_axis = len(parameter_names)
     db_raw = database.copy()
     db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
     db_raw.index = db_raw['Datetime']
@@ -681,7 +589,6 @@ def plot_database_panel3(database, dataViewSettings):
             #verify which semesters are empty
             emptySemester = [key for key, value in db.items() if value.empty]
             if len(emptySemester) == len(db):
-                emptySemester_str = ", ".join(emptySemester)
                 raise ValueError('Empty sequence for both semesters in current combination of selected sites and year. Double check inputs or select different sites/year.')
         except ValueError as e:
             print('SelectionError:', e)
@@ -691,8 +598,6 @@ def plot_database_panel3(database, dataViewSettings):
             if len(x_list) > 0:
                 figHeight = 500
                 fig, ax1 = plt.subplots(figsize=(980 / 100, figHeight / 100))
-                bottomAxis = - (0.325 * figHeight)
-                offset = bottomAxis - 50
                 plt.subplots_adjust(left=0.050, right=0.840, top=0.950, bottom=0.500)
                 ax1.invert_yaxis()
                 plt.grid(True, axis='y', linestyle='dotted', linewidth=0.5)
@@ -736,7 +641,6 @@ def plot_database_panel3(database, dataViewSettings):
                 
                 # Process additional parameters
                 axes = {'y1': ax1}
-                n = len(x_list)
                 spineOffset = 25
                 if dataViewSettings['fixedScale'] == True and parameter_names[0] in dataViewSettings['scaleSettings']:
                     ax1.set_xlim(dataViewSettings['scaleSettings'][parameter_names[0]]['min'], dataViewSettings['scaleSettings'][parameter_names[0]]['max'])
@@ -853,7 +757,6 @@ def plot_TS_diagram (database, dataViewSettings):
         #verify which semesters are empty
         emptySemester = [key for key, value in db.items() if value.empty]
         if len(emptySemester) == len(db):
-            emptySemester_str = ", ".join(emptySemester)
             raise ValueError('Empty sequence for both semesters in current combination of selected sites and year. Double check inputs or select different sites/year.')
     except ValueError as e:
         print('SelectionError:', e)
@@ -933,11 +836,11 @@ def plot_TS_diagram (database, dataViewSettings):
                 else:
                     # plot x and y depending on selected parameters
                     if re.search('conservative', tsParam, re.IGNORECASE):
-                        TS = ax.scatter(tspData['Absolute Salinity (PSU)'], tspData['Conservative Temperature (degC)'], marker=markerList[a], c=tspData['Depth (m)'], lw=0, cmap=cm.plasma.reversed(), norm=norm, label=site)
+                        ax.scatter(tspData['Absolute Salinity (PSU)'], tspData['Conservative Temperature (degC)'], marker=markerList[a], c=tspData['Depth (m)'], lw=0, cmap=cm.plasma.reversed(), norm=norm, label=site)
                         ax.set_xlabel('Absolute Salinity (kg/m³)')  # Label x-axis
                         ax.set_ylabel('Conservative Temperature (C°)')  # Label y-axis
                     elif re.search('potential', tsParam, re.IGNORECASE):
-                        TS = ax.scatter(tspData['Salinity (PSU)'], tspData['Potential Temperature (degC)'], marker=markerList[a], c=tspData['Depth (m)'], lw=0, cmap=cm.plasma.reversed(), norm=norm, label=site)
+                        ax.scatter(tspData['Salinity (PSU)'], tspData['Potential Temperature (degC)'], marker=markerList[a], c=tspData['Depth (m)'], lw=0, cmap=cm.plasma.reversed(), norm=norm, label=site)
                         ax.set_xlabel('Salinity (PSU)')  # Label x-axis
                         ax.set_ylabel('Potential Temperature (C°)')  # Label y-axis
 

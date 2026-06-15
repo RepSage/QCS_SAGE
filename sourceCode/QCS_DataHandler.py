@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector
-from datetime import datetime as dt
 from os import walk
 
 # Software version: single source of truth, shown in window titles,
@@ -20,28 +19,6 @@ QCS_VERSION = 'v3.0'
 ################################################################################
 
 # Search functions
-
-def search_values (whr_file, string):
-    #search for values in string type data
-    #whr_file: input file in .whr format
-    #string: string type sentence in which to search
-    for linha in open(whr_file):
-        m = re.search(string + r"\s*(\d+)", linha, re.IGNORECASE)
-        if m:
-            return m.group(1)
-    return None
-
-def search_times (whr_file, string):
-    #search for values in string type data
-    #whr_file: input file in .whr format
-    #string: string type sentence in which to search
-    for linha in open(whr_file):
-        m = re.search(string + r"\s*(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2})", linha, re.IGNORECASE)
-        if m:
-            time = dt.strptime(m.group(1), '%d/%m/%Y %H:%M:%S')
-            time = np.array(time, dtype='datetime64[us]')
-            return time
-    return None
 
 def read_ctd(INPUT):
     # define file path
@@ -200,33 +177,6 @@ def read_ctd(INPUT):
         dataframe = dataframe[dataframe['Datetime'].notna()]
         dataframe.index = np.arange(len(dataframe))
 
-    return dataframe
-
-def read_unified_excel(file_path):
-    #open a file in unified table format
-    #file_path: path to open excel file
-    dataframe = pd.read_excel(file_path,
-                            header=0,
-                            na_values='N/A',
-                            parse_dates=[0],
-                            names=['Time_ISO8601',
-                                    'Expedition',
-                                    'Site',
-                                    'Longitude',
-                                    'Latitude',
-                                    'CO2 Level(ppm)',
-                                    'O2 level (uM)',
-                                    'Temperature (degC)',
-                                    'Depth (m)',
-                                    'Conductivity (mS/cm)',
-                                    'Salinity (PSU)',
-                                    'Density (kg/m3)',
-                                    'PAR (umol/m2/s)',
-                                    'Turbidity (FTU)',
-                                    'Chlorophyll (ug/L)',
-                                    'pH',
-                                    'Dissolved organic matter (ppb)',
-                                    'Sample number'])
     return dataframe
 
 def read_unified_hobo(file_path):
@@ -637,7 +587,7 @@ def trim_by_depth(data):
             plt.close(fig)
 
     # Configura o seletor
-    selector = RectangleSelector(ax, on_select,
+    selector = RectangleSelector(ax, on_select,  # manter referencia viva (widget e coletado pelo GC se nao for guardado)
                                useblit=True,
                                button=[1],
                                minspanx=5, minspany=5,
@@ -697,7 +647,7 @@ def trim_selected_variable(data, name):
             plt.close(fig)
 
     # Configuração dos eventos
-    selector = RectangleSelector(ax, on_select,
+    selector = RectangleSelector(ax, on_select,  # manter referencia viva (widget e coletado pelo GC se nao for guardado)
                                useblit=True,
                                button=[1],
                                minspanx=5, minspany=5,

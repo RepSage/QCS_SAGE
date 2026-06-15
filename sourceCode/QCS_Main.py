@@ -951,7 +951,6 @@ def run_full_qualification():
         end_time = end_time - timedelta(hours=3)
 
     # excluding other than main temperature sensors
-    t = 0
     for name in raw_data.keys():
         if re.search('internal temperature', name, re.IGNORECASE):
             raw_data = raw_data.drop(columns={name})
@@ -1049,7 +1048,6 @@ def run_full_qualification():
                     peak_window.geometry("225x80")
                     peak_window.resizable(True, True)
                     peak_window.configure(bg="#f0f0f0")
-                    font_style = ("Arial", 12, "bold")
                     # upper label
                     dPeak_label = Label(peak_window, text="       Do you accept data peak?", bg=peak_window["bg"])
                     dPeak_label.grid(row=0, column=0, sticky='w', padx=15, pady=5)
