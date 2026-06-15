@@ -54,65 +54,44 @@ def get_eps(series):
     
     return 10 ** -max_decimals if max_decimals > 0 else 1.0
 def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interval, threshold_fail, threshold_susp):
+    # QARTOD 3-point spike test: spike = |V2 - (V1 + V3)/2|, compared to a
+    # relative threshold (factor x local standard deviation of the values).
+    # Single pass (no iterative removal). Endpoints have no neighbours and are
+    # therefore not evaluated as spikes.
     pop = dataframe[parameter].copy()
-    # descritive statistics
-    N = len(pop)
-    sDescribe = pop.describe()
-    dfMin = sDescribe["min"]
-    Q1 = sDescribe["25%"]
-    Q2 = sDescribe["50%"]
-    Q3 = sDescribe["75%"]
-    dfMax = sDescribe["max"]
-    dfStd = sDescribe["std"]
-    dfMean = sDescribe["mean"]
+    n = len(pop)
+    spike = (pop - (pop.shift(1) + pop.shift(-1)) / 2).abs()
 
-    keep = True
-    reproved = []
-    suspect = []
-    while keep == True:
-        if time_window == "WHOLE":
-            N = len(pop)
-            std = np.sqrt(((pop - dfMean) ** 2).sum() / N)      
+    # local standard deviation used as the relative threshold reference
+    if re.search("whole", time_window, re.IGNORECASE):
+        win = n
+    else:
+        if re.search(r"\d+d", time_window, re.IGNORECASE):
+            time_period = 24 * 3600 * int(re.search(r"\d+", time_window).group())
+        elif re.search(r"\d+h", time_window, re.IGNORECASE):
+            time_period = 3600 * int(re.search(r"\d+", time_window).group())
+        elif re.search(r"\d+m", time_window, re.IGNORECASE):
+            time_period = 60 * int(re.search(r"\d+", time_window).group())
+        elif re.search(r"\d+s", time_window, re.IGNORECASE):
+            time_period = int(re.search(r"\d+", time_window).group())
         else:
-            std = []
-            measurement_interval = sample_interval
-            if re.search("\\d+d", time_window, re.IGNORECASE):
-                time_period = 24 * 3600 * (int(re.search("\\d+", time_window).group()))
-            elif re.search("\\d+h", time_window, re.IGNORECASE):
-                time_period = 3600 * (int(re.search("\\d+", time_window).group()))
-            elif re.search("\\d+m", time_window, re.IGNORECASE):
-                time_period = 60 * (int(re.search("\\d+", time_window).group()))
-            elif re.search("\\d+s", time_window, re.IGNORECASE):
-                time_period = int(re.search("\\d+", time_window).group())
-            # dividing timedelta64 by timedelta64 keeps sub-second precision
-            N = int(time_period / (measurement_interval / np.timedelta64(1, 's')))
-            for i in range(len(pop)):
-                if i < N - 1:
-                    sample = pop.iloc[i : i + N]
-                elif i >= N - 1:
-                    sample = pop.iloc[i - N : i + 1]
-                sampleMean = sample.mean()
-                std_i = np.sqrt(((sample - sampleMean) ** 2).sum() / (N-1))
-                std.append(std_i)
-            std = pd.Series(std, name='std')
-        upperLimit = np.abs(threshold_fail * std)
-        lowerLimit = np.abs(threshold_susp * std)
-        absDiff = np.abs(pop.diff())
-        outliers = (absDiff.loc[absDiff > upperLimit].index)
-        susp_outliers = (absDiff.loc[absDiff > lowerLimit].index)
-        
-        pop.iloc[outliers] = np.nan
-        reproved.extend(outliers)
-        suspect.extend(susp_outliers)
-        if outliers.empty == True:
-            keep = False
-        elif outliers.empty == False:
-            keep = True
-    df = pop.to_frame()
+            time_period = None
+        win = n if time_period is None else int(time_period / (sample_interval / np.timedelta64(1, 's')))
+
+    if win >= n or win < 3:
+        std = pd.Series(pop.std(ddof=0), index=pop.index)
+    else:
+        std = pop.rolling(win, center=True, min_periods=3).std().bfill().ffill()
+
+    upperLimit = (threshold_fail * std).abs().to_numpy()
+    lowerLimit = (threshold_susp * std).abs().to_numpy()
+    spike_vals = spike.to_numpy()
 
     missing = np.where(dataframe[parameter].isna())[0]
-    reproved = [i for i in dict.fromkeys(reproved) if i not in missing]
-    suspect = [i for i in dict.fromkeys(suspect) if i not in missing and i not in reproved]
+    reproved = list(np.where(spike_vals > upperLimit)[0])
+    suspect = list(np.where((spike_vals > lowerLimit) & (spike_vals <= upperLimit))[0])
+    reproved = [i for i in reproved if i not in missing]
+    suspect = [i for i in suspect if i not in missing and i not in reproved]
 
     flagsDf = pd.DataFrame({'flags': flags})
     flagsDf.iloc[missing] += "%d" % QC_flags.MISSING
@@ -120,8 +99,7 @@ def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interva
     flagsDf.iloc[suspect] += "%d" % QC_flags.SUSPECT
     flagged = list(dict.fromkeys(list(missing) + reproved + suspect))
     flagsDf.iloc[~flagsDf.index.isin(flagged)] += ("%d" % QC_flags.GOOD_DATA)
-    flags = list(flagsDf['flags'])
-    return flags
+    return list(flagsDf['flags'])
 
 
 def range_test(parameter, flags, range_min, range_max):
@@ -410,3 +388,55 @@ def vertical_gradient_test(
     ] += ("%d" % QC_flags.GOOD_DATA)
     flags = list(df_flags["flag"])
     return flags
+
+
+def density_inversion_test(data, flags, tolerance, lat, lon):
+    # QARTOD density inversion test (profiles only): potential density (sigma0)
+    # must not decrease with depth beyond a tolerance. Inverted points are
+    # flagged BAD. Appends exactly one flag character per row.
+    import gsw
+    n = len(flags)
+
+    # needs temperature, salinity and a vertical coordinate; otherwise the test
+    # cannot be evaluated for any row (flag 2 = unknown)
+    if 'Temperature (degC)' not in data.columns or 'Salinity (PSU)' not in data.columns:
+        return [flags[i] + "%d" % QC_flags.UNKNOWN for i in range(n)]
+    if 'Depth (m)' in data.columns:
+        vert = np.asarray(data['Depth (m)'], dtype=float)
+    elif 'Pressure (dbar)' in data.columns:
+        vert = np.asarray(data['Pressure (dbar)'], dtype=float)
+    else:
+        return [flags[i] + "%d" % QC_flags.UNKNOWN for i in range(n)]
+
+    t = np.asarray(data['Temperature (degC)'], dtype=float)
+    s = np.asarray(data['Salinity (PSU)'], dtype=float)
+    p = np.asarray(data['Pressure (dbar)'], dtype=float) if 'Pressure (dbar)' in data.columns else vert
+
+    # potential density anomaly (ref 0 dbar); lat/lon affect only the absolute
+    # value, which cancels in the vertical differences used by the test
+    SA = gsw.SA_from_SP(s, p, lon, lat)
+    CT = gsw.CT_from_t(SA, t, p)
+    sigma0 = np.asarray(gsw.sigma0(SA, CT), dtype=float)
+
+    # walk from surface to bottom; a deeper point lighter than the previous valid
+    # (shallower) one by more than the tolerance is an inversion (both flagged)
+    order = np.argsort(vert, kind='stable')
+    bad = set()
+    last = None
+    for k in order:
+        if np.isnan(sigma0[k]) or np.isnan(vert[k]):
+            continue
+        if last is not None and sigma0[k] < sigma0[last] - tolerance:
+            bad.add(int(k))
+            bad.add(int(last))
+        last = k
+
+    out = []
+    for i in range(n):
+        if np.isnan(sigma0[i]):
+            out.append(flags[i] + "%d" % QC_flags.UNKNOWN)
+        elif i in bad:
+            out.append(flags[i] + "%d" % QC_flags.BAD_DATA)
+        else:
+            out.append(flags[i] + "%d" % QC_flags.GOOD_DATA)
+    return out

@@ -10,7 +10,7 @@ from os import walk
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v2.2.1'
+QCS_VERSION = 'v3.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -418,6 +418,17 @@ def handle_output_file (input_df, flags, remove_suspect, remove_bad, Profile):
                 C_sdata.append(i)
             elif flags[i][32] == '9':
                 C_mdata.append(i)
+            # position 33: density inversion -> implicates temperature and salinity
+            if len(flags[i]) > 33:
+                if flags[i][33] == '4':
+                    T_bdata.append(i)
+                    S_bdata.append(i)
+                elif flags[i][33] == '3':
+                    T_sdata.append(i)
+                    S_sdata.append(i)
+                elif flags[i][33] == '9':
+                    T_mdata.append(i)
+                    S_mdata.append(i)
 
     # converting lists to arrays
     T_bdata, S_bdata, C_bdata, P_bdata = (np.asarray(T_bdata), np.asarray(S_bdata), np.asarray(C_bdata), np.asarray(P_bdata))
