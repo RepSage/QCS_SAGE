@@ -979,14 +979,8 @@ def run_full_qualification():
     # add Sample number column
     raw_data['Sample number'] = raw_data.index + 1
 
-    #removing data equal (except for PAR) and under 0
-    exceptions = ['Datetime', 'Sample number', 'Pitch[Deg]', 'Roll[Deg]', 'Timer[s]', 'Site']
-    for name in raw_data.columns:
-        if re.search('par', name, re.IGNORECASE):
-            raw_data.loc[raw_data[name]<0, name] = np.nan
-        else:
-            if name not in exceptions:
-                raw_data.loc[raw_data[name]<=0, name] = np.nan
+    # handle non-physical values <= 0 (optical sensors keep small negatives as ~0)
+    raw_data = data.clean_below_zero(raw_data, tsSettings)
 
     #removing data where depth is under 0.5 for profile data
     if INPUT['profile'] == True:

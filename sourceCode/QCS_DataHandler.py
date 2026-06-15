@@ -240,6 +240,38 @@ def pressure_to_depth (dataframe, latitude, adjust_for_atm):
     dataframe['Depth (m)'] = round(depth, 2)
     return dataframe
 
+def clean_below_zero(data, settings):
+    # Handles non-physical values <= 0 before the quality tests:
+    # - PAR: only negatives -> NaN (0 is valid, e.g. darkness/night).
+    # - Optical sensors (chlorophyll, turbidity, CDOM/organic matter): the true
+    #   value is physically >= 0, so a small negative reading is sensor noise
+    #   around zero -> clamped to 0 (kept as valid "~0"); a gross negative is a
+    #   sensor error -> NaN. The boundary is 5% of the variable's environmental
+    #   span (tune via env_min/env_max if needed).
+    # - All other variables: <= 0 -> NaN (sensor failure for marine data).
+    exceptions = ['Datetime', 'Sample number', 'Pitch[Deg]', 'Roll[Deg]', 'Timer[s]', 'Site']
+    optical = {
+        'chlorophyll': ('env_min_chl', 'env_max_chl'),
+        'turbidity': ('env_min_tur', 'env_max_tur'),
+        'organic matter': ('env_min_org', 'env_max_org'),
+    }
+    for name in data.columns:
+        if name in exceptions:
+            continue
+        if re.search('par', name, re.IGNORECASE):
+            data.loc[data[name] < 0, name] = np.nan
+            continue
+        opt_key = next((k for k in optical if re.search(k, name, re.IGNORECASE)), None)
+        if opt_key is not None:
+            lo_key, hi_key = optical[opt_key]
+            span = settings.get(hi_key, 0) - settings.get(lo_key, 0)
+            tol = 0.05 * span if span > 0 else 0
+            data.loc[(data[name] < 0) & (data[name] >= -tol), name] = 0.0
+            data.loc[data[name] < -tol, name] = np.nan
+        else:
+            data.loc[data[name] <= 0, name] = np.nan
+    return data
+
 # Function for preparing output files
 
 def handle_output_file (input_df, flags, remove_suspect, remove_bad, Profile):
