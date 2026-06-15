@@ -388,3 +388,55 @@ def vertical_gradient_test(
     ] += ("%d" % QC_flags.GOOD_DATA)
     flags = list(df_flags["flag"])
     return flags
+
+
+def density_inversion_test(data, flags, tolerance, lat, lon):
+    # QARTOD density inversion test (profiles only): potential density (sigma0)
+    # must not decrease with depth beyond a tolerance. Inverted points are
+    # flagged BAD. Appends exactly one flag character per row.
+    import gsw
+    n = len(flags)
+
+    # needs temperature, salinity and a vertical coordinate; otherwise the test
+    # cannot be evaluated for any row (flag 2 = unknown)
+    if 'Temperature (degC)' not in data.columns or 'Salinity (PSU)' not in data.columns:
+        return [flags[i] + "%d" % QC_flags.UNKNOWN for i in range(n)]
+    if 'Depth (m)' in data.columns:
+        vert = np.asarray(data['Depth (m)'], dtype=float)
+    elif 'Pressure (dbar)' in data.columns:
+        vert = np.asarray(data['Pressure (dbar)'], dtype=float)
+    else:
+        return [flags[i] + "%d" % QC_flags.UNKNOWN for i in range(n)]
+
+    t = np.asarray(data['Temperature (degC)'], dtype=float)
+    s = np.asarray(data['Salinity (PSU)'], dtype=float)
+    p = np.asarray(data['Pressure (dbar)'], dtype=float) if 'Pressure (dbar)' in data.columns else vert
+
+    # potential density anomaly (ref 0 dbar); lat/lon affect only the absolute
+    # value, which cancels in the vertical differences used by the test
+    SA = gsw.SA_from_SP(s, p, lon, lat)
+    CT = gsw.CT_from_t(SA, t, p)
+    sigma0 = np.asarray(gsw.sigma0(SA, CT), dtype=float)
+
+    # walk from surface to bottom; a deeper point lighter than the previous valid
+    # (shallower) one by more than the tolerance is an inversion (both flagged)
+    order = np.argsort(vert, kind='stable')
+    bad = set()
+    last = None
+    for k in order:
+        if np.isnan(sigma0[k]) or np.isnan(vert[k]):
+            continue
+        if last is not None and sigma0[k] < sigma0[last] - tolerance:
+            bad.add(int(k))
+            bad.add(int(last))
+        last = k
+
+    out = []
+    for i in range(n):
+        if np.isnan(sigma0[i]):
+            out.append(flags[i] + "%d" % QC_flags.UNKNOWN)
+        elif i in bad:
+            out.append(flags[i] + "%d" % QC_flags.BAD_DATA)
+        else:
+            out.append(flags[i] + "%d" % QC_flags.GOOD_DATA)
+    return out

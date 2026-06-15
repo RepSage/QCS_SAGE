@@ -58,6 +58,23 @@ flags = QC.vertical_gradient_test(100, pd.Series(vals), 1, ['' for _ in range(10
 assert len(flags) == 100
 ok.append('vertical_gradient_test (janela 1D)')
 
+# 5b) density_inversion_test (perfis): detecta inversao e preserva coluna estavel
+m = 10
+depth = np.arange(1, m + 1, dtype=float)
+sal = np.full(m, 35.0)
+temp_stable = np.linspace(25, 16, m)      # esfria com a profundidade -> densidade cresce
+dfp = pd.DataFrame({'Temperature (degC)': temp_stable, 'Salinity (PSU)': sal,
+                    'Pressure (dbar)': depth.copy(), 'Depth (m)': depth})
+fdi = QC.density_inversion_test(dfp, ['' for _ in range(m)], 0.03, -23.0, -40.0)
+assert all(len(x) == 1 for x in fdi)
+assert '4' not in fdi, 'coluna estavel nao deveria ter inversao'
+temp_inv = temp_stable.copy()
+temp_inv[5] = 30.0                         # ponto fundo anomalamente quente -> leve -> inversao
+dfp['Temperature (degC)'] = temp_inv
+fdi2 = QC.density_inversion_test(dfp, ['' for _ in range(m)], 0.03, -23.0, -40.0)
+assert fdi2[5] == '4', 'inversao de densidade nao detectada'
+ok.append('density_inversion_test')
+
 # 6) pressure_to_depth: 100 dbar a 17.5 graus deve dar ~99 m (e nao usar lat/5.29)
 df = pd.DataFrame({'Pressure (dbar)': [110.0]})  # 110 - 10 atm = 100 dbar
 df = data.pressure_to_depth(df, latitude=17.5, adjust_for_atm=True)
@@ -87,6 +104,18 @@ output_df = out[0]
 assert np.isnan(output_df['Temperature (degC)'].iloc[0])
 assert np.isnan(output_df['Temperature (degC)'].iloc[2])
 ok.append('handle_output_file (deduplicacao)')
+
+# 8b) flag na posicao 33 (inversao de densidade, perfis) reprova T e S
+n = 2
+dfd = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=n, freq='min'),
+                    'Temperature (degC)': [25.0, 26.0],
+                    'Salinity (PSU)': [36.0, 36.5]})
+flags = ['1' * 33 + '1', '1' * 33 + '4']  # linha 1 com inversao (posicao 33 = '4')
+out = data.handle_output_file(dfd, flags, remove_suspect=False, remove_bad=True, Profile=True)
+outdf = out[0]
+assert np.isnan(outdf['Temperature (degC)'].iloc[1]) and np.isnan(outdf['Salinity (PSU)'].iloc[1]), 'inversao deveria reprovar T e S'
+assert not np.isnan(outdf['Temperature (degC)'].iloc[0]), 'linha estavel nao podia ser afetada'
+ok.append('handle_output_file (inversao de densidade pos.33)')
 
 # 9) tscp_stats_table com apenas parte das variaveis
 qd = pd.DataFrame({'Temperature (degC)': [25.0, 26.0],

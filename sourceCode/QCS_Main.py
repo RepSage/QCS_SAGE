@@ -56,7 +56,8 @@ CONFIG = {
         'pressure flat line': 'OFF',
         'temperature vertical gradient': 'ON',
         'salinity vertical gradient': 'ON',
-        'conductivity vertical gradient': 'ON'
+        'conductivity vertical gradient': 'ON',
+        'density inversion': 'ON'
     },
     'tsSettings': {
         #'depth_range': 1.55,
@@ -191,7 +192,8 @@ TS_QUALITY_TESTS_TOOLTIPS = {
     'pressure flat line': "Detect unchanging pressure values (sensor stuck)",
     'temperature vertical gradient': "Check for unrealistic temperature changes with depth",
     'salinity vertical gradient': "Check for unrealistic salinity changes with depth",
-    'conductivity vertical gradient': "Check for unrealistic conductivity changes with depth"
+    'conductivity vertical gradient': "Check for unrealistic conductivity changes with depth",
+    'density inversion': "Check water column stability: potential density must not decrease with depth (profiles only)"
 }
 
 class ToolTip:
@@ -608,6 +610,9 @@ def create_tests_tab(parent):
             'temperature vertical gradient',
             'salinity vertical gradient',
             'conductivity vertical gradient'
+        ],
+        "Profile Stability Tests": [
+            'density inversion'
         ]
     }
     
@@ -1228,6 +1233,19 @@ def run_full_qualification():
 
     for param_key, test_label, test_switch, test_runner in test_sequence:
         flags = apply_quality_test(flags, param_key, test_label, test_switch, test_runner)
+
+    # Density inversion test (profiles only) -> flag position 33.
+    # Always appends one character for profiles so the flag layout stays fixed.
+    if INPUT['profile'] == True:
+        ti = time.time()
+        if tsQualityTests.get('density inversion', 'OFF') == 'ON':
+            flags = QC.density_inversion_test(raw_data, flags, tolerance=0.03,
+                                              lat=INPUT.get('latitude', 17.5), lon=-40.0)
+        else:
+            flags = [flags[n] + '%d' % QC.QC_flags.DISMISSED for n in range(n_samples)]
+        tf = time.time()
+        N = data.count_test_bdata(flags)
+        print('Density inversion test: %f s\nReproved: %i (%f%%)\n' % ((tf - ti), N, (N / n_samples) * 100))
 
     end = time.time()
     print('\nProcessing time: %f s\n' %(end - start))
