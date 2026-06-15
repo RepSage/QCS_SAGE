@@ -274,7 +274,15 @@ def clean_below_zero(data, settings):
 
 # Function for preparing output files
 
-def handle_output_file (input_df, flags, remove_suspect, remove_bad, Profile):
+# maps each test's parameter key (from the test sequence) to the variable
+# bucket(s) it affects; 'dens' (density inversion) implicates temperature and salinity
+FLAG_BUCKET_MAP = {
+    'T': ['T'], 'S': ['S'], 'C': ['C'], 'P': ['P'], 'pH': ['pH'],
+    'chl': ['chl'], 'O2': ['O2'], 'org': ['org'], 'tur': ['tur'],
+    'dens': ['T', 'S'],
+}
+
+def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad):
     # standardize data frame to output file format and
     # classify bad, suspect and missing data for temperature,
     # salinity, conductivity or pressure parameters
@@ -317,127 +325,35 @@ def handle_output_file (input_df, flags, remove_suspect, remove_bad, Profile):
 
     output_df = input_df.copy()
     output_df['Flag'] = flags
-    T_bdata, S_bdata, C_bdata, P_bdata = ([], [], [], [])
-    T_sdata, S_sdata, C_sdata, P_sdata = ([], [], [], [])
-    T_mdata, S_mdata, C_mdata, P_mdata = ([], [], [], [])
-
-    pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata = ([], [], [], [], [])
-    pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata = ([], [], [], [], [])
-    pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = ([], [], [], [], [])
-    # classifying data as bad, suspect and missing based on measured paramater
+    # Classify each row per variable using the worst flag across that variable's
+    # tests (bad > suspect > missing). flag_layout[pos] tells which variable each
+    # flag character belongs to, so positions are never hardcoded here.
+    var_keys = ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur']
+    bdata = {k: [] for k in var_keys}
+    sdata = {k: [] for k in var_keys}
+    mdata = {k: [] for k in var_keys}
     for i in range(len(flags)):
-        if flags[i][0] == '4' or flags[i][4] == '4' or flags[i][13] == '4' or flags[i][22] == '4' or flags[i][26] == '4':
-            T_bdata.append(i)
-        elif flags[i][0] == '3' or flags[i][4] == '3' or flags[i][13] == '3' or flags[i][22] == '3' or flags[i][26] == '3':
-            T_sdata.append(i)
-        elif flags[i][0] == '9' or flags[i][4] == '9' or flags[i][13] == '9' or flags[i][22] == '9' or flags[i][26] == '9':
-            T_mdata.append(i)
-        if flags[i][1] == '4' or flags[i][5] == '4' or flags[i][14] == '4' or flags[i][23] == '4' or flags[i][27] == '4':
-            S_bdata.append(i)
-        elif flags[i][1] == '3' or flags[i][5] == '3' or flags[i][14] == '3' or flags[i][23] == '3' or flags[i][27] == '3':
-            S_sdata.append(i)
-        elif flags[i][1] == '9' or flags[i][5] == '9' or flags[i][14] == '9' or flags[i][23] == '9' or flags[i][27] == '9':
-            S_mdata.append(i)
-        if flags[i][2] == '4' or flags[i][6] == '4' or flags[i][15] == '4' or flags[i][24] == '4' or flags[i][28] == '4':
-            C_bdata.append(i)
-        elif flags[i][2] == '3' or flags[i][6] == '3' or flags[i][15] == '3' or flags[i][24] == '3' or flags[i][28] == '3':
-            C_sdata.append(i)
-        elif flags[i][2] == '9' or flags[i][6] == '9' or flags[i][15] == '9' or flags[i][24] == '9' or flags[i][28] == '9':
-            C_mdata.append(i)
-        if flags[i][3] == '4' or flags[i][7] == '4' or flags[i][16] == '4' or flags[i][25] == '4' or flags[i][29] == '4':
-            P_bdata.append(i)
-        elif flags[i][3] == '3' or flags[i][7] == '3' or flags[i][16] == '3' or flags[i][25] == '3' or flags[i][29] == '3':
-            P_sdata.append(i)
-        elif flags[i][3] == '9' or flags[i][7] == '9' or flags[i][16] == '9' or flags[i][25] == '9' or flags[i][29] == '9':
-            P_mdata.append(i)
-        if flags[i][8] == '4' or flags[i][17] == '4':
-            pH_bdata.append(i)
-        elif flags[i][8] == '3' or flags[i][17] == '3':
-            pH_sdata.append(i)
-        elif flags[i][8] == '9' or flags[i][17] == '9':
-            pH_mdata.append(i)
-        if flags[i][9] == '4' or flags[i][18] == '4':
-            chl_bdata.append(i)
-        elif flags[i][9] == '3' or flags[i][18] == '3':
-            chl_sdata.append(i)
-        elif flags[i][9] == '9' or flags[i][18] == '9':
-            chl_mdata.append(i)
-        if flags[i][10] == '4' or flags[i][19] == '4':
-            O2_bdata.append(i)
-        elif flags[i][10] == '3' or flags[i][19] == '3':
-            O2_sdata.append(i)
-        elif flags[i][10] == '9' or flags[i][19] == '9':
-            O2_mdata.append(i)
-        if flags[i][11] == '4' or flags[i][20] == '4':
-            org_bdata.append(i)
-        elif flags[i][11] == '3' or flags[i][20] == '3':
-            org_sdata.append(i)
-        elif flags[i][11] == '9' or flags[i][20] == '9':
-            org_mdata.append(i)
-        if flags[i][12] == '4' or flags[i][21] == '4':
-            tur_bdata.append(i)
-        elif flags[i][12] == '3' or flags[i][21] == '3':
-            tur_sdata.append(i)
-        elif flags[i][12] == '9' or flags[i][21] == '9':
-            tur_mdata.append(i)
+        flagstr = flags[i]
+        per_var = {k: '' for k in var_keys}
+        for pos, pkey in enumerate(flag_layout):
+            if pos < len(flagstr):
+                for bucket in FLAG_BUCKET_MAP.get(pkey, []):
+                    per_var[bucket] += flagstr[pos]
+        for k in var_keys:
+            chars = per_var[k]
+            if '4' in chars:
+                bdata[k].append(i)
+            elif '3' in chars:
+                sdata[k].append(i)
+            elif '9' in chars:
+                mdata[k].append(i)
 
-        if Profile == True:
-            if flags[i][30] == '4':
-                T_bdata.append(i)
-            elif flags[i][30] == '3':
-                T_sdata.append(i)
-            elif flags[i][30] == '9':
-                T_mdata.append(i)
-            if flags[i][31] == '4':
-                S_bdata.append(i)
-            elif flags[i][31] == '3':
-                S_sdata.append(i)
-            elif flags[i][31] == '9':
-                S_mdata.append(i)
-            if flags[i][32] == '4':
-                C_bdata.append(i)
-            elif flags[i][32] == '3':
-                C_sdata.append(i)
-            elif flags[i][32] == '9':
-                C_mdata.append(i)
-            # position 33: density inversion -> implicates temperature and salinity
-            if len(flags[i]) > 33:
-                if flags[i][33] == '4':
-                    T_bdata.append(i)
-                    S_bdata.append(i)
-                elif flags[i][33] == '3':
-                    T_sdata.append(i)
-                    S_sdata.append(i)
-                elif flags[i][33] == '9':
-                    T_mdata.append(i)
-                    S_mdata.append(i)
-
-    # converting lists to arrays
-    T_bdata, S_bdata, C_bdata, P_bdata = (np.asarray(T_bdata), np.asarray(S_bdata), np.asarray(C_bdata), np.asarray(P_bdata))
-    T_sdata, S_sdata, C_sdata, P_sdata = (np.asarray(T_sdata), np.asarray(S_sdata), np.asarray(C_sdata), np.asarray(P_sdata))
-    T_mdata, S_mdata, C_mdata, P_mdata = (np.asarray(T_mdata), np.asarray(S_mdata), np.asarray(C_mdata), np.asarray(P_mdata))
-
-    pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata = (np.asarray(pH_bdata), np.asarray(chl_bdata), np.asarray(O2_bdata), np.asarray(org_bdata), np.asarray(tur_bdata))
-    pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata = (np.asarray(pH_sdata), np.asarray(chl_sdata), np.asarray(O2_sdata), np.asarray(org_sdata), np.asarray(tur_sdata))
-    pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = (np.asarray(pH_mdata), np.asarray(chl_mdata), np.asarray(O2_mdata), np.asarray(org_mdata), np.asarray(tur_mdata))
-
-    # excluding index for suspect data which repeats for bad data index
-    # and index for bad data which repeats for missing data index
-    def drop_overlap(sdata, bdata, mdata):
-        sdata = sdata[~np.isin(sdata, bdata)]
-        sdata = sdata[~np.isin(sdata, mdata)]
-        bdata = bdata[~np.isin(bdata, mdata)]
-        return sdata, bdata
-
-    T_sdata, T_bdata = drop_overlap(T_sdata, T_bdata, T_mdata)
-    S_sdata, S_bdata = drop_overlap(S_sdata, S_bdata, S_mdata)
-    C_sdata, C_bdata = drop_overlap(C_sdata, C_bdata, C_mdata)
-    P_sdata, P_bdata = drop_overlap(P_sdata, P_bdata, P_mdata)
-    pH_sdata, pH_bdata = drop_overlap(pH_sdata, pH_bdata, pH_mdata)
-    chl_sdata, chl_bdata = drop_overlap(chl_sdata, chl_bdata, chl_mdata)
-    O2_sdata, O2_bdata = drop_overlap(O2_sdata, O2_bdata, O2_mdata)
-    org_sdata, org_bdata = drop_overlap(org_sdata, org_bdata, org_mdata)
-    tur_sdata, tur_bdata = drop_overlap(tur_sdata, tur_bdata, tur_mdata)
+    T_bdata, S_bdata, C_bdata, P_bdata = (np.asarray(bdata['T']), np.asarray(bdata['S']), np.asarray(bdata['C']), np.asarray(bdata['P']))
+    pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata = (np.asarray(bdata['pH']), np.asarray(bdata['chl']), np.asarray(bdata['O2']), np.asarray(bdata['org']), np.asarray(bdata['tur']))
+    T_sdata, S_sdata, C_sdata, P_sdata = (np.asarray(sdata['T']), np.asarray(sdata['S']), np.asarray(sdata['C']), np.asarray(sdata['P']))
+    pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata = (np.asarray(sdata['pH']), np.asarray(sdata['chl']), np.asarray(sdata['O2']), np.asarray(sdata['org']), np.asarray(sdata['tur']))
+    T_mdata, S_mdata, C_mdata, P_mdata = (np.asarray(mdata['T']), np.asarray(mdata['S']), np.asarray(mdata['C']), np.asarray(mdata['P']))
+    pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = (np.asarray(mdata['pH']), np.asarray(mdata['chl']), np.asarray(mdata['O2']), np.asarray(mdata['org']), np.asarray(mdata['tur']))
     # changing bad or suspect data to NaN according from operators input
     if remove_bad == True:
         for name in output_df.columns:

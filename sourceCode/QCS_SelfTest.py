@@ -7,6 +7,14 @@ import pandas as pd
 import QCS_Tests as QC
 import QCS_DataHandler as data
 
+# flag layouts (param key per flag position), matching the test sequence order
+MOORING_LAYOUT = (['T', 'S', 'C', 'P'] +
+                  ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur'] +
+                  ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur'] +
+                  ['T', 'S', 'C', 'P'] +
+                  ['T', 'S', 'C', 'P'])               # 30 posicoes (fundeio)
+PROFILE_LAYOUT = MOORING_LAYOUT + ['T', 'S', 'C'] + ['dens']  # 34 posicoes (perfil)
+
 ok = []
 
 # 1) range_test
@@ -105,7 +113,7 @@ df = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=n, freq='min'
 flags = ['1' * 30,
          '1' * 8 + '4' + '1' * 21,   # pH ruim na posicao 8 (env range)
          '1' * 30]
-out = data.handle_output_file(df, flags, remove_suspect=False, remove_bad=True, Profile=False)
+out = data.handle_output_file(df, flags, MOORING_LAYOUT, remove_suspect=False, remove_bad=True)
 output_df = out[0]
 assert np.isnan(output_df['pH'].iloc[1]), 'pH ruim deveria virar NaN'
 assert output_df['Chlorophyll (ug/L)'].iloc[1] == 2.0, 'clorofila nao podia ser apagada por flag de pH'
@@ -113,7 +121,7 @@ ok.append('handle_output_file (pH/clorofila)')
 
 # 8) deduplicacao de indices com varios repetidos (antes quebrava/falhava)
 flags = ['4' * 30, '4' * 30, '3' * 30]  # 2 linhas ruins repetidas em varios testes
-out = data.handle_output_file(df, flags, remove_suspect=True, remove_bad=True, Profile=False)
+out = data.handle_output_file(df, flags, MOORING_LAYOUT, remove_suspect=True, remove_bad=True)
 output_df = out[0]
 assert np.isnan(output_df['Temperature (degC)'].iloc[0])
 assert np.isnan(output_df['Temperature (degC)'].iloc[2])
@@ -125,7 +133,7 @@ dfd = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=n, freq='min
                     'Temperature (degC)': [25.0, 26.0],
                     'Salinity (PSU)': [36.0, 36.5]})
 flags = ['1' * 33 + '1', '1' * 33 + '4']  # linha 1 com inversao (posicao 33 = '4')
-out = data.handle_output_file(dfd, flags, remove_suspect=False, remove_bad=True, Profile=True)
+out = data.handle_output_file(dfd, flags, PROFILE_LAYOUT, remove_suspect=False, remove_bad=True)
 outdf = out[0]
 assert np.isnan(outdf['Temperature (degC)'].iloc[1]) and np.isnan(outdf['Salinity (PSU)'].iloc[1]), 'inversao deveria reprovar T e S'
 assert not np.isnan(outdf['Temperature (degC)'].iloc[0]), 'linha estavel nao podia ser afetada'

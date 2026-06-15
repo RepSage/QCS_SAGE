@@ -1181,8 +1181,9 @@ def run_full_qualification():
         print('%s test: %f s\nReproved: %i (%f%%)\n' % (test_label, (tf - ti), N, (N / n_samples) * 100))
         return flags
 
-    # WARNING: do not reorder this list — data.handle_output_file reads each flag
-    # character by its fixed position (0 to 32) in the flag string
+    # The param key (1st item) of each test feeds flag_layout below, which maps every
+    # flag character to its variable in data.handle_output_file — positions are no
+    # longer hardcoded, so the mapping follows whatever order is used here.
     test_sequence = [
         ('T',   'Temperature sensor range',  'temperature sensor range',  run_range_test('sensor_min_temp', 'sensor_max_temp')),
         ('S',   'Salinity sensor range',     'salinity sensor range',     run_range_test('sensor_min_sal', 'sensor_max_sal')),
@@ -1223,6 +1224,10 @@ def run_full_qualification():
             ('C', 'Conductivity vertical gradient', 'conductivity vertical gradient', run_vertical_gradient_test),
         ]
 
+    # records which variable each appended flag character belongs to, so
+    # handle_output_file maps flag positions to variables without hardcoding them
+    flag_layout = [entry[0] for entry in test_sequence]
+
     for param_key, test_label, test_switch, test_runner in test_sequence:
         flags = apply_quality_test(flags, param_key, test_label, test_switch, test_runner)
 
@@ -1235,6 +1240,7 @@ def run_full_qualification():
                                               lat=INPUT.get('latitude', 17.5), lon=-40.0)
         else:
             flags = [flags[n] + '%d' % QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flag_layout.append('dens')
         tf = time.time()
         N = data.count_test_bdata(flags)
         print('Density inversion test: %f s\nReproved: %i (%f%%)\n' % ((tf - ti), N, (N / n_samples) * 100))
@@ -1243,7 +1249,7 @@ def run_full_qualification():
     print('\nProcessing time: %f s\n' %(end - start))
 
     print('\nCreating output table\n')
-    qualified_data, raw_data, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = data.handle_output_file (raw_data, flags, remove_suspect=OUTPUT['remove_suspect'], remove_bad=OUTPUT['remove_bad'], Profile=INPUT['profile'])
+    qualified_data, raw_data, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = data.handle_output_file (raw_data, flags, flag_layout, remove_suspect=OUTPUT['remove_suspect'], remove_bad=OUTPUT['remove_bad'])
 
     # add luminosity data to dataframe if input is hobo
     if INPUT['input_type'] == 'HOBO':
