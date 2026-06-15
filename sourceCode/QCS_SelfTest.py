@@ -15,7 +15,7 @@ flags = QC.range_test(s, ['' for _ in range(5)], range_min=15, range_max=35)
 assert flags == ['1', '1', '4', '9', '1'], flags
 ok.append('range_test')
 
-# 2) outlier_test agora aplica flag de suspeito (3)
+# 2) outlier_test (spike de 3 pontos): reprova spike e nao reprova mudanca de regime
 n = 50
 vals = np.full(n, 25.0) + np.random.default_rng(0).normal(0, 0.01, n)
 vals[25] = 40.0  # spike forte
@@ -24,8 +24,18 @@ df = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=n, freq='min'
 flags = QC.outlier_test(df, 'Temperature (degC)', 1, ['' for _ in range(n)],
                         'WHOLE', np.timedelta64(60, 's'), 3, 2.5)
 assert len(flags) == n and all(len(f) == 1 for f in flags), flags
-assert '4' in flags, 'spike nao reprovado'
-ok.append('outlier_test')
+assert flags[25] == '4', 'spike forte deveria ser reprovado'
+ok.append('outlier_test (spike detectado)')
+
+# 2b) degrau/frente (mudanca de regime sustentada) NAO deve ser reprovado como spike
+step = np.concatenate([np.full(40, 20.0), np.full(40, 26.0)]) + np.random.default_rng(1).normal(0, 0.02, 80)
+df2 = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=80, freq='min'),
+                    'Temperature (degC)': step})
+flags2 = QC.outlier_test(df2, 'Temperature (degC)', 1, ['' for _ in range(80)],
+                         'WHOLE', np.timedelta64(60, 's'), 3, 2.5)
+# no maximo 1 ponto na transicao pode ser marcado; um spike-test ruim reprovaria varios
+assert flags2.count('4') <= 1, 'mudanca de regime nao deveria ser reprovada em massa: %d' % flags2.count('4')
+ok.append('outlier_test (degrau preservado)')
 
 # 3) single_flat_line_test
 vals = list(np.arange(30, dtype=float)) + [7.7] * 25
