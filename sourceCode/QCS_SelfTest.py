@@ -8,12 +8,17 @@ import QCS_Tests as QC
 import QCS_DataHandler as data
 
 # flag layouts (param key per flag position), matching the test sequence order
-MOORING_LAYOUT = (['T', 'S', 'C', 'P'] +
-                  ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur'] +
-                  ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur'] +
-                  ['T', 'S', 'C', 'P'] +
-                  ['T', 'S', 'C', 'P'])               # 30 posicoes (fundeio)
-PROFILE_LAYOUT = MOORING_LAYOUT + ['T', 'S', 'C'] + ['dens']  # 34 posicoes (perfil)
+MOORING_LAYOUT = (['T', 'S', 'C', 'P', 'O2', 'pH', 'chl', 'tur'] +          # sensor range
+                  ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur'] +   # env range
+                  ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur'] +   # spikes
+                  ['T', 'S', 'C', 'P'] +                                    # rate of change
+                  ['T', 'S', 'C', 'P'])                                     # flat line
+PROFILE_LAYOUT = MOORING_LAYOUT + ['T', 'S', 'C'] + ['dens']  # + gradiente vertical + inversao
+
+def flag_with(layout, target, code):
+    # builds a flag string of len(layout) with 'code' at every position that maps
+    # to 'target' and '1' elsewhere (robust to layout/order changes)
+    return ''.join(code if k == target else '1' for k in layout)
 
 ok = []
 
@@ -110,9 +115,9 @@ df = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=n, freq='min'
                    'Temperature (degC)': [25.0, 25.1, 25.2],
                    'pH': [8.1, 8.2, 8.3],
                    'Chlorophyll (ug/L)': [1.0, 2.0, 3.0]})
-flags = ['1' * 30,
-         '1' * 8 + '4' + '1' * 21,   # pH ruim na posicao 8 (env range)
-         '1' * 30]
+flags = ['1' * len(MOORING_LAYOUT),
+         flag_with(MOORING_LAYOUT, 'pH', '4'),   # pH ruim em todas as posicoes de pH
+         '1' * len(MOORING_LAYOUT)]
 out = data.handle_output_file(df, flags, MOORING_LAYOUT, remove_suspect=False, remove_bad=True)
 output_df = out[0]
 assert np.isnan(output_df['pH'].iloc[1]), 'pH ruim deveria virar NaN'
@@ -120,7 +125,8 @@ assert output_df['Chlorophyll (ug/L)'].iloc[1] == 2.0, 'clorofila nao podia ser 
 ok.append('handle_output_file (pH/clorofila)')
 
 # 8) deduplicacao de indices com varios repetidos (antes quebrava/falhava)
-flags = ['4' * 30, '4' * 30, '3' * 30]  # 2 linhas ruins repetidas em varios testes
+L = len(MOORING_LAYOUT)
+flags = ['4' * L, '4' * L, '3' * L]  # 2 linhas ruins repetidas em varios testes
 out = data.handle_output_file(df, flags, MOORING_LAYOUT, remove_suspect=True, remove_bad=True)
 output_df = out[0]
 assert np.isnan(output_df['Temperature (degC)'].iloc[0])
@@ -132,7 +138,8 @@ n = 2
 dfd = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=n, freq='min'),
                     'Temperature (degC)': [25.0, 26.0],
                     'Salinity (PSU)': [36.0, 36.5]})
-flags = ['1' * 33 + '1', '1' * 33 + '4']  # linha 1 com inversao (posicao 33 = '4')
+flags = ['1' * len(PROFILE_LAYOUT),
+         flag_with(PROFILE_LAYOUT, 'dens', '4')]  # linha 1 com inversao de densidade
 out = data.handle_output_file(dfd, flags, PROFILE_LAYOUT, remove_suspect=False, remove_bad=True)
 outdf = out[0]
 assert np.isnan(outdf['Temperature (degC)'].iloc[1]) and np.isnan(outdf['Salinity (PSU)'].iloc[1]), 'inversao deveria reprovar T e S'
