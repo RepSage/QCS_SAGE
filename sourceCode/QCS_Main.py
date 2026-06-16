@@ -104,13 +104,31 @@ CONFIG = {
         'rep_cnt_fail': 20,
         'rep_cnt_susp': 15,
         #'eps': 'AUTO',
-        'time_window': '30M',
-        'fail_factor': 3,
-        'susp_factor': 2.5
+    },
+    # Per-variable factors for the spike, rate-of-change and vertical-gradient tests
+    # (fail/susp = std multipliers; window = time window). One row per variable.
+    'tsFactors': {
+        'T':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'S':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'C':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'P':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'pH':  {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'chl': {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'O2':  {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'org': {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'tur': {'fail': 3, 'susp': 2.5, 'window': '30M'},
     },
     'tsQualityTests_vars': {},
-    'tsSettings_entries': {}
+    'tsSettings_entries': {},
+    'tsFactors_entries': {}
 }
+
+# variables that have per-variable factors, with display names for the Settings table
+FACTOR_VARS = [
+    ('T', 'Temperature'), ('S', 'Salinity'), ('C', 'Conductivity'), ('P', 'Pressure'),
+    ('pH', 'pH'), ('chl', 'Chlorophyll'), ('O2', 'Dissolved oxygen'),
+    ('org', 'Organic matter'), ('tur', 'Turbidity'),
+]
 
 # Tooltips dictionary
 TOOLTIPS = {
@@ -174,9 +192,13 @@ TS_SETTINGS_TOOLTIPS = {
     'rep_cnt_fail': "Number of repeated values to flag as FAIL\nFor flat line test",
     'rep_cnt_susp': "Number of repeated values to flag as SUSPECT\nFor flat line test",
     #'eps': "Epsilon value for flat line detection\nMinimum difference to consider values different",
-    'time_window': "Time window for rate of change calculations\nFormat: '2D' (days), '3H' (hours), '30M' (minutes), '45S' (seconds) or 'WHOLE'",
-    'fail_factor': "Multiplier for standard deviation to flag as FAIL\nUsed in spike and rate tests",
-    'susp_factor': "Multiplier for standard deviation to flag as SUSPECT\nUsed in spike and rate tests"
+}
+
+# tooltips for the per-variable factor columns (Factors per Variable tab)
+TS_FACTORS_TOOLTIPS = {
+    'fail': "Std-deviation multiplier to flag as FAIL\nUsed in spike, rate-of-change and vertical-gradient tests",
+    'susp': "Std-deviation multiplier to flag as SUSPECT\nUsed in spike, rate-of-change and vertical-gradient tests",
+    'window': "Time window for the std calculation\nFormat: '2D' (days), '3H' (hours), '30M' (minutes), '45S' (seconds) or 'WHOLE'",
 }
 
 TS_QUALITY_TESTS_TOOLTIPS = {
@@ -326,7 +348,8 @@ def export_config():
         try:
             config_to_export = {
                 "tsQualityTests": CONFIG['tsQualityTests'],
-                "tsSettings": CONFIG['tsSettings']
+                "tsSettings": CONFIG['tsSettings'],
+                "tsFactors": CONFIG['tsFactors']
             }
             
             with open(filepath, 'w') as f:
@@ -341,14 +364,11 @@ def save_settings_values():
     # Update tsQualityTests
     for test, var in CONFIG['tsQualityTests_vars'].items():
         CONFIG['tsQualityTests'][test] = var.get()
-    
-    # Update tsSettings
+
+    # Update tsSettings (all numeric: int or float)
     for param, entry in CONFIG['tsSettings_entries'].items():
         value = entry.get()
-        
-        if param == 'time_window':
-            CONFIG['tsSettings'][param] = value
-        elif '.' in value:
+        if '.' in value:
             try:
                 CONFIG['tsSettings'][param] = float(value)
             except ValueError:
@@ -358,6 +378,20 @@ def save_settings_values():
                 CONFIG['tsSettings'][param] = int(value)
             except ValueError:
                 pass
+
+    # Update per-variable factors (fail/susp numeric, window kept as text)
+    for key, entries in CONFIG['tsFactors_entries'].items():
+        try:
+            CONFIG['tsFactors'][key]['fail'] = float(entries['fail'].get())
+        except ValueError:
+            pass
+        try:
+            CONFIG['tsFactors'][key]['susp'] = float(entries['susp'].get())
+        except ValueError:
+            pass
+        window_val = entries['window'].get().strip()
+        if window_val:
+            CONFIG['tsFactors'][key]['window'] = window_val
 
 def collect_input_settings():
     """Valida e coleta as configuracoes da interface. Retorna True se tudo ok."""
@@ -416,6 +450,10 @@ def collect_input_settings():
                 CONFIG['tsQualityTests'].update(config_data['tsQualityTests'])
             if 'tsSettings' in config_data:
                 CONFIG['tsSettings'].update(config_data['tsSettings'])
+            if 'tsFactors' in config_data:
+                for k, v in config_data['tsFactors'].items():
+                    if k in CONFIG['tsFactors']:
+                        CONFIG['tsFactors'][k].update(v)
 
         except Exception as e:
             messagebox.showerror("Error", f"Could not load the configuration file:\n{str(e)}")
@@ -459,6 +497,7 @@ def collect_input_settings():
         'latitude': latitude_entry.get(),
         'tsQualityTests': dict(CONFIG['tsQualityTests']),
         'tsSettings': dict(CONFIG['tsSettings']),
+        'tsFactors': {k: dict(v) for k, v in CONFIG['tsFactors'].items()},
     })
     save_user_prefs()
     return True
@@ -529,6 +568,10 @@ def restore_user_prefs():
         for k, v in p['tsSettings'].items():
             if k in CONFIG['tsSettings']:
                 CONFIG['tsSettings'][k] = v
+    if isinstance(p.get('tsFactors'), dict):
+        for k, v in p['tsFactors'].items():
+            if k in CONFIG['tsFactors'] and isinstance(v, dict):
+                CONFIG['tsFactors'][k].update(v)
 
 def show_help():
     help_text = """
@@ -564,7 +607,12 @@ def open_settings_window():
     params_frame = ttk.Frame(notebook)
     notebook.add(params_frame, text="Parameters")
     create_params_tab(params_frame)
-    
+
+    # Per-variable factors Tab
+    factors_frame = ttk.Frame(notebook)
+    notebook.add(factors_frame, text="Factors per Variable")
+    create_factors_tab(factors_frame)
+
     # Button frame
     button_frame = ttk.Frame(settings_win)
     button_frame.pack(fill='x', pady=10)
@@ -718,6 +766,42 @@ def create_params_tab(parent):
             
             CONFIG['tsSettings_entries'][param] = ent
             row += 1
+
+def create_factors_tab(parent):
+    canvas = Canvas(parent)
+    scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
+
+    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+
+    ttk.Label(scrollable_frame, text="Spike / Rate of change / Vertical gradient thresholds",
+              font=('Arial', 10, 'bold')).grid(row=0, column=0, columnspan=4, sticky='w', pady=(10, 5), padx=5)
+
+    # header row
+    for col, title in enumerate(["Variable", "Fail factor", "Susp factor", "Time window"]):
+        ttk.Label(scrollable_frame, text=title, font=('Arial', 9, 'bold')).grid(
+            row=1, column=col, sticky='w', padx=5, pady=2)
+
+    CONFIG['tsFactors_entries'] = {}
+    for i, (key, display) in enumerate(FACTOR_VARS):
+        r = i + 2
+        ttk.Label(scrollable_frame, text=display).grid(row=r, column=0, sticky='w', padx=5, pady=2)
+        cfg = CONFIG['tsFactors'][key]
+        fail_e = ttk.Entry(scrollable_frame, width=8); fail_e.insert(0, str(cfg['fail']))
+        fail_e.grid(row=r, column=1, sticky='w', padx=5, pady=2)
+        susp_e = ttk.Entry(scrollable_frame, width=8); susp_e.insert(0, str(cfg['susp']))
+        susp_e.grid(row=r, column=2, sticky='w', padx=5, pady=2)
+        win_e = ttk.Entry(scrollable_frame, width=10); win_e.insert(0, str(cfg['window']))
+        win_e.grid(row=r, column=3, sticky='w', padx=5, pady=2)
+        ToolTip(fail_e, TS_FACTORS_TOOLTIPS['fail'])
+        ToolTip(susp_e, TS_FACTORS_TOOLTIPS['susp'])
+        ToolTip(win_e, TS_FACTORS_TOOLTIPS['window'])
+        CONFIG['tsFactors_entries'][key] = {'fail': fail_e, 'susp': susp_e, 'window': win_e}
 
 def save_settings(window):
     save_settings_values()
@@ -933,6 +1017,7 @@ ToolTip(run_button, TOOLTIPS['run_button'])
 def run_full_qualification():
     tsSettings = CONFIG['tsSettings']
     tsQualityTests = CONFIG['tsQualityTests']
+    tsFactors = CONFIG['tsFactors']
 
     # change to folder containing raw data
     os.chdir(INPUT['raw_data_path'])
@@ -1162,30 +1247,35 @@ def run_full_qualification():
         'tur': (r'turbidity \(ftu\)', True),
     }
 
+    # all runners take (column, flags, param_key); range/flat ignore param_key,
+    # spike/rate/gradient use the per-variable factors from tsFactors[param_key]
     def run_range_test(min_key, max_key):
-        return lambda column, flags: QC.range_test(raw_data[column], flags,
-                                                   range_min=tsSettings[min_key],
-                                                   range_max=tsSettings[max_key])
+        return lambda column, flags, param_key: QC.range_test(raw_data[column], flags,
+                                                              range_min=tsSettings[min_key],
+                                                              range_max=tsSettings[max_key])
 
-    def run_spike_test(column, flags):
-        return QC.outlier_test(raw_data, column, n_cel, flags, tsSettings['time_window'],
-                               ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor'])
+    def run_spike_test(column, flags, param_key):
+        f = tsFactors[param_key]
+        return QC.outlier_test(raw_data, column, n_cel, flags, f['window'],
+                               ms_interval, f['fail'], f['susp'])
 
-    def run_rate_of_change_test(column, flags):
+    def run_rate_of_change_test(column, flags, param_key):
+        f = tsFactors[param_key]
         return QC.sigma_rate_of_change_test(n_samples, raw_data[column], n_cel, flags,
-                                            ms_interval=ms_interval, time_window=tsSettings['time_window'],
-                                            rc_fail=tsSettings['fail_factor'], rc_susp=tsSettings['susp_factor'],
+                                            ms_interval=ms_interval, time_window=f['window'],
+                                            rc_fail=f['fail'], rc_susp=f['susp'],
                                             DIR=False)
 
-    def run_flat_line_test(column, flags):
+    def run_flat_line_test(column, flags, param_key):
         return QC.single_flat_line_test(n_samples, n_cel, raw_data[column], flags,
                                         rep_cnt_fail=tsSettings['rep_cnt_fail'],
                                         rep_cnt_suspect=tsSettings['rep_cnt_susp'])
 
-    def run_vertical_gradient_test(column, flags):
+    def run_vertical_gradient_test(column, flags, param_key):
+        f = tsFactors[param_key]
         return QC.vertical_gradient_test(n_samples, raw_data[column], n_cel, flags,
-                                         ms_interval=ms_interval, time_window=tsSettings['time_window'],
-                                         rc_fail=tsSettings['fail_factor'], rc_susp=tsSettings['susp_factor'],
+                                         ms_interval=ms_interval, time_window=f['window'],
+                                         rc_fail=f['fail'], rc_susp=f['susp'],
                                          DIR=False)
 
     def apply_quality_test(flags, param_key, test_label, test_switch, test_runner):
@@ -1201,7 +1291,7 @@ def run_full_qualification():
         if matched_column is None:
             flags = [flags[n] + '%d' % QC.QC_flags.UNKNOWN for n in range(n_samples)]
         elif tsQualityTests[test_switch] == 'ON':
-            flags = test_runner(matched_column, flags)
+            flags = test_runner(matched_column, flags, param_key)
         else:
             flags = [flags[n] + '%d' % QC.QC_flags.DISMISSED for n in range(n_samples)]
         tf = time.time()
