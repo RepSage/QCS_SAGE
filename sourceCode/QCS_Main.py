@@ -28,6 +28,10 @@ CONFIG = {
         'salinity sensor range': 'ON',
         'conductivity sensor range': 'ON',
         'pressure sensor range': 'ON',
+        'dissolved oxygen sensor range': 'ON',
+        'pH sensor range': 'ON',
+        'chlorophyll sensor range': 'ON',
+        'turbidity sensor range': 'ON',
         'temperature environmental range': 'ON',
         'salinity environmental range': 'ON',
         'conductivity environmental range': 'ON',
@@ -70,6 +74,14 @@ CONFIG = {
         'sensor_max_cond': 75,
         'sensor_min_pres': 0,
         'sensor_max_pres': 6000,
+        'sensor_min_O2': 0,
+        'sensor_max_O2': 500,
+        'sensor_min_pH': 0,
+        'sensor_max_pH': 14,
+        'sensor_min_chl': 0,
+        'sensor_max_chl': 500,
+        'sensor_min_tur': 0,
+        'sensor_max_tur': 1500,
         # Faixas ambientais (envelope climatologico amplo - toda a costa brasileira, v3.0)
         'env_min_temp': 8,
         'env_max_temp': 32,
@@ -92,13 +104,31 @@ CONFIG = {
         'rep_cnt_fail': 20,
         'rep_cnt_susp': 15,
         #'eps': 'AUTO',
-        'time_window': '30M',
-        'fail_factor': 3,
-        'susp_factor': 2.5
+    },
+    # Per-variable factors for the spike, rate-of-change and vertical-gradient tests
+    # (fail/susp = std multipliers; window = time window). One row per variable.
+    'tsFactors': {
+        'T':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'S':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'C':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'P':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'pH':  {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'chl': {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'O2':  {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'org': {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'tur': {'fail': 3, 'susp': 2.5, 'window': '30M'},
     },
     'tsQualityTests_vars': {},
-    'tsSettings_entries': {}
+    'tsSettings_entries': {},
+    'tsFactors_entries': {}
 }
+
+# variables that have per-variable factors, with display names for the Settings table
+FACTOR_VARS = [
+    ('T', 'Temperature'), ('S', 'Salinity'), ('C', 'Conductivity'), ('P', 'Pressure'),
+    ('pH', 'pH'), ('chl', 'Chlorophyll'), ('O2', 'Dissolved oxygen'),
+    ('org', 'Organic matter'), ('tur', 'Turbidity'),
+]
 
 # Tooltips dictionary
 TOOLTIPS = {
@@ -133,6 +163,14 @@ TS_SETTINGS_TOOLTIPS = {
     'sensor_max_cond': "Maximum valid conductivity for sensor range (mS/cm)\nValues above will be flagged",
     'sensor_min_pres': "Minimum valid pressure for sensor range (dbar)\nValues below will be flagged",
     'sensor_max_pres': "Maximum valid pressure for sensor range (dbar)\nValues above will be flagged",
+    'sensor_min_O2': "Minimum valid dissolved oxygen for sensor range (μM)\nValues below will be flagged",
+    'sensor_max_O2': "Maximum valid dissolved oxygen for sensor range (μM)\nValues above will be flagged",
+    'sensor_min_pH': "Minimum valid pH for sensor range\nValues below will be flagged",
+    'sensor_max_pH': "Maximum valid pH for sensor range\nValues above will be flagged",
+    'sensor_min_chl': "Minimum valid chlorophyll for sensor range (μg/L)\nValues below will be flagged",
+    'sensor_max_chl': "Maximum valid chlorophyll for sensor range (μg/L)\nValues above will be flagged",
+    'sensor_min_tur': "Minimum valid turbidity for sensor range (FTU)\nValues below will be flagged",
+    'sensor_max_tur': "Maximum valid turbidity for sensor range (FTU)\nValues above will be flagged",
     'env_min_temp': "Minimum expected environmental temperature (°C)\nValues below will be flagged",
     'env_max_temp': "Maximum expected environmental temperature (°C)\nValues above will be flagged",
     'env_min_sal': "Minimum expected environmental salinity (PSU)\nValues below will be flagged",
@@ -154,9 +192,13 @@ TS_SETTINGS_TOOLTIPS = {
     'rep_cnt_fail': "Number of repeated values to flag as FAIL\nFor flat line test",
     'rep_cnt_susp': "Number of repeated values to flag as SUSPECT\nFor flat line test",
     #'eps': "Epsilon value for flat line detection\nMinimum difference to consider values different",
-    'time_window': "Time window for rate of change calculations\nFormat: '2D' (days), '3H' (hours), '30M' (minutes), '45S' (seconds) or 'WHOLE'",
-    'fail_factor': "Multiplier for standard deviation to flag as FAIL\nUsed in spike and rate tests",
-    'susp_factor': "Multiplier for standard deviation to flag as SUSPECT\nUsed in spike and rate tests"
+}
+
+# tooltips for the per-variable factor columns (Factors per Variable tab)
+TS_FACTORS_TOOLTIPS = {
+    'fail': "Std-deviation multiplier to flag as FAIL\nUsed in spike, rate-of-change and vertical-gradient tests",
+    'susp': "Std-deviation multiplier to flag as SUSPECT\nUsed in spike, rate-of-change and vertical-gradient tests",
+    'window': "Time window for the std calculation\nFormat: '2D' (days), '3H' (hours), '30M' (minutes), '45S' (seconds) or 'WHOLE'",
 }
 
 TS_QUALITY_TESTS_TOOLTIPS = {
@@ -164,6 +206,10 @@ TS_QUALITY_TESTS_TOOLTIPS = {
     'salinity sensor range': "Check if salinity values are within sensor specifications",
     'conductivity sensor range': "Check if conductivity values are within sensor specifications",
     'pressure sensor range': "Check if pressure values are within sensor specifications",
+    'dissolved oxygen sensor range': "Check if dissolved oxygen values are within sensor specifications",
+    'pH sensor range': "Check if pH values are within sensor specifications",
+    'chlorophyll sensor range': "Check if chlorophyll values are within sensor specifications",
+    'turbidity sensor range': "Check if turbidity values are within sensor specifications",
     'temperature environmental range': "Check if temperature values are environmentally plausible",
     'salinity environmental range': "Check if salinity values are environmentally plausible",
     'conductivity environmental range': "Check if conductivity values are environmentally plausible",
@@ -302,7 +348,8 @@ def export_config():
         try:
             config_to_export = {
                 "tsQualityTests": CONFIG['tsQualityTests'],
-                "tsSettings": CONFIG['tsSettings']
+                "tsSettings": CONFIG['tsSettings'],
+                "tsFactors": CONFIG['tsFactors']
             }
             
             with open(filepath, 'w') as f:
@@ -317,14 +364,11 @@ def save_settings_values():
     # Update tsQualityTests
     for test, var in CONFIG['tsQualityTests_vars'].items():
         CONFIG['tsQualityTests'][test] = var.get()
-    
-    # Update tsSettings
+
+    # Update tsSettings (all numeric: int or float)
     for param, entry in CONFIG['tsSettings_entries'].items():
         value = entry.get()
-        
-        if param == 'time_window':
-            CONFIG['tsSettings'][param] = value
-        elif '.' in value:
+        if '.' in value:
             try:
                 CONFIG['tsSettings'][param] = float(value)
             except ValueError:
@@ -334,6 +378,20 @@ def save_settings_values():
                 CONFIG['tsSettings'][param] = int(value)
             except ValueError:
                 pass
+
+    # Update per-variable factors (fail/susp numeric, window kept as text)
+    for key, entries in CONFIG['tsFactors_entries'].items():
+        try:
+            CONFIG['tsFactors'][key]['fail'] = float(entries['fail'].get())
+        except ValueError:
+            pass
+        try:
+            CONFIG['tsFactors'][key]['susp'] = float(entries['susp'].get())
+        except ValueError:
+            pass
+        window_val = entries['window'].get().strip()
+        if window_val:
+            CONFIG['tsFactors'][key]['window'] = window_val
 
 def collect_input_settings():
     """Valida e coleta as configuracoes da interface. Retorna True se tudo ok."""
@@ -392,6 +450,10 @@ def collect_input_settings():
                 CONFIG['tsQualityTests'].update(config_data['tsQualityTests'])
             if 'tsSettings' in config_data:
                 CONFIG['tsSettings'].update(config_data['tsSettings'])
+            if 'tsFactors' in config_data:
+                for k, v in config_data['tsFactors'].items():
+                    if k in CONFIG['tsFactors']:
+                        CONFIG['tsFactors'][k].update(v)
 
         except Exception as e:
             messagebox.showerror("Error", f"Could not load the configuration file:\n{str(e)}")
@@ -435,6 +497,7 @@ def collect_input_settings():
         'latitude': latitude_entry.get(),
         'tsQualityTests': dict(CONFIG['tsQualityTests']),
         'tsSettings': dict(CONFIG['tsSettings']),
+        'tsFactors': {k: dict(v) for k, v in CONFIG['tsFactors'].items()},
     })
     save_user_prefs()
     return True
@@ -505,6 +568,10 @@ def restore_user_prefs():
         for k, v in p['tsSettings'].items():
             if k in CONFIG['tsSettings']:
                 CONFIG['tsSettings'][k] = v
+    if isinstance(p.get('tsFactors'), dict):
+        for k, v in p['tsFactors'].items():
+            if k in CONFIG['tsFactors'] and isinstance(v, dict):
+                CONFIG['tsFactors'][k].update(v)
 
 def show_help():
     help_text = """
@@ -540,7 +607,12 @@ def open_settings_window():
     params_frame = ttk.Frame(notebook)
     notebook.add(params_frame, text="Parameters")
     create_params_tab(params_frame)
-    
+
+    # Per-variable factors Tab
+    factors_frame = ttk.Frame(notebook)
+    notebook.add(factors_frame, text="Factors per Variable")
+    create_factors_tab(factors_frame)
+
     # Button frame
     button_frame = ttk.Frame(settings_win)
     button_frame.pack(fill='x', pady=10)
@@ -570,7 +642,11 @@ def create_tests_tab(parent):
             'temperature sensor range',
             'salinity sensor range',
             'conductivity sensor range',
-            'pressure sensor range'
+            'pressure sensor range',
+            'dissolved oxygen sensor range',
+            'pH sensor range',
+            'chlorophyll sensor range',
+            'turbidity sensor range'
         ],
         "Environmental Range Tests": [
             'temperature environmental range',
@@ -690,6 +766,42 @@ def create_params_tab(parent):
             
             CONFIG['tsSettings_entries'][param] = ent
             row += 1
+
+def create_factors_tab(parent):
+    canvas = Canvas(parent)
+    scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
+
+    scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+
+    ttk.Label(scrollable_frame, text="Spike / Rate of change / Vertical gradient thresholds",
+              font=('Arial', 10, 'bold')).grid(row=0, column=0, columnspan=4, sticky='w', pady=(10, 5), padx=5)
+
+    # header row
+    for col, title in enumerate(["Variable", "Fail factor", "Susp factor", "Time window"]):
+        ttk.Label(scrollable_frame, text=title, font=('Arial', 9, 'bold')).grid(
+            row=1, column=col, sticky='w', padx=5, pady=2)
+
+    CONFIG['tsFactors_entries'] = {}
+    for i, (key, display) in enumerate(FACTOR_VARS):
+        r = i + 2
+        ttk.Label(scrollable_frame, text=display).grid(row=r, column=0, sticky='w', padx=5, pady=2)
+        cfg = CONFIG['tsFactors'][key]
+        fail_e = ttk.Entry(scrollable_frame, width=8); fail_e.insert(0, str(cfg['fail']))
+        fail_e.grid(row=r, column=1, sticky='w', padx=5, pady=2)
+        susp_e = ttk.Entry(scrollable_frame, width=8); susp_e.insert(0, str(cfg['susp']))
+        susp_e.grid(row=r, column=2, sticky='w', padx=5, pady=2)
+        win_e = ttk.Entry(scrollable_frame, width=10); win_e.insert(0, str(cfg['window']))
+        win_e.grid(row=r, column=3, sticky='w', padx=5, pady=2)
+        ToolTip(fail_e, TS_FACTORS_TOOLTIPS['fail'])
+        ToolTip(susp_e, TS_FACTORS_TOOLTIPS['susp'])
+        ToolTip(win_e, TS_FACTORS_TOOLTIPS['window'])
+        CONFIG['tsFactors_entries'][key] = {'fail': fail_e, 'susp': susp_e, 'window': win_e}
 
 def save_settings(window):
     save_settings_values()
@@ -905,6 +1017,7 @@ ToolTip(run_button, TOOLTIPS['run_button'])
 def run_full_qualification():
     tsSettings = CONFIG['tsSettings']
     tsQualityTests = CONFIG['tsQualityTests']
+    tsFactors = CONFIG['tsFactors']
 
     # change to folder containing raw data
     os.chdir(INPUT['raw_data_path'])
@@ -951,7 +1064,6 @@ def run_full_qualification():
         end_time = end_time - timedelta(hours=3)
 
     # excluding other than main temperature sensors
-    t = 0
     for name in raw_data.keys():
         if re.search('internal temperature', name, re.IGNORECASE):
             raw_data = raw_data.drop(columns={name})
@@ -980,14 +1092,8 @@ def run_full_qualification():
     # add Sample number column
     raw_data['Sample number'] = raw_data.index + 1
 
-    #removing data equal (except for PAR) and under 0
-    exceptions = ['Datetime', 'Sample number', 'Pitch[Deg]', 'Roll[Deg]', 'Timer[s]', 'Site']
-    for name in raw_data.columns:
-        if re.search('par', name, re.IGNORECASE):
-            raw_data.loc[raw_data[name]<0, name] = np.nan
-        else:
-            if name not in exceptions:
-                raw_data.loc[raw_data[name]<=0, name] = np.nan
+    # handle non-physical values <= 0 (optical sensors keep small negatives as ~0)
+    raw_data = data.clean_below_zero(raw_data, tsSettings)
 
     #removing data where depth is under 0.5 for profile data
     if INPUT['profile'] == True:
@@ -1049,7 +1155,6 @@ def run_full_qualification():
                     peak_window.geometry("225x80")
                     peak_window.resizable(True, True)
                     peak_window.configure(bg="#f0f0f0")
-                    font_style = ("Arial", 12, "bold")
                     # upper label
                     dPeak_label = Label(peak_window, text="       Do you accept data peak?", bg=peak_window["bg"])
                     dPeak_label.grid(row=0, column=0, sticky='w', padx=15, pady=5)
@@ -1142,30 +1247,35 @@ def run_full_qualification():
         'tur': (r'turbidity \(ftu\)', True),
     }
 
+    # all runners take (column, flags, param_key); range/flat ignore param_key,
+    # spike/rate/gradient use the per-variable factors from tsFactors[param_key]
     def run_range_test(min_key, max_key):
-        return lambda column, flags: QC.range_test(raw_data[column], flags,
-                                                   range_min=tsSettings[min_key],
-                                                   range_max=tsSettings[max_key])
+        return lambda column, flags, param_key: QC.range_test(raw_data[column], flags,
+                                                              range_min=tsSettings[min_key],
+                                                              range_max=tsSettings[max_key])
 
-    def run_spike_test(column, flags):
-        return QC.outlier_test(raw_data, column, n_cel, flags, tsSettings['time_window'],
-                               ms_interval, tsSettings['fail_factor'], tsSettings['susp_factor'])
+    def run_spike_test(column, flags, param_key):
+        f = tsFactors[param_key]
+        return QC.outlier_test(raw_data, column, n_cel, flags, f['window'],
+                               ms_interval, f['fail'], f['susp'])
 
-    def run_rate_of_change_test(column, flags):
+    def run_rate_of_change_test(column, flags, param_key):
+        f = tsFactors[param_key]
         return QC.sigma_rate_of_change_test(n_samples, raw_data[column], n_cel, flags,
-                                            ms_interval=ms_interval, time_window=tsSettings['time_window'],
-                                            rc_fail=tsSettings['fail_factor'], rc_susp=tsSettings['susp_factor'],
+                                            ms_interval=ms_interval, time_window=f['window'],
+                                            rc_fail=f['fail'], rc_susp=f['susp'],
                                             DIR=False)
 
-    def run_flat_line_test(column, flags):
+    def run_flat_line_test(column, flags, param_key):
         return QC.single_flat_line_test(n_samples, n_cel, raw_data[column], flags,
                                         rep_cnt_fail=tsSettings['rep_cnt_fail'],
                                         rep_cnt_suspect=tsSettings['rep_cnt_susp'])
 
-    def run_vertical_gradient_test(column, flags):
+    def run_vertical_gradient_test(column, flags, param_key):
+        f = tsFactors[param_key]
         return QC.vertical_gradient_test(n_samples, raw_data[column], n_cel, flags,
-                                         ms_interval=ms_interval, time_window=tsSettings['time_window'],
-                                         rc_fail=tsSettings['fail_factor'], rc_susp=tsSettings['susp_factor'],
+                                         ms_interval=ms_interval, time_window=f['window'],
+                                         rc_fail=f['fail'], rc_susp=f['susp'],
                                          DIR=False)
 
     def apply_quality_test(flags, param_key, test_label, test_switch, test_runner):
@@ -1181,7 +1291,7 @@ def run_full_qualification():
         if matched_column is None:
             flags = [flags[n] + '%d' % QC.QC_flags.UNKNOWN for n in range(n_samples)]
         elif tsQualityTests[test_switch] == 'ON':
-            flags = test_runner(matched_column, flags)
+            flags = test_runner(matched_column, flags, param_key)
         else:
             flags = [flags[n] + '%d' % QC.QC_flags.DISMISSED for n in range(n_samples)]
         tf = time.time()
@@ -1189,13 +1299,18 @@ def run_full_qualification():
         print('%s test: %f s\nReproved: %i (%f%%)\n' % (test_label, (tf - ti), N, (N / n_samples) * 100))
         return flags
 
-    # WARNING: do not reorder this list — data.handle_output_file reads each flag
-    # character by its fixed position (0 to 32) in the flag string
+    # The param key (1st item) of each test feeds flag_layout below, which maps every
+    # flag character to its variable in data.handle_output_file — positions are no
+    # longer hardcoded, so the mapping follows whatever order is used here.
     test_sequence = [
         ('T',   'Temperature sensor range',  'temperature sensor range',  run_range_test('sensor_min_temp', 'sensor_max_temp')),
         ('S',   'Salinity sensor range',     'salinity sensor range',     run_range_test('sensor_min_sal', 'sensor_max_sal')),
         ('C',   'Conductivity sensor range', 'conductivity sensor range', run_range_test('sensor_min_cond', 'sensor_max_cond')),
         ('P',   'Pressure sensor range',     'pressure sensor range',     run_range_test('sensor_min_pres', 'sensor_max_pres')),
+        ('O2',  'Dissolved oxygen sensor range', 'dissolved oxygen sensor range', run_range_test('sensor_min_O2', 'sensor_max_O2')),
+        ('pH',  'pH sensor range',           'pH sensor range',           run_range_test('sensor_min_pH', 'sensor_max_pH')),
+        ('chl', 'Chlorophyll sensor range',  'chlorophyll sensor range',  run_range_test('sensor_min_chl', 'sensor_max_chl')),
+        ('tur', 'Turbidity sensor range',    'turbidity sensor range',    run_range_test('sensor_min_tur', 'sensor_max_tur')),
         ('T',   'Temperature environmental range',  'temperature environmental range',  run_range_test('env_min_temp', 'env_max_temp')),
         ('S',   'Salinity environmental range',     'salinity environmental range',     run_range_test('env_min_sal', 'env_max_sal')),
         ('C',   'Conductivity environmental range', 'conductivity environmental range', run_range_test('env_min_cond', 'env_max_cond')),
@@ -1231,6 +1346,10 @@ def run_full_qualification():
             ('C', 'Conductivity vertical gradient', 'conductivity vertical gradient', run_vertical_gradient_test),
         ]
 
+    # records which variable each appended flag character belongs to, so
+    # handle_output_file maps flag positions to variables without hardcoding them
+    flag_layout = [entry[0] for entry in test_sequence]
+
     for param_key, test_label, test_switch, test_runner in test_sequence:
         flags = apply_quality_test(flags, param_key, test_label, test_switch, test_runner)
 
@@ -1243,6 +1362,7 @@ def run_full_qualification():
                                               lat=INPUT.get('latitude', 17.5), lon=-40.0)
         else:
             flags = [flags[n] + '%d' % QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flag_layout.append('dens')
         tf = time.time()
         N = data.count_test_bdata(flags)
         print('Density inversion test: %f s\nReproved: %i (%f%%)\n' % ((tf - ti), N, (N / n_samples) * 100))
@@ -1251,7 +1371,7 @@ def run_full_qualification():
     print('\nProcessing time: %f s\n' %(end - start))
 
     print('\nCreating output table\n')
-    qualified_data, raw_data, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = data.handle_output_file (raw_data, flags, remove_suspect=OUTPUT['remove_suspect'], remove_bad=OUTPUT['remove_bad'], Profile=INPUT['profile'])
+    qualified_data, raw_data, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = data.handle_output_file (raw_data, flags, flag_layout, remove_suspect=OUTPUT['remove_suspect'], remove_bad=OUTPUT['remove_bad'])
 
     # add luminosity data to dataframe if input is hobo
     if INPUT['input_type'] == 'HOBO':
