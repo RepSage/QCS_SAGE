@@ -242,7 +242,8 @@ def pressure_to_depth (dataframe, latitude, adjust_for_atm):
 
 def clean_below_zero(data, settings):
     # Handles non-physical values <= 0 before the quality tests:
-    # - PAR: only negatives -> NaN (0 is valid, e.g. darkness/night).
+    # - PAR: irradiance is physically >= 0; small negatives at night are sensor
+    #   dark-offset noise, so negatives are clamped to 0 (kept), not discarded.
     # - Optical sensors (chlorophyll, turbidity, CDOM/organic matter): the true
     #   value is physically >= 0, so a small negative reading is sensor noise
     #   around zero -> clamped to 0 (kept as valid "~0"); a gross negative is a
@@ -259,7 +260,7 @@ def clean_below_zero(data, settings):
         if name in exceptions:
             continue
         if re.search('par', name, re.IGNORECASE):
-            data.loc[data[name] < 0, name] = np.nan
+            data.loc[data[name] < 0, name] = 0.0
             continue
         opt_key = next((k for k in optical if re.search(k, name, re.IGNORECASE)), None)
         if opt_key is not None:

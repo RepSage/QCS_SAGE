@@ -101,13 +101,16 @@ sett = {'env_min_chl': 0, 'env_max_chl': 30, 'env_min_tur': 0, 'env_max_tur': 50
         'env_min_org': 0, 'env_max_org': 50}
 dfz = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=3, freq='min'),
                     'Chlorophyll (ug/L)': [0.5, -0.2, -10.0],
+                    'PAR (umol/m2/s)': [800.0, -0.01, 0.0],
                     'Temperature (degC)': [25.0, -1.0, 26.0]})
 outz = data.clean_below_zero(dfz.copy(), sett)
 assert outz['Chlorophyll (ug/L)'].iloc[0] == 0.5
 assert outz['Chlorophyll (ug/L)'].iloc[1] == 0.0, 'pequeno negativo deveria virar 0'
 assert np.isnan(outz['Chlorophyll (ug/L)'].iloc[2]), 'negativo grande deveria virar NaN'
+assert outz['PAR (umol/m2/s)'].iloc[1] == 0.0, 'PAR negativo (noite) deveria virar 0, nao NaN'
+assert not outz['PAR (umol/m2/s)'].isna().any(), 'PAR nao deveria ter NaN'
 assert np.isnan(outz['Temperature (degC)'].iloc[1]), 'nao-optica <=0 deveria virar NaN'
-ok.append('clean_below_zero (opticas)')
+ok.append('clean_below_zero (opticas + PAR)')
 
 # 7) handle_output_file: flag de pH nao pode apagar clorofila
 n = 3
