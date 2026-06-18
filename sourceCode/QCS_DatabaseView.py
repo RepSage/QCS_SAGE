@@ -983,8 +983,9 @@ def show_view_window():
         row_n += 1
 
     # Site selection
-    ttk.Label(filter_frame, text="Filter by Site:").grid(row=row_n, column=0, sticky='w', pady=(10,2))
-    ToolTip(ttk.Label(filter_frame), TOOLTIPS['site_filter'])
+    site_lbl = ttk.Label(filter_frame, text="Filter by Site:")
+    site_lbl.grid(row=row_n, column=0, sticky='w', pady=(10,2))
+    ToolTip(site_lbl, TOOLTIPS['site_filter'])
     row_n += 1
 
     site_names = sorted(set(database['Site']))
@@ -1000,8 +1001,9 @@ def show_view_window():
         row_n += 1
 
     # Parameter selection
-    ttk.Label(filter_frame, text="Select Parameters:").grid(row=0, column=1, sticky='w', pady=(5,2), padx=10)
-    ToolTip(ttk.Label(filter_frame), TOOLTIPS['param_filter'])
+    param_lbl = ttk.Label(filter_frame, text="Select Parameters:")
+    param_lbl.grid(row=0, column=1, sticky='w', pady=(5,2), padx=10)
+    ToolTip(param_lbl, TOOLTIPS['param_filter'])
 
     parameter_names = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)', 
                       'Density (kg/m3)', 'CO2 level (ppm)', 'O2 level (uM)', 
@@ -1051,7 +1053,6 @@ def show_view_window():
     # Configure grid weights for filter frame
     filter_frame.columnconfigure(0, weight=1)
     filter_frame.columnconfigure(1, weight=1)
-    filter_frame.rowconfigure(2, weight=1)  # A linha do container de sites
 
     # Configure grid weights for scale frame
     scale_frame.columnconfigure(0, weight=1)
