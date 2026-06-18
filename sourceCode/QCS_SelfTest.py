@@ -80,12 +80,12 @@ dfp = pd.DataFrame({'Temperature (degC)': temp_stable, 'Salinity (PSU)': sal,
                     'Pressure (dbar)': depth.copy(), 'Depth (m)': depth})
 fdi = QC.density_inversion_test(dfp, ['' for _ in range(m)], 0.03, -23.0, -40.0)
 assert all(len(x) == 1 for x in fdi)
-assert '4' not in fdi, 'coluna estavel nao deveria ter inversao'
+assert '3' not in fdi, 'coluna estavel nao deveria ter inversao'
 temp_inv = temp_stable.copy()
 temp_inv[5] = 30.0                         # ponto fundo anomalamente quente -> leve -> inversao
 dfp['Temperature (degC)'] = temp_inv
 fdi2 = QC.density_inversion_test(dfp, ['' for _ in range(m)], 0.03, -23.0, -40.0)
-assert fdi2[5] == '4', 'inversao de densidade nao detectada'
+assert fdi2[5] == '3', 'inversao de densidade deveria ser marcada como suspeito'
 ok.append('density_inversion_test')
 
 # 6) pressure_to_depth: 110 dbar - 10.1325 atm = ~99.9 dbar -> ~99 m (e nao usar lat/5.29)

@@ -671,8 +671,9 @@
             <ul>
                 <li>Verifica a estabilidade da coluna d'água: a densidade potencial
                 (calculada de T, S e pressão) não pode diminuir com a profundidade além de
-                uma tolerância (0,03 kg/m³). Uma inversão indica dado fisicamente
-                implausível e implica temperatura e salinidade.</li>
+                uma tolerância (0,03 kg/m³). Uma inversão indica um par temperatura/salinidade
+                <strong>suspeito</strong> (flag 3) e implica ambas — não é descartado à força,
+                só sai do resultado se "Remove Suspect Data" estiver ligado.</li>
             </ul>
         </li>
     </ol>
