@@ -1097,6 +1097,7 @@ def run_full_qualification():
 
     #removing data where depth is under 0.5 for profile data
     if INPUT['profile'] == True:
+        exceptions = ['Datetime', 'Sample number', 'Pitch[Deg]', 'Roll[Deg]', 'Timer[s]', 'Site']
         for name in raw_data.columns:
             if name not in exceptions:
                 raw_data.loc[raw_data['Depth (m)'] < 0.5, name] = np.nan
