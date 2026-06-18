@@ -9,7 +9,7 @@ from os import walk
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v3.2'
+QCS_VERSION = 'v3.2.1'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
