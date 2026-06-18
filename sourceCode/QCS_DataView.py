@@ -59,14 +59,15 @@ def getParamColors (parameter_names=None):
     # same variable always gets the same color in any panel or output figure.
     # cParam: light tone (data points) / bcParam: dark tone (trend lines, axes).
     # Hues were chosen to be strongly contrasting and intuitive
-    # (temperature=red, chlorophyll=green, oxygen=cyan, etc).
+    # (temperature=red, chlorophyll=green, oxygen=blue, salinity=orange, etc).
     cParam =  {'Temperature (degC)': '#ff4d4d',                # vermelho
-                'Salinity (PSU)': '#4d94ff',                   # azul
-                'Conductivity (mS/cm)': '#ffa64d',             # laranja
+                'Salinity (PSU)': '#ffa64d',                   # laranja
+                'Conductivity (mS/cm)': '#33cccc',             # teal
                 'Density (kg/m3)': '#b380ff',                  # roxo
                 'CO2 level (ppm)': '#a6a6a6',                  # cinza
                 'CO2 Level (ppm)': '#a6a6a6',
-                'O2 level (uM)': '#33cccc',                    # ciano/teal
+                'O2 level (uM)': '#4d94ff',                    # azul
+                'O2 content (mg/L)': '#4d94ff',                # azul
                 'PAR (umol/m2/s)': '#ffd11a',                  # amarelo
                 'Turbidity (FTU)': '#bf8040',                  # marrom
                 'Chlorophyll (ug/L)': '#5cd65c',               # verde
@@ -76,12 +77,13 @@ def getParamColors (parameter_names=None):
                 'Pressure (dbar)': '#808080'                   # cinza escuro
                 }
     bcParam = {'Temperature (degC)': '#b30000',
-                'Salinity (PSU)': '#0047b3',
-                'Conductivity (mS/cm)': '#cc6600',
+                'Salinity (PSU)': '#cc6600',
+                'Conductivity (mS/cm)': '#008080',
                 'Density (kg/m3)': '#6600cc',
                 'CO2 level (ppm)': '#595959',
                 'CO2 Level (ppm)': '#595959',
-                'O2 level (uM)': '#008080',
+                'O2 level (uM)': '#0047b3',
+                'O2 content (mg/L)': '#0047b3',
                 'PAR (umol/m2/s)': '#b38f00',
                 'Turbidity (FTU)': '#734d26',
                 'Chlorophyll (ug/L)': '#1f7a1f',
