@@ -1192,7 +1192,7 @@ def run_full_qualification():
                         fig2, ax2 = plt.subplots()
                         line1, = ax2.plot(desc[temp], desc[dep], linestyle='None', marker='o', markersize=3, markerfacecolor='#1f77b4ff', markeredgecolor='#1f77b4ff', label='descending data')
                         line2, = ax2.plot(asc[temp], asc[dep], linestyle='None', marker='o', markersize=3, markerfacecolor='red', markeredgecolor='red', c='red', label='ascending data')
-                        ax2.set_title('click on the dataset to select it:')
+                        ax2.set_title('Click a curve to select it (descending/ascending).\nClose this window to keep the whole dataset.')
                         ax2.set_xlabel('Temperature (degC)')
                         ax2.set_ylabel('Depth (m)')
                         ax2.legend()
@@ -1200,16 +1200,23 @@ def run_full_qualification():
                         ax2.grid()
 
                         selected = None
+                        pick_done = BooleanVar(window, value=False)
                         def on_pick(event):
                             nonlocal selected
                             selected = event.artist.get_label()
-                            plt.close(fig2)
+                            pick_done.set(True)
+                        def on_close(event):
+                            pick_done.set(True)
 
                         line1.set_picker(True)
                         line2.set_picker(True)
                         fig2.canvas.mpl_connect('pick_event', on_pick)
+                        fig2.canvas.mpl_connect('close_event', on_close)
                         fig2.canvas.mpl_connect('motion_notify_event', data.on_motion)
-                        plt.show(block=True)
+                        # show non-blocking and wait on the Tk loop. plt.show(block=True)
+                        # inside the running Tk app starts a nested loop and freezes the UI.
+                        fig2.show()
+                        window.wait_variable(pick_done)
 
                         if selected is None:
                             print('MESSAGE: No dataset selected, keeping the whole dataset')
