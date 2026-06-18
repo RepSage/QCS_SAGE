@@ -9,7 +9,7 @@ from os import walk
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v3.1.1'
+QCS_VERSION = 'v3.2'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -230,7 +230,8 @@ def pressure_to_depth (dataframe, latitude, adjust_for_atm):
         if re.search('pressure', name, re.IGNORECASE):
             p = dataframe[name]
             if adjust_for_atm == True:
-                p = p - 10
+                # standard atmospheric pressure = 101.325 kPa = 10.1325 dbar
+                p = p - 10.1325
     if p is None:
         return dataframe
     # latitude converted from degrees to radians (UNESCO 1983 formula)

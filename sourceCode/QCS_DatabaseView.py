@@ -27,6 +27,8 @@ TOOLTIPS = {
     'filter_year': "Check the year(s) to visualize\nPanels are generated once per selected year",
     'time_start': "OPTIONAL: start of the X axis in mooring plots\nFormat: DD/MM/YYYY HH:MM (e.g. 15/04/2019 09:00)\nLeave empty to fit the data automatically",
     'time_end': "OPTIONAL: end of the X axis in mooring plots\nFormat: DD/MM/YYYY HH:MM (e.g. 16/04/2019 09:00)\nLeave empty to fit the data automatically",
+    'depth_min': "OPTIONAL: minimum depth (m) for the depth axis in profile plots\nLeave empty to fit the data automatically",
+    'depth_max': "OPTIONAL: maximum depth (m) for the depth axis in profile plots\nLeave empty to fit the data automatically",
     'panel1': "Panel 1: Comparison between parameters at the same site",
     'panel2': "Panel 2: Comparison of the same parameter between sites",
     'panel3': "Panel 3: Comparison between parameters at the same site (vertical profile)",
@@ -188,7 +190,10 @@ def toggle_all_controls(enabled=False):
     # Janela de tempo do eixo X (fundeio)
     time_start_entry.config(state='normal' if enabled else 'disabled')
     time_end_entry.config(state='normal' if enabled else 'disabled')
-    
+    # Range do eixo de profundidade (perfil)
+    depth_min_entry.config(state='normal' if enabled else 'disabled')
+    depth_max_entry.config(state='normal' if enabled else 'disabled')
+
     # Escalas
     toggle_scale_controls()
 
@@ -275,6 +280,9 @@ def toggle_data_type():
     if data_type == 'mooring':
         set_disabled_style(panel3_cb)
         set_disabled_style(ts_cb)
+        # o range de profundidade so se aplica a graficos de perfil
+        set_disabled_style(depth_min_entry)
+        set_disabled_style(depth_max_entry)
     elif data_type == 'tscp profile':
         set_disabled_style(panel1_cb)
         set_disabled_style(panel2_cb)
@@ -402,6 +410,26 @@ def saveDataViewSettings():
                                        "or leave both empty to fit the data automatically.")
                 error_logger.log("WARNING: invalid X-axis time window - ignored")
 
+        # optional fixed depth range for the depth axis of profile plots
+        dataViewSettings['depthAxisMin'] = None
+        dataViewSettings['depthAxisMax'] = None
+        dmin_text = depth_min_entry.get().strip()
+        dmax_text = depth_max_entry.get().strip()
+        if dmin_text or dmax_text:
+            try:
+                d_min = float(dmin_text)
+                d_max = float(dmax_text)
+                if d_max <= d_min:
+                    raise ValueError('invalid interval')
+                dataViewSettings['depthAxisMin'] = d_min
+                dataViewSettings['depthAxisMax'] = d_max
+            except Exception:
+                messagebox.showwarning("Warning",
+                                       "Invalid depth-axis range.\n\n"
+                                       "Fill BOTH fields with numbers (max > min), e.g. 0 and 50,\n"
+                                       "or leave both empty to fit the data automatically.")
+                error_logger.log("WARNING: invalid depth-axis range - ignored")
+
         selectedSites = []
         for site in site_vars.keys():
             if site_vars[site].get() == True and site not in selectedSites:
@@ -436,6 +464,8 @@ def saveDataViewSettings():
             'dbv_selected_years': selectedYears,
             'dbv_time_start': time_start_entry.get(),
             'dbv_time_end': time_end_entry.get(),
+            'dbv_depth_min': depth_min_entry.get(),
+            'dbv_depth_max': depth_max_entry.get(),
             'dbv_latitude': latitude_entry.get(),
             'dbv_longitude': longitude_entry.get(),
             'dbv_degree': tendency_entry.get(),
@@ -747,7 +777,7 @@ def show_view_window():
     global view_window, dType_combobox, panel1, panel2, panel3, panel1_cb, panel2_cb, panel3_cb
     global tsDiagram, ts_cb, latitude_entry, longitude_entry, tsParam_combobox
     global tendency, tendency_cb, tendency_entry, dataPoints, points_cb, fixedScale, fixed_scale_cb
-    global year_vars, year_widgets, time_start_entry, time_end_entry
+    global year_vars, year_widgets, time_start_entry, time_end_entry, depth_min_entry, depth_max_entry
     global site_names, site_vars, site_widgets, parameter_names, parameter_vars, parameter_widgets
     global min_scale_entries, max_scale_entries, error_logger, back_requested
     back_requested = False
@@ -916,6 +946,26 @@ def show_view_window():
     ttk.Label(vis_frame, text=coverage_text, font=('Arial', 8), foreground='#555555').grid(
         row=10, column=1, sticky='w', pady=(2,5))
 
+    # Depth-axis range (profile plots) - analogous to the time window above
+    ttk.Label(vis_frame, text="Depth-Axis Min (profile):").grid(row=11, column=1, sticky='w', pady=(10,2))
+    depth_min_entry = ttk.Entry(vis_frame, width=28)
+    depth_min_entry.grid(row=12, column=1, sticky='w', pady=2)
+    ToolTip(depth_min_entry, TOOLTIPS['depth_min'])
+
+    ttk.Label(vis_frame, text="Depth-Axis Max (profile):").grid(row=13, column=1, sticky='w', pady=2)
+    depth_max_entry = ttk.Entry(vis_frame, width=28)
+    depth_max_entry.grid(row=14, column=1, sticky='w', pady=2)
+    ToolTip(depth_max_entry, TOOLTIPS['depth_max'])
+
+    # shows the depth range covered by the loaded database
+    if 'Depth (m)' in database.columns and database['Depth (m)'].notna().any():
+        depth_text = "Depth available:\n%.2f  to  %.2f m" % (database['Depth (m)'].min(),
+                                                             database['Depth (m)'].max())
+    else:
+        depth_text = "Depth available: no depth column"
+    ttk.Label(vis_frame, text=depth_text, font=('Arial', 8), foreground='#555555').grid(
+        row=15, column=1, sticky='w', pady=(2,5))
+
     # --- Filter Settings ---
     # Year filter: one checkbox per year actually present in the database
     ttk.Label(filter_frame, text="Filter by Year:").grid(row=0, column=0, sticky='w', pady=(5,2))
@@ -1046,6 +1096,8 @@ def show_view_window():
             year_vars[y].set(True)
     restore_entry(time_start_entry, USER_PREFS.get('dbv_time_start', ''))
     restore_entry(time_end_entry, USER_PREFS.get('dbv_time_end', ''))
+    restore_entry(depth_min_entry, USER_PREFS.get('dbv_depth_min', ''))
+    restore_entry(depth_max_entry, USER_PREFS.get('dbv_depth_max', ''))
     restore_entry(latitude_entry, USER_PREFS.get('dbv_latitude', ''))
     restore_entry(longitude_entry, USER_PREFS.get('dbv_longitude', ''))
     restore_entry(tendency_entry, USER_PREFS.get('dbv_degree', ''))

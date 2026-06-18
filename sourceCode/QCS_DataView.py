@@ -630,7 +630,11 @@ def plot_database_panel3(database, dataViewSettings):
                 ax1.set_xlabel('')  # Remove x-axis label but keep ticks
                 ax1.set_ylabel('Depth (m)')
                 ax1.set_title('Parameters for %s over %s during %s'%(site, semester, year))
-                ax1.set_ylim(ymax=0)
+                # optional fixed depth axis (shallow at top, deep at bottom)
+                if dataViewSettings.get('depthAxisMin') is not None and dataViewSettings.get('depthAxisMax') is not None:
+                    ax1.set_ylim(dataViewSettings['depthAxisMax'], dataViewSettings['depthAxisMin'])
+                else:
+                    ax1.set_ylim(ymax=0)
                 marginMax = 0.01 * x.max()
                 ax1.set_xlim(xmax=x.max() + marginMax)
                 
@@ -686,7 +690,10 @@ def plot_database_panel3(database, dataViewSettings):
                     
                     # Configure axis limits
                     axes[f'y{i}'] = ax
-                    ax.set_ylim(ymax=0)
+                    if dataViewSettings.get('depthAxisMin') is not None and dataViewSettings.get('depthAxisMax') is not None:
+                        ax.set_ylim(dataViewSettings['depthAxisMax'], dataViewSettings['depthAxisMin'])
+                    else:
+                        ax.set_ylim(ymax=0)
                     if fit_lin_regression == True: 
                         xRange = xp.max() - xp.min()  
                         marginMax = 0.01 * xRange
