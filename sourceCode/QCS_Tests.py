@@ -300,24 +300,24 @@ def density_inversion_test(data, flags, tolerance, lat, lon):
     sigma0 = np.asarray(gsw.sigma0(SA, CT), dtype=float)
 
     # walk from surface to bottom; a deeper point lighter than the previous valid
-    # (shallower) one by more than the tolerance is an inversion (both flagged)
-    order = np.argsort(vert, kind='stable')
-    bad = set()
+    # (shallower) one by more than the tolerance is an inversion (both flagged
+    # as SUSPECT - it signals a suspect T/S pair, not necessarily bad data)
+    inverted = set()
     last = None
-    for k in order:
+    for k in np.argsort(vert, kind='stable'):
         if np.isnan(sigma0[k]) or np.isnan(vert[k]):
             continue
         if last is not None and sigma0[k] < sigma0[last] - tolerance:
-            bad.add(int(k))
-            bad.add(int(last))
+            inverted.add(int(k))
+            inverted.add(int(last))
         last = k
 
     out = []
     for i in range(n):
         if np.isnan(sigma0[i]):
             out.append(flags[i] + "%d" % QC_flags.UNKNOWN)
-        elif i in bad:
-            out.append(flags[i] + "%d" % QC_flags.BAD_DATA)
+        elif i in inverted:
+            out.append(flags[i] + "%d" % QC_flags.SUSPECT)
         else:
             out.append(flags[i] + "%d" % QC_flags.GOOD_DATA)
     return out

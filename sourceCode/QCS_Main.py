@@ -84,7 +84,7 @@ CONFIG = {
         'sensor_max_tur': 1500,
         # Faixas ambientais (envelope climatologico amplo - toda a costa brasileira, v3.0)
         'env_min_temp': 8,
-        'env_max_temp': 32,
+        'env_max_temp': 35,
         'env_min_sal': 20,
         'env_max_sal': 37.5,
         'env_min_cond': 5,
@@ -495,6 +495,7 @@ def collect_input_settings():
         'remove_suspect': OUTPUT['remove_suspect'],
         'site_code': INPUT['site'],
         'latitude': latitude_entry.get(),
+        'qcs_version': data.QCS_VERSION,
         'tsQualityTests': dict(CONFIG['tsQualityTests']),
         'tsSettings': dict(CONFIG['tsSettings']),
         'tsFactors': {k: dict(v) for k, v in CONFIG['tsFactors'].items()},
@@ -560,6 +561,13 @@ def restore_user_prefs():
     remove_bad.set(p.get('remove_bad', False))
     remove_suspect.set(p.get('remove_suspect', False))
     update_profile_checkbox_state()
+    # Restore the quality CRITERIA only if they were saved by the SAME program
+    # version. On a version change, keep the new code defaults (so criteria
+    # improvements take effect) instead of the user's old saved criteria.
+    if p.get('qcs_version') != data.QCS_VERSION:
+        print("MESSAGE: saved settings are from a different version (%s != %s); "
+              "using the current default quality criteria." % (p.get('qcs_version'), data.QCS_VERSION))
+        return
     if isinstance(p.get('tsQualityTests'), dict):
         for k, v in p['tsQualityTests'].items():
             if k in CONFIG['tsQualityTests']:
