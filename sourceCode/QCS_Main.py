@@ -20,6 +20,8 @@ from scipy import signal
 import QCS_DataHandler as data
 import QCS_DataView as view
 import QCS_Tests as QC
+import QCS_Theme as theme
+from QCS_Theme import ToolTip
 
 # Global configuration
 CONFIG = {
@@ -241,34 +243,6 @@ TS_QUALITY_TESTS_TOOLTIPS = {
     'conductivity vertical gradient': "Check for unrealistic conductivity changes with depth",
     'density inversion': "Check water column stability: potential density must not decrease with depth (profiles only)"
 }
-
-class ToolTip:
-    def __init__(self, widget, text):
-        self.widget = widget
-        self.text = text
-        self.tooltip = None
-        self.widget.bind("<Enter>", self.show)
-        self.widget.bind("<Leave>", self.hide)
-
-    def show(self, event=None):
-        x, y, _, _ = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 25
-        y += self.widget.winfo_rooty() + 25
-
-        self.tooltip = tk.Toplevel(self.widget)
-        self.tooltip.wm_overrideredirect(True)
-        self.tooltip.wm_geometry(f"+{x}+{y}")
-        
-        label = tk.Label(self.tooltip, text=self.text, justify='left',
-                        background="#ffffe0", relief='solid', borderwidth=1,
-                        font=('Arial', 10), padx=5, pady=5)
-        label.pack()
-
-    def hide(self, event=None):
-        if self.tooltip:
-            self.tooltip.destroy()
-            self.tooltip = None
-
 
 # ----- user preferences: last folders and last choices, kept between sessions -----
 def settings_store_path():
@@ -509,9 +483,11 @@ def start_qualification():
         return
     run_button.config(state='disabled')
     window.config(cursor='watch')
+    status_var.set("Running qualification... the window may not respond while processing.")
     window.update_idletasks()
     try:
         run_full_qualification()
+        status_var.set("Done - results saved to %s" % OUTPUT.get('last_output_root', ''))
         messagebox.showinfo("Done",
                             "Qualification completed successfully!\n\n"
                             "Results saved to:\n%s\n\n"
@@ -519,6 +495,7 @@ def start_qualification():
                             "without closing the program." % OUTPUT.get('last_output_root', ''))
     except Exception as e:
         traceback.print_exc()
+        status_var.set("Qualification interrupted by an error.")
         messagebox.showerror("Qualification error",
                              "The qualification was interrupted by an error:\n\n%s\n\n"
                              "Some files may have been partially generated in the output "
@@ -595,16 +572,20 @@ def show_help():
     - Hover over fields to see tooltips
     - Use the settings window for fine adjustments
     - Results are saved in automatic subfolders
-    """
+
+    QCS - Quality Control System %s
+    Developed for automatic data qualification
+    """ % data.QCS_VERSION
     messagebox.showinfo("QCS Help", help_text)
 
 def open_settings_window():
     settings_win = Toplevel()
     settings_win.title(" Quality Control Settings")
-    settings_win.geometry("900x700")
+    theme.set_scaled_geometry(settings_win, 900, 700, min_width=720, min_height=520)
+    settings_win.configure(bg=theme.surface_color())
 
     notebook = ttk.Notebook(settings_win)
-    notebook.pack(fill='both', expand=True)
+    notebook.pack(fill='both', expand=True, padx=8, pady=8)
     
     # Tests Tab
     tests_frame = ttk.Frame(notebook)
@@ -633,17 +614,18 @@ def open_settings_window():
               style='Accent.TButton').pack(side='right', padx=5)
 
 def create_tests_tab(parent):
-    canvas = Canvas(parent)
+    canvas = Canvas(parent, bg=theme.surface_color(), highlightthickness=0)
     scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
     scrollable_frame = ttk.Frame(canvas)
-    
+
     scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
     canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
-    
+
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
-    
+    theme.enable_mousewheel(canvas)
+
     # Organize tests into categories
     test_categories = {
         "Sensor Range Tests": [
@@ -702,7 +684,7 @@ def create_tests_tab(parent):
     
     row = 0
     for category, tests in test_categories.items():
-        lbl = ttk.Label(scrollable_frame, text=category, font=('Arial', 10, 'bold'))
+        lbl = ttk.Label(scrollable_frame, text=category, font=theme.FONT_BOLD)
         lbl.grid(row=row, column=0, sticky='w', pady=(10,5), columnspan=2)
         row += 1
         
@@ -720,17 +702,18 @@ def create_tests_tab(parent):
             row += 1
 
 def create_params_tab(parent):
-    canvas = Canvas(parent)
+    canvas = Canvas(parent, bg=theme.surface_color(), highlightthickness=0)
     scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
     scrollable_frame = ttk.Frame(canvas)
-    
+
     scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
     canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
-    
+
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
-    
+    theme.enable_mousewheel(canvas)
+
     categories = {
         "Sensor Range": [k for k in CONFIG['tsSettings'] if 'sensor_' in k],
         "Environmental Range": [k for k in CONFIG['tsSettings'] if 'env_' in k],
@@ -739,7 +722,7 @@ def create_params_tab(parent):
     
     row = 0
     for category, params in categories.items():
-        lbl = ttk.Label(scrollable_frame, text=category, font=('Arial', 10, 'bold'))
+        lbl = ttk.Label(scrollable_frame, text=category, font=theme.FONT_BOLD)
         lbl.grid(row=row, column=0, sticky='w', pady=(10,5), columnspan=3)
         row += 1
         
@@ -776,7 +759,7 @@ def create_params_tab(parent):
             row += 1
 
 def create_factors_tab(parent):
-    canvas = Canvas(parent)
+    canvas = Canvas(parent, bg=theme.surface_color(), highlightthickness=0)
     scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
     scrollable_frame = ttk.Frame(canvas)
 
@@ -786,13 +769,14 @@ def create_factors_tab(parent):
 
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
+    theme.enable_mousewheel(canvas)
 
     ttk.Label(scrollable_frame, text="Spike / Rate of change / Vertical gradient thresholds",
-              font=('Arial', 10, 'bold')).grid(row=0, column=0, columnspan=4, sticky='w', pady=(10, 5), padx=5)
+              font=theme.FONT_BOLD).grid(row=0, column=0, columnspan=4, sticky='w', pady=(10, 5), padx=5)
 
     # header row
     for col, title in enumerate(["Variable", "Fail factor", "Susp factor", "Time window"]):
-        ttk.Label(scrollable_frame, text=title, font=('Arial', 9, 'bold')).grid(
+        ttk.Label(scrollable_frame, text=title, font=theme.FONT_SMALL_BOLD).grid(
             row=1, column=col, sticky='w', padx=5, pady=2)
 
     CONFIG['tsFactors_entries'] = {}
@@ -821,67 +805,55 @@ INPUT = {}
 OUTPUT = {}
 rootPath = os.getcwd()
 
-# Create main window
+# Create main window (DPI awareness must come before Tk())
+theme.enable_high_dpi()
 window = Tk()
 window.title("QCS - Data Qualification Tool %s" % data.QCS_VERSION)
 
-window.geometry("750x650")
+theme.set_scaled_geometry(window, 840, 720, min_width=760, min_height=640)
 window.resizable(True, True)
 
-# Configure styles
-style = ttk.Style()
-style.theme_use('clam')
-style.configure('TFrame', background='#f0f0f0')
-style.configure('TLabel', background='#f0f0f0', font=('Arial', 10))
-style.configure('Header.TLabel', font=('Arial', 10, 'bold'))
-style.configure('TButton', padding=5)
-style.configure('Accent.TButton', foreground='white', background='#4a90e2', font=('Arial', 10, 'bold'))
-style.configure('Help.TButton', foreground='white', background='#666666', font=('Arial', 9))
-style.map('Accent.TButton', background=[('active', '#3a7bc8')])
+# Configure styles (Sun Valley theme; falls back to the old clam look)
+style = theme.apply_theme(window, USER_PREFS.get('ui_theme', 'light'))
 
-style.configure('TLabel', background='#f0f0f0', font=('Arial', 10))
-style.configure('TFrame', background='#f0f0f0')
-style.configure('TLabelframe', background='#f0f0f0')
-style.configure('TLabelframe.Label', background='#f0f0f0')
-style.configure('TEntry', fieldbackground='white')
-style.configure('TCombobox', fieldbackground='white')
-
-style.configure('Help.TButton', foreground='white', background='#666666', 
-               font=('Arial', 9), borderwidth=0)
-style.map('Help.TButton', 
-         background=[('active', '#666666')],
-         foreground=[('active', 'white')])
-
-# Add menu bar
-menubar = Menu(window)
-helpmenu = Menu(menubar, tearoff=0)
-helpmenu.add_command(label="Help", command=show_help)
-helpmenu.add_command(label="About QCS", command=lambda: messagebox.showinfo("About",
-                       "QCS - Quality Control System\nVersion %s\nDeveloped for automatic data qualification\n" % data.QCS_VERSION))
-menubar.add_cascade(label="Menu", menu=helpmenu)
-window.config(menu=menubar)
+def on_theme_toggle():
+    new_theme = 'dark' if dark_mode.get() else 'light'
+    theme.apply_theme(window, new_theme)
+    USER_PREFS['ui_theme'] = new_theme
+    save_user_prefs()
 
 # Main container
-main_frame = ttk.Frame(window, padding="10")
+main_frame = ttk.Frame(window, padding="16")
 main_frame.pack(fill='both', expand=True)
 
+# Header: title, version and dark-mode switch
+dark_mode = BooleanVar(value=USER_PREFS.get('ui_theme', 'light') == 'dark')
+header = theme.build_header(main_frame,
+                            "Quality Control System",
+                            "Data Qualification Tool  ·  %s" % data.QCS_VERSION,
+                            dark_var=dark_mode, on_toggle=on_theme_toggle)
+header.grid(row=0, column=0, columnspan=2, sticky='ew', padx=5, pady=(0, 12))
+
 # Input settings frame
-input_frame = ttk.LabelFrame(main_frame, text=" INPUT SETTINGS ", padding=10)
-input_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+input_frame = ttk.LabelFrame(main_frame, text=" Input settings ", padding=12)
+input_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
 # Output settings frame
-output_frame = ttk.LabelFrame(main_frame, text=" OUTPUT SETTINGS ", padding=10)
-output_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+output_frame = ttk.LabelFrame(main_frame, text=" Output settings ", padding=12)
+output_frame.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
 
 # Configure grid weights
 main_frame.columnconfigure(0, weight=1)
 main_frame.columnconfigure(1, weight=1)
-main_frame.rowconfigure(0, weight=1)
+main_frame.rowconfigure(1, weight=1)
+# entries stretch, Browse buttons keep their natural width
+input_frame.columnconfigure(0, weight=1)
+output_frame.columnconfigure(0, weight=1)
 
 # --- Input Section ---
 # File selection
 ttk.Label(input_frame, text="Data File:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
-fileNames_entry = ttk.Entry(input_frame, width=30)
+fileNames_entry = ttk.Entry(input_frame, width=24)
 fileNames_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
 ToolTip(fileNames_entry, TOOLTIPS['data_file'])
 
@@ -891,7 +863,7 @@ ToolTip(browse_file_btn, TOOLTIPS['data_file'])
 
 # Config file
 ttk.Label(input_frame, text="Config File:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(0,2))
-inputConfigPath_entry = ttk.Entry(input_frame, width=30)
+inputConfigPath_entry = ttk.Entry(input_frame, width=24)
 inputConfigPath_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
 ToolTip(inputConfigPath_entry, TOOLTIPS['config_file'])
 
@@ -901,12 +873,12 @@ ToolTip(browse_config_btn, TOOLTIPS['config_file'])
 
 # Data type selection
 ttk.Label(input_frame, text="Input Type:", style='Header.TLabel').grid(row=4, column=0, sticky='w', pady=(0,2))
-inputType_combobox = ttk.Combobox(input_frame, values=["Seaguard", "HOBO"], width=15)
+inputType_combobox = ttk.Combobox(input_frame, values=["Seaguard", "HOBO"], width=15, state='readonly')
 inputType_combobox.grid(row=5, column=0, sticky='w', pady=(0,5))
 ToolTip(inputType_combobox, TOOLTIPS['input_type'])
 
 ttk.Label(input_frame, text="Data Type:", style='Header.TLabel').grid(row=4, column=1, sticky='w', pady=(0,2))
-dType_combobox = ttk.Combobox(input_frame, values=["TSCP Profile", "TSCP Mooring"], width=15)
+dType_combobox = ttk.Combobox(input_frame, values=["TSCP Profile", "TSCP Mooring"], width=15, state='readonly')
 dType_combobox.grid(row=5, column=1, sticky='w', pady=(0,5))
 ToolTip(dType_combobox, TOOLTIPS['data_type'])
 
@@ -926,12 +898,12 @@ units_frame = ttk.LabelFrame(input_frame, text=" Units ", padding=5)
 units_frame.grid(row=6, column=0, columnspan=2, sticky='ew', pady=5)
 
 ttk.Label(units_frame, text="Pressure:").grid(row=0, column=0, sticky='w')
-pressure_unit_combobox = ttk.Combobox(units_frame, values=["decibar", "bar", "kPa"], width=10)
+pressure_unit_combobox = ttk.Combobox(units_frame, values=["decibar", "bar", "kPa"], width=10, state='readonly')
 pressure_unit_combobox.grid(row=0, column=1, padx=5, pady=2)
 ToolTip(pressure_unit_combobox, TOOLTIPS['pressure_unit'])
 
 ttk.Label(units_frame, text="Conductivity:").grid(row=1, column=0, sticky='w')
-conductivity_unit_combobox = ttk.Combobox(units_frame, values=["mS/cm", "S/m"], width=10)
+conductivity_unit_combobox = ttk.Combobox(units_frame, values=["mS/cm", "S/m"], width=10, state='readonly')
 conductivity_unit_combobox.grid(row=1, column=1, padx=5, pady=2)
 ToolTip(conductivity_unit_combobox, TOOLTIPS['conductivity_unit'])
 
@@ -958,7 +930,7 @@ ToolTip(var_check, TOOLTIPS['variable_check'])
 # --- Output Section ---
 # Output folder
 ttk.Label(output_frame, text="Output Folder:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
-outputPath_entry = ttk.Entry(output_frame, width=30)
+outputPath_entry = ttk.Entry(output_frame, width=24)
 outputPath_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
 ToolTip(outputPath_entry, TOOLTIPS['output_folder'])
 
@@ -968,13 +940,13 @@ ToolTip(browse_output_btn, TOOLTIPS['output_folder'])
 
 # File naming
 ttk.Label(output_frame, text="Output File Name:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(0,2))
-outputName_entry = ttk.Entry(output_frame, width=30)
+outputName_entry = ttk.Entry(output_frame, width=24)
 outputName_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
 ToolTip(outputName_entry, TOOLTIPS['output_name'])
 
 # Output format
 ttk.Label(output_frame, text="Output Format:", style='Header.TLabel').grid(row=4, column=0, sticky='w', pady=(0,2))
-outputFilesFormat_combobox = ttk.Combobox(output_frame, values=[".csv", ".xlsx"], width=8)
+outputFilesFormat_combobox = ttk.Combobox(output_frame, values=[".csv", ".xlsx"], width=8, state='readonly')
 outputFilesFormat_combobox.grid(row=5, column=0, sticky='w', pady=(0,5))
 ToolTip(outputFilesFormat_combobox, TOOLTIPS['output_format'])
 
@@ -1007,18 +979,23 @@ ToolTip(latitude_entry, TOOLTIPS['latitude'])
 
 # Action buttons
 action_frame = ttk.Frame(main_frame)
-action_frame.grid(row=1, column=0, columnspan=2, pady=10)
+action_frame.grid(row=2, column=0, columnspan=2, pady=(14, 4))
 
-help_btn = ttk.Button(action_frame, text="Help", command=show_help, style='Help.TButton', width=10)
+help_btn = ttk.Button(action_frame, text="Help", command=show_help, width=10)
 help_btn.pack(side='left', padx=5)
 
-settings_btn = ttk.Button(action_frame, text="Settings", command=open_settings_window, style='Help.TButton', width=12)
+settings_btn = ttk.Button(action_frame, text="Settings", command=open_settings_window, width=12)
 settings_btn.pack(side='left', padx=5)
 ToolTip(settings_btn, TOOLTIPS['settings_button'])
 
-run_button = ttk.Button(action_frame, text="RUN QUALIFICATION", command=start_qualification, style='Accent.TButton')
-run_button.pack(side='left', padx=5, ipadx=20, ipady=5)
+run_button = ttk.Button(action_frame, text="Run Qualification", command=start_qualification, style='Accent.TButton')
+run_button.pack(side='left', padx=5, ipadx=20, ipady=2)
 ToolTip(run_button, TOOLTIPS['run_button'])
+
+# Status bar
+status_var = StringVar(value="Ready")
+status_label = ttk.Label(main_frame, textvariable=status_var, style='Small.TLabel', anchor='w')
+status_label.grid(row=3, column=0, columnspan=2, sticky='ew', padx=5, pady=(6, 0))
 
 # The whole qualification pipeline runs inside this function so the main
 # window stays open and the user can qualify several files in sequence.
@@ -1161,19 +1138,17 @@ def run_full_qualification():
                         peak_window.destroy()
 
                     peak_window.title("Peak Validation")
-                    peak_window.geometry("225x80")
-                    peak_window.resizable(True, True)
-                    peak_window.configure(bg="#f0f0f0")
-                    # upper label
-                    dPeak_label = Label(peak_window, text="       Do you accept data peak?", bg=peak_window["bg"])
-                    dPeak_label.grid(row=0, column=0, sticky='w', padx=15, pady=5)
-                    # buttons for yeas and no
-                    yesButton = Button(peak_window, text="Yes", command=acceptPeak)
-                    yesButton.configure(bg="lightgray")
-                    yesButton.grid(row=1, column=0, sticky='w', padx=5, pady=5)
-                    noButton = Button(peak_window, text="No", command=doNotAcceptPeak)
-                    noButton.configure(bg="lightgray")
-                    noButton.grid(row=1, column=1, sticky='w', padx=0, pady=5)
+                    theme.set_scaled_geometry(peak_window, 280, 110)
+                    peak_window.resizable(False, False)
+                    peak_window.configure(bg=theme.surface_color())
+                    peak_frame = ttk.Frame(peak_window, padding=12)
+                    peak_frame.pack(fill='both', expand=True)
+                    ttk.Label(peak_frame, text="Do you accept the data peak?").pack(anchor='w', pady=(0, 8))
+                    btn_row = ttk.Frame(peak_frame)
+                    btn_row.pack(anchor='e')
+                    ttk.Button(btn_row, text="Yes", command=acceptPeak,
+                               style='Accent.TButton', width=8).pack(side='left', padx=(0, 6))
+                    ttk.Button(btn_row, text="No", command=doNotAcceptPeak, width=8).pack(side='left')
                     # block here until the user answers Yes or No
                     peak_window.grab_set()
                     window.wait_window(peak_window)

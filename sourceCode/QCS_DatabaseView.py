@@ -4,15 +4,13 @@ import json
 import pandas as pd
 import QCS_DataHandler as data
 import QCS_DataView as view
+import QCS_Theme as theme
+from QCS_Theme import ToolTip
 from tkinter import *
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
 from tkinter import messagebox
-
-# Configurações de estilo para campos desabilitados
-DISABLED_BG = '#f0f0f0'
-DISABLED_FG = '#a0a0a0'
 
 # Tooltips dictionary
 TOOLTIPS = {
@@ -46,56 +44,48 @@ TOOLTIPS = {
     'max_scale': "Maximum value for parameter scale"
 }
 
-class ToolTip:
-    def __init__(self, widget, text):
-        self.widget = widget
-        self.text = text
-        self.tooltip = None
-        self.widget.bind("<Enter>", self.show)
-        self.widget.bind("<Leave>", self.hide)
-
-    def show(self, event=None):
-        x, y, _, _ = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 25
-        y += self.widget.winfo_rooty() + 25
-
-        self.tooltip = tk.Toplevel(self.widget)
-        self.tooltip.wm_overrideredirect(True)
-        self.tooltip.wm_geometry(f"+{x}+{y}")
-        
-        label = tk.Label(self.tooltip, text=self.text, justify='left',
-                        background="#ffffe0", relief='solid', borderwidth=1,
-                        font=('Arial', 10), padx=5, pady=5)
-        label.pack()
-
-    def hide(self, event=None):
-        if self.tooltip:
-            self.tooltip.destroy()
-            self.tooltip = None
-
 class ErrorLogger:
+    """Log de execucao com visual de console (cores por severidade)."""
+
     def __init__(self, parent):
-        self.frame = ttk.LabelFrame(parent, text=" ERROR LOG ", padding=10)
+        self.frame = ttk.LabelFrame(parent, text=" Execution log ", padding=10)
         self.frame.pack(fill='both', expand=True, padx=5, pady=5)
-        
-        self.text = tk.Text(self.frame, height=8, wrap='word', state='disabled',
-                           bg='#f0f0f0', fg='red', font=('Consolas', 9))
-        self.text.pack(fill='both', expand=True)
-        
-        scrollbar = ttk.Scrollbar(self.text)
+
+        text_frame = ttk.Frame(self.frame)
+        text_frame.pack(fill='both', expand=True)
+
+        self.text = tk.Text(text_frame, height=8, wrap='word', state='disabled',
+                            bg='#1e1e1e', fg='#d4d4d4', font=theme.FONT_MONO,
+                            relief='flat', borderwidth=0, padx=8, pady=6,
+                            insertbackground='#d4d4d4')
+        self.text.pack(side='left', fill='both', expand=True)
+
+        scrollbar = ttk.Scrollbar(text_frame, orient='vertical', command=self.text.yview)
         scrollbar.pack(side='right', fill='y')
         self.text.config(yscrollcommand=scrollbar.set)
-        scrollbar.config(command=self.text.yview)
-        
+
+        self.text.tag_configure('error', foreground='#f48771')
+        self.text.tag_configure('warning', foreground='#dcdcaa')
+        self.text.tag_configure('success', foreground='#89d185')
+
         self.clear_button = ttk.Button(self.frame, text="Clear Log", command=self.clear)
-        self.clear_button.pack(side='right', padx=5, pady=5)
-    
+        self.clear_button.pack(side='right', padx=5, pady=(6, 0))
+
+    def _tag_for(self, message):
+        if message.startswith(('ERROR', 'CRITICAL')):
+            return 'error'
+        if message.startswith('WARNING'):
+            return 'warning'
+        if message.startswith('SUCCESS'):
+            return 'success'
+        return None
+
     def log(self, message):
         self.text.config(state='normal')
-        self.text.insert('end', message + '\n')
+        self.text.insert('end', message + '\n', self._tag_for(message))
         self.text.see('end')
         self.text.config(state='disabled')
-    
+
     def clear(self):
         self.text.config(state='normal')
         self.text.delete('1.0', 'end')
@@ -140,24 +130,13 @@ def restore_entry(entry, value):
     entry.config(state=prev)
 
 def set_disabled_style(widget):
-    if isinstance(widget, (ttk.Entry, ttk.Combobox)):
-        widget.config(state='disabled', foreground=DISABLED_FG)
-        widget.configure(style='Disabled.TEntry')
-    elif isinstance(widget, ttk.Button):
-        widget.config(state='disabled')
-    elif isinstance(widget, ttk.Checkbutton):
-        widget.config(state='disabled')
+    # o tema (sv-ttk ou clam) ja desenha o estado 'disabled' adequadamente
+    widget.config(state='disabled')
 
 def set_enabled_style(widget):
-    if isinstance(widget, ttk.Entry):
-        widget.config(state='normal', foreground='black')
-        widget.configure(style='TEntry')
-    elif isinstance(widget, ttk.Combobox):
-        widget.config(state='readonly', foreground='black')
-        widget.configure(style='TCombobox')
-    elif isinstance(widget, ttk.Button):
-        widget.config(state='normal')
-    elif isinstance(widget, ttk.Checkbutton):
+    if isinstance(widget, ttk.Combobox):
+        widget.config(state='readonly')
+    else:
         widget.config(state='normal')
 
 def toggle_all_controls(enabled=False):
@@ -203,16 +182,14 @@ def toggle_input_mode():
         set_disabled_style(browse_file_btn)
         set_enabled_style(inputPath_entry)
         set_enabled_style(browse_input_btn)
-        inputFilesFormat_combobox.config(state='readonly')
-        inputFilesFormat_combobox.configure(style='TCombobox')
+        set_enabled_style(inputFilesFormat_combobox)
         set_enabled_style(outputName_entry)
     else:  # If Join Files is unchecked
         set_enabled_style(fileNames_entry)
         set_enabled_style(browse_file_btn)
         set_disabled_style(inputPath_entry)
         set_disabled_style(browse_input_btn)
-        inputFilesFormat_combobox.config(state='disabled')
-        inputFilesFormat_combobox.configure(style='Disabled.TEntry')
+        set_disabled_style(inputFilesFormat_combobox)
         set_disabled_style(outputName_entry)
 
 def toggle_panel_dependent_controls():
@@ -246,13 +223,11 @@ def toggle_ts_controls():
     if tsDiagram.get():
         set_enabled_style(latitude_entry)
         set_enabled_style(longitude_entry)
-        tsParam_combobox.config(state='readonly')
-        tsParam_combobox.configure(style='TCombobox')
+        set_enabled_style(tsParam_combobox)
     else:
         set_disabled_style(latitude_entry)
         set_disabled_style(longitude_entry)
-        tsParam_combobox.config(state='disabled')
-        tsParam_combobox.configure(style='Disabled.TEntry')
+        set_disabled_style(tsParam_combobox)
 
 def toggle_scale_controls():
     """Habilita ou desabilita os controles de escala com base no fixed_scale e painéis selecionados"""
@@ -590,66 +565,55 @@ def show_input_window():
     """Janela de selecao do banco de dados; preenche inputSettings ao salvar."""
     global input_window, fileNames_entry, inputPath_entry, browse_file_btn, browse_input_btn
     global join, sort, inputFilesFormat_combobox, outputName_entry, outputPath_entry
+    theme.enable_high_dpi()
     input_window = Tk()
     input_window.title("Database Input Settings - QCS %s" % data.QCS_VERSION)
 
-    input_window.geometry("650x450")
-    input_window.resizable(False, False)
+    theme.set_scaled_geometry(input_window, 720, 520, min_width=680, min_height=480)
+    input_window.resizable(True, True)
 
-    # Configure styles
-    style = ttk.Style()
-    style.theme_use('clam')
+    # Configure styles (Sun Valley theme; falls back to the old clam look)
+    theme.apply_theme(input_window, USER_PREFS.get('ui_theme', 'light'))
 
-    # Configure disabled style
-    style.configure('Disabled.TEntry', fieldbackground=DISABLED_BG, foreground=DISABLED_FG)
-    style.map('Disabled.TEntry',
-              fieldbackground=[('disabled', DISABLED_BG)],
-              foreground=[('disabled', DISABLED_FG)])
+    dark_mode = BooleanVar(value=USER_PREFS.get('ui_theme', 'light') == 'dark')
 
-    style.configure('TFrame', background='#f0f0f0')
-    style.configure('TLabel', background='#f0f0f0', font=('Arial', 10))
-    style.configure('TLabelframe', background='#f0f0f0')
-    style.configure('TLabelframe.Label', background='#f0f0f0')
-    style.configure('Header.TLabel', font=('Arial', 10, 'bold'))
-    style.configure('TButton', padding=5)
-    style.configure('Accent.TButton', foreground='white', background='#4a90e2', font=('Arial', 10, 'bold'))
-    style.configure('Help.TButton', foreground='white', background='#666666', font=('Arial', 9))
-    style.map('Accent.TButton', background=[('active', '#544ae2')])
-
-    style.configure('TCombobox', arrowsize=12)
-    style.map('TCombobox', 
-              fieldbackground=[('readonly', 'white')],
-              foreground=[('readonly', 'black')])
-
-    # Add menu bar
-    menubar = Menu(input_window)
-    helpmenu = Menu(menubar, tearoff=0)
-    helpmenu.add_command(label="Help", command=show_help)
-    helpmenu.add_command(label="About", command=lambda: messagebox.showinfo("About", "QCS Database View Tool\nVersion %s" % data.QCS_VERSION))
-    menubar.add_cascade(label="Menu", menu=helpmenu)
-    input_window.config(menu=menubar)
+    def on_theme_toggle():
+        new_theme = 'dark' if dark_mode.get() else 'light'
+        theme.apply_theme(input_window, new_theme)
+        USER_PREFS['ui_theme'] = new_theme
+        save_user_prefs()
 
     # Main container
-    main_frame = ttk.Frame(input_window, padding="10")
+    main_frame = ttk.Frame(input_window, padding="16")
     main_frame.pack(fill='both', expand=True)
 
+    # Header: title, version, dark-mode switch and help button
+    header = theme.build_header(main_frame,
+                                "Database View",
+                                "Step 1 of 2 - choose or build the database  ·  QCS %s" % data.QCS_VERSION,
+                                dark_var=dark_mode, on_toggle=on_theme_toggle,
+                                help_command=show_help)
+    header.grid(row=0, column=0, columnspan=2, sticky='ew', padx=5, pady=(0, 12))
+
     # Input settings frame
-    input_frame = ttk.LabelFrame(main_frame, text=" INPUT SETTINGS ", padding=10)
-    input_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+    input_frame = ttk.LabelFrame(main_frame, text=" Input settings ", padding=12)
+    input_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
     # Output settings frame
-    output_frame = ttk.LabelFrame(main_frame, text=" OUTPUT SETTINGS ", padding=10)
-    output_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+    output_frame = ttk.LabelFrame(main_frame, text=" Output settings ", padding=12)
+    output_frame.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
 
     # Configure grid weights
     main_frame.columnconfigure(0, weight=1)
     main_frame.columnconfigure(1, weight=1)
-    main_frame.rowconfigure(0, weight=1)
+    main_frame.rowconfigure(1, weight=1)
+    input_frame.columnconfigure(0, weight=1)
+    output_frame.columnconfigure(0, weight=1)
 
     # --- Input Section ---
     # File selection
     ttk.Label(input_frame, text="Database File(s):", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
-    fileNames_entry = ttk.Entry(input_frame, width=30)
+    fileNames_entry = ttk.Entry(input_frame, width=24)
     fileNames_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
     ToolTip(fileNames_entry, TOOLTIPS['database_files'])
 
@@ -659,7 +623,7 @@ def show_input_window():
 
     # Input path
     ttk.Label(input_frame, text="Input Path:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(5,2))
-    inputPath_entry = ttk.Entry(input_frame, width=30)
+    inputPath_entry = ttk.Entry(input_frame, width=24)
     inputPath_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
     set_disabled_style(inputPath_entry)
     ToolTip(inputPath_entry, TOOLTIPS['input_path'])
@@ -690,14 +654,14 @@ def show_input_window():
     # --- Output Section ---
     # Output naming
     ttk.Label(output_frame, text="Output Name:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
-    outputName_entry = ttk.Entry(output_frame, width=30)
+    outputName_entry = ttk.Entry(output_frame, width=24)
     outputName_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
     set_disabled_style(outputName_entry)
     ToolTip(outputName_entry, TOOLTIPS['output_name'])
 
     # Output path
     ttk.Label(output_frame, text="Output Path:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(5,2))
-    outputPath_entry = ttk.Entry(output_frame, width=30)
+    outputPath_entry = ttk.Entry(output_frame, width=24)
     outputPath_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
     ToolTip(outputPath_entry, TOOLTIPS['output_path'])
 
@@ -706,7 +670,7 @@ def show_input_window():
     ToolTip(browse_output_btn, TOOLTIPS['output_path'])
 
     # Save button
-    ttk.Button(main_frame, text="Save Input Settings", command=saveInputSettings, style='Accent.TButton').grid(row=1, column=0, columnspan=2, pady=10)
+    ttk.Button(main_frame, text="Save Input Settings", command=saveInputSettings, style='Accent.TButton').grid(row=2, column=0, columnspan=2, pady=12, ipadx=12)
 
     # restaura as ultimas escolhas do usuario
     restore_entry(fileNames_entry, USER_PREFS.get('dbv_database_file', ''))
@@ -785,20 +749,15 @@ def show_view_window():
     view_window = Tk()
     view_window.title("Data View Settings - QCS %s" % data.QCS_VERSION)
 
-    view_window.geometry("1300x750")  # Aumentado para acomodar o log
-    view_window.resizable(False, False)
+    theme.set_scaled_geometry(view_window, 1380, 800, min_width=1150, min_height=650)
+    view_window.resizable(True, True)
 
-    # Add menu bar
-    menubar = Menu(view_window)
-    helpmenu = Menu(menubar, tearoff=0)
-    helpmenu.add_command(label="Help", command=show_help)
-    helpmenu.add_command(label="About", command=lambda: messagebox.showinfo("About", "QCS Database View Tool\nVersion %s" % data.QCS_VERSION))
-    menubar.add_cascade(label="Menu", menu=helpmenu)
-    view_window.config(menu=menubar)
+    # Configure styles (Sun Valley theme; falls back to the old clam look)
+    theme.apply_theme(view_window, USER_PREFS.get('ui_theme', 'light'))
 
     # Create main container with scrollbar
     container = ttk.Frame(view_window)
-    canvas = tk.Canvas(container)
+    canvas = tk.Canvas(container, bg=theme.surface_color(), highlightthickness=0)
     scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
     scrollable_frame = ttk.Frame(canvas)
 
@@ -817,36 +776,43 @@ def show_view_window():
     scrollbar.pack(side="right", fill="y")
 
     # Main frame inside scrollable area
-    main_content_frame = ttk.Frame(scrollable_frame)
+    main_content_frame = ttk.Frame(scrollable_frame, padding=(12, 8))
     main_content_frame.pack(fill='both', expand=True)
 
+    # Header: title, version and help button
+    header = theme.build_header(main_content_frame,
+                                "Database View",
+                                "Step 2 of 2 - visualization settings  ·  QCS %s" % data.QCS_VERSION,
+                                help_command=show_help)
+    header.grid(row=0, column=0, columnspan=3, sticky='ew', padx=5, pady=(0, 10))
+
     # Data settings frame
-    data_frame = ttk.LabelFrame(main_content_frame, text=" DATA SETTINGS ", padding=10)
-    data_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+    data_frame = ttk.LabelFrame(main_content_frame, text=" Data settings ", padding=12)
+    data_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
     # Visualization frame
-    vis_frame = ttk.LabelFrame(main_content_frame, text=" VISUALIZATION SETTINGS ", padding=10)
-    vis_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+    vis_frame = ttk.LabelFrame(main_content_frame, text=" Visualization settings ", padding=12)
+    vis_frame.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
 
     # Filter frame
-    filter_frame = ttk.LabelFrame(main_content_frame, text=" FILTER SETTINGS ", padding=10)
-    filter_frame.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
+    filter_frame = ttk.LabelFrame(main_content_frame, text=" Filter settings ", padding=12)
+    filter_frame.grid(row=2, column=1, padx=5, pady=5, sticky="nsew")
 
     # Scale frame
-    scale_frame = ttk.LabelFrame(main_content_frame, text=" SCALE SETTINGS ", padding=10)
-    scale_frame.grid(row=1, column=2, padx=5, pady=5, sticky="nsew")
+    scale_frame = ttk.LabelFrame(main_content_frame, text=" Scale settings ", padding=12)
+    scale_frame.grid(row=2, column=2, padx=5, pady=5, sticky="nsew")
 
     # Configure grid weights
     main_content_frame.columnconfigure(0, weight=1)
     main_content_frame.columnconfigure(1, weight=1)
     main_content_frame.columnconfigure(2, weight=1)
-    main_content_frame.rowconfigure(0, weight=1)
     main_content_frame.rowconfigure(1, weight=1)
+    main_content_frame.rowconfigure(2, weight=1)
 
     # --- Data Settings ---
     # Data type
     ttk.Label(data_frame, text="Data Type:").grid(row=0, column=0, sticky='w', pady=2)
-    dType_combobox = ttk.Combobox(data_frame, values=["tscp profile", "mooring"], width=25)
+    dType_combobox = ttk.Combobox(data_frame, values=["tscp profile", "mooring"], width=25, state='readonly')
     dType_combobox.grid(row=1, column=0, sticky='w', pady=2)
     dType_combobox.bind("<<ComboboxSelected>>", lambda e: toggle_data_type())
     ToolTip(dType_combobox, TOOLTIPS['data_type'])
@@ -943,7 +909,7 @@ def show_view_window():
                                                          data_end.strftime('%d/%m/%Y %H:%M'))
     else:
         coverage_text = "Data available: unknown (invalid dates)"
-    ttk.Label(vis_frame, text=coverage_text, font=('Arial', 8), foreground='#555555').grid(
+    ttk.Label(vis_frame, text=coverage_text, style='Small.TLabel').grid(
         row=10, column=1, sticky='w', pady=(2,5))
 
     # Depth-axis range (profile plots) - analogous to the time window above
@@ -963,7 +929,7 @@ def show_view_window():
                                                              database['Depth (m)'].max())
     else:
         depth_text = "Depth available: no depth column"
-    ttk.Label(vis_frame, text=depth_text, font=('Arial', 8), foreground='#555555').grid(
+    ttk.Label(vis_frame, text=depth_text, style='Small.TLabel').grid(
         row=15, column=1, sticky='w', pady=(2,5))
 
     # --- Filter Settings ---
