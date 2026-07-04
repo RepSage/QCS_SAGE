@@ -281,6 +281,22 @@ stat = data.tscp_stats_table(qd)
 assert list(stat['Variable']) == ['Temperature (degC)', 'Salinity (PSU)'], stat
 ok.append('tscp_stats_table (variaveis parciais)')
 
+# 9b) order_var 'hobo': so temperatura + luz + metadados; sem colunas TSCP
+qh = pd.DataFrame({'Sample number': [1, 2], 'Datetime': pd.date_range('2026-01-01', periods=2, freq='h'),
+                   'Temperature (degC)': [25.0, 25.1], 'Luminosity (lux)': [10000.0, 8000.0],
+                   'Salinity (PSU)': [36.0, 36.1], 'Depth (m)': [5.0, 5.0],  # nao devem sair
+                   'Site': ['PAB3', 'PAB3'], 'Latitude': [-17.5, -17.5], 'Longitude': [-40.0, -40.0],
+                   'Flag': ['11', '13'], 'Flag_T': [1, 1], 'Flag_lux': [1, 3], 'QCS version': ['v4.0', 'v4.0']})
+oh = data.order_var(qh.copy(), 1, data_type='hobo')
+cols = list(oh.columns)
+assert 'Salinity (PSU)' not in cols and 'Depth (m)' not in cols, 'variaveis TSCP nao devem aparecer no HOBO: %s' % cols
+assert 'Temperature (degC)' in cols and 'Luminosity (lux)' in cols
+assert cols[:4] == ['Sample number', 'Datetime', 'Temperature (degC)', 'Luminosity (lux)'], cols
+for meta in ('Site', 'Latitude', 'Longitude', 'Flag', 'Flag_T', 'Flag_lux', 'QCS version'):
+    assert meta in cols, 'metadado %s faltando no HOBO' % meta
+assert oh['Site'].iloc[0] == 'PAB3'
+ok.append('order_var hobo (so temp+luz+metadados)')
+
 # 10) order_var com data_type invalido deve avisar com clareza
 try:
     data.order_var(qd.copy(), 1, data_type='outro')

@@ -627,9 +627,18 @@ def order_var (qualified_data, n_cel, data_type):
                         'Battery voltage (V)': 23, 'Flag': 24,
                         'Flag_T': 25, 'Flag_S': 26, 'Flag_C': 27, 'Flag_P': 28, 'Flag_pH': 29,
                         'Flag_chl': 30, 'Flag_O2': 31, 'Flag_org': 32, 'Flag_tur': 33,
-                        'Flag_lux': 34}
+                        'Flag_lux': 34, 'QCS version': 35}
+    elif data_type == 'hobo':
+        # HOBO Pendant: apenas as variaveis medidas (temperatura em Celsius e luz
+        # em lux), com o MESMO bloco de metadados do padrao TSCP. As demais
+        # variaveis TSCP nao se aplicam e nao aparecem (planilhas nao 'estacaveis').
+        var_priority = {'Sample number': 0, 'Datetime': 1,
+                        'Temperature (degC)': 2, 'Luminosity (lux)': 3,
+                        'Expedition': 4, 'Site': 5, 'Longitude': 6, 'Latitude': 7,
+                        'Battery voltage (V)': 8, 'Flag': 9,
+                        'Flag_T': 10, 'Flag_lux': 11, 'QCS version': 12}
     else:
-        raise ValueError("Unsupported data_type '%s' in order_var (only 'tscp' is supported)" % data_type)
+        raise ValueError("Unsupported data_type '%s' in order_var (use 'tscp' or 'hobo')" % data_type)
 
     order = {}
     for var in var_priority.keys():
@@ -673,7 +682,7 @@ def tscp_stats_table (qualified_data):
                 'Pressure (dbar)', 'Depth (m)', 'Density (kg/m3)', 'pH',
                 'O2 level (uM)', 'O2 content (mg/L)', 'Chlorophyll (ug/L)',
                 'Turbidity (FTU)', 'Dissolved organic matter (ppb)',
-                'PAR (umol/m2/s)', 'Soundspeed (m/s)']
+                'PAR (umol/m2/s)', 'Soundspeed (m/s)', 'Luminosity (lux)']
     present = [var for var in expected
                if var in qualified_data.columns and not qualified_data[var].isna().all()]
     stat = pd.DataFrame({'Variable': present,

@@ -1564,6 +1564,12 @@ def run_full_qualification():
             ('C', 'Conductivity vertical gradient', 'conductivity vertical gradient', run_vertical_gradient_test),
         ]
 
+    # HOBO Pendant only measures temperature (+ light, tested separately below),
+    # so only the temperature tests apply - avoids a flag string full of
+    # 'not evaluated' positions and empty Flag_S/Flag_C/... columns in the output
+    if INPUT['input_type'] == 'HOBO':
+        test_sequence = [entry for entry in test_sequence if entry[0] == 'T']
+
     # records which variable each appended flag character belongs to, so
     # handle_output_file maps flag positions to variables without hardcoding them
     flag_layout = [entry[0] for entry in test_sequence]
@@ -1630,16 +1636,24 @@ def run_full_qualification():
     log_line('Stage 4/5: creating output table and reports...')
     qualified_data, raw_data, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = data.handle_output_file (raw_data, flags, flag_layout, remove_suspect=OUTPUT['remove_suspect'], remove_bad=OUTPUT['remove_bad'])
 
-    qualified_data = data.order_var (qualified_data, n_cel, data_type='tscp')
-    # Fill column with site information
+    # site metadata (filled before order_var so it is positioned and populated;
+    # coordinates come from the Input fields - HOBO exports carry no position)
     qualified_data['Site'] = INPUT['site']
-    # Fill column with site information
+    qualified_data['Latitude'] = INPUT.get('latitude', np.nan)
+    qualified_data['Longitude'] = INPUT.get('longitude', np.nan)
     qualified_data['QCS version'] = data.QCS_VERSION
+
+    # HOBO gets its own output layout (temperature + light only, same metadata
+    # block); Seaguard keeps the full TSCP layout. The two are never stackable.
+    layout_type = 'hobo' if INPUT['input_type'] == 'HOBO' else 'tscp'
+    qualified_data = data.order_var (qualified_data, n_cel, data_type=layout_type)
+
     # Export qualified data to .csv/.xlsx file
     os.chdir(OUTPUT['output_file_path'])
     root_path = OUTPUT['output_file_path'] + '/' + re.search(r'^[^\.]+',INPUT['file_name']).group()
     os.makedirs(root_path, exist_ok=True)
-    path = root_path + '/QCS qualified tscp data/'
+    data_folder = 'QCS qualified hobo data' if layout_type == 'hobo' else 'QCS qualified tscp data'
+    path = root_path + '/' + data_folder + '/'
     os.makedirs(path, exist_ok=True)
     dataview_path =  root_path + '/QCS DataView (fixed scale)/'
     dataview_path2 = root_path + '/QCS DataView (unfixed scale)/'
