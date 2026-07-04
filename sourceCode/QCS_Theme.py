@@ -152,6 +152,55 @@ def enable_mousewheel(canvas):
     canvas.bind('<Leave>', lambda e: canvas.unbind_all('<MouseWheel>'))
 
 
+class LogConsole:
+    """Painel de log com visual de console e cores por severidade, compartilhado
+    pelo QCS_Main e pelo QCS_DatabaseView. O chamador posiciona `self.frame`
+    (pack ou grid)."""
+
+    def __init__(self, parent, title=' Execution log ', height=8):
+        self.frame = ttk.LabelFrame(parent, text=title, padding=10)
+
+        text_frame = ttk.Frame(self.frame)
+        text_frame.pack(fill='both', expand=True)
+
+        self.text = tk.Text(text_frame, height=height, wrap='word', state='disabled',
+                            bg='#1e1e1e', fg='#d4d4d4', font=FONT_MONO,
+                            relief='flat', borderwidth=0, padx=8, pady=6,
+                            insertbackground='#d4d4d4')
+        self.text.pack(side='left', fill='both', expand=True)
+
+        scrollbar = ttk.Scrollbar(text_frame, orient='vertical', command=self.text.yview)
+        scrollbar.pack(side='right', fill='y')
+        self.text.config(yscrollcommand=scrollbar.set)
+
+        self.text.tag_configure('error', foreground='#f48771')
+        self.text.tag_configure('warning', foreground='#dcdcaa')
+        self.text.tag_configure('success', foreground='#89d185')
+
+        self.clear_button = ttk.Button(self.frame, text='Clear Log', command=self.clear)
+        self.clear_button.pack(side='right', padx=5, pady=(6, 0))
+
+    def _tag_for(self, message):
+        if message.startswith(('ERROR', 'CRITICAL')):
+            return 'error'
+        if message.startswith('WARNING'):
+            return 'warning'
+        if message.startswith(('SUCCESS', 'Done')):
+            return 'success'
+        return None
+
+    def log(self, message):
+        self.text.config(state='normal')
+        self.text.insert('end', message + '\n', self._tag_for(message))
+        self.text.see('end')
+        self.text.config(state='disabled')
+
+    def clear(self):
+        self.text.config(state='normal')
+        self.text.delete('1.0', 'end')
+        self.text.config(state='disabled')
+
+
 class ToolTip:
     """Tooltip no estilo Windows 11: fundo escuro, com atraso de exibicao."""
 

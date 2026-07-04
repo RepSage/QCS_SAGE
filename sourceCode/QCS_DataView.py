@@ -173,15 +173,14 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
     #mirror_var.loc[not_nan, variable] = np.nan
     #ax1.plot(mirror_var['Datetime'], mirror_var[variable], marker='o', c='red', linestyle='none', markersize=2, label='Reproved data')
 
-    # use only valid timestamps: a NaT at the edges would break datetime()
+    # use only valid timestamps: a NaT at the edges would break the limits.
+    # Limits come from the full first/last timestamps (day floor / day ceiling),
+    # so deployments crossing a new year keep a valid, increasing X axis.
     valid_times = qualified_data['Datetime'].dropna()
-    year = valid_times.iloc[0].year
-    month_firstday = valid_times.iloc[0].month
-    month_finalday = valid_times.iloc[-1].month
-    firstday = valid_times.iloc[0].day
-    finalday = valid_times.iloc[-1].day
-    x_inflim = pd.Timestamp(datetime.datetime(year, month_firstday, firstday, 0, 0))
-    x_suplim = pd.Timestamp(datetime.datetime(year, month_finalday, finalday, 23, 59))
+    t_start = valid_times.iloc[0]
+    t_end = valid_times.iloc[-1]
+    x_inflim = t_start.normalize()
+    x_suplim = t_end.normalize() + pd.Timedelta(hours=23, minutes=59)
     ax1.set_xlim(x_inflim, x_suplim)
 
     if fixed_scale == True:
@@ -207,7 +206,9 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
     if re.search('depth', variable, re.IGNORECASE):
         ax1.invert_yaxis()
 
-    ax1.set_title('Site: %s  /   year: %s   /  month: %s'%(qualified_data['Site'].iloc[0], year, month_firstday))
+    ax1.set_title('Site: %s   /   %s  to  %s' % (qualified_data['Site'].iloc[0],
+                                                 t_start.strftime('%d/%m/%Y'),
+                                                 t_end.strftime('%d/%m/%Y')))
     plt.savefig(dataview_path + '/' + re.search(r'^[^\(]+',variable, re.IGNORECASE).group() + ' series.svg', bbox_inches='tight', dpi=100)
     plt.close(fig)
 
@@ -713,7 +714,7 @@ def plot_database_panel3(database, dataViewSettings):
                           loc='upper center', bbox_to_anchor=(1.1, 1.01),
                           ncol=1, fontsize=7)
                 
-                plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year))
+                plt.savefig('panel3_%s_%s_%d.svg'%(site, semester, year))
                 plt.show()
 
 def plot_hobo_split_site (database, dataview_path):

@@ -105,6 +105,9 @@ CONFIG = {
         'env_max_tur': 50,
         'rep_cnt_fail': 20,
         'rep_cnt_susp': 15,
+        # densidade potencial pode diminuir com a profundidade ate esta
+        # tolerancia (kg/m3) sem marcar inversao (teste de perfis)
+        'dens_inv_tolerance': 0.03,
         #'eps': 'AUTO',
     },
     # Per-variable factors for the spike, rate-of-change and vertical-gradient tests
@@ -125,6 +128,15 @@ CONFIG = {
     'tsFactors_entries': {}
 }
 
+# copia imutavel dos criterios padrao, usada pelo botao 'Reset to Defaults'
+# (capturada aqui, antes de restore_user_prefs/config poderem alterar CONFIG)
+import copy
+DEFAULT_QUALITY_CONFIG = {
+    'tsQualityTests': dict(CONFIG['tsQualityTests']),
+    'tsSettings': dict(CONFIG['tsSettings']),
+    'tsFactors': copy.deepcopy(CONFIG['tsFactors']),
+}
+
 # variables that have per-variable factors, with display names for the Settings table
 FACTOR_VARS = [
     ('T', 'Temperature'), ('S', 'Salinity'), ('C', 'Conductivity'), ('P', 'Pressure'),
@@ -135,7 +147,8 @@ FACTOR_VARS = [
 # Tooltips dictionary
 TOOLTIPS = {
     'data_file': "Select the raw data file to be qualified\nSupported formats: .csv, .xlsx",
-    'latitude': "Latitude of the collection site (degrees)\nUsed to convert pressure to depth",
+    'latitude': "Latitude of the collection site (decimal degrees, -90 to 90)\nSouthern hemisphere is negative (e.g. -17.5)\nUsed to convert pressure to depth",
+    'longitude': "Longitude of the collection site (decimal degrees, -180 to 180)\nWestern hemisphere is negative (e.g. -40.0)\nUsed by the density inversion test",
     'config_file': "OPTIONAL: Select the configuration file (.json)\ncontaining quality test parameters",
     'input_type': "Type of instrument that generated the data\nSeaguard: Standard CTD\nHOBO: Autonomous logger",
     'data_type': "Data collection type\nProfile: Vertical data (cast)\nMooring: Fixed-point temporal data",
@@ -193,14 +206,15 @@ TS_SETTINGS_TOOLTIPS = {
     'env_max_tur': "Maximum expected turbidity (FTU)\nValues above will be flagged",
     'rep_cnt_fail': "Number of repeated values to flag as FAIL\nFor flat line test",
     'rep_cnt_susp': "Number of repeated values to flag as SUSPECT\nFor flat line test",
+    'dens_inv_tolerance': "Density inversion tolerance (kg/m3)\nPotential density may decrease with depth up to this\nvalue before the pair is flagged as SUSPECT",
     #'eps': "Epsilon value for flat line detection\nMinimum difference to consider values different",
 }
 
 # tooltips for the per-variable factor columns (Factors per Variable tab)
 TS_FACTORS_TOOLTIPS = {
-    'fail': "Std-deviation multiplier to flag as FAIL\nUsed in spike, rate-of-change and vertical-gradient tests",
-    'susp': "Std-deviation multiplier to flag as SUSPECT\nUsed in spike, rate-of-change and vertical-gradient tests",
-    'window': "Time window for the std calculation\nFormat: '2D' (days), '3H' (hours), '30M' (minutes), '45S' (seconds) or 'WHOLE'",
+    'fail': "Robust-sigma multiplier to flag as FAIL\nSpike and vertical-gradient tests\n(rate of change is capped at SUSPECT per QARTOD)",
+    'susp': "Robust-sigma multiplier to flag as SUSPECT\nUsed in spike, rate-of-change and vertical-gradient tests",
+    'window': "Time window for the local sigma (spike and rate-of-change tests)\nFormat: '2D' (days), '3H' (hours), '30M' (minutes), '45S' (seconds) or 'WHOLE'\nMust cover at least 3 samples at the data's sampling interval",
 }
 
 TS_QUALITY_TESTS_TOOLTIPS = {
@@ -296,6 +310,24 @@ def selectOutputFolder():
         USER_PREFS['last_output_dir'] = folderPath
         save_user_prefs()
 
+def apply_config_file(config_path):
+    """Carrega um arquivo de configuracao JSON para dentro de CONFIG.
+    Retorna None em caso de sucesso ou a mensagem de erro."""
+    try:
+        with open(config_path, 'r') as f:
+            config_data = json.load(f)
+        if 'tsQualityTests' in config_data:
+            CONFIG['tsQualityTests'].update(config_data['tsQualityTests'])
+        if 'tsSettings' in config_data:
+            CONFIG['tsSettings'].update(config_data['tsSettings'])
+        if 'tsFactors' in config_data:
+            for k, v in config_data['tsFactors'].items():
+                if k in CONFIG['tsFactors']:
+                    CONFIG['tsFactors'][k].update(v)
+        return None
+    except Exception as e:
+        return str(e)
+
 def selectConfigFile():
     filepath = filedialog.askopenfilename(
         initialdir=USER_PREFS.get('last_config_dir', '/'),
@@ -307,11 +339,24 @@ def selectConfigFile():
         inputConfigPath_entry.insert(0, filepath)
         USER_PREFS['last_config_dir'] = os.path.dirname(filepath)
         save_user_prefs()
+        # aplica imediatamente, para a janela de Settings refletir o arquivo
+        error = apply_config_file(filepath)
+        if error:
+            messagebox.showerror("Error", "Could not load the configuration file:\n%s" % error)
+        else:
+            messagebox.showinfo("Config loaded",
+                                "Quality settings loaded from:\n%s\n\n"
+                                "Open the Settings window to review them." % filepath)
 
 def export_config():
     # Atualiza as configurações atuais antes de exportar
-    save_settings_values()
-    
+    invalid = save_settings_values()
+    if invalid:
+        messagebox.showwarning("Invalid values",
+                               "Fix these fields before exporting (not valid numbers/format):\n\n- "
+                               + "\n- ".join(invalid))
+        return
+
     filepath = filedialog.asksaveasfilename(
         defaultextension=".json",
         filetypes=(("JSON files", "*.json"), ("All files", "*.*")),
@@ -334,38 +379,40 @@ def export_config():
             messagebox.showerror("Error", f"Fail exporting settings:\n{str(e)}")
 
 def save_settings_values():
-    """Atualiza CONFIG com os valores atuais da interface"""
+    """Atualiza CONFIG com os valores atuais da interface.
+    Retorna a lista de campos invalidos (mantidos com o valor anterior),
+    para o chamador avisar o usuario em vez de ignorar em silencio."""
+    invalid = []
+
     # Update tsQualityTests
     for test, var in CONFIG['tsQualityTests_vars'].items():
         CONFIG['tsQualityTests'][test] = var.get()
 
     # Update tsSettings (all numeric: int or float)
     for param, entry in CONFIG['tsSettings_entries'].items():
-        value = entry.get()
-        if '.' in value:
-            try:
-                CONFIG['tsSettings'][param] = float(value)
-            except ValueError:
-                pass
-        else:
-            try:
-                CONFIG['tsSettings'][param] = int(value)
-            except ValueError:
-                pass
+        value = entry.get().strip()
+        try:
+            CONFIG['tsSettings'][param] = float(value) if '.' in value else int(value)
+        except ValueError:
+            invalid.append(param.replace('_', ' '))
 
-    # Update per-variable factors (fail/susp numeric, window kept as text)
+    # Update per-variable factors (fail/susp numeric, window '2D/3H/30M/45S/WHOLE')
+    window_format = re.compile(r'^\d+\s*[DHMS]$|^WHOLE$', re.IGNORECASE)
     for key, entries in CONFIG['tsFactors_entries'].items():
         try:
             CONFIG['tsFactors'][key]['fail'] = float(entries['fail'].get())
         except ValueError:
-            pass
+            invalid.append('%s fail factor' % key)
         try:
             CONFIG['tsFactors'][key]['susp'] = float(entries['susp'].get())
         except ValueError:
-            pass
+            invalid.append('%s susp factor' % key)
         window_val = entries['window'].get().strip()
-        if window_val:
+        if window_format.match(window_val):
             CONFIG['tsFactors'][key]['window'] = window_val
+        else:
+            invalid.append('%s time window' % key)
+    return invalid
 
 def collect_input_settings():
     """Valida e coleta as configuracoes da interface. Retorna True se tudo ok."""
@@ -412,25 +459,13 @@ def collect_input_settings():
     INPUT['input_type'] = inputType_combobox.get()
     INPUT['data_type'] = dType_combobox.get()
 
-    # Carrega o arquivo de configuração JSON se foi especificado
+    # Reaplica o arquivo de configuração JSON se foi especificado (o arquivo
+    # também é aplicado ao ser selecionado; aqui garante o estado no RUN)
     config_path = INPUT.get('input_config_path', '')
     if config_path and os.path.exists(config_path):
-        try:
-            with open(config_path, 'r') as f:
-                config_data = json.load(f)
-
-            # Atualiza apenas as configurações que existem no arquivo
-            if 'tsQualityTests' in config_data:
-                CONFIG['tsQualityTests'].update(config_data['tsQualityTests'])
-            if 'tsSettings' in config_data:
-                CONFIG['tsSettings'].update(config_data['tsSettings'])
-            if 'tsFactors' in config_data:
-                for k, v in config_data['tsFactors'].items():
-                    if k in CONFIG['tsFactors']:
-                        CONFIG['tsFactors'][k].update(v)
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not load the configuration file:\n{str(e)}")
+        error = apply_config_file(config_path)
+        if error:
+            messagebox.showerror("Error", "Could not load the configuration file:\n%s" % error)
             return False
 
     OUTPUT['output_file_path'] = out_dir
@@ -439,12 +474,30 @@ def collect_input_settings():
     OUTPUT['remove_bad'] = remove_bad.get()
     OUTPUT['remove_suspect'] = remove_suspect.get()
 
-    INPUT['site'] = siteSelect_entry.get().upper()
+    INPUT['site'] = siteSelect_entry.get().strip().upper()
+    if len(INPUT['site']) > 5:
+        messagebox.showwarning("Warning", "Site Code must have at most 5 characters\n('Site Code' field).")
+        return False
 
     try:
         INPUT['latitude'] = float(latitude_entry.get())
+        if not -90 <= INPUT['latitude'] <= 90:
+            raise ValueError
     except ValueError:
-        INPUT['latitude'] = 17.5
+        messagebox.showwarning("Warning",
+                               "Invalid latitude '%s'.\nUse decimal degrees between -90 and 90 "
+                               "(southern hemisphere is negative, e.g. -17.5)." % latitude_entry.get())
+        return False
+
+    try:
+        INPUT['longitude'] = float(longitude_entry.get())
+        if not -180 <= INPUT['longitude'] <= 180:
+            raise ValueError
+    except ValueError:
+        messagebox.showwarning("Warning",
+                               "Invalid longitude '%s'.\nUse decimal degrees between -180 and 180 "
+                               "(western hemisphere is negative, e.g. -40.0)." % longitude_entry.get())
+        return False
 
     if INPUT['data_type'] == 'TSCP Profile':
         INPUT['profile'] = True
@@ -469,6 +522,7 @@ def collect_input_settings():
         'remove_suspect': OUTPUT['remove_suspect'],
         'site_code': INPUT['site'],
         'latitude': latitude_entry.get(),
+        'longitude': longitude_entry.get(),
         'qcs_version': data.QCS_VERSION,
         'tsQualityTests': dict(CONFIG['tsQualityTests']),
         'tsSettings': dict(CONFIG['tsSettings']),
@@ -484,6 +538,7 @@ def start_qualification():
     run_button.config(state='disabled')
     window.config(cursor='watch')
     status_var.set("Running qualification... the window may not respond while processing.")
+    log_line('=== Qualification started: %s ===' % INPUT.get('file_name', ''))
     window.update_idletasks()
     try:
         run_full_qualification()
@@ -522,6 +577,7 @@ def restore_user_prefs():
     set_entry(outputName_entry, 'output_name')
     set_entry(siteSelect_entry, 'site_code')
     set_entry(latitude_entry, 'latitude')
+    set_entry(longitude_entry, 'longitude')
     if p.get('input_type'):
         inputType_combobox.set(p['input_type'])
     if p.get('data_type'):
@@ -606,10 +662,13 @@ def open_settings_window():
     button_frame = ttk.Frame(settings_win)
     button_frame.pack(fill='x', pady=10)
     
-    ttk.Button(button_frame, text="Export Settings", 
+    ttk.Button(button_frame, text="Export Settings",
               command=export_config, width=20).pack(side='left', padx=5)
-    
-    ttk.Button(button_frame, text="Save Settings", 
+
+    ttk.Button(button_frame, text="Reset to Defaults",
+              command=reset_settings_to_defaults, width=20).pack(side='left', padx=5)
+
+    ttk.Button(button_frame, text="Save Settings",
               command=lambda: save_settings(settings_win),
               style='Accent.TButton').pack(side='right', padx=5)
 
@@ -751,7 +810,9 @@ def create_params_tab(parent):
                 unit = "μg/L"
             elif 'O2' in param:
                 unit = "μM"
-            
+            elif 'dens' in param:
+                unit = "kg/m³"
+
             if unit:
                 ttk.Label(scrollable_frame, text=unit).grid(row=row, column=2, sticky='w', padx=5)
             
@@ -796,9 +857,37 @@ def create_factors_tab(parent):
         CONFIG['tsFactors_entries'][key] = {'fail': fail_e, 'susp': susp_e, 'window': win_e}
 
 def save_settings(window):
-    save_settings_values()
+    invalid = save_settings_values()
+    if invalid:
+        # mantem a janela aberta para o usuario corrigir os campos rejeitados
+        messagebox.showwarning("Invalid values",
+                               "These fields are not valid and kept their previous value:\n\n- "
+                               + "\n- ".join(invalid)
+                               + "\n\nFix them and click Save Settings again.")
+        return
     messagebox.showinfo("Success", "Success saving settings!")
     window.destroy()
+
+def reset_settings_to_defaults():
+    """Restaura os criterios de qualidade padrao do codigo na janela de Settings."""
+    if not messagebox.askyesno("Reset to defaults",
+                               "Replace ALL quality tests, parameters and factors\n"
+                               "with the software defaults?"):
+        return
+    CONFIG['tsQualityTests'].update(DEFAULT_QUALITY_CONFIG['tsQualityTests'])
+    CONFIG['tsSettings'].update(DEFAULT_QUALITY_CONFIG['tsSettings'])
+    for k, v in DEFAULT_QUALITY_CONFIG['tsFactors'].items():
+        CONFIG['tsFactors'][k].update(v)
+    # reflete os padroes nos widgets abertos
+    for test, var in CONFIG['tsQualityTests_vars'].items():
+        var.set(CONFIG['tsQualityTests'][test])
+    for param, entry in CONFIG['tsSettings_entries'].items():
+        entry.delete(0, END)
+        entry.insert(0, str(CONFIG['tsSettings'][param]))
+    for key, entries in CONFIG['tsFactors_entries'].items():
+        for field in ('fail', 'susp', 'window'):
+            entries[field].delete(0, END)
+            entries[field].insert(0, str(CONFIG['tsFactors'][key][field]))
 
 # Main application
 INPUT = {}
@@ -810,7 +899,7 @@ theme.enable_high_dpi()
 window = Tk()
 window.title("QCS - Data Qualification Tool %s" % data.QCS_VERSION)
 
-theme.set_scaled_geometry(window, 840, 720, min_width=760, min_height=640)
+theme.set_scaled_geometry(window, 840, 830, min_width=760, min_height=720)
 window.resizable(True, True)
 
 # Configure styles (Sun Valley theme; falls back to the old clam look)
@@ -970,12 +1059,18 @@ siteSelect_entry = ttk.Entry(output_frame, width=12)
 siteSelect_entry.grid(row=8, column=0, sticky='w', pady=(0,5))
 ToolTip(siteSelect_entry, TOOLTIPS['site_code'])
 
-# Latitude (used to convert pressure to depth)
+# Latitude (used to convert pressure to depth) and longitude (density inversion)
 ttk.Label(input_frame, text="Latitude (deg):", style='Header.TLabel').grid(row=8, column=0, sticky='w', pady=(5,2))
 latitude_entry = ttk.Entry(input_frame, width=12)
 latitude_entry.insert(0, "17.5")
 latitude_entry.grid(row=9, column=0, sticky='w', pady=(0,5))
 ToolTip(latitude_entry, TOOLTIPS['latitude'])
+
+ttk.Label(input_frame, text="Longitude (deg):", style='Header.TLabel').grid(row=8, column=1, sticky='w', pady=(5,2))
+longitude_entry = ttk.Entry(input_frame, width=12)
+longitude_entry.insert(0, "-40.0")
+longitude_entry.grid(row=9, column=1, sticky='w', pady=(0,5))
+ToolTip(longitude_entry, TOOLTIPS['longitude'])
 
 # Action buttons
 action_frame = ttk.Frame(main_frame)
@@ -992,10 +1087,24 @@ run_button = ttk.Button(action_frame, text="Run Qualification", command=start_qu
 run_button.pack(side='left', padx=5, ipadx=20, ipady=2)
 ToolTip(run_button, TOOLTIPS['run_button'])
 
+# Execution log: progress, warnings and the per-test summary during RUN
+log_console = theme.LogConsole(main_frame, title=" Execution log ", height=6)
+log_console.frame.grid(row=3, column=0, columnspan=2, sticky='nsew', padx=5, pady=(4, 0))
+
+def log_line(message):
+    """Escreve no console E no painel de log; redesenha para o progresso
+    aparecer mesmo com o pipeline rodando na thread da interface."""
+    print(message)
+    try:
+        log_console.log(message)
+        window.update_idletasks()
+    except Exception:
+        pass
+
 # Status bar
 status_var = StringVar(value="Ready")
 status_label = ttk.Label(main_frame, textvariable=status_var, style='Small.TLabel', anchor='w')
-status_label.grid(row=3, column=0, columnspan=2, sticky='ew', padx=5, pady=(6, 0))
+status_label.grid(row=4, column=0, columnspan=2, sticky='ew', padx=5, pady=(6, 0))
 
 # The whole qualification pipeline runs inside this function so the main
 # window stays open and the user can qualify several files in sequence.
@@ -1042,6 +1151,23 @@ def run_full_qualification():
     INPUT['start_time'] = start_time
     INPUT['end_time'] = end_time
 
+    # timestamp sanity checks (gap/monotonicity): reported, not flagged per sample
+    dt_diff = raw_data['Datetime'].diff()
+    ts_backwards = int((dt_diff < pd.Timedelta(0)).sum())
+    ts_duplicates = int(raw_data['Datetime'].duplicated().sum())
+    median_interval = pd.Timedelta(ms_interval.item())
+    gap_mask = dt_diff > 3 * median_interval
+    ts_gaps = int(gap_mask.sum())
+    ts_max_gap = str(dt_diff.max()) if ts_gaps else ''
+    if ts_backwards:
+        log_line("WARNING: %d timestamp(s) go BACKWARDS in time - check the raw file "
+                 "or use 'Sort by Time' before interpreting time-based tests." % ts_backwards)
+    if ts_duplicates:
+        log_line("WARNING: %d duplicated timestamp(s) found in the raw file." % ts_duplicates)
+    if ts_gaps:
+        log_line("MESSAGE: %d sampling gap(s) longer than 3x the median interval "
+                 "(largest: %s)." % (ts_gaps, ts_max_gap))
+
     # adjusting for GMT-3 hours
     if INPUT['correct_gmt3h'] == True:
         raw_data['Datetime'] = raw_data['Datetime'] - timedelta(hours=3)
@@ -1077,8 +1203,16 @@ def run_full_qualification():
     # add Sample number column
     raw_data['Sample number'] = raw_data.index + 1
 
-    # handle non-physical values <= 0 (optical sensors keep small negatives as ~0)
-    raw_data = data.clean_below_zero(raw_data, tsSettings)
+    # handle non-physical values <= 0 (optical sensors keep small negatives as ~0);
+    # every changed value is counted and reported, never dropped silently
+    raw_data, zero_report = data.clean_below_zero(raw_data, tsSettings)
+    for col, counts in zero_report.items():
+        if counts['clamped']:
+            log_line("MESSAGE: %s: %d negative value(s) clamped to 0 (sensor noise around zero)"
+                     % (col, counts['clamped']))
+        if counts['discarded']:
+            log_line("WARNING: %s: %d non-physical value(s) <= 0 discarded (set to missing)"
+                     % (col, counts['discarded']))
 
     #removing data where depth is under 0.5 for profile data
     if INPUT['profile'] == True:
@@ -1207,7 +1341,7 @@ def run_full_qualification():
 
 
     if INPUT['profile'] == False and 'Depth (m)' in raw_data.columns:
-        raw_data = data.trim_by_depth(raw_data)
+        raw_data = data.trim_by_depth(raw_data, tk_root=window)
     
     # number of lines and cells
     n_cel = 1
@@ -1218,7 +1352,7 @@ def run_full_qualification():
                             'PAR (umol/m2/s)', 'Turbidity (FTU)', 'Chlorophyll (ug/L)', 'pH', 'Dissolved organic matter (ppb)']
         for name in check_variables:
             if name in raw_data.columns:
-                raw_data = data.trim_selected_variable(raw_data, name)
+                raw_data = data.trim_selected_variable(raw_data, name, tk_root=window)
     #create list for flag codes
     flags = ['' for n in range(len(raw_data))]
 
@@ -1240,10 +1374,13 @@ def run_full_qualification():
 
     # all runners take (column, flags, param_key); range/flat ignore param_key,
     # spike/rate/gradient use the per-variable factors from tsFactors[param_key]
-    def run_range_test(min_key, max_key):
+    def run_range_test(min_key, max_key, fail_flag=QC.QC_flags.BAD_DATA):
+        # sensor range -> BAD (physically impossible); environmental range ->
+        # SUSPECT (QARTOD: outside the regional envelope is suspect, not bad)
         return lambda column, flags, param_key: QC.range_test(raw_data[column], flags,
                                                               range_min=tsSettings[min_key],
-                                                              range_max=tsSettings[max_key])
+                                                              range_max=tsSettings[max_key],
+                                                              fail_flag=fail_flag)
 
     def run_spike_test(column, flags, param_key):
         f = tsFactors[param_key]
@@ -1252,10 +1389,14 @@ def run_full_qualification():
 
     def run_rate_of_change_test(column, flags, param_key):
         f = tsFactors[param_key]
+        # positions of THIS variable's previous flags: keeps the 'previous value
+        # was bad/missing' propagation from being contaminated by other variables
+        done = len(flags[0]) if flags else 0
+        var_positions = [i for i in range(done) if flag_layout[i] == param_key]
         return QC.sigma_rate_of_change_test(n_samples, raw_data[column], n_cel, flags,
                                             ms_interval=ms_interval, time_window=f['window'],
                                             rc_fail=f['fail'], rc_susp=f['susp'],
-                                            DIR=False)
+                                            DIR=False, var_positions=var_positions)
 
     def run_flat_line_test(column, flags, param_key):
         return QC.single_flat_line_test(n_samples, n_cel, raw_data[column], flags,
@@ -1264,10 +1405,31 @@ def run_full_qualification():
 
     def run_vertical_gradient_test(column, flags, param_key):
         f = tsFactors[param_key]
-        return QC.vertical_gradient_test(n_samples, raw_data[column], n_cel, flags,
-                                         ms_interval=ms_interval, time_window=f['window'],
-                                         rc_fail=f['fail'], rc_susp=f['susp'],
-                                         DIR=False)
+        if 'Depth (m)' not in raw_data.columns:
+            return [flags[n] + '%d' % QC.QC_flags.UNKNOWN for n in range(n_samples)]
+        return QC.vertical_gradient_test(raw_data[column], raw_data['Depth (m)'], flags,
+                                         grad_fail=f['fail'], grad_susp=f['susp'])
+
+    qc_report_rows = []  # one row per executed test -> QCS_test_report.csv
+
+    def count_last_flags(flags):
+        last = [fl[-1] for fl in flags]
+        return {c: last.count(c) for c in '123459'}
+
+    def report_test(test_label, param_key, flags, elapsed):
+        counts = count_last_flags(flags)
+        qc_report_rows.append({
+            'Test': test_label, 'Variable': param_key,
+            'Good': counts['1'], 'Not evaluated': counts['2'],
+            'Suspect': counts['3'], 'Bad': counts['4'],
+            'Test off': counts['5'], 'Missing': counts['9'],
+            'Time (s)': round(elapsed, 3)})
+        if counts['5'] == n_samples:
+            log_line('%s: test off' % test_label)
+        else:
+            log_line('%s: bad %d, suspect %d (%.1f%% flagged) [%.2f s]'
+                     % (test_label, counts['4'], counts['3'],
+                        100.0 * (counts['4'] + counts['3']) / n_samples, elapsed))
 
     def apply_quality_test(flags, param_key, test_label, test_switch, test_runner):
         # runs one quality test, appending exactly one flag character per sample;
@@ -1285,9 +1447,7 @@ def run_full_qualification():
             flags = test_runner(matched_column, flags, param_key)
         else:
             flags = [flags[n] + '%d' % QC.QC_flags.DISMISSED for n in range(n_samples)]
-        tf = time.time()
-        N = data.count_test_bdata(flags)
-        print('%s test: %f s\nReproved: %i (%f%%)\n' % (test_label, (tf - ti), N, (N / n_samples) * 100))
+        report_test(test_label, param_key, flags, time.time() - ti)
         return flags
 
     # The param key (1st item) of each test feeds flag_layout below, which maps every
@@ -1302,15 +1462,15 @@ def run_full_qualification():
         ('pH',  'pH sensor range',           'pH sensor range',           run_range_test('sensor_min_pH', 'sensor_max_pH')),
         ('chl', 'Chlorophyll sensor range',  'chlorophyll sensor range',  run_range_test('sensor_min_chl', 'sensor_max_chl')),
         ('tur', 'Turbidity sensor range',    'turbidity sensor range',    run_range_test('sensor_min_tur', 'sensor_max_tur')),
-        ('T',   'Temperature environmental range',  'temperature environmental range',  run_range_test('env_min_temp', 'env_max_temp')),
-        ('S',   'Salinity environmental range',     'salinity environmental range',     run_range_test('env_min_sal', 'env_max_sal')),
-        ('C',   'Conductivity environmental range', 'conductivity environmental range', run_range_test('env_min_cond', 'env_max_cond')),
-        ('P',   'Pressure environmental range',     'pressure environmental range',     run_range_test('env_min_pres', 'env_max_pres')),
-        ('pH',  'pH environmental range',           'pH environmental range',           run_range_test('env_min_pH', 'env_max_pH')),
-        ('chl', 'Chlorophyll environmental range',  'chlorophyll environmental range',  run_range_test('env_min_chl', 'env_max_chl')),
-        ('O2',  'Dissolved oxygen environmental range', 'dissolved oxygen environmental range', run_range_test('env_min_O2', 'env_max_O2')),
-        ('org', 'Dissolved organic matter environmental range', 'dissolved organic matter environmental range', run_range_test('env_min_org', 'env_max_org')),
-        ('tur', 'Turbidity environmental range',    'turbidity environmental range',    run_range_test('env_min_tur', 'env_max_tur')),
+        ('T',   'Temperature environmental range',  'temperature environmental range',  run_range_test('env_min_temp', 'env_max_temp', QC.QC_flags.SUSPECT)),
+        ('S',   'Salinity environmental range',     'salinity environmental range',     run_range_test('env_min_sal', 'env_max_sal', QC.QC_flags.SUSPECT)),
+        ('C',   'Conductivity environmental range', 'conductivity environmental range', run_range_test('env_min_cond', 'env_max_cond', QC.QC_flags.SUSPECT)),
+        ('P',   'Pressure environmental range',     'pressure environmental range',     run_range_test('env_min_pres', 'env_max_pres', QC.QC_flags.SUSPECT)),
+        ('pH',  'pH environmental range',           'pH environmental range',           run_range_test('env_min_pH', 'env_max_pH', QC.QC_flags.SUSPECT)),
+        ('chl', 'Chlorophyll environmental range',  'chlorophyll environmental range',  run_range_test('env_min_chl', 'env_max_chl', QC.QC_flags.SUSPECT)),
+        ('O2',  'Dissolved oxygen environmental range', 'dissolved oxygen environmental range', run_range_test('env_min_O2', 'env_max_O2', QC.QC_flags.SUSPECT)),
+        ('org', 'Dissolved organic matter environmental range', 'dissolved organic matter environmental range', run_range_test('env_min_org', 'env_max_org', QC.QC_flags.SUSPECT)),
+        ('tur', 'Turbidity environmental range',    'turbidity environmental range',    run_range_test('env_min_tur', 'env_max_tur', QC.QC_flags.SUSPECT)),
         ('T',   'Temperature spikes',  'temperature spikes',  run_spike_test),
         ('S',   'Salinity spikes',     'salinity spikes',     run_spike_test),
         ('C',   'Conductivity spikes', 'conductivity spikes', run_spike_test),
@@ -1344,24 +1504,25 @@ def run_full_qualification():
     for param_key, test_label, test_switch, test_runner in test_sequence:
         flags = apply_quality_test(flags, param_key, test_label, test_switch, test_runner)
 
-    # Density inversion test (profiles only) -> flag position 33.
+    # Density inversion test (profiles only) -> last flag position.
     # Always appends one character for profiles so the flag layout stays fixed.
     if INPUT['profile'] == True:
         ti = time.time()
         if tsQualityTests.get('density inversion', 'OFF') == 'ON':
-            flags = QC.density_inversion_test(raw_data, flags, tolerance=0.03,
-                                              lat=INPUT.get('latitude', 17.5), lon=-40.0)
+            flags = QC.density_inversion_test(raw_data, flags,
+                                              tolerance=tsSettings.get('dens_inv_tolerance', 0.03),
+                                              lat=INPUT.get('latitude', 17.5),
+                                              lon=INPUT.get('longitude', -40.0))
         else:
             flags = [flags[n] + '%d' % QC.QC_flags.DISMISSED for n in range(n_samples)]
         flag_layout.append('dens')
-        tf = time.time()
-        N = data.count_test_bdata(flags)
-        print('Density inversion test: %f s\nReproved: %i (%f%%)\n' % ((tf - ti), N, (N / n_samples) * 100))
+        test_sequence.append(('dens', 'Density inversion', 'density inversion', None))
+        report_test('Density inversion', 'dens', flags, time.time() - ti)
 
     end = time.time()
-    print('\nProcessing time: %f s\n' %(end - start))
+    log_line('Processing time: %.2f s' % (end - start))
 
-    print('\nCreating output table\n')
+    log_line('Creating output table')
     qualified_data, raw_data, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = data.handle_output_file (raw_data, flags, flag_layout, remove_suspect=OUTPUT['remove_suspect'], remove_bad=OUTPUT['remove_bad'])
 
     # add luminosity data to dataframe if input is hobo
@@ -1394,21 +1555,47 @@ def run_full_qualification():
         qualified_data.to_excel(os.path.join(path, output_base + '.xlsx'), index=False) ##cria excel
     if re.search('csv', OUTPUT['output_data_format'], re.IGNORECASE):
         qualified_data.to_csv(os.path.join(path, output_base + '.csv'), index=False) ##cria csv
-    print('\nExported data to: %s\n' %path)
+    log_line('Exported data to: %s' % path)
 
-    print('\nExporting statistics table to: %s\n' %path)
+    log_line('Exporting statistics table, reports and flag legend to: %s' % path)
     stat_table = data.tscp_stats_table (qualified_data)
     stat_table.to_csv(path + '/QCS_tscp_stat.csv', index=False)
-    print('\nExporting report to: %s\n' %path)
-    all_bad = np.union1d(np.union1d(T_bdata, S_bdata), np.union1d(C_bdata, P_bdata))
-    QCS_report = pd.DataFrame({'start': start_time,
-                                'end': end_time,
-                                'Total': len(qualified_data),
-                                'Valid': len(qualified_data) - len(all_bad),
-                                'T_bdata': len(T_bdata),
-                                'S_bdata': len(S_bdata),
-                                'C_bdata': len(C_bdata),
-                                'P_bdata': len(P_bdata)}, index=[0])
+
+    # per-test summary (the numbers previously printed only to the console)
+    pd.DataFrame(qc_report_rows).to_csv(path + '/QCS_test_report.csv', index=False)
+
+    # flag legend: which test/variable sits at each position of the flag string,
+    # plus the meaning of each flag code (mapping used to live only in the code)
+    with open(path + '/QCS_flag_legend.csv', 'w', encoding='utf-8') as f:
+        f.write('flag_position,test,variable\n')
+        for pos, entry in enumerate(test_sequence, start=1):
+            f.write('%d,%s,%s\n' % (pos, entry[1], entry[0]))
+        f.write('\nflag_code,meaning\n')
+        f.write('1,good data\n2,not evaluated\n3,suspect\n4,bad data\n'
+                '5,test switched off\n9,missing value\n')
+
+    # overall report: totals + per-variable bad/suspect/missing counts,
+    # 'Valid' discounts rows with bad data in ANY of the nine variables
+    bad_arrays = [T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata]
+    all_bad = np.unique(np.concatenate([np.asarray(a, dtype=int) for a in bad_arrays])) if any(len(a) for a in bad_arrays) else np.array([])
+    report_cols = {'start': start_time,
+                   'end': end_time,
+                   'Total': len(qualified_data),
+                   'Valid': len(qualified_data) - len(all_bad),
+                   'timestamp_backwards': ts_backwards,
+                   'timestamp_duplicates': ts_duplicates,
+                   'gaps_gt_3x_interval': ts_gaps,
+                   'max_gap': ts_max_gap}
+    per_var = {'T': (T_bdata, T_sdata, T_mdata), 'S': (S_bdata, S_sdata, S_mdata),
+               'C': (C_bdata, C_sdata, C_mdata), 'P': (P_bdata, P_sdata, P_mdata),
+               'pH': (pH_bdata, pH_sdata, pH_mdata), 'chl': (chl_bdata, chl_sdata, chl_mdata),
+               'O2': (O2_bdata, O2_sdata, O2_mdata), 'org': (org_bdata, org_sdata, org_mdata),
+               'tur': (tur_bdata, tur_sdata, tur_mdata)}
+    for k, (b, s, m) in per_var.items():
+        report_cols['%s_bad' % k] = len(b)
+        report_cols['%s_suspect' % k] = len(s)
+        report_cols['%s_missing' % k] = len(m)
+    QCS_report = pd.DataFrame(report_cols, index=[0])
     QCS_report.to_csv(path + '/QCS_report.csv')
 
     if INPUT['input_type'] != 'HOBO':
@@ -1446,7 +1633,7 @@ def run_full_qualification():
     OUTPUT['last_output_root'] = root_path
     plt.close('all')
     os.chdir(rootPath)
-    print('\nQualification finished.\n')
+    log_line('Done: qualification finished.')
 
 # restore last user choices and start the interface
 restore_user_prefs()

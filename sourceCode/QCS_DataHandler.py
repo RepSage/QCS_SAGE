@@ -251,28 +251,39 @@ def clean_below_zero(data, settings):
     #   sensor error -> NaN. The boundary is 5% of the variable's environmental
     #   span (tune via env_min/env_max if needed).
     # - All other variables: <= 0 -> NaN (sensor failure for marine data).
+    #
+    # Returns (data, report): report[column] = {'clamped': n, 'discarded': n},
+    # only for columns where something was changed, so the caller can log it.
     exceptions = ['Datetime', 'Sample number', 'Pitch[Deg]', 'Roll[Deg]', 'Timer[s]', 'Site']
     optical = {
         'chlorophyll': ('env_min_chl', 'env_max_chl'),
         'turbidity': ('env_min_tur', 'env_max_tur'),
         'organic matter': ('env_min_org', 'env_max_org'),
     }
+    report = {}
     for name in data.columns:
         if name in exceptions:
             continue
+        clamped, discarded = 0, 0
         if re.search('par', name, re.IGNORECASE):
+            clamped = int((data[name] < 0).sum())
             data.loc[data[name] < 0, name] = 0.0
-            continue
-        opt_key = next((k for k in optical if re.search(k, name, re.IGNORECASE)), None)
-        if opt_key is not None:
-            lo_key, hi_key = optical[opt_key]
-            span = settings.get(hi_key, 0) - settings.get(lo_key, 0)
-            tol = 0.05 * span if span > 0 else 0
-            data.loc[(data[name] < 0) & (data[name] >= -tol), name] = 0.0
-            data.loc[data[name] < -tol, name] = np.nan
         else:
-            data.loc[data[name] <= 0, name] = np.nan
-    return data
+            opt_key = next((k for k in optical if re.search(k, name, re.IGNORECASE)), None)
+            if opt_key is not None:
+                lo_key, hi_key = optical[opt_key]
+                span = settings.get(hi_key, 0) - settings.get(lo_key, 0)
+                tol = 0.05 * span if span > 0 else 0
+                clamped = int(((data[name] < 0) & (data[name] >= -tol)).sum())
+                discarded = int((data[name] < -tol).sum())
+                data.loc[(data[name] < 0) & (data[name] >= -tol), name] = 0.0
+                data.loc[data[name] < -tol, name] = np.nan
+            else:
+                discarded = int((data[name] <= 0).sum())
+                data.loc[data[name] <= 0, name] = np.nan
+        if clamped or discarded:
+            report[name] = {'clamped': clamped, 'discarded': discarded}
+    return data, report
 
 # Function for preparing output files
 
@@ -334,6 +345,15 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
     bdata = {k: [] for k in var_keys}
     sdata = {k: [] for k in var_keys}
     mdata = {k: [] for k in var_keys}
+    agg_flags = {k: [] for k in var_keys}  # rollup flag per row/variable (Flag_T etc.)
+
+    def worst_flag(chars):
+        # aggregation priority: bad > suspect > missing > good > not-evaluated > off
+        for code in ('4', '3', '9', '1', '2'):
+            if code in chars:
+                return int(code)
+        return 5
+
     for i in range(len(flags)):
         flagstr = flags[i]
         per_var = {k: '' for k in var_keys}
@@ -349,6 +369,12 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 sdata[k].append(i)
             elif '9' in chars:
                 mdata[k].append(i)
+            agg_flags[k].append(worst_flag(chars))
+
+    # per-variable rollup columns: downstream users read Flag_T etc. directly,
+    # without having to decode the positional flag string
+    for k in var_keys:
+        output_df['Flag_' + k] = agg_flags[k]
 
     T_bdata, S_bdata, C_bdata, P_bdata = (np.asarray(bdata['T']), np.asarray(bdata['S']), np.asarray(bdata['C']), np.asarray(bdata['P']))
     pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata = (np.asarray(bdata['pH']), np.asarray(bdata['chl']), np.asarray(bdata['O2']), np.asarray(bdata['org']), np.asarray(bdata['tur']))
@@ -404,10 +430,12 @@ def order_var (qualified_data, n_cel, data_type):
     if data_type == 'tscp':
         var_priority = {'Sample number': 0, 'Datetime': 1, 'Depth (m)': 2, 'Temperature (degC)': 3, 'Salinity (PSU)': 4,
                         'Conductivity (mS/cm)': 5, 'Pressure (dbar)': 6, 'Density (kg/m3)': 7, 'CO2 Level (ppm)': 8,
-                        'O2 level (uM)': 9, 'O2 content (mg/L)': 10, 'PAR (umol/m2/s)': 11, 'Turbidity (FTU)': 12, 'TSS (mg/L)': 13, 
+                        'O2 level (uM)': 9, 'O2 content (mg/L)': 10, 'PAR (umol/m2/s)': 11, 'Turbidity (FTU)': 12, 'TSS (mg/L)': 13,
                         'Chlorophyll (ug/L)': 14, 'pH': 15, 'Dissolved organic matter (ppb)': 16, 'Luminosity (lux)': 17,
                         'Soundspeed (m/s)': 18, 'Expedition': 19, 'Site': 20, 'Longitude': 21, 'Latitude': 22,
-                        'Battery voltage (V)': 23, 'Flag': 24}
+                        'Battery voltage (V)': 23, 'Flag': 24,
+                        'Flag_T': 25, 'Flag_S': 26, 'Flag_C': 27, 'Flag_P': 28, 'Flag_pH': 29,
+                        'Flag_chl': 30, 'Flag_O2': 31, 'Flag_org': 32, 'Flag_tur': 33}
     else:
         raise ValueError("Unsupported data_type '%s' in order_var (only 'tscp' is supported)" % data_type)
 
@@ -447,7 +475,11 @@ def order_var (qualified_data, n_cel, data_type):
 def tscp_stats_table (qualified_data):
     # builds the statistics table with whichever of the main variables
     # are present and hold at least one valid value
-    expected = ['Temperature (degC)', 'Salinity (PSU)', 'Pressure (dbar)']
+    expected = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)',
+                'Pressure (dbar)', 'Depth (m)', 'Density (kg/m3)', 'pH',
+                'O2 level (uM)', 'O2 content (mg/L)', 'Chlorophyll (ug/L)',
+                'Turbidity (FTU)', 'Dissolved organic matter (ppb)',
+                'PAR (umol/m2/s)', 'Soundspeed (m/s)']
     present = [var for var in expected
                if var in qualified_data.columns and not qualified_data[var].isna().all()]
     stat = pd.DataFrame({'Variable': present,
@@ -485,7 +517,22 @@ def on_motion(event):
                 # update plot
                 event.inaxes.figure.canvas.draw_idle()
 
-def trim_by_depth(data):
+def _show_and_wait(fig, tk_root):
+    # Mostra a figura interativa sem congelar a interface. plt.show(block=True)
+    # dentro de um callback do Tkinter cria um loop de eventos aninhado que trava
+    # a janela principal (mesmo problema do Select Profile Data, corrigido na
+    # v3.2.1); com tk_root, espera no proprio loop do Tk ate a figura fechar.
+    if tk_root is None:
+        plt.show(block=True)
+        return
+    import tkinter as tk
+    done = tk.BooleanVar(tk_root, value=False)
+    fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
+    fig.show()
+    tk_root.wait_variable(done)
+
+
+def trim_by_depth(data, tk_root=None):
     # Cria cópia do dataframe
     trimmed_data = data.copy()
     
@@ -551,15 +598,15 @@ def trim_by_depth(data):
     ax.set_xlim(np.nanmin(x) - 0.1, np.nanmax(x) + 0.1)
     ax.set_ylim(np.nanmin(y) - 0.1, np.nanmax(y) + 0.1)
 
-    # Mostra o gráfico
-    plt.show(block=True)
-    
+    # Mostra o gráfico e aguarda sem travar a interface
+    _show_and_wait(fig, tk_root)
+
     # Reindexa antes de retornar
     trimmed_data.index = np.arange(len(trimmed_data))
-    
+
     return trimmed_data
 
-def trim_selected_variable(data, name):
+def trim_selected_variable(data, name, tk_root=None):
     # Faz uma cópia explícita da coluna para evitar o alerta de SettingWithCopyWarning
     y = data[name].copy()
     x = data.index  # Usar o índice diretamente sem copiar
@@ -610,9 +657,9 @@ def trim_selected_variable(data, name):
     ax.set_xlim(np.nanmin(x)-0.1, np.nanmax(x)+0.1)
     ax.set_ylim(np.nanmin(y)-0.1, np.nanmax(y)+0.1)
 
-    # Exibe o gráfico e aguarda
-    plt.show(block=True)
-    
+    # Exibe o gráfico e aguarda sem travar a interface
+    _show_and_wait(fig, tk_root)
+
     # Atualiza os dados após fechar a janela
     data[name] = y
     return data

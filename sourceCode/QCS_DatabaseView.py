@@ -44,52 +44,12 @@ TOOLTIPS = {
     'max_scale': "Maximum value for parameter scale"
 }
 
-class ErrorLogger:
-    """Log de execucao com visual de console (cores por severidade)."""
+class ErrorLogger(theme.LogConsole):
+    """Log de execucao (console compartilhado do tema), posicionado via pack."""
 
     def __init__(self, parent):
-        self.frame = ttk.LabelFrame(parent, text=" Execution log ", padding=10)
+        super().__init__(parent, title=" Execution log ", height=8)
         self.frame.pack(fill='both', expand=True, padx=5, pady=5)
-
-        text_frame = ttk.Frame(self.frame)
-        text_frame.pack(fill='both', expand=True)
-
-        self.text = tk.Text(text_frame, height=8, wrap='word', state='disabled',
-                            bg='#1e1e1e', fg='#d4d4d4', font=theme.FONT_MONO,
-                            relief='flat', borderwidth=0, padx=8, pady=6,
-                            insertbackground='#d4d4d4')
-        self.text.pack(side='left', fill='both', expand=True)
-
-        scrollbar = ttk.Scrollbar(text_frame, orient='vertical', command=self.text.yview)
-        scrollbar.pack(side='right', fill='y')
-        self.text.config(yscrollcommand=scrollbar.set)
-
-        self.text.tag_configure('error', foreground='#f48771')
-        self.text.tag_configure('warning', foreground='#dcdcaa')
-        self.text.tag_configure('success', foreground='#89d185')
-
-        self.clear_button = ttk.Button(self.frame, text="Clear Log", command=self.clear)
-        self.clear_button.pack(side='right', padx=5, pady=(6, 0))
-
-    def _tag_for(self, message):
-        if message.startswith(('ERROR', 'CRITICAL')):
-            return 'error'
-        if message.startswith('WARNING'):
-            return 'warning'
-        if message.startswith('SUCCESS'):
-            return 'success'
-        return None
-
-    def log(self, message):
-        self.text.config(state='normal')
-        self.text.insert('end', message + '\n', self._tag_for(message))
-        self.text.see('end')
-        self.text.config(state='disabled')
-
-    def clear(self):
-        self.text.config(state='normal')
-        self.text.delete('1.0', 'end')
-        self.text.config(state='disabled')
 
 
 # ----- user preferences: shared with QCS_Main (same json file) -----
@@ -465,6 +425,10 @@ def saveDataViewSettings():
 def generatePanels():
     error_logger.clear()  # Limpa o log antes de gerar novos painéis
 
+    # salva implicitamente as escolhas atuais da interface: gerar paineis com
+    # configuracoes defasadas era uma armadilha do fluxo salvar->gerar em 2 cliques
+    saveDataViewSettings()
+
     if not dataViewSettings.get('dataType'):
         error_logger.log("ERROR: No settings saved yet - configure the options and click 'Save View Settings' first")
         return
@@ -696,15 +660,30 @@ def load_database():
             messagebox.showerror("Error", "Could not join the files from folder:\n%s\n\nDetails: %s" % (inputSettings.get('inputPath', ''), e))
             return None
     else:
-        if inputSettings.get('databaseFileName', '') != '':
-            try:
-                database = pd.read_excel(inputSettings['databaseFileName'])
-            except Exception as e:
-                messagebox.showerror("Error", "Could not read the database file:\n%s\n\nDetails: %s" % (inputSettings['databaseFileName'], e))
-                return None
-        else:
+        raw_selection = inputSettings.get('databaseFileName', '')
+        file_paths = [p.strip() for p in raw_selection.split(';') if p.strip()]
+        if not file_paths:
             messagebox.showerror("Error", "Select a database file or provide a valid input folder.")
             return None
+        # multiple selected files are concatenated into a single database
+        frames = []
+        for file_path in file_paths:
+            try:
+                frames.append(pd.read_excel(file_path))
+            except Exception as e:
+                messagebox.showerror("Error", "Could not read the database file:\n%s\n\nDetails: %s" % (file_path, e))
+                return None
+        database = frames[0] if len(frames) == 1 else pd.concat(frames, ignore_index=True)
+
+    # required columns: fail here with a clear message instead of a raw crash
+    # in the view window (e.g. joined files exported without a 'Site' column)
+    missing_cols = [c for c in ('Datetime', 'Site') if c not in database.columns]
+    if missing_cols:
+        messagebox.showerror("Error",
+                             "The database is missing required column(s): %s\n\n"
+                             "Columns found:\n%s" % (', '.join(missing_cols),
+                                                     ', '.join(str(c) for c in database.columns[:20])))
+        return None
 
     if inputSettings.get('sortByTime', False) == True:
         try:
