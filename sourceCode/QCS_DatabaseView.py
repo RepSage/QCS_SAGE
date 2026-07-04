@@ -311,9 +311,24 @@ def saveDataViewSettings():
         
         dataViewSettings['tsDiagram'] = tsDiagram.get()
         if dataViewSettings['tsDiagram'] == True:
-            dataViewSettings['latitude'] = float(latitude_entry.get()) if latitude_entry.get() else None
-            dataViewSettings['longitude'] = float(longitude_entry.get()) if longitude_entry.get() else None
-            dataViewSettings['tsParam'] = tsParam_combobox.get()
+            # the T-S diagram is the ONE place coordinates are mandatory: they
+            # enter gsw's absolute salinity / conservative temperature and do NOT
+            # cancel out. Refuse to run it without valid lat/long (clear message).
+            try:
+                lat_ts = float(latitude_entry.get())
+                lon_ts = float(longitude_entry.get())
+                if not (-90 <= lat_ts <= 90 and -180 <= lon_ts <= 180):
+                    raise ValueError
+                dataViewSettings['latitude'] = lat_ts
+                dataViewSettings['longitude'] = lon_ts
+                dataViewSettings['tsParam'] = tsParam_combobox.get()
+            except ValueError:
+                messagebox.showwarning("Warning",
+                                       "The T-S Diagram needs a valid Latitude and Longitude.\n\n"
+                                       "Fill both (decimal degrees, e.g. -17.5 and -40.0) or uncheck\n"
+                                       "'T-S Diagram'. The diagram will be skipped this run.")
+                error_logger.log("WARNING: T-S Diagram skipped - missing/invalid Latitude/Longitude")
+                dataViewSettings['tsDiagram'] = False
 
         dataViewSettings['tendencyLines'] = tendency.get()
         if dataViewSettings['tendencyLines'] == True:

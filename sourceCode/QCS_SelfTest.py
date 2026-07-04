@@ -285,26 +285,28 @@ ok.append('tscp_stats_table (variaveis parciais)')
 qh = pd.DataFrame({'Sample number': [1, 2], 'Datetime': pd.date_range('2026-01-01', periods=2, freq='h'),
                    'Temperature (degC)': [25.0, 25.1], 'Luminosity (lux)': [10000.0, 8000.0],
                    'Salinity (PSU)': [36.0, 36.1], 'Depth (m)': [5.0, 5.0],  # nao devem sair
-                   'Site': ['PAB3', 'PAB3'], 'Latitude': [-17.5, -17.5], 'Longitude': [-40.0, -40.0],
+                   'Site': ['PAB3', 'PAB3'],
                    'Flag': ['11', '13'], 'Flag_T': [1, 1], 'Flag_lux': [1, 3], 'QCS version': ['v4.0', 'v4.0']})
 oh = data.order_var(qh.copy(), 1, data_type='hobo')
 cols = list(oh.columns)
 assert 'Salinity (PSU)' not in cols and 'Depth (m)' not in cols, 'variaveis TSCP nao devem aparecer no HOBO: %s' % cols
 assert 'Temperature (degC)' in cols and 'Luminosity (lux)' in cols
 assert cols[:4] == ['Sample number', 'Datetime', 'Temperature (degC)', 'Luminosity (lux)'], cols
-for meta in ('Site', 'Latitude', 'Longitude', 'Flag', 'Flag_T', 'Flag_lux', 'QCS version'):
+for meta in ('Site', 'Flag', 'Flag_T', 'Flag_lux', 'QCS version'):
     assert meta in cols, 'metadado %s faltando no HOBO' % meta
 assert oh['Site'].iloc[0] == 'PAB3'
 ok.append('order_var hobo (so temp+luz+metadados)')
 
-# 9c) Lat/Long sao opcionais: ausentes na entrada -> NAO criadas vazias na saida
-qh2 = qh.drop(columns=['Latitude', 'Longitude'])
-oh2 = data.order_var(qh2.copy(), 1, data_type='hobo')
-assert 'Latitude' not in oh2.columns and 'Longitude' not in oh2.columns, list(oh2.columns)
+# 9c) Lat/Long NUNCA saem na planilha qualificada (layout de coluna fixo),
+# mesmo quando presentes na entrada; descartadas nos dois layouts
+qh3 = qh.copy(); qh3['Latitude'] = -17.5; qh3['Longitude'] = -40.0
+oh3 = data.order_var(qh3.copy(), 1, data_type='hobo')
+assert 'Latitude' not in oh3.columns and 'Longitude' not in oh3.columns, list(oh3.columns)
 qt2 = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=2, freq='h'),
-                    'Temperature (degC)': [25.0, 25.1], 'Site': ['D13', 'D13']})
+                    'Temperature (degC)': [25.0, 25.1], 'Site': ['D13', 'D13'],
+                    'Latitude': [-17.5, -17.5], 'Longitude': [-40.0, -40.0]})
 ot2 = data.order_var(qt2.copy(), 1, data_type='tscp')
-assert 'Latitude' not in ot2.columns and 'Longitude' not in ot2.columns, 'tscp nao deve criar lat/long vazias'
+assert 'Latitude' not in ot2.columns and 'Longitude' not in ot2.columns, 'tscp nao deve emitir lat/long'
 ok.append('order_var (Lat/Long opcionais, nao criadas vazias)')
 
 # 10) order_var com data_type invalido deve avisar com clareza

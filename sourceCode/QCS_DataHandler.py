@@ -623,22 +623,27 @@ def order_var (qualified_data, n_cel, data_type):
                         'Conductivity (mS/cm)': 5, 'Pressure (dbar)': 6, 'Density (kg/m3)': 7, 'CO2 Level (ppm)': 8,
                         'O2 level (uM)': 9, 'O2 content (mg/L)': 10, 'PAR (umol/m2/s)': 11, 'Turbidity (FTU)': 12, 'TSS (mg/L)': 13,
                         'Chlorophyll (ug/L)': 14, 'pH': 15, 'Dissolved organic matter (ppb)': 16, 'Luminosity (lux)': 17,
-                        'Soundspeed (m/s)': 18, 'Expedition': 19, 'Site': 20, 'Longitude': 21, 'Latitude': 22,
-                        'Battery voltage (V)': 23, 'Flag': 24,
-                        'Flag_T': 25, 'Flag_S': 26, 'Flag_C': 27, 'Flag_P': 28, 'Flag_pH': 29,
-                        'Flag_chl': 30, 'Flag_O2': 31, 'Flag_org': 32, 'Flag_tur': 33,
-                        'Flag_lux': 34, 'QCS version': 35}
+                        'Soundspeed (m/s)': 18, 'Expedition': 19, 'Site': 20,
+                        'Battery voltage (V)': 21, 'Flag': 22,
+                        'Flag_T': 23, 'Flag_S': 24, 'Flag_C': 25, 'Flag_P': 26, 'Flag_pH': 27,
+                        'Flag_chl': 28, 'Flag_O2': 29, 'Flag_org': 30, 'Flag_tur': 31,
+                        'Flag_lux': 32, 'QCS version': 33}
     elif data_type == 'hobo':
         # HOBO Pendant: apenas as variaveis medidas (temperatura em Celsius e luz
         # em lux), com o MESMO bloco de metadados do padrao TSCP. As demais
         # variaveis TSCP nao se aplicam e nao aparecem (planilhas nao 'estacaveis').
         var_priority = {'Sample number': 0, 'Datetime': 1,
                         'Temperature (degC)': 2, 'Luminosity (lux)': 3,
-                        'Expedition': 4, 'Site': 5, 'Longitude': 6, 'Latitude': 7,
-                        'Battery voltage (V)': 8, 'Flag': 9,
-                        'Flag_T': 10, 'Flag_lux': 11, 'QCS version': 12}
+                        'Expedition': 4, 'Site': 5, 'Battery voltage (V)': 6, 'Flag': 7,
+                        'Flag_T': 8, 'Flag_lux': 9, 'QCS version': 10}
     else:
         raise ValueError("Unsupported data_type '%s' in order_var (use 'tscp' or 'hobo')" % data_type)
+
+    # Latitude/Longitude are never part of the qualified output (kept out on
+    # purpose so every file has the same column layout); drop them if present.
+    for coord in ('Latitude', 'Longitude'):
+        if coord in qualified_data.columns:
+            qualified_data = qualified_data.drop(columns=[coord])
 
     order = {}
     for var in var_priority.keys():
@@ -646,10 +651,8 @@ def order_var (qualified_data, n_cel, data_type):
             order[var] = var_priority[var]
         else:
             # colunas Flag_ so existem quando o teste correspondente rodou
-            # (ex.: Flag_lux apenas em arquivos HOBO) e Latitude/Longitude so
-            # quando o usuario pede (obrigatorias em perfis) - nao criar vazias
-            if (re.search('correlation', var, re.IGNORECASE) or var.startswith('Flag_')
-                    or var in ('Latitude', 'Longitude')):
+            # (ex.: Flag_lux apenas em arquivos HOBO) - nao criar vazias
+            if re.search('correlation', var, re.IGNORECASE) or var.startswith('Flag_'):
                 pass
             else:
                 qualified_data[var] = np.nan
