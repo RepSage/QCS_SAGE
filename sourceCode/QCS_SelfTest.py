@@ -143,6 +143,40 @@ fdi2 = QC.density_inversion_test(dfp, ['' for _ in range(m)], 0.03, -23.0, -40.0
 assert fdi2[5] == '3', 'inversao de densidade deveria ser marcada como suspeito'
 ok.append('density_inversion_test')
 
+# 5c) light_fouling_baseline: incrustacao da luz (janela de uso do HOBO)
+# 5c-i) decaimento PERMANENTE: limpo 10 dias, cai e fica baixo -> corte, sem recuperacao
+decay_perm = [1.0]*10 + [0.8, 0.6, 0.45, 0.4] + [0.3]*16
+dt = pd.date_range('2026-01-01', periods=30*24, freq='h')
+lux = [10000.0 * decay_perm[(ts - dt[0]).days] if 8 <= ts.hour <= 16 else 0.0 for ts in dt]
+res = QC.light_fouling_baseline(dt, lux, baseline_days=7, cutoff_frac=0.5, sustain_days=3)
+assert res['evaluable'] is True
+assert res['baseline'] == 10000.0, res['baseline']
+assert res['proposed_cutoff'].date() == pd.Timestamp('2026-01-13').date(), res['proposed_cutoff']
+assert res['recovers'] is False, 'decaimento permanente nao deveria acusar recuperacao'
+ok.append('light_fouling_baseline (decaimento permanente -> corte firme)')
+
+# 5c-ii) decaimento com RECUPERACAO (luz volta apos o corte) -> AVISO
+decay_rec = [1.0]*10 + [0.8, 0.6, 0.45, 0.4] + [0.3]*6 + [0.9]*10
+lux_rec = [10000.0 * decay_rec[(ts - dt[0]).days] if 8 <= ts.hour <= 16 else 0.0 for ts in dt]
+res_rec = QC.light_fouling_baseline(dt, lux_rec, baseline_days=7, cutoff_frac=0.5, sustain_days=3)
+assert res_rec['proposed_cutoff'] is not None
+assert res_rec['recovers'] is True, 'recuperacao pos-corte deveria ser sinalizada'
+assert any('NOT permanent' in w for w in res_rec['warnings']), res_rec['warnings']
+ok.append('light_fouling_baseline (recuperacao -> aviso)')
+
+# 5d) apply_light_window: 1 antes / 3 depois do corte, 9 p/ NaN, 2 se nao avaliavel
+lux_nan = list(lux)
+lux_nan[100] = np.nan
+fl = QC.apply_light_window(dt, lux_nan, ['' for _ in dt], res['proposed_cutoff'])
+assert fl[24] == '1', 'dia 1 (agua limpa) deveria ser bom: %s' % fl[24]
+assert fl[100] == '9'
+assert fl[-1] == '3', 'apos o corte deveria ser suspeito: %s' % fl[-1]
+fl2 = QC.apply_light_window(dt[:48], lux[:48], ['' for _ in range(48)], None, evaluable=False)
+assert set(fl2) <= {'2', '9'}, 'serie nao avaliavel deveria ser 2/9'
+short = QC.light_fouling_baseline(dt[:5*24], lux[:5*24], baseline_days=7, cutoff_frac=0.5, sustain_days=3)
+assert short['evaluable'] is False, 'serie curta demais nao pode estabelecer baseline'
+ok.append('apply_light_window (flags e serie curta)')
+
 # 6) pressure_to_depth: 110 dbar - 10.1325 atm = ~99.9 dbar -> ~99 m (e nao usar lat/5.29)
 df = pd.DataFrame({'Pressure (dbar)': [110.0]})
 df = data.pressure_to_depth(df, latitude=17.5, adjust_for_atm=True)
@@ -169,6 +203,15 @@ assert zrep['Chlorophyll (ug/L)'] == {'clamped': 1, 'discarded': 1}, zrep
 assert zrep['Temperature (degC)'] == {'clamped': 0, 'discarded': 1}, zrep
 ok.append('clean_below_zero (opticas + PAR + contagens)')
 
+# 6c) luz do HOBO: zero a noite e VALIDO (nunca vira NaN); negativo vira 0
+dfl = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=3, freq='h'),
+                    'Luminosity (lux)': [12000.0, 0.0, -1.2]})
+outl, lrep = data.clean_below_zero(dfl.copy(), sett)
+assert outl['Luminosity (lux)'].iloc[1] == 0.0, 'lux=0 (noite) deveria ser mantido'
+assert outl['Luminosity (lux)'].iloc[2] == 0.0, 'lux negativo deveria virar 0'
+assert not outl['Luminosity (lux)'].isna().any()
+ok.append('clean_below_zero (lux noturno preservado)')
+
 # 7) handle_output_file: flag de pH nao pode apagar clorofila
 n = 3
 df = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=n, freq='min'),
@@ -189,7 +232,24 @@ assert output_df['Flag_pH'].iloc[1] == 4, output_df['Flag_pH'].tolist()
 assert output_df['Flag_pH'].iloc[0] == 1
 assert output_df['Flag_chl'].iloc[1] == 1, 'flag de pH nao pode contaminar Flag_chl'
 assert output_df['Flag_T'].iloc[1] == 1
+assert 'Flag_lux' not in output_df.columns, 'Flag_lux so deve existir em arquivos HOBO'
 ok.append('handle_output_file (colunas Flag_ por variavel)')
+
+# 7c) layout HOBO (com posicao 'lux'): Flag_lux criada; remove_suspect apaga a luz
+HOBO_LAYOUT = MOORING_LAYOUT + ['lux']
+dfh = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=3, freq='h'),
+                    'Temperature (degC)': [25.0, 25.1, 25.2],
+                    'Luminosity (lux)': [10000.0, 8000.0, 500.0]})
+flags_h = ['1' * len(HOBO_LAYOUT),
+           '1' * len(HOBO_LAYOUT),
+           flag_with(HOBO_LAYOUT, 'lux', '3')]  # ultima linha: luz suspeita (incrustada)
+outh = data.handle_output_file(dfh, flags_h, HOBO_LAYOUT, remove_suspect=True, remove_bad=False)
+outh_df = outh[0]
+assert list(outh_df['Flag_lux']) == [1, 1, 3], outh_df['Flag_lux'].tolist()
+assert np.isnan(outh_df['Luminosity (lux)'].iloc[2]), 'remove_suspect deveria apagar a luz incrustada'
+assert outh_df['Luminosity (lux)'].iloc[0] == 10000.0
+assert outh_df['Temperature (degC)'].iloc[2] == 25.2, 'flag de luz nao pode afetar temperatura'
+ok.append('handle_output_file (Flag_lux + remocao da luz suspeita)')
 
 # 8) deduplicacao de indices com varios repetidos (antes quebrava/falhava)
 L = len(MOORING_LAYOUT)

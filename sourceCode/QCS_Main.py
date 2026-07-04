@@ -63,7 +63,8 @@ CONFIG = {
         'temperature vertical gradient': 'ON',
         'salinity vertical gradient': 'ON',
         'conductivity vertical gradient': 'ON',
-        'density inversion': 'ON'
+        'density inversion': 'ON',
+        'light fouling window': 'ON'
     },
     'tsSettings': {
         #'depth_range': 1.55,
@@ -108,6 +109,16 @@ CONFIG = {
         # densidade potencial pode diminuir com a profundidade ate esta
         # tolerancia (kg/m3) sem marcar inversao (teste de perfis)
         'dens_inv_tolerance': 0.03,
+        # ---- janela de uso da luz do HOBO (teste de incrustacao) ----
+        # baseline de agua limpa = maior pico diario dos primeiros N dias;
+        # luz vira SUSPEITA quando o pico diario fica abaixo de
+        # lux_cutoff_frac x baseline por lux_sustain_days dias consecutivos
+        'lux_baseline_days': 7,
+        'lux_cutoff_frac': 0.5,
+        'lux_sustain_days': 3,
+        # leituras fora d'agua nas pontas do arquivo HOBO: corta enquanto a
+        # temperatura desviar mais que isto (degC) do trecho estavel vizinho
+        'hobo_edge_temp_tol': 1.5,
         #'eps': 'AUTO',
     },
     # Per-variable factors for the spike, rate-of-change and vertical-gradient tests
@@ -207,6 +218,10 @@ TS_SETTINGS_TOOLTIPS = {
     'rep_cnt_fail': "Number of repeated values to flag as FAIL\nFor flat line test",
     'rep_cnt_susp': "Number of repeated values to flag as SUSPECT\nFor flat line test",
     'dens_inv_tolerance': "Density inversion tolerance (kg/m3)\nPotential density may decrease with depth up to this\nvalue before the pair is flagged as SUSPECT",
+    'lux_baseline_days': "HOBO light fouling: clean-water baseline =\nmax daily light peak of the FIRST N days after deployment",
+    'lux_cutoff_frac': "HOBO light fouling: fraction of the clean-water baseline\nbelow which light becomes SUSPECT (0.5 = 50%)\nThe applied cutoff is shown in the review plot and saved with the results",
+    'lux_sustain_days': "HOBO light fouling: the daily peak must stay below the\nthreshold for this many CONSECUTIVE days before cutting\n(avoids cutting on a cloudy spell)",
+    'hobo_edge_temp_tol': "HOBO edge trim: leading/trailing samples are discarded while\ntemperature deviates more than this (degC) from the nearby\nstable segment (out-of-water readings at deployment/recovery)",
     #'eps': "Epsilon value for flat line detection\nMinimum difference to consider values different",
 }
 
@@ -255,7 +270,8 @@ TS_QUALITY_TESTS_TOOLTIPS = {
     'temperature vertical gradient': "Check for unrealistic temperature changes with depth",
     'salinity vertical gradient': "Check for unrealistic salinity changes with depth",
     'conductivity vertical gradient': "Check for unrealistic conductivity changes with depth",
-    'density inversion': "Check water column stability: potential density must not decrease with depth (profiles only)"
+    'density inversion': "Check water column stability: potential density must not decrease with depth (profiles only)",
+    'light fouling window': "HOBO only: flag light as SUSPECT after the daily peak decays\nbelow a fraction of the clean-water baseline (sensor fouling).\nParameters in the Parameters tab (lux_*); cutoff reviewed on a plot before applying"
 }
 
 # ----- user preferences: last folders and last choices, kept between sessions -----
@@ -549,13 +565,16 @@ def start_qualification():
                             "You can select another file and run a new qualification "
                             "without closing the program." % OUTPUT.get('last_output_root', ''))
     except Exception as e:
-        traceback.print_exc()
-        status_var.set("Qualification interrupted by an error.")
+        # o traceback completo vai para o log; o dialogo aponta arquivo/linha
+        for line in traceback.format_exc().strip().splitlines():
+            log_line('ERROR: %s' % line)
+        status_var.set("Qualification interrupted by an error - see the execution log.")
         messagebox.showerror("Qualification error",
                              "The qualification was interrupted by an error:\n\n%s\n\n"
+                             "Location: %s\n(full traceback in the Execution log)\n\n"
                              "Some files may have been partially generated in the output "
                              "folder before the error. Check the input file and the "
-                             "settings and try again." % e)
+                             "settings and try again." % (e, _error_location(e)))
     finally:
         plt.close('all')
         os.chdir(rootPath)
@@ -738,6 +757,9 @@ def create_tests_tab(parent):
         ],
         "Profile Stability Tests": [
             'density inversion'
+        ],
+        "Light Tests (HOBO)": [
+            'light fouling window'
         ]
     }
     
@@ -1106,6 +1128,54 @@ status_var = StringVar(value="Ready")
 status_label = ttk.Label(main_frame, textvariable=status_var, style='Small.TLabel', anchor='w')
 status_label.grid(row=4, column=0, columnspan=2, sticky='ew', padx=5, pady=(6, 0))
 
+def _error_location(exc):
+    """Aponta o arquivo/linha QCS mais profundo do traceback: debug direto."""
+    frames = traceback.extract_tb(exc.__traceback__)
+    qcs_frames = [f for f in frames if os.path.basename(f.filename).startswith('QCS_')]
+    f = (qcs_frames or frames)[-1]
+    return '%s, line %d, in %s()' % (os.path.basename(f.filename), f.lineno, f.name)
+
+def review_light_window(lux_info, site):
+    """Revisao interativa da janela de uso da luz (HOBO): clique no grafico
+    define a data de corte, tecla 'n' remove o corte, Enter/fechar confirma.
+    Retorna o corte final (Timestamp ou None)."""
+    import matplotlib.dates as mdates
+    fig, ax = view.plot_light_window(lux_info, site)
+    ax.set_title(ax.get_title() +
+                 '\nClick = move cutoff date  |  key N = no cutoff  |  Enter or close window = confirm')
+    state = {'cutoff': lux_info['proposed_cutoff'], 'artists': []}
+
+    def redraw():
+        for artist in state['artists']:
+            try:
+                artist.remove()
+            except Exception:
+                pass
+        state['artists'] = view.mark_light_cutoff(ax, state['cutoff'], lux_info)
+        fig.canvas.draw_idle()
+
+    def on_click(event):
+        if event.inaxes is ax and event.xdata is not None:
+            state['cutoff'] = pd.Timestamp(mdates.num2date(event.xdata).date())
+            redraw()
+
+    def on_key(event):
+        if event.key in ('n', 'N'):
+            state['cutoff'] = None
+            redraw()
+        elif event.key == 'enter':
+            plt.close(fig)
+
+    fig.canvas.mpl_connect('button_press_event', on_click)
+    fig.canvas.mpl_connect('key_press_event', on_key)
+    redraw()
+    # espera no loop do Tk (nunca plt.show(block=True) dentro do callback do RUN)
+    done = BooleanVar(window, value=False)
+    fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
+    fig.show()
+    window.wait_variable(done)
+    return state['cutoff']
+
 # The whole qualification pipeline runs inside this function so the main
 # window stays open and the user can qualify several files in sequence.
 def run_full_qualification():
@@ -1115,6 +1185,7 @@ def run_full_qualification():
 
     # change to folder containing raw data
     os.chdir(INPUT['raw_data_path'])
+    log_line('Stage 1/5: reading input file (%s)...' % INPUT['input_type'])
 
     # opening raw files according to selected data type
     if INPUT['input_type'] == 'Seaguard':
@@ -1131,15 +1202,9 @@ def run_full_qualification():
             if re.search('prof', name, re.IGNORECASE):
                     raw_data = raw_data.rename(columns={name:'Depth (m)'})
     elif INPUT['input_type'] == 'HOBO':
-        fullFrame, tempFrame, lumiFrame = data.read_unified_hobo(INPUT['file_name'])
-        raw_data = tempFrame
-        for test in tsQualityTests:
-            if re.search('spikes', test, re.IGNORECASE):
-                tsQualityTests[test] = 'OFF'
-            if re.search('rate of change', test, re.IGNORECASE):
-                tsQualityTests[test] = 'OFF'
-            if re.search('vertical gradient', test, re.IGNORECASE):
-                tsQualityTests[test] = 'OFF'
+        raw_data, hobo_info = data.read_hobo(INPUT, tsSettings)
+        for message in hobo_info['messages']:
+            log_line(message)
     # getting start and end time and measurement interval
     start_time = raw_data['Datetime'].iloc[0]
     end_time = raw_data['Datetime'].iloc[-1]
@@ -1168,6 +1233,7 @@ def run_full_qualification():
         log_line("MESSAGE: %d sampling gap(s) longer than 3x the median interval "
                  "(largest: %s)." % (ts_gaps, ts_max_gap))
 
+    log_line('Stage 2/5: preprocessing (units, depth, non-physical values)...')
     # adjusting for GMT-3 hours
     if INPUT['correct_gmt3h'] == True:
         raw_data['Datetime'] = raw_data['Datetime'] - timedelta(hours=3)
@@ -1356,6 +1422,7 @@ def run_full_qualification():
     #create list for flag codes
     flags = ['' for n in range(len(raw_data))]
 
+    log_line('Stage 3/5: running quality tests (%d samples)...' % n_samples)
     start = time.time()
 
     # (pattern, ignore_case) used to locate the column of each parameter;
@@ -1519,15 +1586,49 @@ def run_full_qualification():
         test_sequence.append(('dens', 'Density inversion', 'density inversion', None))
         report_test('Density inversion', 'dens', flags, time.time() - ti)
 
+    # Light fouling window (HOBO only) -> appends one 'lux' flag position.
+    # Parameters (lux_baseline_days / lux_cutoff_frac / lux_sustain_days) live in
+    # Settings > Parameters; the applied cutoff is reviewed on a plot and saved.
+    lux_result = None
+    if INPUT['input_type'] == 'HOBO':
+        ti = time.time()
+        lux_col = 'Luminosity (lux)'
+        if tsQualityTests.get('light fouling window', 'OFF') == 'ON' and lux_col in raw_data.columns:
+            lux_result = QC.light_fouling_baseline(
+                raw_data['Datetime'], raw_data[lux_col],
+                baseline_days=int(tsSettings.get('lux_baseline_days', 7)),
+                cutoff_frac=float(tsSettings.get('lux_cutoff_frac', 0.5)),
+                sustain_days=int(tsSettings.get('lux_sustain_days', 3)))
+            for message in lux_result['warnings']:
+                log_line(message)
+            if lux_result['evaluable']:
+                log_line('Light fouling: clean-water baseline %.0f lux (first %d days); '
+                         'threshold %.0f lux (%.0f%% sustained %d days); proposed cutoff: %s'
+                         % (lux_result['baseline'], lux_result['params']['baseline_days'],
+                            lux_result['threshold'], 100 * lux_result['params']['cutoff_frac'],
+                            lux_result['params']['sustain_days'],
+                            lux_result['proposed_cutoff'].date() if lux_result['proposed_cutoff'] is not None else 'none'))
+                final_cutoff = review_light_window(lux_result, INPUT['site'])
+                lux_result['final_cutoff'] = final_cutoff
+                log_line('Light fouling: cutoff APPLIED: %s'
+                         % (pd.Timestamp(final_cutoff).date() if final_cutoff is not None else 'none (light kept good)'))
+                flags = QC.apply_light_window(raw_data['Datetime'], raw_data[lux_col], flags,
+                                              final_cutoff, evaluable=True)
+            else:
+                lux_result['final_cutoff'] = None
+                flags = QC.apply_light_window(raw_data['Datetime'], raw_data[lux_col], flags,
+                                              None, evaluable=False)
+        else:
+            flags = [flags[n] + '%d' % QC.QC_flags.DISMISSED for n in range(n_samples)]
+        flag_layout.append('lux')
+        test_sequence.append(('lux', 'Light fouling window', 'light fouling window', None))
+        report_test('Light fouling window', 'lux', flags, time.time() - ti)
+
     end = time.time()
     log_line('Processing time: %.2f s' % (end - start))
 
-    log_line('Creating output table')
+    log_line('Stage 4/5: creating output table and reports...')
     qualified_data, raw_data, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = data.handle_output_file (raw_data, flags, flag_layout, remove_suspect=OUTPUT['remove_suspect'], remove_bad=OUTPUT['remove_bad'])
-
-    # add luminosity data to dataframe if input is hobo
-    if INPUT['input_type'] == 'HOBO':
-        qualified_data['Luminosity (lux)'] = lumiFrame['Luminosity (lux)']
 
     qualified_data = data.order_var (qualified_data, n_cel, data_type='tscp')
     # Fill column with site information
@@ -1542,9 +1643,8 @@ def run_full_qualification():
     os.makedirs(path, exist_ok=True)
     dataview_path =  root_path + '/QCS DataView (fixed scale)/'
     dataview_path2 = root_path + '/QCS DataView (unfixed scale)/'
-    if INPUT['input_type'] != 'HOBO':
-        os.makedirs(dataview_path, exist_ok=True)
-        os.makedirs(dataview_path2, exist_ok=True)
+    os.makedirs(dataview_path, exist_ok=True)
+    os.makedirs(dataview_path2, exist_ok=True)
 
     # the qualified file uses the name typed in 'Output File Name';
     # falls back to '<input name>_QLF' when the field resolves empty
@@ -1595,41 +1695,46 @@ def run_full_qualification():
         report_cols['%s_bad' % k] = len(b)
         report_cols['%s_suspect' % k] = len(s)
         report_cols['%s_missing' % k] = len(m)
+    if 'Flag_lux' in qualified_data.columns:
+        report_cols['lux_bad'] = int((qualified_data['Flag_lux'] == 4).sum())
+        report_cols['lux_suspect'] = int((qualified_data['Flag_lux'] == 3).sum())
+        report_cols['lux_missing'] = int((qualified_data['Flag_lux'] == 9).sum())
     QCS_report = pd.DataFrame(report_cols, index=[0])
     QCS_report.to_csv(path + '/QCS_report.csv')
 
-    if INPUT['input_type'] != 'HOBO':
-        if INPUT['profile'] == True:
-            exceptions = ['Datetime', 'Expedition', 'Pressure (dbar)',
-                            'Site', 'Longitude', 'Latitude', 'Depth (m)',
-                            'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
-            for variable in qualified_data.keys():
-                if variable not in exceptions:
-                    view.plot_variable_profile(qualified_data, raw_data, variable, dataview_path, tsSettings, fixed_scale=True)
-        else:
-            for variable in qualified_data.keys():
-                exceptions = ['Datetime', 'Expedition',
-                                'Site', 'Longitude', 'Latitude',
-                                'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
-                if variable not in exceptions:
-                    view.plot_variable(qualified_data, raw_data, variable, dataview_path, tsSettings, fixed_scale=True)
+    # HOBO: salva o grafico da janela de uso da luz com o corte e os parametros
+    # aplicados - a documentacao permanente de ONDE e POR QUE a luz foi cortada
+    if lux_result is not None and lux_result['evaluable']:
+        fig_lux, ax_lux = view.plot_light_window(lux_result, INPUT['site'])
+        view.mark_light_cutoff(ax_lux, lux_result['final_cutoff'], lux_result)
+        fig_lux.savefig(os.path.join(path, 'QCS_light_window.svg'), bbox_inches='tight')
+        plt.close(fig_lux)
+        log_line('Light window plot saved to: %s' % os.path.join(path, 'QCS_light_window.svg'))
 
-        if INPUT['profile'] == True:
-            exceptions = ['Datetime', 'Expedition', 'Pressure (dbar)',
-                            'Site', 'Longitude', 'Latitude', 'Depth (m)',
-                            'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
-            for variable in qualified_data.keys():
-                if variable not in exceptions:
-                    view.plot_variable_profile(qualified_data, raw_data, variable, dataview_path2, tsSettings, fixed_scale=False)
-        else:
-            for variable in qualified_data.keys():
-                exceptions = ['Datetime', 'Expedition',
-                                'Site', 'Longitude', 'Latitude',
-                                'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
-                if variable not in exceptions:
-                    view.plot_variable(qualified_data, raw_data, variable, dataview_path2, tsSettings, fixed_scale=False)
-    #elif INPUT['input_type'] == 'HOBO':
-    #    view.plot_hobo_split_site (database, dataview_path2)
+    log_line('Stage 5/5: generating DataView plots...')
+    # flag columns and administrative columns are never plotted as variables
+    if INPUT['profile'] == True:
+        plot_exceptions = ['Datetime', 'Expedition', 'Pressure (dbar)',
+                           'Site', 'Longitude', 'Latitude', 'Depth (m)',
+                           'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
+    else:
+        plot_exceptions = ['Datetime', 'Expedition',
+                           'Site', 'Longitude', 'Latitude',
+                           'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
+
+    def plottable_variables():
+        # ignora colunas administrativas, colunas de flag e variaveis totalmente
+        # vazias (ex.: as colunas TSCP criadas como NaN para um arquivo HOBO)
+        return [v for v in qualified_data.keys()
+                if v not in plot_exceptions and not str(v).startswith('Flag')
+                and not qualified_data[v].isna().all()]
+
+    for out_dir, fixed in ((dataview_path, True), (dataview_path2, False)):
+        for variable in plottable_variables():
+            if INPUT['profile'] == True:
+                view.plot_variable_profile(qualified_data, raw_data, variable, out_dir, tsSettings, fixed_scale=fixed)
+            else:
+                view.plot_variable(qualified_data, raw_data, variable, out_dir, tsSettings, fixed_scale=fixed)
     OUTPUT['last_output_root'] = root_path
     plt.close('all')
     os.chdir(rootPath)

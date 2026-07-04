@@ -179,25 +179,200 @@ def read_ctd(INPUT):
 
     return dataframe
 
-def read_unified_hobo(file_path):
-    col_names = ['Site', 'Hour', 'Temperature (degC)', 'Luminosity (lux)',
-                 'Luminosity(lm/ft2)', 'Hobo Units', 'Date', 'Datetime' ]
+# 1 lumen/ft2 = 10.7639 lux (HOBO Pendant exportado em unidades US)
+LUMEN_FT2_TO_LUX = 10.7639
 
-    dataframe = pd.read_csv(file_path, names=col_names, skiprows=1)
-    dataframe['Datetime'] = pd.to_datetime(dataframe['Datetime'])
-    dataframe = dataframe[['Site', 'Temperature (degC)', 'Luminosity (lux)',
-                           'Hobo Units', 'Datetime']]
+# padroes das colunas de evento do logger HOBO (pt/en)
+_HOBO_EVENT_PATTERN = (r'acoplador|coupler|anfitri|host|parado|stopped|'
+                       r'fim do ficheiro|end of file|bateria|battery')
+_HOBO_DETACH_PATTERN = r'acoplador desligado|coupler detached'
+_HOBO_END_PATTERN = (r'acoplador ligado|coupler attached|anfitri|host|'
+                     r'parado|stopped|fim do ficheiro|end of file')
 
-    valid_idx = np.where(dataframe['Datetime'].isna()==False)[0]
-    dataframe = dataframe.iloc[valid_idx]
 
-    dataframe.index = dataframe['Datetime']
-    dataframe = dataframe.rename_axis('dt_index')
-    dataframe = dataframe.sort_values(by='dt_index')
-    dataframe.index = np.arange(len(dataframe))
-    tempFrame = dataframe[['Site', 'Temperature (degC)', 'Hobo Units', 'Datetime']]
-    lumiFrame = dataframe[['Site', 'Luminosity (lux)', 'Hobo Units', 'Datetime']]
-    return dataframe, tempFrame, lumiFrame
+def _hobo_error(file_name, message):
+    # todos os erros do leitor se auto-localizam: "HOBO reader (arquivo): o que faltou"
+    return ValueError('HOBO reader (%s): %s' % (file_name, message))
+
+
+def read_hobo(INPUT, tsSettings):
+    """Le exportacoes do HOBOware (.xlsx/.csv) de sensores Pendant Temp/Light.
+
+    Tolera: cabecalhos em portugues ou ingles, linha de titulo antes do header,
+    frequencia de amostragem variavel, luz em Lux ou lum/ft2 (convertida p/ lux).
+    Remove linhas so-de-evento do logger, corta leituras fora d'agua nas pontas
+    (janela entre eventos de acoplador + heuristica de salto de temperatura) e
+    retorna (dataframe, info): dataframe com Datetime / Temperature (degC) /
+    Luminosity (lux); info['messages'] documenta tudo o que foi feito/descartado.
+    """
+    file_name = INPUT['file_name']
+    file_path = os.path.join(INPUT['raw_data_path'], file_name)
+    info = {'messages': []}
+    say = info['messages'].append
+
+    # ---------- leitura crua com deteccao da linha de header ----------
+    def header_line(cells):
+        joined = ' '.join(str(c) for c in cells).lower()
+        return (re.search(r'data\s*hora|date\s*time', joined) is not None
+                and re.search(r'temp', joined) is not None)
+
+    if file_name.lower().endswith('.xlsx'):
+        sample = pd.read_excel(file_path, header=None, nrows=20)
+        header_row = next((i for i, row in sample.iterrows() if header_line(row.tolist())), None)
+        if header_row is None:
+            raise _hobo_error(file_name, "could not find the header row: expected a line "
+                              "containing 'Data Hora'/'Date Time' AND 'Temp' in the first 20 rows. "
+                              "Is this a HOBOware export?")
+        df = pd.read_excel(file_path, skiprows=header_row, header=0)
+    elif file_name.lower().endswith('.csv'):
+        raw_lines, used_encoding = None, None
+        for enc in ('utf-8-sig', 'cp1252', 'latin-1'):
+            try:
+                with open(file_path, 'r', encoding=enc) as f:
+                    raw_lines = f.readlines()
+                used_encoding = enc
+                break
+            except UnicodeDecodeError:
+                continue
+        if raw_lines is None:
+            raise _hobo_error(file_name, 'could not decode the file with utf-8, cp1252 or latin-1.')
+        header_row = next((i for i, line in enumerate(raw_lines[:20])
+                           if header_line([line])), None)
+        if header_row is None:
+            raise _hobo_error(file_name, "could not find the header row: expected a line "
+                              "containing 'Data Hora'/'Date Time' AND 'Temp' in the first 20 lines. "
+                              "Is this a HOBOware export?")
+        delimiter = ';' if raw_lines[header_row].count(';') > raw_lines[header_row].count(',') else ','
+        df = pd.read_csv(file_path, skiprows=header_row, header=0,
+                         sep=delimiter, encoding=used_encoding, engine='python')
+        say('MESSAGE: csv read with encoding %s and delimiter %r' % (used_encoding, delimiter))
+    else:
+        raise _hobo_error(file_name, 'unsupported format (use the .xlsx or .csv HOBOware export).')
+
+    # ---------- identificacao das colunas ----------
+    time_col = temp_col = light_col = None
+    event_cols = []
+    for c in df.columns:
+        low = str(c).lower()
+        if time_col is None and re.search(r'data\s*hora|date\s*time', low):
+            time_col = c
+        elif temp_col is None and re.search(r'temp', low):
+            temp_col = c
+        elif light_col is None and re.search(r'intensidade|intensity|lux|lum', low):
+            light_col = c
+        elif re.search(_HOBO_EVENT_PATTERN, low):
+            event_cols.append(c)
+    found = 'columns found: %s' % ', '.join(repr(str(c)) for c in df.columns)
+    if time_col is None:
+        raise _hobo_error(file_name, 'no time column found (expected "Data Hora"/"Date Time"). ' + found)
+    if temp_col is None:
+        raise _hobo_error(file_name, 'no temperature column found (expected "Temp"). ' + found)
+    if light_col is None:
+        raise _hobo_error(file_name, 'no light column found (expected "Intensidade"/"Intensity"). ' + found)
+
+    # unidade da luz a partir do rotulo do canal
+    light_label = str(light_col).lower()
+    if re.search(r'lum/?\s*ft|lumen', light_label):
+        light_factor = LUMEN_FT2_TO_LUX
+        say('MESSAGE: light channel is in lum/ft2; converted to lux (x%.4f).' % LUMEN_FT2_TO_LUX)
+    elif re.search(r'lux', light_label):
+        light_factor = 1.0
+    else:
+        raise _hobo_error(file_name, 'light column %r has no recognizable unit '
+                          '(expected Lux or lum/ft2 in the header).' % str(light_col))
+
+    gmt = re.search(r'GMT\s*([+-]\d{1,2}):?(\d{2})?', str(time_col))
+    if gmt:
+        say('MESSAGE: timestamps exported as GMT%s (from the header). The "Correct GMT-3" '
+            'option would subtract 3 MORE hours - only use it if the export is in GMT+00.' % gmt.group(1))
+
+    # ---------- tipos ----------
+    df[time_col] = pd.to_datetime(df[time_col], errors='coerce', dayfirst=True)
+    n_bad_ts = int(df[time_col].isna().sum())
+    if n_bad_ts:
+        say('WARNING: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
+        df = df[df[time_col].notna()]
+    if df.empty:
+        raise _hobo_error(file_name, 'no rows with valid timestamps after reading.')
+    df[temp_col] = pd.to_numeric(df[temp_col], errors='coerce')
+    df[light_col] = pd.to_numeric(df[light_col], errors='coerce') * light_factor
+
+    # ---------- janela de deployment pelos eventos do logger ----------
+    if event_cols:
+        ev_mask = df[event_cols].notna().any(axis=1)
+        detach_cols = [c for c in event_cols if re.search(_HOBO_DETACH_PATTERN, str(c).lower())]
+        end_cols = [c for c in event_cols if re.search(_HOBO_END_PATTERN, str(c).lower())]
+        start_t = df.loc[df[detach_cols].notna().any(axis=1), time_col].min() if detach_cols else pd.NaT
+        end_t = pd.NaT
+        if end_cols:
+            end_times = df.loc[df[end_cols].notna().any(axis=1), time_col]
+            if pd.notna(start_t):
+                end_times = end_times[end_times > start_t]
+            end_t = end_times.min() if not end_times.empty else pd.NaT
+        before = len(df)
+        if pd.notna(start_t):
+            df = df[df[time_col] >= start_t]
+        if pd.notna(end_t):
+            df = df[df[time_col] < end_t]
+        n_window = before - len(df)
+        if n_window:
+            say('MESSAGE: %d sample(s) outside the logger deployment window '
+                '(%s to %s) discarded.' % (n_window, start_t, end_t))
+        # linhas so-de-evento (sem medida) sao removidas
+        ev_mask = df[event_cols].notna().any(axis=1) & df[temp_col].isna()
+        n_ev = int(ev_mask.sum())
+        if n_ev:
+            say('MESSAGE: %d logger-event row(s) (no measurement) discarded.' % n_ev)
+        df = df[~ev_mask]
+    else:
+        say('WARNING: no logger event columns found - deployment window not applied; '
+            'check the file edges for out-of-water readings.')
+
+    if df.empty:
+        raise _hobo_error(file_name, 'no measurement rows left after removing logger events. '
+                          'Check the deployment window events in the file.')
+
+    df = df[[time_col, temp_col, light_col]]
+    df.columns = ['Datetime', 'Temperature (degC)', 'Luminosity (lux)']
+    if not df['Datetime'].is_monotonic_increasing:
+        say('WARNING: timestamps were not in chronological order; sorted by time.')
+        df = df.sort_values('Datetime')
+    df.index = np.arange(len(df))
+
+    # ---------- corte de leituras fora d'agua nas pontas (salto de temperatura) ----------
+    tol = float(tsSettings.get('hobo_edge_temp_tol', 1.5))
+    interval = df['Datetime'].diff().median()
+    n_day = max(int(pd.Timedelta(days=1) / interval), 4) if pd.notna(interval) and interval > pd.Timedelta(0) else 12
+    temp = df['Temperature (degC)']
+
+    def edge_trim_count(series, reference):
+        count = 0
+        for value in series:
+            if pd.notna(value) and abs(value - reference) > tol:
+                count += 1
+            else:
+                break
+        return count
+
+    n_head = edge_trim_count(temp.iloc[:n_day], temp.iloc[:5 * n_day].median())
+    n_tail = edge_trim_count(temp.iloc[::-1].iloc[:n_day], temp.iloc[-5 * n_day:].median())
+    if n_head + n_tail > 0.1 * len(df):
+        say('WARNING: edge trim would remove >10%% of the series (%d+%d samples) - '
+            'NOT applied; review the temperature plot manually.' % (n_head, n_tail))
+    else:
+        if n_head:
+            say('MESSAGE: %d leading sample(s) trimmed - temperature deviates more than '
+                '%.1f degC from the deployment start (out-of-water reading).' % (n_head, tol))
+        if n_tail:
+            say('MESSAGE: %d trailing sample(s) trimmed - temperature deviates more than '
+                '%.1f degC from the deployment end (out-of-water reading).' % (n_tail, tol))
+        if n_head or n_tail:
+            df = df.iloc[n_head: len(df) - n_tail]
+            df.index = np.arange(len(df))
+
+    say('MESSAGE: HOBO file read: %d samples, %s to %s, median interval %s.'
+        % (len(df), df['Datetime'].iloc[0], df['Datetime'].iloc[-1], interval))
+    return df, info
 # Conversion functions
 
 def convert_tscp_units (data, pressure_unit, conductivity_unit):
@@ -265,7 +440,8 @@ def clean_below_zero(data, settings):
         if name in exceptions:
             continue
         clamped, discarded = 0, 0
-        if re.search('par', name, re.IGNORECASE):
+        if re.search('par|luminosity|lux', name, re.IGNORECASE):
+            # luz/PAR: zero a noite e um valor VALIDO; negativos sao ruido de offset
             clamped = int((data[name] < 0).sum())
             data.loc[data[name] < 0, name] = 0.0
         else:
@@ -293,6 +469,7 @@ FLAG_BUCKET_MAP = {
     'T': ['T'], 'S': ['S'], 'C': ['C'], 'P': ['P'], 'pH': ['pH'],
     'chl': ['chl'], 'O2': ['O2'], 'org': ['org'], 'tur': ['tur'],
     'dens': ['T', 'S'],
+    'lux': ['lux'],  # luz do HOBO (teste de incrustacao)
 }
 
 def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad):
@@ -342,6 +519,12 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
     # tests (bad > suspect > missing). flag_layout[pos] tells which variable each
     # flag character belongs to, so positions are never hardcoded here.
     var_keys = ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur']
+    # buckets extras presentes no layout (ex.: 'lux' nos arquivos HOBO) ganham
+    # coluna Flag_ propria sem mudar o formato dos arquivos que nao os usam
+    for pkey in flag_layout:
+        for bucket in FLAG_BUCKET_MAP.get(pkey, []):
+            if bucket not in var_keys:
+                var_keys.append(bucket)
     bdata = {k: [] for k in var_keys}
     sdata = {k: [] for k in var_keys}
     mdata = {k: [] for k in var_keys}
@@ -385,6 +568,8 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
     # changing bad or suspect data to NaN according from operators input
     if remove_bad == True:
         for name in output_df.columns:
+            if str(name).startswith('Flag'):
+                continue  # colunas de flag nunca sao apagadas (Flag_O2/Flag_lux casam com os padroes)
             if re.search('temperature', name, re.IGNORECASE):
                 output_df.loc[T_bdata, name] = np.nan
             if re.search('salinity', name, re.IGNORECASE):
@@ -404,8 +589,12 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 output_df.loc[org_bdata, name] = np.nan
             if re.search('turbidity|tss', name, re.IGNORECASE):
                 output_df.loc[tur_bdata, name] = np.nan
+            if re.search('luminosity|lux', name, re.IGNORECASE) and 'lux' in bdata:
+                output_df.loc[bdata['lux'], name] = np.nan
     if remove_suspect == True:
         for name in output_df.columns:
+            if str(name).startswith('Flag'):
+                continue  # colunas de flag nunca sao apagadas
             if re.search('temperature', name, re.IGNORECASE):
                 output_df.loc[T_sdata, name] = np.nan
             if re.search('salinity', name, re.IGNORECASE):
@@ -424,6 +613,8 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 output_df.loc[org_sdata, name] = np.nan
             if re.search('turbidity|tss', name, re.IGNORECASE):
                 output_df.loc[tur_sdata, name] = np.nan
+            if re.search('luminosity|lux', name, re.IGNORECASE) and 'lux' in sdata:
+                output_df.loc[sdata['lux'], name] = np.nan
     return output_df, input_df, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata
 
 def order_var (qualified_data, n_cel, data_type):
@@ -435,7 +626,8 @@ def order_var (qualified_data, n_cel, data_type):
                         'Soundspeed (m/s)': 18, 'Expedition': 19, 'Site': 20, 'Longitude': 21, 'Latitude': 22,
                         'Battery voltage (V)': 23, 'Flag': 24,
                         'Flag_T': 25, 'Flag_S': 26, 'Flag_C': 27, 'Flag_P': 28, 'Flag_pH': 29,
-                        'Flag_chl': 30, 'Flag_O2': 31, 'Flag_org': 32, 'Flag_tur': 33}
+                        'Flag_chl': 30, 'Flag_O2': 31, 'Flag_org': 32, 'Flag_tur': 33,
+                        'Flag_lux': 34}
     else:
         raise ValueError("Unsupported data_type '%s' in order_var (only 'tscp' is supported)" % data_type)
 
@@ -444,7 +636,9 @@ def order_var (qualified_data, n_cel, data_type):
         if var in qualified_data.columns:
             order[var] = var_priority[var]
         else:
-            if re.search('correlation', var, re.IGNORECASE):
+            # colunas Flag_ so existem quando o teste correspondente rodou
+            # (ex.: Flag_lux apenas em arquivos HOBO) - nao criar vazias
+            if re.search('correlation', var, re.IGNORECASE) or var.startswith('Flag_'):
                 pass
             else:
                 qualified_data[var] = np.nan

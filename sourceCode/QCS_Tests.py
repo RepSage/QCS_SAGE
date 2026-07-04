@@ -289,6 +289,101 @@ def vertical_gradient_test(values, depth, flags, grad_fail, grad_susp, min_dz=0.
     return out
 
 
+def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
+                           sustain_days=3, recovery_day_frac=0.2):
+    """Analise de incrustacao do sensor de luz (HOBO): a "janela de uso" da luz.
+
+    Logica: o pico diario de luz em agua limpa (baseline = maior pico dos
+    primeiros `baseline_days` dias) decai conforme o sensor incrusta. Quando o
+    pico diario fica abaixo de `cutoff_frac` x baseline por `sustain_days` dias
+    CONSECUTIVOS (sustentado, para nao cortar num unico vale nublado), a luz
+    deixa de ser confiavel a partir do primeiro desses dias.
+
+    NAO assume decaimento monotonico. Depois do corte proposto, verifica que
+    fracao dos dias ainda ALCANCA o limiar (pico diario >= limiar): se essa
+    fracao passar de `recovery_day_frac`, a queda nao e permanente - o pico
+    volta a subir muitas vezes -, sinal de possivel limpeza/recolocacao,
+    incrustacao parcial ou so tempo nublado. Nesse caso emite um AVISO forte
+    para o operador decidir na revisao (o corte proposto nao e confiavel e o
+    arquivo pode conter mais de um deployment).
+
+    Retorna dict: 'evaluable' (bool), 'baseline', 'threshold', 'daily_peak'
+    (Series), 'proposed_cutoff' (Timestamp|None), 'recovers' (bool),
+    'recovery_day_frac_after' (float) e 'warnings' (list[str]).
+    """
+    out = {'evaluable': False, 'baseline': np.nan, 'threshold': np.nan,
+           'daily_peak': pd.Series(dtype=float), 'proposed_cutoff': None,
+           'recovers': False, 'recovery_day_frac_after': 0.0, 'warnings': [],
+           'params': {'baseline_days': baseline_days, 'cutoff_frac': cutoff_frac,
+                      'sustain_days': sustain_days}}
+
+    s = pd.Series(np.asarray(light, dtype=float), index=pd.DatetimeIndex(datetimes))
+    s = s.dropna()
+    if s.empty:
+        out['warnings'].append('Light fouling test: no valid light data - test not evaluated.')
+        return out
+
+    daily_peak = s.resample('D').max().dropna()
+    out['daily_peak'] = daily_peak
+    if len(daily_peak) < baseline_days + sustain_days:
+        out['warnings'].append('Light fouling test: only %d day(s) of data - too short to '
+                               'establish a clean-water baseline of %d day(s); test not evaluated.'
+                               % (len(daily_peak), baseline_days))
+        return out
+
+    baseline = daily_peak.iloc[:baseline_days].max()
+    if not np.isfinite(baseline) or baseline <= 0:
+        out['warnings'].append('Light fouling test: clean-water baseline is zero (sensor dark or '
+                               'buried from the start?) - test not evaluated.')
+        return out
+
+    threshold = cutoff_frac * baseline
+    out.update({'evaluable': True, 'baseline': float(baseline), 'threshold': float(threshold)})
+
+    run, cutoff = 0, None
+    for day, peak in daily_peak.items():
+        run = run + 1 if peak < threshold else 0
+        if run >= sustain_days:
+            cutoff = day - pd.Timedelta(days=sustain_days - 1)
+            break
+    out['proposed_cutoff'] = cutoff
+
+    if cutoff is not None:
+        after = daily_peak[daily_peak.index >= cutoff]
+        if len(after) > 0:
+            frac = float((after >= threshold).mean())
+            out['recovery_day_frac_after'] = frac
+            if frac > recovery_day_frac:
+                out['recovers'] = True
+                out['warnings'].append(
+                    'WARNING: after the proposed light cutoff (%s), the daily peak still reaches '
+                    'the fouling threshold on %.0f%% of the days - the decline is NOT permanent. '
+                    'Likely sensor cleaning/redeployment, patchy fouling or just cloudy spells, '
+                    'not steady biofouling. The proposed cutoff is unreliable: review it on the '
+                    'plot (drag it or press N for no cutoff), and check whether this file spans '
+                    'more than one deployment.' % (cutoff.date(), 100 * frac))
+    return out
+
+
+def apply_light_window(datetimes, light, flags, cutoff, evaluable=True):
+    """Apende 1 caractere de flag por amostra para a luz:
+    9 = valor faltante; 2 = teste nao avaliavel; 3 = apos o corte de
+    incrustacao (suspeito; o valor e mantido); 1 = dentro da janela de uso."""
+    ts = pd.DatetimeIndex(datetimes)
+    v = np.asarray(light, dtype=float)
+    out = []
+    for i in range(len(v)):
+        if np.isnan(v[i]):
+            out.append(flags[i] + '%d' % QC_flags.MISSING)
+        elif not evaluable:
+            out.append(flags[i] + '%d' % QC_flags.UNKNOWN)
+        elif cutoff is not None and ts[i] >= cutoff:
+            out.append(flags[i] + '%d' % QC_flags.SUSPECT)
+        else:
+            out.append(flags[i] + '%d' % QC_flags.GOOD_DATA)
+    return out
+
+
 def density_inversion_test(data, flags, tolerance, lat, lon):
     # QARTOD density inversion test (profiles only): potential density (sigma0)
     # must not decrease with depth beyond a tolerance. Inverted pairs are
