@@ -174,6 +174,7 @@ TOOLTIPS = {
     'remove_bad': "Automatically removes data flagged\nas BAD (flag 4) in output",
     'remove_suspect': "Automatically removes data flagged\nas SUSPECT (flag 3) in output",
     'site_code': "Identification code for the\ncollection site (max 5 characters)",
+    'include_coords': "Adds Latitude/Longitude columns (from the input fields)\nto the qualified spreadsheet.\nAutomatically REQUIRED for TSCP Profile data\n(coordinates are needed for T-S analyses)",
     'run_button': "Runs the qualification process\nwith configured parameters",
     'settings_button': "Opens test configuration window\nand quality parameters",
     'export_button': "Exports current settings\nto a JSON file"
@@ -489,6 +490,8 @@ def collect_input_settings():
     OUTPUT['output_file_name'] = outputName_entry.get() + OUTPUT['output_data_format']
     OUTPUT['remove_bad'] = remove_bad.get()
     OUTPUT['remove_suspect'] = remove_suspect.get()
+    # perfis exigem coordenadas na saida mesmo que o checkbox esteja desmarcado
+    OUTPUT['include_coords'] = include_coords.get() or INPUT['data_type'] == 'TSCP Profile'
 
     INPUT['site'] = siteSelect_entry.get().strip().upper()
     if len(INPUT['site']) > 5:
@@ -536,6 +539,7 @@ def collect_input_settings():
         'output_format': OUTPUT['output_data_format'],
         'remove_bad': OUTPUT['remove_bad'],
         'remove_suspect': OUTPUT['remove_suspect'],
+        'include_coords': include_coords.get(),
         'site_code': INPUT['site'],
         'latitude': latitude_entry.get(),
         'longitude': longitude_entry.get(),
@@ -612,6 +616,7 @@ def restore_user_prefs():
     check_variables.set(p.get('check_variables', False))
     remove_bad.set(p.get('remove_bad', False))
     remove_suspect.set(p.get('remove_suspect', False))
+    include_coords.set(p.get('include_coords', False))
     update_profile_checkbox_state()
     # Restore the quality CRITERIA only if they were saved by the SAME program
     # version. On a version change, keep the new code defaults (so criteria
@@ -997,9 +1002,13 @@ ToolTip(dType_combobox, TOOLTIPS['data_type'])
 def update_profile_checkbox_state(event=None):
     if dType_combobox.get() == "TSCP Profile":
         profile_check.config(state="normal")
+        # perfis EXIGEM coordenadas na saida (analises T-S dependem de lat/long)
+        include_coords.set(True)
+        coords_check.config(state="disabled")
     else:
         profile_check.config(state="disabled")
         select_profile_data.set(False)  # Desmarca o checkbox se não for perfil
+        coords_check.config(state="normal")
 
 # bind to combobox selection
 dType_combobox.bind("<<ComboboxSelected>>", update_profile_checkbox_state)
@@ -1080,6 +1089,12 @@ ttk.Label(output_frame, text="Site Code:", style='Header.TLabel').grid(row=7, co
 siteSelect_entry = ttk.Entry(output_frame, width=12)
 siteSelect_entry.grid(row=8, column=0, sticky='w', pady=(0,5))
 ToolTip(siteSelect_entry, TOOLTIPS['site_code'])
+
+# optional coordinate columns in the qualified spreadsheet (forced ON for profiles)
+include_coords = BooleanVar(value=False)
+coords_check = ttk.Checkbutton(output_frame, text="Include Lat/Long in output", variable=include_coords)
+coords_check.grid(row=9, column=0, columnspan=2, sticky='w', pady=(5,2))
+ToolTip(coords_check, TOOLTIPS['include_coords'])
 
 # Latitude (used to convert pressure to depth) and longitude (density inversion)
 ttk.Label(input_frame, text="Latitude (deg):", style='Header.TLabel').grid(row=8, column=0, sticky='w', pady=(5,2))
@@ -1636,11 +1651,13 @@ def run_full_qualification():
     log_line('Stage 4/5: creating output table and reports...')
     qualified_data, raw_data, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = data.handle_output_file (raw_data, flags, flag_layout, remove_suspect=OUTPUT['remove_suspect'], remove_bad=OUTPUT['remove_bad'])
 
-    # site metadata (filled before order_var so it is positioned and populated;
-    # coordinates come from the Input fields - HOBO exports carry no position)
+    # site metadata (filled before order_var so it is positioned and populated).
+    # Lat/Long columns are optional (user choice) and mandatory for profiles;
+    # coordinates come from the Input fields - the raw exports carry no position
     qualified_data['Site'] = INPUT['site']
-    qualified_data['Latitude'] = INPUT.get('latitude', np.nan)
-    qualified_data['Longitude'] = INPUT.get('longitude', np.nan)
+    if OUTPUT.get('include_coords', False):
+        qualified_data['Latitude'] = INPUT.get('latitude', np.nan)
+        qualified_data['Longitude'] = INPUT.get('longitude', np.nan)
     qualified_data['QCS version'] = data.QCS_VERSION
 
     # HOBO gets its own output layout (temperature + light only, same metadata

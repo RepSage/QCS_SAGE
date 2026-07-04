@@ -646,8 +646,10 @@ def order_var (qualified_data, n_cel, data_type):
             order[var] = var_priority[var]
         else:
             # colunas Flag_ so existem quando o teste correspondente rodou
-            # (ex.: Flag_lux apenas em arquivos HOBO) - nao criar vazias
-            if re.search('correlation', var, re.IGNORECASE) or var.startswith('Flag_'):
+            # (ex.: Flag_lux apenas em arquivos HOBO) e Latitude/Longitude so
+            # quando o usuario pede (obrigatorias em perfis) - nao criar vazias
+            if (re.search('correlation', var, re.IGNORECASE) or var.startswith('Flag_')
+                    or var in ('Latitude', 'Longitude')):
                 pass
             else:
                 qualified_data[var] = np.nan

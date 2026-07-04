@@ -297,6 +297,16 @@ for meta in ('Site', 'Latitude', 'Longitude', 'Flag', 'Flag_T', 'Flag_lux', 'QCS
 assert oh['Site'].iloc[0] == 'PAB3'
 ok.append('order_var hobo (so temp+luz+metadados)')
 
+# 9c) Lat/Long sao opcionais: ausentes na entrada -> NAO criadas vazias na saida
+qh2 = qh.drop(columns=['Latitude', 'Longitude'])
+oh2 = data.order_var(qh2.copy(), 1, data_type='hobo')
+assert 'Latitude' not in oh2.columns and 'Longitude' not in oh2.columns, list(oh2.columns)
+qt2 = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=2, freq='h'),
+                    'Temperature (degC)': [25.0, 25.1], 'Site': ['D13', 'D13']})
+ot2 = data.order_var(qt2.copy(), 1, data_type='tscp')
+assert 'Latitude' not in ot2.columns and 'Longitude' not in ot2.columns, 'tscp nao deve criar lat/long vazias'
+ok.append('order_var (Lat/Long opcionais, nao criadas vazias)')
+
 # 10) order_var com data_type invalido deve avisar com clareza
 try:
     data.order_var(qd.copy(), 1, data_type='outro')
