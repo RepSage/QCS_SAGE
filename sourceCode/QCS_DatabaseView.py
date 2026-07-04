@@ -14,10 +14,10 @@ from tkinter import messagebox
 
 # Tooltips dictionary
 TOOLTIPS = {
-    'database_files': "Select database file (xlsx) to visualize\nMultiple files can be selected",
-    'join_files': "Combine multiple files into a single database",
+    'database_files': "Select database or qualified file(s) to visualize\nMultiple files can be selected (they are combined,\nvalidated and deduplicated automatically)",
+    'join_files': "Build a database from a parent folder: scans the\n'QCS qualified ... data' subfolders of the QCS outputs,\nskips report files and combines everything",
     'sort_time': "Sort data chronologically by datetime",
-    'input_format': "Format of input files (CSV or Excel)",
+    'instrument': "Which instrument produced the qualified files\nSeaguard (TSCP) and HOBO spreadsheets are never\nstackable - build separate databases",
     'output_name': "Name for processed database file",
     'input_path': "Folder containing input files",
     'output_path': "Folder where results will be saved",
@@ -142,14 +142,12 @@ def toggle_input_mode():
         set_disabled_style(browse_file_btn)
         set_enabled_style(inputPath_entry)
         set_enabled_style(browse_input_btn)
-        set_enabled_style(inputFilesFormat_combobox)
         set_enabled_style(outputName_entry)
     else:  # If Join Files is unchecked
         set_enabled_style(fileNames_entry)
         set_enabled_style(browse_file_btn)
         set_disabled_style(inputPath_entry)
         set_disabled_style(browse_input_btn)
-        set_disabled_style(inputFilesFormat_combobox)
         set_disabled_style(outputName_entry)
 
 def toggle_panel_dependent_controls():
@@ -258,12 +256,12 @@ def selectInputFolder():
 
 def saveInputSettings():
     # validacao com avisos claros antes de fechar a janela
+    if instrument_combobox.get() not in ('Seaguard', 'HOBO'):
+        messagebox.showwarning("Warning", "Select the instrument that produced the files\n('Instrument' field).")
+        return
     if join.get():
         if not inputPath_entry.get().strip() or not os.path.isdir(inputPath_entry.get().strip()):
             messagebox.showwarning("Warning", "To join files, select a valid input folder\n('Input Path' field).")
-            return
-        if inputFilesFormat_combobox.get() not in ('csv', 'xlsx'):
-            messagebox.showwarning("Warning", "Select the input files format\n(csv or xlsx).")
             return
         if not outputName_entry.get().strip():
             messagebox.showwarning("Warning", "Define a name for the generated database\n('Output Name' field).")
@@ -287,7 +285,7 @@ def saveInputSettings():
     inputSettings['outputPath'] = outputPath_entry.get()
     inputSettings['inputPath'] = inputPath_entry.get()
     inputSettings['sortByTime'] = sort.get()
-    inputSettings['inputFilesFormat'] = inputFilesFormat_combobox.get()
+    inputSettings['instrument'] = instrument_combobox.get()
 
     # guarda as ultimas escolhas
     USER_PREFS.update({
@@ -296,7 +294,7 @@ def saveInputSettings():
         'dbv_output_path': outputPath_entry.get(),
         'dbv_input_path': inputPath_entry.get(),
         'dbv_sort_by_time': sort.get(),
-        'dbv_input_format': inputFilesFormat_combobox.get(),
+        'dbv_instrument': instrument_combobox.get(),
     })
     save_user_prefs()
     input_window.destroy()
@@ -528,7 +526,7 @@ dataViewSettings = {}
 def show_input_window():
     """Janela de selecao do banco de dados; preenche inputSettings ao salvar."""
     global input_window, fileNames_entry, inputPath_entry, browse_file_btn, browse_input_btn
-    global join, sort, inputFilesFormat_combobox, outputName_entry, outputPath_entry
+    global join, sort, instrument_combobox, outputName_entry, outputPath_entry
     theme.enable_high_dpi()
     input_window = Tk()
     input_window.title("Database Input Settings - QCS %s" % data.QCS_VERSION)
@@ -608,12 +606,13 @@ def show_input_window():
     sort_cb.grid(row=5, column=0, sticky='w', pady=2)
     ToolTip(sort_cb, TOOLTIPS['sort_time'])
 
-    # File format
-    ttk.Label(input_frame, text="Input Format:", style='Header.TLabel').grid(row=6, column=0, sticky='w', pady=(5,2))
-    inputFilesFormat_combobox = ttk.Combobox(input_frame, values=["csv", "xlsx"], width=28)
-    inputFilesFormat_combobox.grid(row=7, column=0, sticky='w', pady=(0,5))
-    set_disabled_style(inputFilesFormat_combobox)
-    ToolTip(inputFilesFormat_combobox, TOOLTIPS['input_format'])
+    # Instrument (Seaguard/TSCP or HOBO): the two are never stackable, so the
+    # database is built for one instrument at a time (.csv and .xlsx both read)
+    ttk.Label(input_frame, text="Instrument:", style='Header.TLabel').grid(row=6, column=0, sticky='w', pady=(5,2))
+    instrument_combobox = ttk.Combobox(input_frame, values=["Seaguard", "HOBO"], width=15, state='readonly')
+    instrument_combobox.set("Seaguard")
+    instrument_combobox.grid(row=7, column=0, sticky='w', pady=(0,5))
+    ToolTip(instrument_combobox, TOOLTIPS['instrument'])
 
     # --- Output Section ---
     # Output naming
@@ -641,64 +640,46 @@ def show_input_window():
     restore_entry(outputPath_entry, USER_PREFS.get('dbv_output_path', ''))
     restore_entry(inputPath_entry, USER_PREFS.get('dbv_input_path', ''))
     restore_entry(outputName_entry, USER_PREFS.get('dbv_output_name', ''))
-    if USER_PREFS.get('dbv_input_format'):
-        inputFilesFormat_combobox.set(USER_PREFS['dbv_input_format'])
+    if USER_PREFS.get('dbv_instrument') in ('Seaguard', 'HOBO'):
+        instrument_combobox.set(USER_PREFS['dbv_instrument'])
     sort.set(USER_PREFS.get('dbv_sort_by_time', False))
 
     input_window.mainloop()
 
 
+db_build_messages = []  # mensagens da unificacao, mostradas no log da visualizacao
+
 def load_database():
-    """Carrega ou monta o banco de dados; retorna None (com aviso) em caso de erro."""
-
-    # Prepare data
-
-    if inputSettings.get('joinFiles', False) == True:
-        try:
-            database = data.join_files_to_database(inputSettings['inputPath'], inputSettings['inputFilesFormat'])
-        except Exception as e:
-            messagebox.showerror("Error", "Could not join the files from folder:\n%s\n\nDetails: %s" % (inputSettings.get('inputPath', ''), e))
-            return None
-    else:
-        raw_selection = inputSettings.get('databaseFileName', '')
-        file_paths = [p.strip() for p in raw_selection.split(';') if p.strip()]
-        if not file_paths:
-            messagebox.showerror("Error", "Select a database file or provide a valid input folder.")
-            return None
-        # multiple selected files are concatenated into a single database
-        frames = []
-        for file_path in file_paths:
-            try:
-                frames.append(pd.read_excel(file_path))
-            except Exception as e:
-                messagebox.showerror("Error", "Could not read the database file:\n%s\n\nDetails: %s" % (file_path, e))
-                return None
-        database = frames[0] if len(frames) == 1 else pd.concat(frames, ignore_index=True)
-
-    # required columns: fail here with a clear message instead of a raw crash
-    # in the view window (e.g. joined files exported without a 'Site' column)
-    missing_cols = [c for c in ('Datetime', 'Site') if c not in database.columns]
-    if missing_cols:
-        messagebox.showerror("Error",
-                             "The database is missing required column(s): %s\n\n"
-                             "Columns found:\n%s" % (', '.join(missing_cols),
-                                                     ', '.join(str(c) for c in database.columns[:20])))
-        return None
-
-    if inputSettings.get('sortByTime', False) == True:
-        try:
-            database.index = database['Datetime']
-            database = database.rename_axis('dt_index')
-            database = database.sort_values(by='dt_index')
-            database.index = range(len(database))
-        except Exception as e:
-            print(f"ERROR sorting by time: {str(e)}")
+    """Carrega ou monta o banco de dados via build_database (motor unico de
+    unificacao); retorna None (com aviso claro) em caso de erro."""
+    global db_build_messages
+    db_build_messages = []
+    instrument = inputSettings.get('instrument', 'Seaguard')
 
     try:
-        database['Datetime'] = pd.to_datetime(database['Datetime'])
-    except Exception as e:
-        messagebox.showerror("Error", "Could not parse the 'Datetime' column of the database.\n\nDetails: %s" % e)
+        if inputSettings.get('joinFiles', False) == True:
+            database, db_build_messages = data.build_database(instrument,
+                                                              input_path=inputSettings['inputPath'])
+        else:
+            file_paths = [p.strip() for p in inputSettings.get('databaseFileName', '').split(';') if p.strip()]
+            if not file_paths:
+                messagebox.showerror("Error", "Select a database file or provide a valid input folder.")
+                return None
+            database, db_build_messages = data.build_database(instrument, file_list=file_paths)
+    except ValueError as e:
+        # mensagens do motor ja sao autolocalizadas ('build_database: ...')
+        messagebox.showerror("Error", str(e))
         return None
+    except Exception as e:
+        messagebox.showerror("Error", "Could not build the database:\n%s" % e)
+        return None
+    for message in db_build_messages:
+        print(message)
+
+    if inputSettings.get('sortByTime', False) == True:
+        # ordem puramente cronologica (o motor ordena por Site+Datetime)
+        database = database.sort_values('Datetime', kind='stable')
+        database.index = range(len(database))
 
     try:
         databaseViewPath = os.path.join(inputSettings['outputPath'], 'DatabaseView')
@@ -708,9 +689,11 @@ def load_database():
         messagebox.showerror("Error", "Could not create the output folder:\n%s\n\nDetails: %s" % (inputSettings.get('outputPath', ''), e))
         return None
 
-    if inputSettings.get('databaseFileName', '') == '':
+    if inputSettings.get('joinFiles', False) == True:
         try:
-            database.to_excel(inputSettings['outputFileName']+'.xlsx')
+            database.to_excel(inputSettings['outputFileName']+'.xlsx', index=False)
+            print('MESSAGE: unified database saved to %s.xlsx'
+                  % os.path.join(databaseViewPath, inputSettings['outputFileName']))
         except Exception as e:
             print(f"ERROR saving database: {str(e)}")
     return database
@@ -950,11 +933,15 @@ def show_view_window():
     param_lbl.grid(row=0, column=1, sticky='w', pady=(5,2), padx=10)
     ToolTip(param_lbl, TOOLTIPS['param_filter'])
 
-    parameter_names = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)', 
-                      'Density (kg/m3)', 'CO2 level (ppm)', 'O2 level (uM)', 
-                      'PAR (umol/m2/s)', 'Turbidity (FTU)', 'Chlorophyll (ug/L)', 
-                      'pH', 'Dissolved organic matter (ppb)', 'Soundspeed (m/s)', 
-                      'Pressure (dbar)']
+    if inputSettings.get('instrument', 'Seaguard') == 'HOBO':
+        # HOBO so mede temperatura e luz
+        parameter_names = ['Temperature (degC)', 'Luminosity (lux)']
+    else:
+        parameter_names = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)',
+                          'Density (kg/m3)', 'CO2 level (ppm)', 'O2 level (uM)',
+                          'PAR (umol/m2/s)', 'Turbidity (FTU)', 'Chlorophyll (ug/L)',
+                          'pH', 'Dissolved organic matter (ppb)', 'Soundspeed (m/s)',
+                          'Pressure (dbar)']
     parameter_vars = {}  # Armazena as BooleanVar
     parameter_widgets = {}  # Armazena os widgets Checkbutton
 
@@ -1054,8 +1041,10 @@ def show_view_window():
         dType_combobox.set(USER_PREFS['dbv_data_type'])
         toggle_data_type()
 
-    # Create error logger
+    # Create error logger (comeca com o sumario da unificacao do banco)
     error_logger = ErrorLogger(scrollable_frame)
+    for message in db_build_messages:
+        error_logger.log(message)
 
     # Configure canvas scrolling
     def _on_mousewheel(event):

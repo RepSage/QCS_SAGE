@@ -869,35 +869,123 @@ def trim_selected_variable(data, name, tk_root=None):
     data[name] = y
     return data
 
-def join_files_to_database(path, inputFilesFormat):
-    folder_names = next(walk(path), (None, None, []))[1]
-    folder_names = [item for item in folder_names if '__pycache__' not in item]
-    dic = {}
-    for folder in folder_names:
-        subfolder_names = next(walk(path + '/' + folder), (None, None, []))[1]
-        subfolder_names = [item for item in subfolder_names if '__pycache__' not in item]
-        for ff in subfolder_names:
-            if not re.search('data', ff, re.IGNORECASE):
-                continue
-            f = ff
-            os.chdir(path + '/' + folder + '/' + f)
-            file_names = next(walk(path + '/' + folder + '/' + f), (None, None, []))[2]
-            file_names = [item for item in file_names if '__pycache__' not in item]
-            for file in file_names:
-                if re.search('xlsx', inputFilesFormat, re.IGNORECASE):
-                    if re.search('.xlsx', file, re.IGNORECASE):
-                        df = pd.read_excel(file, header=0)
-                        #site = file[4:8] if file[4] == 'P' or file[4] == 'R' else file[4:7]
-                        #df['Site'] = site
-                        dic[file] = df
+# subpastas de saida do QCS onde vivem as planilhas qualificadas de cada
+# instrumento (o nome tscp e o mesmo desde as versoes pre-v4)
+QUALIFIED_SUBFOLDERS = {
+    'tscp': ('QCS qualified tscp data',),
+    'hobo': ('QCS qualified hobo data',),
+}
 
-                if re.search('csv', inputFilesFormat, re.IGNORECASE):
-                    if re.search('.csv', file, re.IGNORECASE):
-                        df = pd.read_csv(file, header=1)
-                        #site = file[4:8] if file[4] == 'P' or file[4] == 'R' else file[4:7]
-                        #df['Site'] = site
-                        dic[file] = df
 
-    database = pd.concat(dic, ignore_index=True)
+def detect_qualified_layout(df):
+    """'hobo' = so temperatura+luz (tem Luminosity, nao tem Salinity);
+    qualquer outra planilha qualificada e 'tscp' (Seaguard)."""
+    cols = set(str(c) for c in df.columns)
+    if 'Luminosity (lux)' in cols and 'Salinity (PSU)' not in cols:
+        return 'hobo'
+    return 'tscp'
+
+
+def build_database(instrument, file_list=None, input_path=None):
+    """Motor unico de unificacao de planilhas qualificadas (Seaguard e HOBO).
+
+    Entrada (uma das duas):
+    - file_list: arquivos qualificados escolhidos a mao (multi-selecao); ou
+    - input_path: pasta-mae varrida recursivamente atras das subpastas de
+      saida do QCS ('QCS qualified tscp data' / 'QCS qualified hobo data').
+
+    Regras (v4.0, substitui join_files_to_database):
+    - ignora os arquivos de relatorio (nome comecando com 'QCS_');
+    - le .csv (header na linha 0 - o antigo header=1 corrompia csvs) e .xlsx;
+    - valida cada arquivo: precisa de Datetime+Site e o layout precisa bater
+      com o instrumento (HOBO e Seaguard NUNCA sao empilhaveis);
+    - adiciona a coluna 'Source file' (proveniencia de cada linha);
+    - ordena por Site+Datetime; remove duplicatas exatas (mantendo a primeira,
+      com aviso) e reporta linhas com mesmo Site+Datetime e valores diferentes.
+
+    Retorna (database, messages). Problemas levantam ValueError com mensagem
+    autolocalizada ('build_database: ...').
+    """
+    expected_layout = 'hobo' if str(instrument).strip().upper() == 'HOBO' else 'tscp'
+    messages = []
+
+    if file_list:
+        files = [f.strip() for f in file_list if f and f.strip()]
+    elif input_path:
+        target_subfolders = QUALIFIED_SUBFOLDERS[expected_layout]
+        files = []
+        for root, dirs, names in os.walk(input_path):
+            if os.path.basename(root) in target_subfolders:
+                for name in sorted(names):
+                    if name.lower().endswith(('.csv', '.xlsx')) and not name.startswith('QCS_'):
+                        files.append(os.path.join(root, name))
+        if not files:
+            raise ValueError("build_database: no qualified %s files found under:\n%s\n"
+                             "(searched inside '%s' subfolders for .csv/.xlsx not named 'QCS_*')."
+                             % (instrument, input_path, "'/'".join(target_subfolders)))
+    else:
+        raise ValueError('build_database: provide file_list or input_path.')
+
+    frames = []
+    for file_path in files:
+        base = os.path.basename(file_path)
+        if base.startswith('QCS_'):
+            messages.append('MESSAGE: report file skipped: %s' % base)
+            continue
+        try:
+            if file_path.lower().endswith('.xlsx'):
+                df = pd.read_excel(file_path, header=0)
+            else:
+                df = pd.read_csv(file_path, header=0)
+        except Exception as e:
+            raise ValueError('build_database: could not read %s:\n%s' % (file_path, e))
+        missing = [c for c in ('Datetime', 'Site') if c not in df.columns]
+        if missing:
+            raise ValueError("build_database: %s does not look like a QCS qualified file "
+                             "(missing column(s): %s).\nColumns found: %s"
+                             % (base, ', '.join(missing), ', '.join(str(c) for c in df.columns[:12])))
+        layout = detect_qualified_layout(df)
+        if layout != expected_layout:
+            raise ValueError("build_database: %s looks like a %s spreadsheet, but the selected "
+                             "instrument is %s. HOBO and Seaguard qualified files are never "
+                             "stackable - unify them into separate databases." % (base, layout.upper(), instrument))
+        df['Source file'] = base
+        frames.append(df)
+        messages.append('MESSAGE: %s: %d rows' % (base, len(df)))
+
+    if not frames:
+        raise ValueError('build_database: no readable qualified files in the selection.')
+
+    database = pd.concat(frames, ignore_index=True)
+    database['Datetime'] = pd.to_datetime(database['Datetime'], errors='coerce')
+    n_bad_ts = int(database['Datetime'].isna().sum())
+    if n_bad_ts:
+        messages.append('WARNING: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
+        database = database[database['Datetime'].notna()]
+
+    database = database.sort_values(['Site', 'Datetime'], kind='stable')
+
+    # duplicatas exatas (mesmos valores em todas as colunas, exceto a proveniencia)
+    value_cols = [c for c in database.columns if c != 'Source file']
+    n_before = len(database)
+    database = database.drop_duplicates(subset=value_cols, keep='first')
+    n_exact = n_before - len(database)
+    if n_exact:
+        messages.append('WARNING: %d exact duplicate row(s) (same Site+Datetime+values) '
+                        'discarded - kept the first occurrence.' % n_exact)
+
+    # sobreposicoes com valores DIFERENTES: mantidas, mas o operador precisa saber
+    overlap_mask = database.duplicated(subset=['Site', 'Datetime'], keep=False)
+    if overlap_mask.any():
+        offenders = sorted(database.loc[overlap_mask, 'Source file'].unique())
+        messages.append('WARNING: %d row(s) share the same Site+Datetime with DIFFERENT values '
+                        '(overlapping qualifications?) - ALL kept; check the files: %s'
+                        % (int(overlap_mask.sum()), ', '.join(offenders)))
+
     database.index = np.arange(len(database))
-    return database
+    for site, group in database.groupby('Site'):
+        messages.append('MESSAGE: site %s: %d rows, %s to %s'
+                        % (site, len(group), group['Datetime'].min(), group['Datetime'].max()))
+    messages.append('MESSAGE: database built: %d file(s), %d rows, instrument %s.'
+                    % (len(frames), len(database), instrument))
+    return database, messages

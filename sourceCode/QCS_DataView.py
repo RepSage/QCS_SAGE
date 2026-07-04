@@ -74,7 +74,8 @@ def getParamColors (parameter_names=None):
                 'pH': '#ff66cc',                               # rosa/magenta
                 'Dissolved organic matter (ppb)': '#cccc29',   # oliva
                 'Soundspeed (m/s)': '#8585ad',                 # azul-acinzentado
-                'Pressure (dbar)': '#808080'                   # cinza escuro
+                'Pressure (dbar)': '#808080',                  # cinza escuro
+                'Luminosity (lux)': '#f2c14e'                  # ambar (luz HOBO)
                 }
     bcParam = {'Temperature (degC)': '#b30000',
                 'Salinity (PSU)': '#cc6600',
@@ -90,7 +91,8 @@ def getParamColors (parameter_names=None):
                 'pH': '#cc0099',
                 'Dissolved organic matter (ppb)': '#666614',
                 'Soundspeed (m/s)': '#3d3d5c',
-                'Pressure (dbar)': '#1a1a1a'
+                'Pressure (dbar)': '#1a1a1a',
+                'Luminosity (lux)': '#a3781f'
                 }
 
     return cParam, bcParam

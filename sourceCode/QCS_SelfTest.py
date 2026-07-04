@@ -314,5 +314,43 @@ try:
 except ValueError:
     ok.append('order_var (erro claro p/ tipo invalido)')
 
+# 11) build_database: motor unico de unificacao (descoberta, dedup, proveniencia)
+import os as _os
+import tempfile as _tempfile
+with _tempfile.TemporaryDirectory() as tmp:
+    sub1 = _os.path.join(tmp, 'saidaA', 'QCS qualified hobo data')
+    sub2 = _os.path.join(tmp, 'saidaB', 'QCS qualified hobo data')
+    _os.makedirs(sub1); _os.makedirs(sub2)
+    h1 = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=3, freq='h'),
+                       'Temperature (degC)': [25.0, 25.1, 25.2],
+                       'Luminosity (lux)': [0.0, 100.0, 200.0],
+                       'Site': ['PAB3'] * 3, 'Flag_T': [1, 1, 1], 'Flag_lux': [1, 1, 1]})
+    h1.to_csv(_os.path.join(sub1, 'PAB3_qlf.csv'), index=False)
+    h2 = h1.copy(); h2['Site'] = 'RH30'
+    h2.to_csv(_os.path.join(sub2, 'RH30_qlf.csv'), index=False)
+    pd.DataFrame({'x': [1]}).to_csv(_os.path.join(sub1, 'QCS_report.csv'), index=False)  # relatorio: ignorar
+    h1.to_csv(_os.path.join(sub2, 'PAB3_copia.csv'), index=False)  # duplicatas exatas: dedup
+    db, msgs = data.build_database('HOBO', input_path=tmp)
+    assert len(db) == 6, 'esperava 3+3 linhas apos dedup: %d' % len(db)
+    assert 'Source file' in db.columns, 'coluna de proveniencia faltando'
+    assert set(db['Site']) == {'PAB3', 'RH30'}
+    assert any('duplicate' in m for m in msgs), msgs
+    assert not any('QCS_report' in s for s in db['Source file'].unique()), 'relatorio nao podia entrar no banco'
+    # mistura de instrumentos e recusada com mensagem clara
+    t1 = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=2, freq='h'),
+                       'Temperature (degC)': [25.0, 25.1], 'Salinity (PSU)': [36.0, 36.1],
+                       'Site': ['D13'] * 2})
+    tpath = _os.path.join(tmp, 'tscp_qlf.csv')
+    t1.to_csv(tpath, index=False)
+    try:
+        data.build_database('HOBO', file_list=[tpath])
+        raise AssertionError('deveria recusar misturar TSCP com HOBO')
+    except ValueError as e:
+        assert 'stackable' in str(e), e
+    # e o mesmo arquivo funciona como Seaguard (csv com header correto - antes header=1 corrompia)
+    dbt, _ = data.build_database('Seaguard', file_list=[tpath])
+    assert len(dbt) == 2 and dbt['Temperature (degC)'].iloc[0] == 25.0, 'csv qualificado corrompido na leitura'
+ok.append('build_database (descoberta, dedup, proveniencia, recusa mistura, csv ok)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d testes passaram.' % len(ok))
