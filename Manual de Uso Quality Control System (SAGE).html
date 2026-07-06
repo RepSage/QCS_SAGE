@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Manual Completo do Sistema QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>Referente à versão v3.2.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>Referente à versão v4.0</em></p>
 
     <div class="indice">
         <h2>Índice</h2>
@@ -165,16 +165,21 @@
             <li><a href="#gerenciamento_configuracoes">6. Gerenciamento de Configurações</a></li>
             <li><a href="#parametros_configuracao">7. Parâmetros de Configuração Detalhados</a></li>
             <li><a href="#testes_qualificacao">8. Testes de Qualificação</a></li>
-            <li><a href="#produtos_gerados">9. Produtos Gerados</a></li>
-            <li><a href="#visualizacao_dados">10. Visualização de dados</a></li>
-            <li><a href="#boas_praticas">11. Boas Práticas</a></li>
-            <li><a href="#compilacao_avancada">12. Execução a partir do Código-Fonte</a></li>
-            <li><a href="#solucao_problemas">13. Solução de Problemas</a></li>
+            <li><a href="#dados_hobo">9. Dados HOBO (Temperatura e Luz)</a></li>
+            <li><a href="#produtos_gerados">10. Produtos Gerados</a></li>
+            <li><a href="#visualizacao_dados">11. Visualização de dados</a></li>
+            <li><a href="#boas_praticas">12. Boas Práticas</a></li>
+            <li><a href="#compilacao_avancada">13. Execução a partir do Código-Fonte</a></li>
+            <li><a href="#solucao_problemas">14. Solução de Problemas</a></li>
         </ul>
     </div>
 
     <h2 id="introducao">1. Introdução</h2>
-    <p>O QCS (Quality Control System) é uma solução completa para qualificação e visualização de dados oceanográficos. Este manual cobre todos os aspectos do sistema, desde a instalação até operações avançadas.</p>
+    <p>O QCS (Quality Control System) é uma solução completa para qualificação e visualização de
+    dados oceanográficos de duas famílias de instrumentos: <strong>Seaguard/TSCP</strong>
+    (temperatura, salinidade, condutividade, pressão, O₂, pH, clorofila, turbidez — perfis e
+    fundeios) e, desde a v4.0, <strong>HOBO Pendant</strong> (temperatura e luz — ver seção 9).
+    Este manual cobre todos os aspectos do sistema, desde a instalação até operações avançadas.</p>
 
     <h2 id="instalacao">2. Instalação</h2>
     <h3>Requisitos Mínimos</h3>
@@ -182,7 +187,16 @@
         <li>Windows 10 ou superior (64-bit)</li>
         <li>Python (recomenda-se o Anaconda) com os pacotes do arquivo <code>sourceCode/requirements.txt</code>:
             <code>numpy</code>, <code>pandas</code>, <code>matplotlib</code>, <code>scipy</code>, <code>openpyxl</code> e <code>gsw</code></li>
+        <li><code>sv-ttk</code> (opcional, incluído no requirements.txt): tema visual "Sun Valley"
+            (aparência do Windows 11, com modo claro/escuro). Sem ele, a interface usa o visual
+            clássico — nada deixa de funcionar.</li>
     </ul>
+    <div class="note">
+        <p><strong>Novidade (v4.0):</strong> interface modernizada com <strong>modo escuro</strong>
+        (interruptor no cabeçalho das janelas, preferência lembrada entre sessões), texto nítido em
+        telas de alta resolução e um painel <strong>"Execution log"</strong> nas janelas principais,
+        que mostra o progresso, avisos e erros de cada execução com cores por severidade.</p>
+    </div>
 
     <h3>Instalação Básica</h3>
     <p>O QCS roda diretamente a partir dos scripts Python (não há mais executáveis). Para preparar:</p>
@@ -248,9 +262,13 @@
             <td>Checkbox para ativar verificação manual dos limites das variáveis.</td>
         </tr>
         <tr>
-            <td>Latitude (deg)</td>
-            <td>Latitude do ponto de coleta, em graus. Usada para converter pressão em profundidade
-            quando o arquivo não traz a profundidade. Valor padrão: 17.5.</td>
+            <td>Latitude (deg) / Longitude (deg)</td>
+            <td>Coordenadas do ponto de coleta, em graus decimais (ex.: -17.5 e -40.0). Usadas
+            apenas durante a qualificação (conversão de pressão em profundidade e teste de
+            inversão de densidade). <strong>Opcionais desde a v4.0:</strong> se vazias ou
+            inválidas, o programa usa um valor padrão e avisa no log — a qualificação não trava.
+            As coordenadas <strong>não são gravadas</strong> na planilha qualificada (todas as
+            planilhas saem com o mesmo layout de colunas).</td>
         </tr>
     </table>
 
@@ -344,8 +362,11 @@
             <td>Checkbox para ordenar dados cronologicamente.</td>
         </tr>
         <tr>
-            <td>Input Format</td>
-            <td>Dropdown para formato dos arquivos de entrada.</td>
+            <td>Instrument</td>
+            <td>Seleciona o instrumento que gerou os arquivos qualificados (Seaguard ou HOBO).
+            Planilhas Seaguard e HOBO têm layouts diferentes e <strong>nunca são combinadas
+            entre si</strong> — monte um banco separado para cada instrumento. Arquivos .csv e
+            .xlsx são lidos automaticamente (o antigo seletor de formato foi removido na v4.0).</td>
         </tr>
         <tr>
             <td>Output Name</td>
@@ -383,23 +404,31 @@
         </tr>
         <tr>
             <td>Panel 1</td>
-            <td>Checkbox para ativar painel de comparação entre parâmetros.</td>
+            <td>Checkbox para ativar painel de comparação entre parâmetros (Seaguard).
+            <strong>Com Instrument = HOBO</strong>, este checkbox vira
+            <em>"HOBO Temperature (per site)"</em> — ver seção 10.</td>
         </tr>
         <tr>
             <td>Panel 2</td>
-            <td>Checkbox para ativar painel de comparação entre locais.</td>
+            <td>Checkbox para ativar painel de comparação entre locais (Seaguard).
+            <strong>Com Instrument = HOBO</strong>, vira
+            <em>"HOBO Light + fouling window (per site)"</em>.</td>
         </tr>
         <tr>
             <td>Panel 3</td>
-            <td>Checkbox para ativar painel de perfil vertical.</td>
+            <td>Checkbox para ativar painel de perfil vertical (Seaguard).
+            <strong>Com Instrument = HOBO</strong>, vira <em>"HOBO Light multi-site"</em>.</td>
         </tr>
         <tr>
             <td>T-S Diagram</td>
-            <td>Checkbox para gerar diagrama temperatura-salidade.</td>
+            <td>Checkbox para gerar diagrama temperatura-salinidade. É o único gráfico em que
+            Latitude/Longitude são <strong>obrigatórias</strong> (entram no cálculo da salinidade
+            absoluta e temperatura conservativa e não se cancelam); sem coordenadas válidas o
+            diagrama é pulado com aviso. Indisponível para bancos HOBO (não há salinidade).</td>
         </tr>
         <tr>
             <td>Latitude/Longitude</td>
-            <td>Campos para coordenadas de referência do diagrama T-S.</td>
+            <td>Campos para coordenadas de referência do diagrama T-S (graus decimais).</td>
         </tr>
         <tr>
             <td>T-S Parameters</td>
@@ -504,8 +533,12 @@
     <ul>
         <li>Os testes são aplicados sequencialmente</li>
         <li>Cada teste adiciona seu código ao final da string de flags</li>
-        <li>A ordem dos testes é fixa (faixa do sensor → faixa ambiental → spikes → taxa de variação → linha plana → gradiente vertical, este último apenas para perfis)</li>
+        <li>A ordem dos testes é fixa (faixa do sensor → faixa ambiental → spikes → taxa de
+            variação → linha plana → gradiente vertical e inversão de densidade, estes dois
+            apenas para perfis → janela de uso da luz, apenas para HOBO)</li>
         <li>Flags são acumulativas - um dado pode ter múltiplos códigos</li>
+        <li>A correspondência exata posição → teste → variável é gravada no arquivo
+            <code>QCS_flag_legend.csv</code>, gerado junto com cada qualificação (v4.0)</li>
     </ul>
 
     <h4>Exemplo</h4>
@@ -516,6 +549,14 @@
         <li>4: Reprovado no terceiro teste</li>
         <li>2: Teste desconhecido no quarto teste</li>
     </ul>
+
+    <h3>Colunas Flag_ por variável (v4.0)</h3>
+    <p>Além da string completa <code>Flag</code>, o arquivo qualificado traz uma coluna-resumo
+    por variável (<code>Flag_T</code>, <code>Flag_S</code>, <code>Flag_C</code>, ...,
+    <code>Flag_lux</code> nos arquivos HOBO), com a <strong>pior flag</strong> da variável
+    naquela linha (prioridade 4 &gt; 3 &gt; 9 &gt; 1 &gt; 2 &gt; 5). Assim não é preciso
+    decodificar a string posição a posição para filtrar dados por qualidade — por exemplo,
+    manter só as linhas com <code>Flag_T &lt;= 2</code> em uma análise de temperatura.</p>
 
     <h2 id="gerenciamento_configuracoes">6. Gerenciamento de Configurações</h2>
     <h3>Exportando Configurações</h3>
@@ -531,8 +572,18 @@
     <ol>
         <li>No campo Config File, clique em Browse...</li>
         <li>Selecione o arquivo JSON previamente exportado</li>
-        <li>Os parâmetros serão carregados automaticamente</li>
+        <li>Os parâmetros são aplicados <strong>no momento da seleção</strong> (v4.0) — a janela
+            de Settings já passa a refletir o arquivo, antes mesmo do RUN</li>
     </ol>
+    <p>A janela de Settings também tem um botão <strong>"Reset to Defaults"</strong> (v4.0) para
+    voltar todos os critérios aos padrões da versão instalada. Valores inválidos digitados nos
+    campos são listados em um aviso, em vez de ignorados em silêncio.</p>
+    <div class="note">
+        <p><strong>Atenção ao atualizar de versões antigas:</strong> por causa do controle de
+        versão das preferências, ao rodar a v4.0 pela primeira vez os critérios de qualidade
+        salvos da v3.2.1 são substituídos pelos padrões atuais (comportamento intencional —
+        os critérios foram revisados). Caminhos de arquivos e últimas escolhas são preservados.</p>
+    </div>
 
     <h3>Estrutura do Arquivo JSON</h3>
     <pre><code>{
@@ -573,7 +624,11 @@
     </ul>
 
     <h3>fail_factor e susp_factor</h3>
-    <p>Multiplicadores do desvio padrão para classificação de dados.</p>
+    <p>Multiplicadores do desvio para classificação de dados. Desde a v4.0, a referência dos
+    testes de spike e taxa de variação é um <strong>desvio robusto</strong> (1,4826 × MAD, o
+    desvio absoluto mediano): o próprio valor espúrio não infla mais o limiar que deveria
+    detectá-lo. Onde o MAD degenera (série quase constante), o cálculo recai no desvio padrão
+    comum.</p>
     <p><strong>Comportamento:</strong></p>
     <ul>
         <li>fail_factor > susp_factor (tipicamente 3 e 2.5)</li>
@@ -583,16 +638,25 @@
         <li>Para dados muito estáveis, pode reduzir em 0.5</li>
     </ul>
 
+    <h3>Parâmetros da janela de luz do HOBO (lux_*)</h3>
+    <p>Na aba <strong>Parameters</strong> da janela de Settings, os parâmetros com prefixo
+    <code>lux_</code> controlam o teste de incrustação da luz (apenas HOBO — ver seção 8):</p>
+    <ul>
+        <li><code>lux_baseline_days</code>: quantos dias iniciais definem o baseline de água limpa
+            (maior pico diário de luz nesse período)</li>
+        <li><code>lux_cutoff_frac</code>: fração do baseline abaixo da qual o pico diário indica
+            incrustação</li>
+        <li><code>lux_sustain_days</code>: por quantos dias consecutivos o pico precisa ficar
+            abaixo do limiar para confirmar o corte</li>
+    </ul>
+    <p>Os valores usados ficam escritos no próprio gráfico <code>QCS_light_window.svg</code>, no
+    log e no <code>QCS_test_report.csv</code> — o corte é sempre rastreável.</p>
+
     <h3>Como Acessar Ajuda</h3>
     <ul>
         <li><strong>Tooltips:</strong> Passe o mouse sobre qualquer elemento da interface para ver uma dica</li>
-        <li><strong>Menu Help:</strong> No canto superior direito, menu "Help" contém:
-            <ul>
-                <li>Instruções básicas</li>
-                <li>Informações sobre o software</li>
-            </ul>
-        </li>
-        <li><strong>Botão Help:</strong> Na barra de ferramentas inferior</li>
+        <li><strong>Botão Help (?):</strong> No cabeçalho de cada janela; inclui as instruções
+            básicas e as informações sobre o software (a antiga barra de menu foi removida na v4.0)</li>
     </ul>
 
     <h2 id="testes_qualificacao">8. Testes de Qualificação</h2>
@@ -603,86 +667,91 @@
         <li>Testes de Spike</li>
         <li>Testes de Taxa de Variação</li>
         <li>Testes de Linha Plana</li>
-        <li>(Para perfis) Testes de Gradiente Vertical</li>
-        <li>(Para perfis) Teste de Inversão de Densidade</li>
+        <li>(Para perfis) Testes de Gradiente Vertical e Inversão de Densidade</li>
+        <li>(Para HOBO) Janela de uso da luz (incrustação)</li>
         <li>Geração de saídas</li>
     </ol>
+    <p>O log anuncia o pipeline em 5 estágios (leitura → pré-processamento → testes →
+    saída/relatórios → gráficos), o que facilita localizar onde uma execução falhou.</p>
 
-    <h3>Ordem Sequencial dos Testes de Qualificação</h3>
+    <h3>Ordem Sequencial dos Testes de Qualificação (v4.0)</h3>
     <ol>
-        <li><strong>Testes de Faixa do Sensor</strong>
+        <li><strong>Testes de Faixa do Sensor</strong> — reprovação vira <strong>BAD (4)</strong>
+            (valor fisicamente impossível para o sensor)
             <ul>
-                <li>Temperatura</li>
-                <li>Salinidade</li>
-                <li>Condutividade</li>
-                <li>Pressão</li>
+                <li>Temperatura, Salinidade, Condutividade, Pressão, Oxigênio Dissolvido,
+                    pH, Clorofila, Turbidez</li>
             </ul>
         </li>
-        <li><strong>Testes de Faixa Ambiental</strong>
+        <li><strong>Testes de Faixa Ambiental</strong> — reprovação vira
+            <strong>SUSPECT (3)</strong> (alinhamento ao QARTOD: fora do envelope regional é
+            suspeito, pois um evento extremo real é possível)
             <ul>
-                <li>Temperatura</li>
-                <li>Salinidade</li>
-                <li>Condutividade</li>
-                <li>Pressão</li>
-                <li>pH</li>
-                <li>Clorofila</li>
-                <li>Oxigênio Dissolvido</li>
-                <li>Matéria Orgânica Dissolvida</li>
-                <li>Turbidez</li>
+                <li>Temperatura, Salinidade, Condutividade, Pressão, pH, Clorofila,
+                    Oxigênio Dissolvido, Matéria Orgânica Dissolvida, Turbidez</li>
             </ul>
         </li>
-        <li><strong>Testes de Spikes (Valores Espúrios)</strong>
+        <li><strong>Testes de Spikes (Valores Espúrios)</strong> — método de 3 pontos
             <ul>
-                <li>Temperatura</li>
-                <li>Salinidade</li>
-                <li>Condutividade</li>
-                <li>Pressão</li>
-                <li>pH</li>
-                <li>Clorofila</li>
-                <li>Oxigênio Dissolvido</li>
-                <li>Matéria Orgânica Dissolvida</li>
-                <li>Turbidez</li>
+                <li>Temperatura, Salinidade, Condutividade, Pressão, pH, Clorofila,
+                    Oxigênio Dissolvido, Matéria Orgânica Dissolvida, Turbidez</li>
             </ul>
         </li>
-        <li><strong>Testes de Taxa de Variação</strong>
+        <li><strong>Testes de Taxa de Variação</strong> — reprovação vira no máximo
+            <strong>SUSPECT (3)</strong> (QARTOD: variação rápida real existe)
             <ul>
-                <li>Temperatura</li>
-                <li>Salinidade</li>
-                <li>Condutividade</li>
-                <li>Pressão</li>
+                <li>Temperatura, Salinidade, Condutividade, Pressão</li>
             </ul>
         </li>
         <li><strong>Testes de Linha Plana (Flat Line)</strong>
             <ul>
-                <li>Temperatura</li>
-                <li>Salinidade</li>
-                <li>Condutividade</li>
-                <li>Pressão</li>
+                <li>Temperatura, Salinidade, Condutividade, Pressão</li>
             </ul>
         </li>
-        <li><strong>Testes de Gradiente Vertical (Apenas para dados de perfil)</strong>
+        <li><strong>Testes de Gradiente Vertical (Apenas para dados de perfil)</strong> —
+            |ΔV/Δz| real em relação ao gradiente típico do perfil
             <ul>
-                <li>Temperatura</li>
-                <li>Salinidade</li>
-                <li>Condutividade</li>
+                <li>Temperatura, Salinidade, Condutividade</li>
             </ul>
         </li>
         <li><strong>Teste de Inversão de Densidade (Apenas para dados de perfil)</strong>
             <ul>
                 <li>Verifica a estabilidade da coluna d'água: a densidade potencial
                 (calculada de T, S e pressão) não pode diminuir com a profundidade além de
-                uma tolerância (0,03 kg/m³). Uma inversão indica um par temperatura/salinidade
-                <strong>suspeito</strong> (flag 3) e implica ambas — não é descartado à força,
-                só sai do resultado se "Remove Suspect Data" estiver ligado.</li>
+                uma tolerância (configurável no Settings; padrão 0,03 kg/m³). Uma inversão
+                indica um par temperatura/salinidade <strong>suspeito</strong> (flag 3) e
+                implica ambas — não é descartado à força, só sai do resultado se
+                "Remove Suspect Data" estiver ligado.</li>
+            </ul>
+        </li>
+        <li><strong>Janela de uso da luz (Apenas para HOBO)</strong>
+            <ul>
+                <li>Teste de incrustação (biofouling) da luz — ver a seção
+                <a href="#dados_hobo">Dados HOBO</a>. Gera a posição de flag da luz
+                (<code>Flag_lux</code>).</li>
             </ul>
         </li>
     </ol>
+
+    <div class="note">
+        <p><strong>Arquivos HOBO:</strong> como o HOBO Pendant mede apenas temperatura e luz,
+        somente os testes de <strong>temperatura</strong> da lista acima são executados, mais o
+        teste da janela de luz. A string de flags fica curta e sem posições sem sentido.</p>
+    </div>
 
     <p><strong>Nota (v3.0):</strong> os critérios de qualificação foram revisados nesta versão
     para serem amplos e gerais (válidos de toda a costa brasileira, do Sul aos recifes
     amazônicos). O teste de spike passou a usar o método de 3 pontos (|V₂ − (V₁+V₃)/2|),
     e foi adicionado o teste de inversão de densidade para perfis. Por alterar os resultados
     da qualificação em relação às versões 2.x, é uma versão maior (v3.0).</p>
+
+    <p><strong>Nota (v4.0):</strong> nova revisão que <strong>muda resultados</strong> em relação
+    à v3.x: faixa ambiental e taxa de variação agora geram SUSPECT (não BAD), conforme o QARTOD;
+    a referência de spike/taxa de variação passou a ser o desvio robusto (1,4826×MAD); o gradiente
+    vertical passou a usar a profundidade de fato (|ΔV/Δz|); e diversas correções de defeitos
+    (detalhadas no arquivo <code>changelog/v4.0.md</code> do projeto). Com "Remove Bad Data",
+    valores fora do envelope ambiental <strong>não são mais removidos</strong> automaticamente —
+    use "Remove Suspect Data" para o comportamento antigo.</p>
 
     <h3>Detalhes dos Testes</h3>
     <p>Cada teste gera logs detalhados no console, incluindo:</p>
@@ -692,186 +761,131 @@
         <li>Percentual de reprovação</li>
     </ul>
 
-    <h3>Seção: Junção de Arquivos no QCS_DatabaseView</h3>
-    <h4>Funcionalidade "Join Data Files"</h4>
-    <p>A opção Join Data Files no módulo QCS_DatabaseView permite combinar automaticamente múltiplos arquivos de dados em um único banco de dados unificado, seguindo uma estrutura de pastas específica.</p>
-
-    <h4>Estrutura de Pastas Requerida</h4>
-    <p>Para usar corretamente a função de junção, seus dados devem estar organizados na seguinte estrutura:</p>
-    <pre>Pasta_Principal/
-├── Pasta_Projeto1/
-│   ├── QCS qualified tscp data/  # Nome exato requerido
-│   │   ├── arquivo1.xlsx (ou .csv)
-│   │   └── arquivo2.xlsx (ou .csv)
-│
-├── Pasta_Projeto2/
-│   ├── QCS qualified tscp data/
-│   │   ├── arquivo3.xlsx
-│   │   └── arquivo4.xlsx
-│
-└── Pasta_ProjetoN/
-    ├── QCS qualified tscp data/
-    │   └── arquivoN.xlsx</pre>
-
-    <h4>Como Usar a Função de Junção</h4>
+    <h3>Seção: Junção de Arquivos no QCS_DatabaseView (motor build_database — v4.0)</h3>
+    <h4>Duas formas de montar o banco</h4>
+    <p>Na janela Database Input Settings, primeiro escolha o <strong>Instrument</strong>
+    (Seaguard ou HOBO — os dois nunca se misturam no mesmo banco) e então:</p>
     <ol>
-        <li><strong>Ative a opção Join Data Files:</strong>
-            <ul>
-                <li>Marque a checkbox "Join Data Files" na janela Database Input Settings</li>
-                <li>Isso desabilitará a seleção individual de arquivos</li>
-            </ul>
-        </li>
-        <li><strong>Especifique o Input Path:</strong>
-            <ul>
-                <li>Selecione a pasta principal que contém todas as subpastas de projetos</li>
-                <li>Use o botão "Browse..." ao lado do campo Input Path</li>
-            </ul>
-        </li>
-        <li><strong>Selecione o Formato de Entrada:</strong>
-            <ul>
-                <li>Escolha entre CSV ou XLSX no dropdown "Input Format"</li>
-                <li>Todos os arquivos devem estar no mesmo formato</li>
-            </ul>
-        </li>
-        <li><strong>Processamento:</strong>
-            <ul>
-                <li>O sistema percorrerá automaticamente todas as subpastas</li>
-                <li>Somente arquivos dentro de pastas chamadas exatamente "QCS qualified tscp data" serão processados</li>
-                <li>Arquivos com extensão diferente da selecionada serão ignorados</li>
-            </ul>
-        </li>
+        <li><strong>Seleção manual:</strong> em "Database File(s)", selecione um ou vários
+            arquivos qualificados (.csv ou .xlsx, em qualquer combinação) — eles são
+            combinados, validados e deduplicados automaticamente; <em>ou</em></li>
+        <li><strong>Join Data Files (pasta-mãe):</strong> marque a opção e aponte o
+            "Input Path" para a pasta que contém as saídas do QCS. A varredura é
+            <strong>recursiva</strong>: qualquer subpasta chamada exatamente
+            <code>QCS qualified tscp data</code> (Seaguard) ou
+            <code>QCS qualified hobo data</code> (HOBO) é encontrada, em qualquer nível.</li>
     </ol>
 
-    <h4>Comportamento da Função join_files_to_database()</h4>
-    <p>A função realiza as seguintes operações:</p>
-    <ol>
-        <li><strong>Varredura de Diretórios:</strong>
-            <ul>
-                <li>Identifica todas as pastas de primeiro nível (projetos)</li>
-                <li>Em cada projeto, busca pela subpasta "QCS qualified tscp data"</li>
-            </ul>
-        </li>
-        <li><strong>Filtragem de Arquivos:</strong>
-            <ul>
-                <li>Ignora pastas especiais como __pycache__</li>
-                <li>Processa apenas arquivos com a extensão selecionada (.xlsx ou .csv)</li>
-            </ul>
-        </li>
-        <li><strong>Leitura de Dados:</strong>
-            <ul>
-                <li>Para arquivos Excel (.xlsx):
-                    <ul>
-                        <li>Usa pd.read_excel() com header=0 (primeira linha como cabeçalho)</li>
-                    </ul>
-                </li>
-                <li>Para arquivos CSV:
-                    <ul>
-                        <li>Usa pd.read_csv() com header=1 (segunda linha como cabeçalho)</li>
-                    </ul>
-                </li>
-            </ul>
-        </li>
-        <li><strong>Combinação dos Dados:</strong>
-            <ul>
-                <li>Concatena todos os DataFrames em um único banco de dados</li>
-                <li>Reseta os índices para manter sequência contínua</li>
-                <li>Preserva a estrutura original de colunas</li>
-            </ul>
-        </li>
-    </ol>
-
-    <h4>Pré-requisitos dos Arquivos de Entrada</h4>
-    <p>Para garantir uma junção correta:</p>
-    <ul>
-        <li><strong>Estrutura Consistente:</strong>
-            <ul>
-                <li>Todos os arquivos devem ter a mesma estrutura de colunas</li>
-                <li>Cabeçalhos idênticos em todos os arquivos</li>
-            </ul>
-        </li>
-        <li><strong>Formatação Padrão:</strong>
-            <ul>
-                <li>Arquivos devem ser saídas do QCS_Main</li>
-                <li>Manter a estrutura "QCS qualified tscp data" como subpasta</li>
-            </ul>
-        </li>
-        <li><strong>Tratamento de Dados:</strong>
-            <ul>
-                <li>Coluna "Site" será mantida se já existir nos arquivos originais</li>
-                <li>Datas devem estar no formato datetime consistente</li>
-            </ul>
-        </li>
-    </ul>
-
-    <h4>Dicas para Uso Eficiente</h4>
-    <ul>
-        <li><strong>Organização Prévia:</strong>
-            <ul>
-                <li>Agrupe dados semelhantes na mesma pasta principal</li>
-                <li>Verifique consistência entre arquivos antes da junção</li>
-            </ul>
-        </li>
-        <li><strong>Pós-processamento:</strong>
-            <ul>
-                <li>Após junção, use os filtros por Site no módulo de visualização</li>
-                <li>Salve o banco combinado para uso futuro</li>
-            </ul>
-        </li>
-        <li><strong>Solução de Problemas:</strong>
-            <ul>
-                <li>Se a junção falhar, verifique:
-                    <ul>
-                        <li>Nomes das subpastas (devem ser exatos)</li>
-                        <li>Permissões de leitura nos arquivos</li>
-                        <li>Consistência dos cabeçalhos</li>
-                    </ul>
-                </li>
-            </ul>
-        </li>
-    </ul>
-
-    <h4>Exemplo de Fluxo de Trabalho</h4>
-    <ol>
-        <li>Colete dados de três campanhas diferentes (Camp1, Camp2, Camp3)</li>
-        <li>Processe cada campanha separadamente no QCS_Main</li>
-        <li>Organize as saídas em:
-            <pre>Dados_Completos/
+    <h4>Estrutura de pastas (exemplo para o modo Join)</h4>
+    <pre>Dados_Completos/
 ├── Camp1/
 │   └── QCS qualified tscp data/
-│       └── dados_camp1.xlsx
+│       └── dados_camp1.csv
 ├── Camp2/
 │   └── QCS qualified tscp data/
 │       └── dados_camp2.xlsx
 └── Camp3/
     └── QCS qualified tscp data/
-        └── dados_camp3.xlsx</pre>
-        </li>
-        <li>No QCS_DatabaseView:
-            <ul>
-                <li>Ative "Join Data Files"</li>
-                <li>Selecione "Dados_Completos" como Input Path</li>
-                <li>Escolha formato XLSX</li>
-                <li>Execute a junção</li>
-            </ul>
-        </li>
-        <li>Visualize o banco combinado com todos os dados das três campanhas</li>
-    </ol>
+        └── dados_camp3.csv</pre>
 
-    <p>Esta função é particularmente útil para:</p>
+    <h4>O que o motor de unificação faz</h4>
     <ul>
-        <li>Análises temporais de longa duração</li>
-        <li>Comparação entre múltiplas campanhas</li>
-        <li>Consolidação de dados de diferentes fontes</li>
-        <li>Criação de bancos de dados históricos</li>
+        <li><strong>Valida o layout</strong> de cada arquivo (exige as colunas
+            <code>Datetime</code> e <code>Site</code>) e detecta se é Seaguard ou HOBO —
+            misturar tipos é recusado com mensagem clara.</li>
+        <li><strong>Ignora os arquivos de relatório</strong> (tudo que começa com
+            <code>QCS_</code>: report, stat, flag legend etc.) — só dados entram no banco.</li>
+        <li><strong>Descarta duplicatas exatas</strong> (mesmo site, horário e valores),
+            mantendo a primeira ocorrência e avisando no log; sobreposições com valores
+            <strong>diferentes</strong> (mesmo site+horário vindos de arquivos distintos) são
+            mantidas e reportadas com a lista dos arquivos envolvidos, para o operador decidir.</li>
+        <li><strong>Adiciona a coluna <code>Source file</code></strong> (de qual arquivo veio
+            cada linha — proveniência) e ordena por Site + Datetime.</li>
+        <li>Mostra no log da janela de visualização um <strong>sumário por site</strong>
+            (número de linhas e período coberto).</li>
     </ul>
 
-    <h2 id="produtos_gerados">9. Produtos Gerados</h2>
+    <div class="note">
+        <p>Se "Join Data Files" estiver marcado, o banco unificado também é salvo como
+        <code>.xlsx</code> (com o nome do campo "Output Name") na pasta
+        <code>DatabaseView</code> dentro do Output Path, para reutilização.</p>
+    </div>
+
+    <h2 id="dados_hobo">9. Dados HOBO (Temperatura e Luz)</h2>
+    <p>Desde a v4.0 o QCS qualifica e visualiza dados dos loggers <strong>HOBO Pendant
+    (Temperatura/Luz)</strong>, além dos Seaguard. Selecione <strong>Input Type = HOBO</strong>
+    na janela principal e aponte para a exportação do HOBOware.</p>
+
+    <h3>Leitura dos arquivos</h3>
+    <ul>
+        <li>Aceita as exportações <strong>.xlsx e .csv</strong> do HOBOware, com cabeçalhos em
+            português ou inglês (a linha de cabeçalho e o delimitador são detectados
+            automaticamente; acentuação quebrada é tolerada).</li>
+        <li><strong>Unidade da luz automática:</strong> <code>lux</code> é usado diretamente;
+            <code>lum/ft²</code> (foot-candle) é convertido para lux (×10,7639). A saída é
+            sempre em <strong>lux</strong>.</li>
+        <li><strong>Janela de deployment pelos eventos do logger</strong> (Acoplador
+            Ligado/Desligado, Parado, Fim do Ficheiro): linhas fora do período em água e
+            linhas só-de-evento são descartadas, com registro no log. Leituras fora d'água
+            nas pontas também são cortadas por salto de temperatura (parâmetro
+            <code>hobo_edge_temp_tol</code>, com salvaguarda de não remover mais de 10% da
+            série).</li>
+        <li>Zero de luz à noite é valor <strong>válido</strong> (nunca vira faltante);
+            negativos viram 0.</li>
+    </ul>
+
+    <h3>Qualificação</h3>
+    <p>Rodam os testes de <strong>temperatura</strong> aplicáveis a fundeio (faixa do sensor e
+    ambiental, spike, taxa de variação e linha plana — gerando <code>Flag_T</code>) e o teste
+    exclusivo do HOBO:</p>
+
+    <h4>Janela de uso da luz (teste de incrustação)</h4>
+    <p>Com o sensor no mar, organismos incrustantes vão cobrindo o logger e a luz medida decai —
+    a partir de um ponto, ela deixa de ser confiável. O teste identifica esse ponto:</p>
+    <ol>
+        <li>O <strong>baseline de água limpa</strong> é o maior pico diário de luz dos primeiros
+            <code>lux_baseline_days</code> dias;</li>
+        <li>A luz vira <strong>SUSPECT (3)</strong> — o valor é mantido, não apagado — a partir
+            do dia em que o pico diário fica abaixo de <code>lux_cutoff_frac</code> × baseline
+            por <code>lux_sustain_days</code> dias consecutivos;</li>
+        <li>Se depois do corte a luz ainda alcançar o limiar em boa parte dos dias (~20%+), um
+            <strong>aviso</strong> indica que a queda não é permanente (possível limpeza do
+            sensor, múltiplos deployments no mesmo arquivo ou período nublado) — revise.</li>
+    </ol>
+    <p><strong>Revisão interativa:</strong> antes de aplicar, o programa mostra o envelope diário
+    da luz com o corte proposto — clique move a data do corte, a tecla <strong>N</strong> remove o
+    corte, Enter/fechar confirma. O gráfico final é salvo como <code>QCS_light_window.svg</code>
+    na pasta de saída, com os parâmetros usados escritos nele.</p>
+
+    <div class="warning">
+        <p><strong>Limitação:</strong> o teste identifica <strong>um corte por arquivo</strong>.
+        Se o sensor foi limpo e voltou à água no mesmo arquivo, o aviso de recuperação vai
+        disparar — o recomendado é qualificar cada deployment (entre limpezas) como um arquivo
+        separado.</p>
+    </div>
+
+    <h3>Saída</h3>
+    <p>A planilha qualificada HOBO contém apenas as variáveis medidas + metadados:
+    <code>Sample number</code>, <code>Datetime</code>, <code>Temperature (degC)</code>,
+    <code>Luminosity (lux)</code>, <code>Expedition</code>, <code>Site</code>,
+    <code>Battery voltage (V)</code>, <code>Flag</code>, <code>Flag_T</code>,
+    <code>Flag_lux</code>, <code>QCS version</code>. Ela é salva na subpasta
+    <code>QCS qualified hobo data</code> (a do Seaguard permanece
+    <code>QCS qualified tscp data</code>). Planilhas HOBO e Seaguard <strong>nunca</strong> são
+    combinadas no mesmo banco.</p>
+    <p>Para visualizar bancos HOBO (painéis dedicados de temperatura e luz com a janela de
+    incrustação sombreada), veja a seção 11.</p>
+
+    <h2 id="produtos_gerados">10. Produtos Gerados</h2>
     <h3>Estrutura de Pastas</h3>
     <pre>Raiz/
-├── QCS qualified tscp data/
+├── QCS qualified tscp data/   (ou QCS qualified hobo data/, conforme o instrumento)
 │   ├── Dados qualificados (CSV/XLSX)
 │   ├── QCS_report.csv
-│   └── QCS_tscp_stat.csv
+│   ├── QCS_test_report.csv
+│   ├── QCS_flag_legend.csv
+│   ├── QCS_tscp_stat.csv
+│   └── QCS_light_window.svg   (apenas HOBO)
 ├── QCS DataView (fixed scale)/
 │   └── Gráficos com escala fixa
 └── QCS DataView (unfixed scale)/
@@ -881,30 +895,50 @@
     <ul>
         <li><strong>Arquivo Qualificado:</strong>
             <ul>
-                <li>Todos os dados brutos</li>
-                <li>Coluna adicional "Flag" com códigos de qualidade</li>
-                <li>Metadados (local, versão QCS)</li>
+                <li>Todos os dados brutos (exceto o que "Remove Bad/Suspect Data" apagar)</li>
+                <li>Coluna "Flag" (string completa) e colunas <code>Flag_T</code>,
+                    <code>Flag_S</code>, ... por variável (pior flag da linha — v4.0)</li>
+                <li>Metadados (local, versão QCS). Latitude/Longitude não são gravadas
+                    (layout de colunas idêntico entre planilhas)</li>
             </ul>
         </li>
         <li><strong>Relatório (QCS_report.csv):</strong>
             <ul>
-                <li>Estatísticas de qualificação</li>
-                <li>Contagem por tipo de falha</li>
+                <li>Contagens bad/suspect/missing das 9 variáveis</li>
+                <li>Checagens de timestamp (retrocessos, duplicados, lacunas grandes)</li>
+                <li>"Valid" desconta linhas com dado ruim em qualquer variável</li>
+            </ul>
+        </li>
+        <li><strong>Relatório por teste (QCS_test_report.csv — v4.0):</strong>
+            <ul>
+                <li>Uma linha por teste executado: contagens de bom/suspeito/ruim/faltante,
+                    teste desligado e tempo de execução</li>
+            </ul>
+        </li>
+        <li><strong>Legenda de flags (QCS_flag_legend.csv — v4.0):</strong>
+            <ul>
+                <li>Posição da string de flags → teste → variável, e o significado dos códigos</li>
             </ul>
         </li>
         <li><strong>Estatísticas (QCS_tscp_stat.csv):</strong>
             <ul>
                 <li>Média, mediana, desvio padrão</li>
                 <li>Valores mínimos e máximos</li>
-                <li>Contagem de dados válidos</li>
+                <li>Contagem de dados válidos (todas as variáveis presentes)</li>
+            </ul>
+        </li>
+        <li><strong>Janela de luz (QCS_light_window.svg — apenas HOBO, v4.0):</strong>
+            <ul>
+                <li>Envelope diário da luz com baseline, limiar e corte de incrustação
+                    aplicados, e os parâmetros usados escritos no gráfico</li>
             </ul>
         </li>
     </ul>
 
-    <h2 id="visualizacao_dados">10. Visualização de Dados</h2>
+    <h2 id="visualizacao_dados">11. Visualização de Dados</h2>
     <p>O módulo QCS_DatabaseView oferece ferramentas avançadas para visualização e análise de dados oceanográficos qualificados.</p>
 
-    <h3>Painéis de Visualização</h3>
+    <h3>Painéis de Visualização (bancos Seaguard)</h3>
     <table>
         <tr>
             <th>Painel</th>
@@ -928,10 +962,49 @@
         </tr>
         <tr>
             <td>Diagrama T-S</td>
-            <td>Diagrama Temperatura-Salidade</td>
+            <td>Diagrama Temperatura-Salinidade (exige Latitude/Longitude válidas)</td>
             <td>Ambos (com configuração adequada)</td>
         </tr>
     </table>
+
+    <h3>Painéis de Visualização (bancos HOBO — v4.0)</h3>
+    <p>Com <strong>Instrument = HOBO</strong> na janela de entrada, a janela de visualização
+    passa a oferecer os painéis dedicados do HOBO no lugar dos painéis 1/2/3 (o Data Type fica
+    fixo em "mooring" e o diagrama T-S fica indisponível, pois não há salinidade):</p>
+    <table>
+        <tr>
+            <th>Painel</th>
+            <th>Descrição</th>
+            <th>Arquivo gerado</th>
+        </tr>
+        <tr>
+            <td>HOBO Temperature (per site)</td>
+            <td>Série temporal da temperatura, um gráfico por site selecionado, com os pontos
+                suspeitos/ruins (<code>Flag_T &ge; 3</code>) destacados com ×</td>
+            <td><code>hobo_temperature_&lt;site&gt;_&lt;ano&gt;.svg</code></td>
+        </tr>
+        <tr>
+            <td>HOBO Light + fouling window (per site)</td>
+            <td>Série temporal da luz em <strong>escala logarítmica</strong>, um gráfico por
+                site, com a região após o corte de incrustação (<code>Flag_lux == 3</code>)
+                <strong>sombreada</strong> e a data do corte anotada — mostra até onde a luz é
+                confiável. Sem corte, o gráfico informa que a luz é utilizável no deployment
+                inteiro</td>
+            <td><code>hobo_light_&lt;site&gt;_&lt;ano&gt;.svg</code></td>
+        </tr>
+        <tr>
+            <td>HOBO Light multi-site</td>
+            <td>Luz de todos os sites selecionados no mesmo eixo log, com o início da
+                incrustação de cada site marcado por linha tracejada na cor do site — compara
+                quando a incrustação começou em cada local</td>
+            <td><code>hobo_light_multisite_&lt;ano&gt;.svg</code></td>
+        </tr>
+    </table>
+    <div class="note">
+        <p>Nos eixos logarítmicos, leituras de luz igual a 0 (noite) não podem ser representadas
+        e viram lacunas no gráfico; a quantidade omitida é informada no console. A escala fixa da
+        luminosidade só é aplicada se o mínimo for maior que 0.</p>
+    </div>
 
     <h3>Configuração de Escalas</h3>
     <p>Controle avançado sobre as escalas dos gráficos através do painel "SCALE SETTINGS".</p>
@@ -1056,7 +1129,7 @@
         <li>Salve configurações úteis para reutilização</li>
     </ol>
     
-    <h2 id="boas_praticas">11. Boas Práticas</h2>
+    <h2 id="boas_praticas">12. Boas Práticas</h2>
     <h3>Para Qualificação de Dados</h3>
     <ul>
         <li>Sempre verifique os logs no console após processamento</li>
@@ -1073,7 +1146,7 @@
         <li>Salve configurações de visualização frequentes</li>
     </ul>
 
-    <h2 id="compilacao_avancada">12. Execução a partir do Código-Fonte</h2>
+    <h2 id="compilacao_avancada">13. Execução a partir do Código-Fonte</h2>
 
     <p>A partir da versão 2.2, o QCS é executado diretamente pelos scripts Python — não há mais
     geração de executáveis (<code>.exe</code>). Isso significa que qualquer correção nos scripts vale
@@ -1083,7 +1156,8 @@
     <ul>
         <li>Python (recomenda-se o Anaconda)</li>
         <li>Dependências do projeto instaladas (ver seção 2): <code>numpy</code>, <code>pandas</code>,
-            <code>matplotlib</code>, <code>scipy</code>, <code>openpyxl</code>, <code>gsw</code></li>
+            <code>matplotlib</code>, <code>scipy</code>, <code>openpyxl</code>, <code>gsw</code>
+            (e opcionalmente <code>sv-ttk</code> para o tema moderno)</li>
     </ul>
 
     <h3>Como executar</h3>
@@ -1108,7 +1182,7 @@ python QCS_DatabaseView.py  # ferramenta de visualizacao</code></pre>
         </div>
     </div>
 
-    <h2 id="solucao_problemas">13. Solução de Problemas</h2>
+    <h2 id="solucao_problemas">14. Solução de Problemas</h2>
     <h3>Problemas Comuns e Soluções</h3>
     <table>
         <tr>
@@ -1138,6 +1212,22 @@ python QCS_DatabaseView.py  # ferramenta de visualizacao</code></pre>
         <tr>
             <td>"No year selected" ao gerar painéis</td>
             <td>Marque pelo menos um ano em "Filter by Year" e clique em "Save View Settings" novamente</td>
+        </tr>
+        <tr>
+            <td>"build_database: ..." ao montar o banco</td>
+            <td>A mensagem indica o arquivo e o problema exato (coluna faltando, mistura de
+            layouts Seaguard/HOBO etc.). Confira se o Instrument selecionado corresponde aos
+            arquivos e se todos são saídas qualificadas do QCS</td>
+        </tr>
+        <tr>
+            <td>Diagrama T-S pulado</td>
+            <td>Preencha Latitude e Longitude com valores válidos (graus decimais) — são
+            obrigatórias para o T-S</td>
+        </tr>
+        <tr>
+            <td>Aviso de recuperação da luz após o corte (HOBO)</td>
+            <td>O arquivo pode conter mais de um deployment (sensor limpo e devolvido à água);
+            revise o corte na janela interativa ou qualifique cada deployment separadamente</td>
         </tr>
     </table>
 
