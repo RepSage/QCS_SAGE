@@ -302,8 +302,10 @@ oh = data.order_var(qh.copy(), 1, data_type='hobo')
 cols = list(oh.columns)
 assert 'Salinity (PSU)' not in cols and 'Depth (m)' not in cols, 'TSCP variables must not appear in HOBO: %s' % cols
 assert 'Temperature (degC)' in cols and 'Luminosity (lux)' in cols
-assert cols[:5] == ['Sample number', 'Datetime', 'Site', 'Temperature (degC)', 'Luminosity (lux)'], cols
+assert cols[:6] == ['Sample number', 'Datetime', 'Site', 'Temperature (degC)',
+                    'Temperature spread (degC)', 'Luminosity (lux)'], cols
 assert 'Expedition' not in cols, 'the Expedition (empty) column must no longer exist: %s' % cols
+assert oh['Temperature spread (degC)'].isna().all(), 'spread is empty for a single (non-combined) file'
 for meta in ('Site', 'Flag', 'Flag_T', 'Flag_lux', 'QCS version'):
     assert meta in cols, 'metadata %s missing in HOBO' % meta
 assert oh['Site'].iloc[0] == 'PAB3'

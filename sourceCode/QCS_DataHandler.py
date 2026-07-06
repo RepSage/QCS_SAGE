@@ -636,10 +636,12 @@ def order_var (qualified_data, n_cel, data_type):
         # other TSCP variables do not apply and do not appear (non-stackable sheets).
         # 'Site' right after 'Datetime'; 'Battery voltage (V)' kept as a
         # placeholder (currently empty); 'Expedition' removed.
+        # 'Temperature spread (degC)' is a FIXED column: the between-replicate spread
+        # when N>1 redundant HOBOs are combined; empty for single files.
         var_priority = {'Sample number': 0, 'Datetime': 1, 'Site': 2,
-                        'Temperature (degC)': 3, 'Luminosity (lux)': 4,
-                        'Battery voltage (V)': 5, 'Flag': 6,
-                        'Flag_T': 7, 'Flag_lux': 8, 'QCS version': 9}
+                        'Temperature (degC)': 3, 'Temperature spread (degC)': 4,
+                        'Luminosity (lux)': 5, 'Battery voltage (V)': 6, 'Flag': 7,
+                        'Flag_T': 8, 'Flag_lux': 9, 'QCS version': 10}
     else:
         raise ValueError("Unsupported data_type '%s' in order_var (use 'tscp' or 'hobo')" % data_type)
 
