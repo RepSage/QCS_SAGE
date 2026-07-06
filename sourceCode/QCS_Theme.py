@@ -145,11 +145,32 @@ def build_header(parent, title, subtitle, dark_var=None, on_toggle=None,
 
 
 def enable_mousewheel(canvas):
-    """Rolagem pela roda do mouse enquanto o cursor esta sobre o canvas."""
+    """Rolagem pela roda do mouse enquanto o cursor esta sobre o canvas.
+    So rola quando o conteudo excede a area visivel: se tudo cabe, a roda e
+    ignorada (evita o 'espaco vazio' criado ao rolar um conteudo que ja cabe)."""
     def _on_wheel(event):
+        bbox = canvas.bbox('all')
+        if bbox is None:
+            return
+        content_height = bbox[3] - bbox[1]
+        if content_height <= canvas.winfo_height():
+            return  # tudo cabe na janela: nao ha o que rolar
         canvas.yview_scroll(int(-event.delta / 120), 'units')
     canvas.bind('<Enter>', lambda e: canvas.bind_all('<MouseWheel>', _on_wheel))
     canvas.bind('<Leave>', lambda e: canvas.unbind_all('<MouseWheel>'))
+
+
+def suppress_notebook_focus_ring(notebook):
+    """Remove o retangulo tracejado de foco que o ttk desenha no rotulo da aba
+    selecionada: move o foco de teclado para o conteudo da aba (um Frame nao
+    desenha anel de foco). Independe do tema (sv-ttk ou clam)."""
+    def _focus_tab_content(*_):
+        try:
+            notebook.nametowidget(notebook.select()).focus_set()
+        except Exception:
+            pass
+    notebook.bind('<<NotebookTabChanged>>', _focus_tab_content)
+    notebook.after_idle(_focus_tab_content)
 
 
 class LogConsole:

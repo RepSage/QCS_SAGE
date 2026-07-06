@@ -226,16 +226,11 @@
             <td>Abre o explorador de arquivos para seleção.</td>
         </tr>
         <tr>
-            <td>Config File</td>
-            <td>(Opcional) Caminho para arquivo JSON com configurações salvas.</td>
-        </tr>
-        <tr>
-            <td>Browse...</td>
-            <td>Abre o explorador para selecionar arquivo JSON.</td>
-        </tr>
-        <tr>
             <td>Input Type</td>
-            <td>Dropdown para selecionar tipo de instrumento (Seaguard ou HOBO).</td>
+            <td>Dropdown para selecionar tipo de instrumento (Seaguard ou HOBO). Ao escolher
+            <strong>HOBO</strong>, os campos que não se aplicam a um logger de temperatura/luz
+            ficam desabilitados: Data Type (fixado em Mooring), Pressure/Conductivity Unit,
+            Correct GMT-3, Select Profile Data e Region.</td>
         </tr>
         <tr>
             <td>Data Type</td>
@@ -262,15 +257,23 @@
             <td>Checkbox para ativar verificação manual dos limites das variáveis.</td>
         </tr>
         <tr>
-            <td>Latitude (deg) / Longitude (deg)</td>
-            <td>Coordenadas do ponto de coleta, em graus decimais (ex.: -17.5 e -40.0). Usadas
-            apenas durante a qualificação (conversão de pressão em profundidade e teste de
-            inversão de densidade). <strong>Opcionais desde a v4.0:</strong> se vazias ou
-            inválidas, o programa usa um valor padrão e avisa no log — a qualificação não trava.
-            As coordenadas <strong>não são gravadas</strong> na planilha qualificada (todas as
-            planilhas saem com o mesmo layout de colunas).</td>
+            <td>Region</td>
+            <td>Dropdown com setores da costa brasileira (Recifes Amazônicos/Norte, Nordeste
+            setentrional, Nordeste oriental, Leste/Abrolhos, Sudeste, Sul). Cada região define
+            uma latitude/longitude representativa, usada <strong>apenas para rodar</strong> a
+            qualificação (conversão de pressão em profundidade e teste de inversão de densidade).
+            Pequenas variações de coordenada não afetam esses cálculos, por isso a escolha por
+            região é suficiente e mais simples que digitar valores. As coordenadas <strong>não
+            são gravadas</strong> na planilha qualificada. Não se aplica a HOBO (sem pressão).</td>
         </tr>
     </table>
+    <div class="note">
+        <p><strong>Novidade (v4.0):</strong> ao escolher o <strong>Data File</strong>, o
+        <em>Output Folder</em> e o <em>Output File Name</em> já vêm preenchidos automaticamente
+        (mesma pasta do arquivo e nome-base + <code>_QLF</code>); você pode editar à vontade.
+        O antigo campo <em>Config File</em> (importar .json) e o botão <em>Export Settings</em>
+        foram removidos — toda a configuração é feita na janela Settings.</p>
+    </div>
 
     <h3>Seção OUTPUT SETTINGS</h3>
     <table>
@@ -559,25 +562,21 @@
     manter só as linhas com <code>Flag_T &lt;= 2</code> em uma análise de temperatura.</p>
 
     <h2 id="gerenciamento_configuracoes">6. Gerenciamento de Configurações</h2>
-    <h3>Exportando Configurações</h3>
-    <ol>
-        <li>Clique no botão Settings na janela principal</li>
-        <li>Na janela de configurações, vá para a aba desejada</li>
-        <li>Ajuste os parâmetros conforme necessário</li>
-        <li>Clique em Export Settings</li>
-        <li>Selecione o local e nome para salvar o arquivo JSON</li>
-    </ol>
+    <p>Todos os critérios de qualidade (testes ligados/desligados, parâmetros e fatores por
+    variável) são ajustados na janela <strong>Settings</strong>, aberta pelo botão Settings na
+    janela principal. As escolhas ficam salvas automaticamente entre sessões.</p>
+    <div class="note">
+        <p><strong>Mudança na v4.0:</strong> os antigos <em>Export Settings</em> (exportar .json)
+        e <em>Config File</em> (importar .json) foram <strong>removidos da interface</strong> — a
+        configuração passa a ser feita inteiramente na janela Settings. As preferências continuam
+        sendo salvas automaticamente no arquivo <code>qcs_user_settings.json</code> (gerado pelo
+        programa, não versionado).</p>
+    </div>
 
-    <h3>Importando Configurações</h3>
-    <ol>
-        <li>No campo Config File, clique em Browse...</li>
-        <li>Selecione o arquivo JSON previamente exportado</li>
-        <li>Os parâmetros são aplicados <strong>no momento da seleção</strong> (v4.0) — a janela
-            de Settings já passa a refletir o arquivo, antes mesmo do RUN</li>
-    </ol>
-    <p>A janela de Settings também tem um botão <strong>"Reset to Defaults"</strong> (v4.0) para
-    voltar todos os critérios aos padrões da versão instalada. Valores inválidos digitados nos
-    campos são listados em um aviso, em vez de ignorados em silêncio.</p>
+    <h3>Restaurar padrões</h3>
+    <p>A janela de Settings tem um botão <strong>"Reset to Defaults"</strong> que volta todos os
+    critérios aos padrões da versão instalada. Valores inválidos digitados nos campos são
+    listados em um aviso, em vez de ignorados em silêncio.</p>
     <div class="note">
         <p><strong>Atenção ao atualizar de versões antigas:</strong> por causa do controle de
         versão das preferências, ao rodar a v4.0 pela primeira vez os critérios de qualidade
@@ -585,7 +584,7 @@
         os critérios foram revisados). Caminhos de arquivos e últimas escolhas são preservados.</p>
     </div>
 
-    <h3>Estrutura do Arquivo JSON</h3>
+    <h3>Estrutura das configurações (JSON)</h3>
     <pre><code>{
     "tsQualityTests": {
         "temperature sensor range": "ON",

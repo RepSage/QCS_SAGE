@@ -159,6 +159,7 @@ TOOLTIPS = {
     'data_file': "Select the raw data file to be qualified\nSupported formats: .csv, .xlsx",
     'latitude': "Latitude of the collection site (decimal degrees, -90 to 90)\nSouthern hemisphere is negative (e.g. -17.5)\nUsed to convert pressure to depth",
     'longitude': "Longitude of the collection site (decimal degrees, -180 to 180)\nWestern hemisphere is negative (e.g. -40.0)\nUsed by the density inversion test",
+    'region': "Region of the Brazilian coast.\nSets a representative latitude/longitude used only to run the\nqualification (pressure->depth and density inversion). Small\nvariations do not change the results. Not used for HOBO.",
     'config_file': "OPTIONAL: Select the configuration file (.json)\ncontaining quality test parameters",
     'input_type': "Type of instrument that generated the data\nSeaguard: Standard CTD\nHOBO: Autonomous logger",
     'data_type': "Data collection type\nProfile: Vertical data (cast)\nMooring: Fixed-point temporal data",
@@ -313,6 +314,13 @@ def selectFiles():
         fileNames_entry.insert(0, filename)
         USER_PREFS['last_data_dir'] = os.path.dirname(filename)
         save_user_prefs()
+        # auto-preenche a saida a partir do arquivo escolhido (o usuario pode
+        # editar depois): mesma pasta e nome-base do arquivo + '_QLF'
+        base = os.path.splitext(os.path.basename(filename))[0]
+        outputPath_entry.delete(0, END)
+        outputPath_entry.insert(0, os.path.dirname(filename))
+        outputName_entry.delete(0, END)
+        outputName_entry.insert(0, base + '_QLF')
 
 def selectOutputFolder():
     folderPath = filedialog.askdirectory(
@@ -343,25 +351,11 @@ def apply_config_file(config_path):
     except Exception as e:
         return str(e)
 
-def selectConfigFile():
-    filepath = filedialog.askopenfilename(
-        initialdir=USER_PREFS.get('last_config_dir', '/'),
-        title="Select configuration file",
-        filetypes=(("JSON files", "*.json"), ("All files", "*.*"))
-    )
-    if filepath:
-        inputConfigPath_entry.delete(0, END)
-        inputConfigPath_entry.insert(0, filepath)
-        USER_PREFS['last_config_dir'] = os.path.dirname(filepath)
-        save_user_prefs()
-        # aplica imediatamente, para a janela de Settings refletir o arquivo
-        error = apply_config_file(filepath)
-        if error:
-            messagebox.showerror("Error", "Could not load the configuration file:\n%s" % error)
-        else:
-            messagebox.showinfo("Config loaded",
-                                "Quality settings loaded from:\n%s\n\n"
-                                "Open the Settings window to review them." % filepath)
+# NOTA: o campo 'Config File' (importar .json) e o botao 'Export Settings' foram
+# removidos da interface a pedido do usuario (duplicavam a aba de Settings). A
+# funcao selectConfigFile foi retirada por referenciar o widget removido;
+# apply_config_file (acima) e export_config (abaixo) continuam definidas para
+# reativacao facil no futuro (basta recriar os widgets e religar os comandos).
 
 def export_config():
     # Atualiza as configurações atuais antes de exportar
@@ -470,18 +464,8 @@ def collect_input_settings():
     INPUT['correct_gmt3h'] = correct_gmt3h.get()
     INPUT['select_profile_data'] = select_profile_data.get()
     INPUT['check_variables'] = check_variables.get()
-    INPUT['input_config_path'] = inputConfigPath_entry.get()
     INPUT['input_type'] = inputType_combobox.get()
     INPUT['data_type'] = dType_combobox.get()
-
-    # Reaplica o arquivo de configuração JSON se foi especificado (o arquivo
-    # também é aplicado ao ser selecionado; aqui garante o estado no RUN)
-    config_path = INPUT.get('input_config_path', '')
-    if config_path and os.path.exists(config_path):
-        error = apply_config_file(config_path)
-        if error:
-            messagebox.showerror("Error", "Could not load the configuration file:\n%s" % error)
-            return False
 
     OUTPUT['output_file_path'] = out_dir
     OUTPUT['output_data_format'] = outputFilesFormat_combobox.get()
@@ -494,28 +478,19 @@ def collect_input_settings():
         messagebox.showwarning("Warning", "Site Code must have at most 5 characters\n('Site Code' field).")
         return False
 
-    # Latitude/longitude are used only to RUN the qualification (pressure->depth
-    # and the density inversion test) and never written to the output. They are
-    # optional here: invalid/empty falls back to a default with a note, without
-    # blocking (the hard requirement for coordinates lives in the T-S diagram).
-    coord_msgs = []
-    try:
-        INPUT['latitude'] = float(latitude_entry.get())
-        if not -90 <= INPUT['latitude'] <= 90:
-            raise ValueError
-    except ValueError:
-        INPUT['latitude'] = 17.5
-        coord_msgs.append("latitude '%s' invalid - using default %.1f (affects depth conversion)"
-                          % (latitude_entry.get(), INPUT['latitude']))
-    try:
-        INPUT['longitude'] = float(longitude_entry.get())
-        if not -180 <= INPUT['longitude'] <= 180:
-            raise ValueError
-    except ValueError:
-        INPUT['longitude'] = -40.0
-        coord_msgs.append("longitude '%s' invalid - using default %.1f"
-                          % (longitude_entry.get(), INPUT['longitude']))
-    INPUT['coord_msgs'] = coord_msgs
+    # The selected coastal region provides a representative latitude/longitude,
+    # used ONLY to run the qualification (pressure->depth and the density
+    # inversion test) and never written to the output. Small lat/long variations
+    # do not affect these results meaningfully. Irrelevant for HOBO (no pressure).
+    region = region_combobox.get()
+    INPUT['region'] = region
+    INPUT['latitude'], INPUT['longitude'] = REGION_COORDS.get(region, REGION_COORDS[DEFAULT_REGION])
+    if INPUT['input_type'] == 'Seaguard':
+        INPUT['coord_msgs'] = ["region '%s' -> lat %.1f, lon %.1f (used for depth conversion "
+                               "and density inversion)"
+                               % (region, INPUT['latitude'], INPUT['longitude'])]
+    else:
+        INPUT['coord_msgs'] = []
 
     if INPUT['data_type'] == 'TSCP Profile':
         INPUT['profile'] = True
@@ -525,7 +500,6 @@ def collect_input_settings():
     # guarda as ultimas escolhas do usuario para a proxima sessao
     USER_PREFS.update({
         'data_file': data_path,
-        'config_file': inputConfigPath_entry.get(),
         'input_type': INPUT['input_type'],
         'data_type': INPUT['data_type'],
         'pressure_unit': INPUT['pressure_unit'],
@@ -539,8 +513,7 @@ def collect_input_settings():
         'remove_bad': OUTPUT['remove_bad'],
         'remove_suspect': OUTPUT['remove_suspect'],
         'site_code': INPUT['site'],
-        'latitude': latitude_entry.get(),
-        'longitude': longitude_entry.get(),
+        'region': INPUT['region'],
         'qcs_version': data.QCS_VERSION,
         'tsQualityTests': dict(CONFIG['tsQualityTests']),
         'tsSettings': dict(CONFIG['tsSettings']),
@@ -593,12 +566,11 @@ def restore_user_prefs():
             entry.insert(0, p[key])
 
     set_entry(fileNames_entry, 'data_file')
-    set_entry(inputConfigPath_entry, 'config_file')
     set_entry(outputPath_entry, 'output_folder')
     set_entry(outputName_entry, 'output_name')
     set_entry(siteSelect_entry, 'site_code')
-    set_entry(latitude_entry, 'latitude')
-    set_entry(longitude_entry, 'longitude')
+    if p.get('region') in REGION_COORDS:
+        region_combobox.set(p['region'])
     if p.get('input_type'):
         inputType_combobox.set(p['input_type'])
     if p.get('data_type'):
@@ -615,6 +587,7 @@ def restore_user_prefs():
     remove_bad.set(p.get('remove_bad', False))
     remove_suspect.set(p.get('remove_suspect', False))
     update_profile_checkbox_state()
+    update_inputtype_state()  # reaplica o estado do HOBO (desabilita campos) se for o caso
     # Restore the quality CRITERIA only if they were saved by the SAME program
     # version. On a version change, keep the new code defaults (so criteria
     # improvements take effect) instead of the user's old saved criteria.
@@ -679,13 +652,16 @@ def open_settings_window():
     notebook.add(factors_frame, text="Factors per Variable")
     create_factors_tab(factors_frame)
 
+    # remove o anel de foco tracejado do rotulo da aba selecionada
+    theme.suppress_notebook_focus_ring(notebook)
+
     # Button frame
     button_frame = ttk.Frame(settings_win)
     button_frame.pack(fill='x', pady=10)
-    
-    ttk.Button(button_frame, text="Export Settings",
-              command=export_config, width=20).pack(side='left', padx=5)
 
+    # 'Export Settings' e o campo 'Config File' (importar) foram removidos da
+    # interface a pedido do usuario (duplicavam a aba de Settings). As funcoes
+    # export_config / selectConfigFile continuam definidas para reativacao facil.
     ttk.Button(button_frame, text="Reset to Defaults",
               command=reset_settings_to_defaults, width=20).pack(side='left', padx=5)
 
@@ -752,12 +728,10 @@ def create_tests_tab(parent):
             'conductivity flat line',
             'pressure flat line'
         ],
-        "Vertical Gradient Tests": [
+        "Vertical Gradient & Density Inversion Tests (profiles)": [
             'temperature vertical gradient',
             'salinity vertical gradient',
-            'conductivity vertical gradient'
-        ],
-        "Profile Stability Tests": [
+            'conductivity vertical gradient',
             'density inversion'
         ],
         "Light Tests (HOBO)": [
@@ -963,6 +937,21 @@ main_frame.rowconfigure(1, weight=1)
 input_frame.columnconfigure(0, weight=1)
 output_frame.columnconfigure(0, weight=1)
 
+# Regioes da costa brasileira -> latitude/longitude representativas, usadas apenas
+# para RODAR a qualificacao (conversao pressao->profundidade e inversao de
+# densidade). Pequenas variacoes de lat/long nao afetam de forma relevante esses
+# calculos, entao uma latitude por regiao e suficiente. Editavel livremente.
+COAST_REGIONS = [
+    ('Recifes Amazonicos / Norte (AP-MA)',  -1.0, -46.0),
+    ('Nordeste setentrional (CE-RN)',       -4.5, -37.5),
+    ('Nordeste oriental (PB-AL)',           -8.5, -35.0),
+    ('Leste / Abrolhos (BA-ES)',           -17.5, -39.0),
+    ('Sudeste (RJ-SP)',                    -23.5, -43.0),
+    ('Sul (PR-RS)',                        -30.0, -49.0),
+]
+REGION_COORDS = {label: (lat, lon) for label, lat, lon in COAST_REGIONS}
+DEFAULT_REGION = 'Leste / Abrolhos (BA-ES)'
+
 # --- Input Section ---
 # File selection
 ttk.Label(input_frame, text="Data File:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
@@ -974,25 +963,15 @@ browse_file_btn = ttk.Button(input_frame, text="Browse...", command=selectFiles,
 browse_file_btn.grid(row=1, column=1, padx=5)
 ToolTip(browse_file_btn, TOOLTIPS['data_file'])
 
-# Config file
-ttk.Label(input_frame, text="Config File:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(0,2))
-inputConfigPath_entry = ttk.Entry(input_frame, width=24)
-inputConfigPath_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
-ToolTip(inputConfigPath_entry, TOOLTIPS['config_file'])
-
-browse_config_btn = ttk.Button(input_frame, text="Browse...", command=selectConfigFile, width=10)
-browse_config_btn.grid(row=3, column=1, padx=5)
-ToolTip(browse_config_btn, TOOLTIPS['config_file'])
-
 # Data type selection
-ttk.Label(input_frame, text="Input Type:", style='Header.TLabel').grid(row=4, column=0, sticky='w', pady=(0,2))
+ttk.Label(input_frame, text="Input Type:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(0,2))
 inputType_combobox = ttk.Combobox(input_frame, values=["Seaguard", "HOBO"], width=15, state='readonly')
-inputType_combobox.grid(row=5, column=0, sticky='w', pady=(0,5))
+inputType_combobox.grid(row=3, column=0, sticky='w', pady=(0,5))
 ToolTip(inputType_combobox, TOOLTIPS['input_type'])
 
-ttk.Label(input_frame, text="Data Type:", style='Header.TLabel').grid(row=4, column=1, sticky='w', pady=(0,2))
+ttk.Label(input_frame, text="Data Type:", style='Header.TLabel').grid(row=2, column=1, sticky='w', pady=(0,2))
 dType_combobox = ttk.Combobox(input_frame, values=["TSCP Profile", "TSCP Mooring"], width=15, state='readonly')
-dType_combobox.grid(row=5, column=1, sticky='w', pady=(0,5))
+dType_combobox.grid(row=3, column=1, sticky='w', pady=(0,5))
 ToolTip(dType_combobox, TOOLTIPS['data_type'])
 
 # update profile checkbox
@@ -1008,7 +987,7 @@ dType_combobox.bind("<<ComboboxSelected>>", update_profile_checkbox_state)
 
 # Units selection
 units_frame = ttk.LabelFrame(input_frame, text=" Units ", padding=5)
-units_frame.grid(row=6, column=0, columnspan=2, sticky='ew', pady=5)
+units_frame.grid(row=4, column=0, columnspan=2, sticky='ew', pady=5)
 
 ttk.Label(units_frame, text="Pressure:").grid(row=0, column=0, sticky='w')
 pressure_unit_combobox = ttk.Combobox(units_frame, values=["decibar", "bar", "kPa"], width=10, state='readonly')
@@ -1022,7 +1001,7 @@ ToolTip(conductivity_unit_combobox, TOOLTIPS['conductivity_unit'])
 
 # Options checkboxes
 options_frame = ttk.Frame(input_frame)
-options_frame.grid(row=7, column=0, columnspan=2, sticky='ew', pady=5)
+options_frame.grid(row=5, column=0, columnspan=2, sticky='ew', pady=5)
 
 correct_gmt3h = BooleanVar(value=False)
 gmt_check = ttk.Checkbutton(options_frame, text="Correct GMT-3", variable=correct_gmt3h)
@@ -1083,18 +1062,43 @@ siteSelect_entry = ttk.Entry(output_frame, width=12)
 siteSelect_entry.grid(row=8, column=0, sticky='w', pady=(0,5))
 ToolTip(siteSelect_entry, TOOLTIPS['site_code'])
 
-# Latitude (used to convert pressure to depth) and longitude (density inversion)
-ttk.Label(input_frame, text="Latitude (deg):", style='Header.TLabel').grid(row=8, column=0, sticky='w', pady=(5,2))
-latitude_entry = ttk.Entry(input_frame, width=12)
-latitude_entry.insert(0, "17.5")
-latitude_entry.grid(row=9, column=0, sticky='w', pady=(0,5))
-ToolTip(latitude_entry, TOOLTIPS['latitude'])
+# Region of the Brazilian coast: provides a representative latitude/longitude used
+# only to RUN the qualification (pressure->depth and density inversion). More
+# intuitive than typing coordinates, and enough given the low sensitivity to
+# small lat/long changes. Disabled for HOBO (no pressure).
+region_label = ttk.Label(input_frame, text="Region:", style='Header.TLabel')
+region_label.grid(row=6, column=0, sticky='w', pady=(5,2))
+region_combobox = ttk.Combobox(input_frame, values=[r[0] for r in COAST_REGIONS],
+                               width=32, state='readonly')
+region_combobox.grid(row=7, column=0, columnspan=2, sticky='w', pady=(0,5))
+region_combobox.set(DEFAULT_REGION)
+ToolTip(region_combobox, TOOLTIPS['region'])
 
-ttk.Label(input_frame, text="Longitude (deg):", style='Header.TLabel').grid(row=8, column=1, sticky='w', pady=(5,2))
-longitude_entry = ttk.Entry(input_frame, width=12)
-longitude_entry.insert(0, "-40.0")
-longitude_entry.grid(row=9, column=1, sticky='w', pady=(0,5))
-ToolTip(longitude_entry, TOOLTIPS['longitude'])
+def update_inputtype_state(event=None):
+    """HOBO so mede temperatura e luz: Data Type, unidades, correcao GMT-3,
+    selecao de perfil e a regiao (lat/long) nao se aplicam e ficam desabilitados.
+    HOBO e sempre serie temporal, entao Data Type e fixado em 'TSCP Mooring'."""
+    if inputType_combobox.get() == 'HOBO':
+        dType_combobox.set('TSCP Mooring')
+        dType_combobox.config(state='disabled')
+        pressure_unit_combobox.config(state='disabled')
+        conductivity_unit_combobox.config(state='disabled')
+        gmt_check.config(state='disabled')
+        select_profile_data.set(False)
+        profile_check.config(state='disabled')
+        region_label.config(state='disabled')
+        region_combobox.config(state='disabled')
+    else:
+        dType_combobox.config(state='readonly')
+        pressure_unit_combobox.config(state='readonly')
+        conductivity_unit_combobox.config(state='readonly')
+        gmt_check.config(state='normal')
+        region_label.config(state='normal')
+        region_combobox.config(state='readonly')
+        update_profile_checkbox_state()
+
+inputType_combobox.bind("<<ComboboxSelected>>", update_inputtype_state)
+update_inputtype_state()
 
 # Action buttons
 action_frame = ttk.Frame(main_frame)
