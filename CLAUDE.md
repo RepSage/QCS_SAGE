@@ -4,14 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-QCS (Quality Control System — SAGE): Tkinter GUI application for qualification and visualization of oceanographic sensor data. Two instrument families: Seaguard/TSCP loggers (T, S, C, P, O2, pH, chlorophyll, turbidity) and HOBO Pendant loggers (temperature + light, added in v4.0). Code comments, UI text, and error messages are in Portuguese (pt-BR) — keep them that way.
+QCS (Quality Control System — SAGE): Tkinter GUI application for qualification and visualization of oceanographic sensor data. Two instrument families: Seaguard/TSCP loggers (T, S, C, P, O2, pH, chlorophyll, turbidity) and HOBO Pendant loggers (temperature + light, added in v4.0).
+
+**Language: English, everywhere.** The user wants the entire project in English — code comments, docstrings, UI text, error/log messages, docs, commits and branches. The codebase originated in Portuguese (pt-BR) and is being migrated; a lot of pt-BR still remains. Write all new/edited content in English, and translate nearby pt-BR strings when you touch a file. Caution: some UI string literals are compared in logic (e.g. combobox values like `'TSCP Profile'`, `'HOBO'`, `'Seaguard'`) — those are already English; keep behavior identical when translating (translate the *display* text, not the compared value, unless you update every comparison too).
 
 ## Running
 
 - Windows-only. Uses Anaconda's Python: `%USERPROFILE%\anaconda3\python.exe` (do not rely on `python` from PATH — it may resolve to a wrong interpreter, e.g. Inkscape's).
 - Two entry points, launched via the `.bat` files at repo root:
-  - `QCS - Qualificacao de Dados.bat` → `sourceCode/QCS_Main.py` (qualification pipeline)
-  - `QCS - Visualizacao de Dados.bat` → `sourceCode/QCS_DatabaseView.py` (database viewer/plots)
+  - `QCS - Data Qualification.bat` → `sourceCode/QCS_Main.py` (qualification pipeline)
+  - `QCS - Data Visualization.bat` → `sourceCode/QCS_DatabaseView.py` (database viewer/plots)
 - Dependencies: `python -m pip install -r sourceCode/requirements.txt`. `sv-ttk` is optional (falls back to the clam theme).
 
 ## Verification (mandatory)
@@ -47,4 +49,4 @@ python -m ruff check .
 
 ## Pending work
 
-- HOBO dedicated visualization (v4.0 Part 5) is not implemented yet — the plan lives in `notes/hobo_visualization_plan.md`.
+- v4.0 is unreleased, on branch `improvements-v4.0` (nothing pushed to GitHub yet). Before release: finish the pt-BR → English migration of the code, complete the GUI end-to-end test with real files, then tag and open the PR to `master`.

@@ -618,23 +618,28 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
 
 def order_var (qualified_data, n_cel, data_type):
     if data_type == 'tscp':
-        var_priority = {'Sample number': 0, 'Datetime': 1, 'Depth (m)': 2, 'Temperature (degC)': 3, 'Salinity (PSU)': 4,
-                        'Conductivity (mS/cm)': 5, 'Pressure (dbar)': 6, 'Density (kg/m3)': 7, 'CO2 Level (ppm)': 8,
-                        'O2 level (uM)': 9, 'O2 content (mg/L)': 10, 'PAR (umol/m2/s)': 11, 'Turbidity (FTU)': 12, 'TSS (mg/L)': 13,
-                        'Chlorophyll (ug/L)': 14, 'pH': 15, 'Dissolved organic matter (ppb)': 16, 'Luminosity (lux)': 17,
-                        'Soundspeed (m/s)': 18, 'Expedition': 19, 'Site': 20,
-                        'Battery voltage (V)': 21, 'Flag': 22,
-                        'Flag_T': 23, 'Flag_S': 24, 'Flag_C': 25, 'Flag_P': 26, 'Flag_pH': 27,
-                        'Flag_chl': 28, 'Flag_O2': 29, 'Flag_org': 30, 'Flag_tur': 31,
-                        'Flag_lux': 32, 'QCS version': 33}
+        # 'Site' logo apos 'Datetime' (identificacao vem antes das medidas).
+        # 'Battery voltage (V)' e mantido como placeholder (hoje vazio; reservado
+        # para quando for extraido do dado bruto). 'Expedition' foi removido.
+        var_priority = {'Sample number': 0, 'Datetime': 1, 'Site': 2, 'Depth (m)': 3, 'Temperature (degC)': 4,
+                        'Salinity (PSU)': 5, 'Conductivity (mS/cm)': 6, 'Pressure (dbar)': 7, 'Density (kg/m3)': 8,
+                        'CO2 Level (ppm)': 9, 'O2 level (uM)': 10, 'O2 content (mg/L)': 11, 'PAR (umol/m2/s)': 12,
+                        'Turbidity (FTU)': 13, 'TSS (mg/L)': 14, 'Chlorophyll (ug/L)': 15, 'pH': 16,
+                        'Dissolved organic matter (ppb)': 17, 'Luminosity (lux)': 18, 'Soundspeed (m/s)': 19,
+                        'Battery voltage (V)': 20, 'Flag': 21,
+                        'Flag_T': 22, 'Flag_S': 23, 'Flag_C': 24, 'Flag_P': 25, 'Flag_pH': 26,
+                        'Flag_chl': 27, 'Flag_O2': 28, 'Flag_org': 29, 'Flag_tur': 30,
+                        'Flag_lux': 31, 'QCS version': 32}
     elif data_type == 'hobo':
         # HOBO Pendant: apenas as variaveis medidas (temperatura em Celsius e luz
-        # em lux), com o MESMO bloco de metadados do padrao TSCP. As demais
+        # em lux), com o mesmo bloco de metadados do padrao TSCP. As demais
         # variaveis TSCP nao se aplicam e nao aparecem (planilhas nao 'estacaveis').
-        var_priority = {'Sample number': 0, 'Datetime': 1,
-                        'Temperature (degC)': 2, 'Luminosity (lux)': 3,
-                        'Expedition': 4, 'Site': 5, 'Battery voltage (V)': 6, 'Flag': 7,
-                        'Flag_T': 8, 'Flag_lux': 9, 'QCS version': 10}
+        # 'Site' logo apos 'Datetime'; 'Battery voltage (V)' mantido como
+        # placeholder (hoje vazio); 'Expedition' removido.
+        var_priority = {'Sample number': 0, 'Datetime': 1, 'Site': 2,
+                        'Temperature (degC)': 3, 'Luminosity (lux)': 4,
+                        'Battery voltage (V)': 5, 'Flag': 6,
+                        'Flag_T': 7, 'Flag_lux': 8, 'QCS version': 9}
     else:
         raise ValueError("Unsupported data_type '%s' in order_var (use 'tscp' or 'hobo')" % data_type)
 

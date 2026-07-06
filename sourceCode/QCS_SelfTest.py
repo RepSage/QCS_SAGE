@@ -291,7 +291,8 @@ oh = data.order_var(qh.copy(), 1, data_type='hobo')
 cols = list(oh.columns)
 assert 'Salinity (PSU)' not in cols and 'Depth (m)' not in cols, 'variaveis TSCP nao devem aparecer no HOBO: %s' % cols
 assert 'Temperature (degC)' in cols and 'Luminosity (lux)' in cols
-assert cols[:4] == ['Sample number', 'Datetime', 'Temperature (degC)', 'Luminosity (lux)'], cols
+assert cols[:5] == ['Sample number', 'Datetime', 'Site', 'Temperature (degC)', 'Luminosity (lux)'], cols
+assert 'Expedition' not in cols, 'coluna Expedition (vazia) nao deve mais existir: %s' % cols
 for meta in ('Site', 'Flag', 'Flag_T', 'Flag_lux', 'QCS version'):
     assert meta in cols, 'metadado %s faltando no HOBO' % meta
 assert oh['Site'].iloc[0] == 'PAB3'

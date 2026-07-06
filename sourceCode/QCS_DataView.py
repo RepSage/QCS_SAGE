@@ -210,7 +210,7 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
     ax1.set_title('Site: %s   /   %s  to  %s' % (qualified_data['Site'].iloc[0],
                                                  t_start.strftime('%d/%m/%Y'),
                                                  t_end.strftime('%d/%m/%Y')))
-    plt.savefig(dataview_path + '/' + re.search(r'^[^\(]+',variable, re.IGNORECASE).group() + ' series.svg', bbox_inches='tight', dpi=100)
+    plt.savefig(dataview_path + '/' + re.search(r'^[^\(]+',variable, re.IGNORECASE).group().strip() + ' series.svg', bbox_inches='tight', dpi=100)
     plt.close(fig)
 
 def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SETTINGS, fixed_scale):
@@ -256,7 +256,7 @@ def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SET
 
     ax1.invert_yaxis()
     ax1.set_title('Site: %s  /   year: %s   /  month: %s'%(qualified_data['Site'].iloc[0], year, month))
-    plt.savefig(dataview_path + '/' + re.search(r'^[^\(]+',variable, re.IGNORECASE).group() + ' profile.svg', bbox_inches='tight', dpi=100)
+    plt.savefig(dataview_path + '/' + re.search(r'^[^\(]+',variable, re.IGNORECASE).group().strip() + ' profile.svg', bbox_inches='tight', dpi=100)
     plt.close(fig)
 
 def identify_valid_interval (y):
