@@ -317,23 +317,38 @@ def save_user_prefs():
 load_user_prefs()
 
 def selectFiles():
-    filename = filedialog.askopenfilename(
-        initialdir=USER_PREFS.get('last_data_dir', '/'),
-        title="Select data file",
-        filetypes=(("Data files", "*.csv *.xlsx"), ("All files", "*.*"))
-    )
-    if filename:
+    # HOBO with N>1 replicates: pick the N files at once (multi-select);
+    # otherwise a single file.
+    n_rep = int(replicate_combobox.get()) if inputType_combobox.get() == 'HOBO' else 1
+    if n_rep > 1:
+        names = filedialog.askopenfilenames(
+            initialdir=USER_PREFS.get('last_data_dir', '/'),
+            title="Select the %d HOBO replicate files" % n_rep,
+            filetypes=(("Data files", "*.csv *.xlsx"), ("All files", "*.*")))
+        names = list(names)
+        if not names:
+            return
+        first = names[0]
         fileNames_entry.delete(0, END)
-        fileNames_entry.insert(0, filename)
-        USER_PREFS['last_data_dir'] = os.path.dirname(filename)
-        save_user_prefs()
-        # auto-fills the output from the chosen file (the user can edit it
-        # afterwards): same folder and base name of the file + '_QLF'
-        base = os.path.splitext(os.path.basename(filename))[0]
-        outputPath_entry.delete(0, END)
-        outputPath_entry.insert(0, os.path.dirname(filename))
-        outputName_entry.delete(0, END)
-        outputName_entry.insert(0, base + '_QLF')
+        fileNames_entry.insert(0, ';'.join(names))
+    else:
+        first = filedialog.askopenfilename(
+            initialdir=USER_PREFS.get('last_data_dir', '/'),
+            title="Select data file",
+            filetypes=(("Data files", "*.csv *.xlsx"), ("All files", "*.*")))
+        if not first:
+            return
+        fileNames_entry.delete(0, END)
+        fileNames_entry.insert(0, first)
+    USER_PREFS['last_data_dir'] = os.path.dirname(first)
+    save_user_prefs()
+    # auto-fills the output from the first file (the user can edit it afterwards):
+    # same folder and base name + '_QLF'
+    base = os.path.splitext(os.path.basename(first))[0]
+    outputPath_entry.delete(0, END)
+    outputPath_entry.insert(0, os.path.dirname(first))
+    outputName_entry.delete(0, END)
+    outputName_entry.insert(0, base + '_QLF')
 
 def selectOutputFolder():
     folderPath = filedialog.askdirectory(
@@ -438,16 +453,28 @@ def save_settings_values():
 
 def collect_input_settings():
     """Validates and collects the interface settings. Returns True if all is ok."""
-    data_path = fileNames_entry.get().strip()
-    if not data_path:
+    if not fileNames_entry.get().strip():
         messagebox.showwarning("Warning", "Select the data file to be qualified\n('Data File' field).")
         return False
-    if not os.path.isfile(data_path):
-        messagebox.showerror("Error", "Data file not found:\n%s" % data_path)
+    # HOBO redundant replicates: N spreadsheets chosen at once (';'-separated);
+    # for Seaguard or 1 replicate this is just the single file.
+    n_rep = int(replicate_combobox.get()) if inputType_combobox.get() == 'HOBO' else 1
+    replicate_files = [p.strip() for p in fileNames_entry.get().split(';') if p.strip()]
+    if len(replicate_files) != n_rep:
+        messagebox.showwarning("Warning",
+                               "Replicates = %d, but %d file(s) are selected.\nSelect exactly %d "
+                               "file(s) (Browse allows multi-select for HOBO replicates)."
+                               % (n_rep, len(replicate_files), n_rep))
         return False
-    if not re.search(r'\.(csv|xlsx)$', data_path, re.IGNORECASE):
-        messagebox.showwarning("Warning", "Unsupported file format.\nUse .csv or .xlsx files.")
-        return False
+    for f in replicate_files:
+        if not os.path.isfile(f):
+            messagebox.showerror("Error", "Data file not found:\n%s" % f)
+            return False
+        if not re.search(r'\.(csv|xlsx)$', f, re.IGNORECASE):
+            messagebox.showwarning("Warning", "Unsupported file format (use .csv or .xlsx):\n%s" % f)
+            return False
+    INPUT['replicate_files'] = replicate_files
+    data_path = replicate_files[0]   # drives file_name/raw_data_path below
     if inputType_combobox.get() not in ('Seaguard', 'HOBO'):
         messagebox.showwarning("Warning", "Select the instrument type\n('Input Type' field).")
         return False
@@ -540,17 +567,56 @@ def collect_input_settings():
     save_user_prefs()
     return True
 
+def write_combined_replicates(combined):
+    """Writes the combined HOBO replicates sheet to a '<site>_combined_QLF'
+    folder next to the per-replicate outputs. Returns the folder path."""
+    combined = combined.copy()
+    combined.insert(0, 'Sample number', range(1, len(combined) + 1))
+    combined['QCS version'] = data.QCS_VERSION
+    ordered = data.order_var(combined, 1, data_type='hobo')
+    site = str(INPUT.get('site') or 'HOBO') or 'HOBO'
+    root = os.path.join(OUTPUT['output_file_path'], '%s_combined_QLF' % site)
+    folder = os.path.join(root, 'QCS qualified hobo data')
+    os.makedirs(folder, exist_ok=True)
+    base = '%s_combined_QLF' % site
+    if 'xlsx' in OUTPUT.get('output_data_format', '.xlsx').lower():
+        ordered.to_excel(os.path.join(folder, base + '.xlsx'), index=False)
+    else:
+        ordered.to_csv(os.path.join(folder, base + '.csv'), index=False)
+    return root
+
 def start_qualification():
-    """Runs the qualification without closing the main window, allowing new runs."""
+    """Runs the qualification without closing the main window, allowing new runs.
+    For HOBO with N>1 replicates, each file is qualified independently (its own
+    light-window review) and then combined into one series."""
     if not collect_input_settings():
         return
     run_button.config(state='disabled')
     window.config(cursor='watch')
-    status_var.set("Running qualification... the window may not respond while processing.")
-    log_line('=== Qualification started: %s ===' % INPUT.get('file_name', ''))
-    window.update_idletasks()
+    files = INPUT.get('replicate_files') or [None]
+    n = len(files)
     try:
-        run_full_qualification()
+        qualified_dfs = []
+        for idx, fpath in enumerate(files, start=1):
+            INPUT['file_name'] = os.path.basename(fpath)
+            INPUT['raw_data_path'] = os.path.dirname(fpath)
+            if n > 1:
+                status_var.set("Qualifying replicate %d of %d..." % (idx, n))
+                log_line('=== Replicate %d/%d: %s ===' % (idx, n, INPUT['file_name']))
+            else:
+                status_var.set("Running qualification... the window may not respond while processing.")
+                log_line('=== Qualification started: %s ===' % INPUT['file_name'])
+            window.update_idletasks()
+            run_full_qualification()
+            qualified_dfs.append(OUTPUT['last_qualified_df'])
+        if n > 1:
+            status_var.set("Combining %d replicates..." % n)
+            window.update_idletasks()
+            combined, cmsgs = data.combine_hobo_replicates(qualified_dfs)
+            for m in cmsgs:
+                log_line(m)
+            OUTPUT['last_output_root'] = write_combined_replicates(combined)
+            log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
         status_var.set("Done - results saved to %s" % OUTPUT.get('last_output_root', ''))
         messagebox.showinfo("Done",
                             "Qualification completed successfully!\n\n"
@@ -1031,6 +1097,17 @@ dType_combobox = ttk.Combobox(input_frame, values=["TSCP Profile", "TSCP Mooring
 dType_combobox.grid(row=3, column=1, sticky='w', pady=(0,5))
 ToolTip(dType_combobox, TOOLTIPS['data_type'])
 
+# Replicates (HOBO only): how many redundant HOBO spreadsheets to qualify and
+# combine into one series (temperature mean + spread, light max-of-clean).
+replicate_label = ttk.Label(input_frame, text="Replicates:", style='Header.TLabel')
+replicate_label.grid(row=2, column=2, sticky='w', padx=(12, 2), pady=(0, 2))
+replicate_combobox = ttk.Combobox(input_frame, values=["1", "2", "3", "4"], width=4, state='disabled')
+replicate_combobox.set("1")
+replicate_combobox.grid(row=3, column=2, sticky='w', padx=(12, 0), pady=(0, 5))
+ToolTip(replicate_combobox,
+        "HOBO only: number of redundant HOBO files (2-4) to qualify together and\n"
+        "combine into one series. Select all N files at once with 'Browse'.")
+
 # update profile checkbox
 def update_profile_checkbox_state(event=None):
     if dType_combobox.get() == "TSCP Profile":
@@ -1181,6 +1258,7 @@ def update_inputtype_state(event=None):
         macroregion_combobox.config(state='disabled')
         region_label.config(state='disabled')
         region_combobox.config(state='disabled')
+        replicate_combobox.config(state='readonly')   # replicates apply to HOBO
     else:
         # restore the last stored Seaguard selection (if any)
         if _last_seaguard.get('data_type'):
@@ -1197,6 +1275,8 @@ def update_inputtype_state(event=None):
         macroregion_combobox.config(state='readonly')
         region_label.config(state='normal')
         region_combobox.config(state='readonly')
+        replicate_combobox.set('1')                    # replicates are HOBO-only
+        replicate_combobox.config(state='disabled')
         update_profile_checkbox_state()
 
 inputType_combobox.bind("<<ComboboxSelected>>", update_inputtype_state)
@@ -1916,6 +1996,7 @@ def run_full_qualification():
             else:
                 view.plot_variable(qualified_data, raw_data, variable, out_dir, tsSettings, fixed_scale=fixed)
     OUTPUT['last_output_root'] = root_path
+    OUTPUT['last_qualified_df'] = qualified_data.copy()  # kept for replicate combination
     plt.close('all')
     os.chdir(rootPath)
     log_line('Done: qualification finished.')
