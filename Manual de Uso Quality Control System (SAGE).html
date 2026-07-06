@@ -229,8 +229,8 @@
             <td>Input Type</td>
             <td>Dropdown para selecionar tipo de instrumento (Seaguard ou HOBO). Ao escolher
             <strong>HOBO</strong>, os campos que não se aplicam a um logger de temperatura/luz
-            ficam desabilitados: Data Type (fixado em Mooring), Pressure/Conductivity Unit,
-            Correct GMT-3, Select Profile Data e Region.</td>
+            ficam desabilitados: Data Type (deixado vazio), Pressure/Conductivity Unit,
+            Correct GMT-3, Select Profile Data, Macroregion e Region.</td>
         </tr>
         <tr>
             <td>Data Type</td>
@@ -257,14 +257,17 @@
             <td>Checkbox para ativar verificação manual dos limites das variáveis.</td>
         </tr>
         <tr>
-            <td>Region</td>
-            <td>Dropdown com setores da costa brasileira (Recifes Amazônicos/Norte, Nordeste
-            setentrional, Nordeste oriental, Leste/Abrolhos, Sudeste, Sul). Cada região define
-            uma latitude/longitude representativa, usada <strong>apenas para rodar</strong> a
-            qualificação (conversão de pressão em profundidade e teste de inversão de densidade).
-            Pequenas variações de coordenada não afetam esses cálculos, por isso a escolha por
-            região é suficiente e mais simples que digitar valores. As coordenadas <strong>não
-            são gravadas</strong> na planilha qualificada. Não se aplica a HOBO (sem pressão).</td>
+            <td>Macroregion / Region</td>
+            <td>Dois dropdowns em cascata. <strong>Macroregion</strong> é a região ampla
+            (por ora só <em>Brazil</em>, estruturada para incluir outras partes do mundo no
+            futuro) e <strong>Region</strong> é o setor dentro dela — para o Brasil: Amazonian
+            Reefs/North, Northeast–northern, Northeast–eastern, East/Abrolhos, Southeast, South.
+            Cada região define uma latitude/longitude representativa, usada <strong>apenas para
+            rodar</strong> a qualificação (conversão de pressão em profundidade e teste de
+            inversão de densidade). Pequenas variações de coordenada não afetam esses cálculos,
+            por isso a escolha por região é suficiente e mais simples que digitar valores. As
+            coordenadas <strong>não são gravadas</strong> na planilha qualificada. Não se aplica
+            a HOBO (sem pressão).</td>
         </tr>
     </table>
     <div class="note">

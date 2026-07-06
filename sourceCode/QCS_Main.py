@@ -159,7 +159,8 @@ TOOLTIPS = {
     'data_file': "Select the raw data file to be qualified\nSupported formats: .csv, .xlsx",
     'latitude': "Latitude of the collection site (decimal degrees, -90 to 90)\nSouthern hemisphere is negative (e.g. -17.5)\nUsed to convert pressure to depth",
     'longitude': "Longitude of the collection site (decimal degrees, -180 to 180)\nWestern hemisphere is negative (e.g. -40.0)\nUsed by the density inversion test",
-    'region': "Region of the Brazilian coast.\nSets a representative latitude/longitude used only to run the\nqualification (pressure->depth and density inversion). Small\nvariations do not change the results. Not used for HOBO.",
+    'macroregion': "Broad region of the world (currently only Brazil).\nStructured to add other regions in the future.",
+    'region': "Region within the selected macroregion.\nSets a representative latitude/longitude used only to run the\nqualification (pressure->depth and density inversion). Small\nvariations do not change the results. Not used for HOBO.",
     'config_file': "OPTIONAL: Select the configuration file (.json)\ncontaining quality test parameters",
     'input_type': "Type of instrument that generated the data\nSeaguard: Standard CTD\nHOBO: Autonomous logger",
     'data_type': "Data collection type\nProfile: Vertical data (cast)\nMooring: Fixed-point temporal data",
@@ -438,7 +439,8 @@ def collect_input_settings():
     if inputType_combobox.get() not in ('Seaguard', 'HOBO'):
         messagebox.showwarning("Warning", "Select the instrument type\n('Input Type' field).")
         return False
-    if dType_combobox.get() not in ('TSCP Profile', 'TSCP Mooring'):
+    # HOBO nao tem tipo de coleta TSCP (e serie temporal): Data Type fica vazio
+    if inputType_combobox.get() != 'HOBO' and dType_combobox.get() not in ('TSCP Profile', 'TSCP Mooring'):
         messagebox.showwarning("Warning", "Select the data collection type\n('Data Type' field).")
         return False
     out_dir = outputPath_entry.get().strip()
@@ -482,13 +484,16 @@ def collect_input_settings():
     # used ONLY to run the qualification (pressure->depth and the density
     # inversion test) and never written to the output. Small lat/long variations
     # do not affect these results meaningfully. Irrelevant for HOBO (no pressure).
+    macroregion = macroregion_combobox.get()
     region = region_combobox.get()
+    INPUT['macroregion'] = macroregion
     INPUT['region'] = region
-    INPUT['latitude'], INPUT['longitude'] = REGION_COORDS.get(region, REGION_COORDS[DEFAULT_REGION])
+    INPUT['latitude'], INPUT['longitude'] = REGION_COORDS.get(macroregion, {}).get(
+        region, REGION_COORDS[DEFAULT_MACROREGION][DEFAULT_REGION])
     if INPUT['input_type'] == 'Seaguard':
-        INPUT['coord_msgs'] = ["region '%s' -> lat %.1f, lon %.1f (used for depth conversion "
-                               "and density inversion)"
-                               % (region, INPUT['latitude'], INPUT['longitude'])]
+        INPUT['coord_msgs'] = ["region '%s / %s' -> lat %.1f, lon %.1f (used for depth "
+                               "conversion and density inversion)"
+                               % (macroregion, region, INPUT['latitude'], INPUT['longitude'])]
     else:
         INPUT['coord_msgs'] = []
 
@@ -513,6 +518,7 @@ def collect_input_settings():
         'remove_bad': OUTPUT['remove_bad'],
         'remove_suspect': OUTPUT['remove_suspect'],
         'site_code': INPUT['site'],
+        'macroregion': INPUT['macroregion'],
         'region': INPUT['region'],
         'qcs_version': data.QCS_VERSION,
         'tsQualityTests': dict(CONFIG['tsQualityTests']),
@@ -569,7 +575,10 @@ def restore_user_prefs():
     set_entry(outputPath_entry, 'output_folder')
     set_entry(outputName_entry, 'output_name')
     set_entry(siteSelect_entry, 'site_code')
-    if p.get('region') in REGION_COORDS:
+    if p.get('macroregion') in REGIONS:
+        macroregion_combobox.set(p['macroregion'])
+        update_regions()
+    if p.get('region') in REGION_COORDS.get(macroregion_combobox.get(), {}):
         region_combobox.set(p['region'])
     if p.get('input_type'):
         inputType_combobox.set(p['input_type'])
@@ -654,6 +663,14 @@ def open_settings_window():
 
     # remove o anel de foco tracejado do rotulo da aba selecionada
     theme.suppress_notebook_focus_ring(notebook)
+
+    # 'aquece' cada aba uma vez na abertura, forcando o layout agora, para que a
+    # troca de abas depois seja instantanea (a demora aparecia porque o ttk so
+    # renderiza o conteudo de cada aba na primeira vez que ela e exibida)
+    for tab_id in notebook.tabs():
+        notebook.select(tab_id)
+        notebook.update_idletasks()
+    notebook.select(0)
 
     # Button frame
     button_frame = ttk.Frame(settings_win)
@@ -937,20 +954,26 @@ main_frame.rowconfigure(1, weight=1)
 input_frame.columnconfigure(0, weight=1)
 output_frame.columnconfigure(0, weight=1)
 
-# Regioes da costa brasileira -> latitude/longitude representativas, usadas apenas
-# para RODAR a qualificacao (conversao pressao->profundidade e inversao de
-# densidade). Pequenas variacoes de lat/long nao afetam de forma relevante esses
-# calculos, entao uma latitude por regiao e suficiente. Editavel livremente.
-COAST_REGIONS = [
-    ('Recifes Amazonicos / Norte (AP-MA)',  -1.0, -46.0),
-    ('Nordeste setentrional (CE-RN)',       -4.5, -37.5),
-    ('Nordeste oriental (PB-AL)',           -8.5, -35.0),
-    ('Leste / Abrolhos (BA-ES)',           -17.5, -39.0),
-    ('Sudeste (RJ-SP)',                    -23.5, -43.0),
-    ('Sul (PR-RS)',                        -30.0, -49.0),
-]
-REGION_COORDS = {label: (lat, lon) for label, lat, lon in COAST_REGIONS}
-DEFAULT_REGION = 'Leste / Abrolhos (BA-ES)'
+# Macrorregioes -> regioes -> (lat, lon) representativas, usadas apenas para RODAR
+# a qualificacao (conversao pressao->profundidade e inversao de densidade).
+# Pequenas variacoes de lat/long nao afetam de forma relevante esses calculos,
+# entao um valor por regiao basta. Estruturado por macrorregiao para acomodar
+# outras partes do mundo no futuro. Editavel livremente.
+REGIONS = {
+    'Brazil': [
+        ('Amazonian Reefs / North (AP-MA)',  -1.0, -46.0),
+        ('Northeast - northern (CE-RN)',      -4.5, -37.5),
+        ('Northeast - eastern (PB-AL)',       -8.5, -35.0),
+        ('East / Abrolhos (BA-ES)',          -17.5, -39.0),
+        ('Southeast (RJ-SP)',                -23.5, -43.0),
+        ('South (PR-RS)',                    -30.0, -49.0),
+    ],
+}
+# {macrorregiao: {rotulo_regiao: (lat, lon)}}
+REGION_COORDS = {macro: {label: (lat, lon) for label, lat, lon in regions}
+                 for macro, regions in REGIONS.items()}
+DEFAULT_MACROREGION = 'Brazil'
+DEFAULT_REGION = 'East / Abrolhos (BA-ES)'
 
 # --- Input Section ---
 # File selection
@@ -1062,30 +1085,52 @@ siteSelect_entry = ttk.Entry(output_frame, width=12)
 siteSelect_entry.grid(row=8, column=0, sticky='w', pady=(0,5))
 ToolTip(siteSelect_entry, TOOLTIPS['site_code'])
 
-# Region of the Brazilian coast: provides a representative latitude/longitude used
-# only to RUN the qualification (pressure->depth and density inversion). More
-# intuitive than typing coordinates, and enough given the low sensitivity to
-# small lat/long changes. Disabled for HOBO (no pressure).
+# Macroregion + region of collection: provide a representative latitude/longitude
+# used only to RUN the qualification (pressure->depth and density inversion). More
+# intuitive than typing coordinates and enough given the low sensitivity to small
+# lat/long changes. The macroregion box is structured to add other parts of the
+# world in the future. Both are disabled for HOBO (no pressure).
+macroregion_label = ttk.Label(input_frame, text="Macroregion:", style='Header.TLabel')
+macroregion_label.grid(row=6, column=0, columnspan=2, sticky='w', pady=(5,2))
+macroregion_combobox = ttk.Combobox(input_frame, values=list(REGIONS.keys()),
+                                    width=20, state='readonly')
+macroregion_combobox.grid(row=7, column=0, columnspan=2, sticky='w', pady=(0,5))
+macroregion_combobox.set(DEFAULT_MACROREGION)
+ToolTip(macroregion_combobox, TOOLTIPS['macroregion'])
+
 region_label = ttk.Label(input_frame, text="Region:", style='Header.TLabel')
-region_label.grid(row=6, column=0, sticky='w', pady=(5,2))
-region_combobox = ttk.Combobox(input_frame, values=[r[0] for r in COAST_REGIONS],
+region_label.grid(row=8, column=0, columnspan=2, sticky='w', pady=(5,2))
+region_combobox = ttk.Combobox(input_frame, values=[r[0] for r in REGIONS[DEFAULT_MACROREGION]],
                                width=32, state='readonly')
-region_combobox.grid(row=7, column=0, columnspan=2, sticky='w', pady=(0,5))
+region_combobox.grid(row=9, column=0, columnspan=2, sticky='w', pady=(0,5))
 region_combobox.set(DEFAULT_REGION)
 ToolTip(region_combobox, TOOLTIPS['region'])
 
+def update_regions(event=None):
+    """Repopula as regioes conforme a macrorregiao escolhida (mantem a selecao
+    atual se ainda existir; senao cai na primeira regiao da macrorregiao)."""
+    macro = macroregion_combobox.get()
+    regions = [r[0] for r in REGIONS.get(macro, [])]
+    region_combobox.config(values=regions)
+    if region_combobox.get() not in regions:
+        region_combobox.set(regions[0] if regions else '')
+
+macroregion_combobox.bind("<<ComboboxSelected>>", update_regions)
+
 def update_inputtype_state(event=None):
     """HOBO so mede temperatura e luz: Data Type, unidades, correcao GMT-3,
-    selecao de perfil e a regiao (lat/long) nao se aplicam e ficam desabilitados.
-    HOBO e sempre serie temporal, entao Data Type e fixado em 'TSCP Mooring'."""
+    selecao de perfil e a regiao (macro + regiao) nao se aplicam e ficam
+    desabilitados. HOBO e serie temporal, tratado como nao-perfil (sem Data Type)."""
     if inputType_combobox.get() == 'HOBO':
-        dType_combobox.set('TSCP Mooring')
+        dType_combobox.set('')  # HOBO nao e perfil nem mooring TSCP: campo vazio
         dType_combobox.config(state='disabled')
         pressure_unit_combobox.config(state='disabled')
         conductivity_unit_combobox.config(state='disabled')
         gmt_check.config(state='disabled')
         select_profile_data.set(False)
         profile_check.config(state='disabled')
+        macroregion_label.config(state='disabled')
+        macroregion_combobox.config(state='disabled')
         region_label.config(state='disabled')
         region_combobox.config(state='disabled')
     else:
@@ -1093,6 +1138,8 @@ def update_inputtype_state(event=None):
         pressure_unit_combobox.config(state='readonly')
         conductivity_unit_combobox.config(state='readonly')
         gmt_check.config(state='normal')
+        macroregion_label.config(state='normal')
+        macroregion_combobox.config(state='readonly')
         region_label.config(state='normal')
         region_combobox.config(state='readonly')
         update_profile_checkbox_state()
