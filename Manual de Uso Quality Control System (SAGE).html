@@ -207,8 +207,10 @@
         <li>To qualify data, open <strong>QCS - Data Qualification.bat</strong></li>
         <li>To visualize data, open <strong>QCS - Data Visualization.bat</strong></li>
     </ol>
-    <p>A terminal window opens alongside and shows the progress; it closes by itself when the program
-    ends (it stays open only if an error occurs, so the message can be read).</p>
+    <p>Since v4.0, the app runs with <strong>no terminal window</strong> (launched via
+    <code>pythonw</code>): all progress, warnings and errors appear in the <strong>Execution log</strong>
+    panel at the bottom of each window. If a fatal error happens before the window can open, a message
+    box appears and a <code>sourceCode/QCS_crash.log</code> file is written with the details.</p>
 
     <h2 id="interface_qcs_main">3. QCS_Main Interface</h2>
     <h3>INPUT SETTINGS Section</h3>
@@ -1208,8 +1210,9 @@ python QCS_DatabaseView.py  # visualization tool</code></pre>
             <td>Reduce the dataset size or add memory</td>
         </tr>
         <tr>
-            <td>The terminal window stays open after use</td>
-            <td>It indicates the program ended with an error; read the message shown in the terminal</td>
+            <td>The program does not open / closes with a message box</td>
+            <td>A fatal error occurred before the window could open. Read the message box, and check
+            <code>sourceCode/QCS_crash.log</code> for the full details</td>
         </tr>
         <tr>
             <td>"No year selected" when generating panels</td>
