@@ -880,6 +880,18 @@ def save_settings(window):
                                + "\n- ".join(invalid)
                                + "\n\nFix them and click Save Settings again.")
         return
+    # Persist the quality criteria to disk right away. Before, "Save Settings"
+    # only updated the in-memory CONFIG and the values were written to
+    # qcs_user_settings.json only on a RUN. Version-stamped so the load-time
+    # version gate still applies; a fresh machine (no json) still gets the code
+    # defaults, and "Reset to Defaults" keeps working.
+    USER_PREFS.update({
+        'qcs_version': data.QCS_VERSION,
+        'tsQualityTests': dict(CONFIG['tsQualityTests']),
+        'tsSettings': dict(CONFIG['tsSettings']),
+        'tsFactors': {k: dict(v) for k, v in CONFIG['tsFactors'].items()},
+    })
+    save_user_prefs()
     messagebox.showinfo("Success", "Success saving settings!")
     window.destroy()
 
