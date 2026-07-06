@@ -229,8 +229,10 @@
             <td>Input Type</td>
             <td>Dropdown para selecionar tipo de instrumento (Seaguard ou HOBO). Ao escolher
             <strong>HOBO</strong>, os campos que não se aplicam a um logger de temperatura/luz
-            ficam desabilitados: Data Type (deixado vazio), Pressure/Conductivity Unit,
-            Correct GMT-3, Select Profile Data, Macroregion e Region.</td>
+            ficam desabilitados: Data Type, Pressure/Conductivity Unit, Correct GMT-3,
+            Select Profile Data, Macroregion e Region. Data Type e as Units são esvaziados
+            (para não induzir a erro), mas guardam a última seleção do Seaguard e a restauram
+            ao voltar Input Type → Seaguard.</td>
         </tr>
         <tr>
             <td>Data Type</td>

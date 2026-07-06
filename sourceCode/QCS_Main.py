@@ -664,14 +664,6 @@ def open_settings_window():
     # remove o anel de foco tracejado do rotulo da aba selecionada
     theme.suppress_notebook_focus_ring(notebook)
 
-    # 'aquece' cada aba uma vez na abertura, forcando o layout agora, para que a
-    # troca de abas depois seja instantanea (a demora aparecia porque o ttk so
-    # renderiza o conteudo de cada aba na primeira vez que ela e exibida)
-    for tab_id in notebook.tabs():
-        notebook.select(tab_id)
-        notebook.update_idletasks()
-    notebook.select(0)
-
     # Button frame
     button_frame = ttk.Frame(settings_win)
     button_frame.pack(fill='x', pady=10)
@@ -1117,12 +1109,26 @@ def update_regions(event=None):
 
 macroregion_combobox.bind("<<ComboboxSelected>>", update_regions)
 
+# guarda a ultima selecao Seaguard de Data Type/Units, para restaurar ao voltar
+# de HOBO (que esvazia esses campos por nao se aplicarem a um logger temp/luz)
+_last_seaguard = {}
+
 def update_inputtype_state(event=None):
-    """HOBO so mede temperatura e luz: Data Type, unidades, correcao GMT-3,
-    selecao de perfil e a regiao (macro + regiao) nao se aplicam e ficam
-    desabilitados. HOBO e serie temporal, tratado como nao-perfil (sem Data Type)."""
+    """HOBO so mede temperatura e luz: Data Type, unidades (pressao/condutividade),
+    correcao GMT-3, selecao de perfil e a regiao (macro + regiao) nao se aplicam e
+    ficam desabilitados e vazios. Data Type e as unidades guardam a ultima selecao
+    Seaguard e a restauram ao voltar. HOBO e serie temporal (tratado nao-perfil)."""
     if inputType_combobox.get() == 'HOBO':
-        dType_combobox.set('')  # HOBO nao e perfil nem mooring TSCP: campo vazio
+        # guarda os valores nao-vazios antes de limpar
+        if dType_combobox.get():
+            _last_seaguard['data_type'] = dType_combobox.get()
+        if pressure_unit_combobox.get():
+            _last_seaguard['pressure'] = pressure_unit_combobox.get()
+        if conductivity_unit_combobox.get():
+            _last_seaguard['conductivity'] = conductivity_unit_combobox.get()
+        dType_combobox.set('')            # HOBO nao e perfil nem mooring TSCP
+        pressure_unit_combobox.set('')    # sem pressao
+        conductivity_unit_combobox.set('')
         dType_combobox.config(state='disabled')
         pressure_unit_combobox.config(state='disabled')
         conductivity_unit_combobox.config(state='disabled')
@@ -1134,6 +1140,13 @@ def update_inputtype_state(event=None):
         region_label.config(state='disabled')
         region_combobox.config(state='disabled')
     else:
+        # restaura a ultima selecao Seaguard guardada (se houver)
+        if _last_seaguard.get('data_type'):
+            dType_combobox.set(_last_seaguard['data_type'])
+        if _last_seaguard.get('pressure'):
+            pressure_unit_combobox.set(_last_seaguard['pressure'])
+        if _last_seaguard.get('conductivity'):
+            conductivity_unit_combobox.set(_last_seaguard['conductivity'])
         dType_combobox.config(state='readonly')
         pressure_unit_combobox.config(state='readonly')
         conductivity_unit_combobox.config(state='readonly')
