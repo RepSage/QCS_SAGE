@@ -383,8 +383,9 @@ def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
 
 def apply_light_window(datetimes, light, flags, cutoff, evaluable=True):
     """Appends 1 flag character per sample for the light:
-    9 = missing value; 2 = test not evaluable; 3 = after the fouling cutoff
-    (suspect; the value is kept); 1 = inside the usage window."""
+    9 = missing value; 2 = test not evaluable; 4 = after the fouling cutoff
+    (BAD = unusable fouled light; the value is kept in the sheet until the user
+    removes it with 'Remove Bad Data'); 1 = inside the usage window."""
     ts = pd.DatetimeIndex(datetimes)
     v = np.asarray(light, dtype=float)
     out = []
@@ -394,7 +395,7 @@ def apply_light_window(datetimes, light, flags, cutoff, evaluable=True):
         elif not evaluable:
             out.append(flags[i] + '%d' % QC_flags.UNKNOWN)
         elif cutoff is not None and ts[i] >= cutoff:
-            out.append(flags[i] + '%d' % QC_flags.SUSPECT)
+            out.append(flags[i] + '%d' % QC_flags.BAD_DATA)
         else:
             out.append(flags[i] + '%d' % QC_flags.GOOD_DATA)
     return out

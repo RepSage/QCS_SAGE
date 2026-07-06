@@ -119,9 +119,9 @@ CONFIG = {
         # tolerance (kg/m3) without flagging inversion (profiles test)
         'dens_inv_tolerance': 0.03,
         # ---- HOBO light usage window (fouling test) ----
-        # clean-water baseline = highest daily peak of the first N days;
-        # light becomes SUSPECT when the daily peak stays below
-        # lux_cutoff_frac x baseline for lux_sustain_days consecutive days
+        # clean-sensor baseline = highest daily peak of the first N days;
+        # light becomes BAD (unusable) from the final sustained decline where the
+        # daily peak stays below lux_cutoff_frac x baseline and never recovers
         'lux_baseline_days': 7,
         'lux_cutoff_frac': 0.5,
         'lux_sustain_days': 3,
@@ -232,7 +232,7 @@ TS_SETTINGS_TOOLTIPS = {
     'rep_cnt_susp': "Number of repeated values to flag as SUSPECT\nFor flat line test",
     'dens_inv_tolerance': "Density inversion tolerance (kg/m3)\nPotential density may decrease with depth up to this\nvalue before the pair is flagged as SUSPECT",
     'lux_baseline_days': "HOBO light fouling: clean-sensor baseline =\nmax daily light peak of the FIRST N days after deployment\n(max, so a cloudy install day does not lower it)",
-    'lux_cutoff_frac': "HOBO light fouling: fraction of the clean-sensor baseline\nbelow which light becomes SUSPECT (0.5 = 50%)\nThe applied cutoff is shown in the review plot and saved with the results",
+    'lux_cutoff_frac': "HOBO light fouling: fraction of the clean-sensor baseline\nbelow which light becomes BAD (0.5 = 50%)\nThe applied cutoff is shown in the review plot and saved with the results",
     'lux_sustain_days': "HOBO light fouling: the daily peak must stay below the\nthreshold for this many CONSECUTIVE days before cutting\n(avoids cutting on a cloudy spell)",
     'hobo_edge_temp_tol': "HOBO edge trim: leading/trailing samples are discarded while\ntemperature deviates more than this (degC) from the nearby\nstable segment (out-of-water readings at deployment/recovery)",
     #'eps': "Epsilon value for flat line detection\nMinimum difference to consider values different",
@@ -284,7 +284,7 @@ TS_QUALITY_TESTS_TOOLTIPS = {
     'salinity vertical gradient': "Check for unrealistic salinity changes with depth",
     'conductivity vertical gradient': "Check for unrealistic conductivity changes with depth",
     'density inversion': "Check water column stability: potential density must not decrease with depth (profiles only)",
-    'light fouling window': "HOBO only: flag light as SUSPECT after the daily peak decays\nbelow a fraction of the clean-water baseline (sensor fouling).\nParameters in the Parameters tab (lux_*); cutoff reviewed on a plot before applying"
+    'light fouling window': "HOBO only: flag light as BAD after the daily peak decays\nbelow a fraction of the clean-sensor baseline (sensor fouling).\nParameters in the Parameters tab (lux_*); cutoff reviewed on a plot before applying"
 }
 
 # ----- user preferences: last folders and last choices, kept between sessions -----
@@ -1292,8 +1292,8 @@ def review_light_window(lux_info, site):
             "  - Proposed cutoff = start of the FINAL run of >= %d day(s) where the\n"
             "    daily peak stays below the threshold and never recovers to it;\n"
             "    light that recovers above the threshold is kept.\n"
-            "  - From the cutoff on, light is flagged SUSPECT (Flag_lux = 3); the\n"
-            "    values are kept, not deleted.\n\n"
+            "  - From the cutoff on, light is flagged BAD (Flag_lux = 4, unusable);\n"
+            "    the values stay in the sheet until removed with 'Remove Bad Data'.\n\n"
             "Parameters (lux_baseline_days / lux_cutoff_frac / lux_sustain_days) live in\n"
             "Settings > Parameters, and are printed on the saved QCS_light_window.svg."
             % (p['baseline_days'], 100 * p['cutoff_frac'], p['sustain_days']),
@@ -1772,7 +1772,7 @@ def run_full_qualification():
             for message in lux_result['warnings']:
                 log_line(message)
             if lux_result['evaluable']:
-                log_line('Light fouling: clean-water baseline %.0f lux (first %d days); '
+                log_line('Light fouling: clean-sensor baseline %.0f lux (first %d days); '
                          'threshold %.0f lux (%.0f%% sustained %d days); proposed cutoff: %s'
                          % (lux_result['baseline'], lux_result['params']['baseline_days'],
                             lux_result['threshold'], 100 * lux_result['params']['cutoff_frac'],

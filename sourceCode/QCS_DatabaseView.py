@@ -37,7 +37,7 @@ TOOLTIPS = {
     'panel2': "Panel 2: Comparison of the same parameter between sites",
     'panel3': "Panel 3: Comparison between parameters at the same site (vertical profile)",
     'hobo_temp': "HOBO panel: temperature over time, one plot per selected site\nSuspect/bad points (Flag_T >= 3) are highlighted",
-    'hobo_light': "HOBO panel: light over time (log scale), one plot per selected site\nThe fouling window (Flag_lux == 3) is shaded from the cutoff on",
+    'hobo_light': "HOBO panel: light over time (log scale), one plot per selected site\nThe fouling window (Flag_lux == 4) is shaded from the cutoff on",
     'hobo_light_multi': "HOBO panel: light (log scale) with all selected sites together\nEach site's fouling cutoff is marked to compare fouling onset",
     'ts_diagram': "Generate Temperature-Salinity diagram",
     'latitude': "Latitude for TS diagram reference",

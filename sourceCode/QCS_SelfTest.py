@@ -175,13 +175,13 @@ assert res_rp['proposed_cutoff'].date() == pd.Timestamp('2026-01-19').date(), re
 assert res_rp['recovers'] is True
 ok.append('light_fouling_baseline (recover then permanent -> cut at final decline)')
 
-# 5d) apply_light_window: 1 before / 3 after the cutoff, 9 for NaN, 2 if not evaluable
+# 5d) apply_light_window: 1 before / 4 after the cutoff (BAD, fouled), 9 for NaN, 2 if not evaluable
 lux_nan = list(lux)
 lux_nan[100] = np.nan
 fl = QC.apply_light_window(dt, lux_nan, ['' for _ in dt], res['proposed_cutoff'])
-assert fl[24] == '1', 'day 1 (clean water) should be good: %s' % fl[24]
+assert fl[24] == '1', 'day 1 (clean sensor) should be good: %s' % fl[24]
 assert fl[100] == '9'
-assert fl[-1] == '3', 'after the cutoff it should be suspect: %s' % fl[-1]
+assert fl[-1] == '4', 'after the cutoff the fouled light should be BAD: %s' % fl[-1]
 fl2 = QC.apply_light_window(dt[:48], lux[:48], ['' for _ in range(48)], None, evaluable=False)
 assert set(fl2) <= {'2', '9'}, 'a non-evaluable series should be 2/9'
 short = QC.light_fouling_baseline(dt[:5*24], lux[:5*24], baseline_days=7, cutoff_frac=0.5, sustain_days=3)
@@ -246,21 +246,21 @@ assert output_df['Flag_T'].iloc[1] == 1
 assert 'Flag_lux' not in output_df.columns, 'Flag_lux should only exist in HOBO files'
 ok.append('handle_output_file (per-variable Flag_ columns)')
 
-# 7c) HOBO layout (with 'lux' position): Flag_lux created; remove_suspect erases the light
+# 7c) HOBO layout (with 'lux' position): Flag_lux created; remove_bad erases the fouled light
 HOBO_LAYOUT = MOORING_LAYOUT + ['lux']
 dfh = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=3, freq='h'),
                     'Temperature (degC)': [25.0, 25.1, 25.2],
                     'Luminosity (lux)': [10000.0, 8000.0, 500.0]})
 flags_h = ['1' * len(HOBO_LAYOUT),
            '1' * len(HOBO_LAYOUT),
-           flag_with(HOBO_LAYOUT, 'lux', '3')]  # last row: suspect light (fouled)
-outh = data.handle_output_file(dfh, flags_h, HOBO_LAYOUT, remove_suspect=True, remove_bad=False)
+           flag_with(HOBO_LAYOUT, 'lux', '4')]  # last row: bad light (fouled)
+outh = data.handle_output_file(dfh, flags_h, HOBO_LAYOUT, remove_suspect=False, remove_bad=True)
 outh_df = outh[0]
-assert list(outh_df['Flag_lux']) == [1, 1, 3], outh_df['Flag_lux'].tolist()
-assert np.isnan(outh_df['Luminosity (lux)'].iloc[2]), 'remove_suspect should erase the fouled light'
+assert list(outh_df['Flag_lux']) == [1, 1, 4], outh_df['Flag_lux'].tolist()
+assert np.isnan(outh_df['Luminosity (lux)'].iloc[2]), 'remove_bad should erase the fouled light'
 assert outh_df['Luminosity (lux)'].iloc[0] == 10000.0
 assert outh_df['Temperature (degC)'].iloc[2] == 25.2, 'a light flag must not affect temperature'
-ok.append('handle_output_file (Flag_lux + removal of suspect light)')
+ok.append('handle_output_file (Flag_lux + removal of bad fouled light)')
 
 # 8) deduplication of indices with several repeats (previously broke/failed)
 L = len(MOORING_LAYOUT)

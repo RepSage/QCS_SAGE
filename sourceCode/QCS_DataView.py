@@ -742,7 +742,7 @@ def plot_light_window(lux_info, site=''):
     ax.legend(loc='lower left', fontsize=8)
     ax.set_title('%s - light usable window (fouling)' % (site or 'HOBO'))
     # cutoff parameters visible on the plot itself
-    rule_text = ('Rule: baseline = max daily peak of the first %d day(s); light becomes SUSPECT '
+    rule_text = ('Rule: baseline = max daily peak of the first %d day(s); light becomes BAD '
                  'from the start of the FINAL run (>= %d day(s)) where the daily peak stays below '
                  '%.0f%% of the baseline and never recovers to it.  '
                  '[Settings: lux_baseline_days / lux_cutoff_frac / lux_sustain_days]'
@@ -788,10 +788,10 @@ def _hobo_site_slice (database, year, site):
 
 
 def _hobo_light_cutoff_start (db):
-    """First instant with Flag_lux == 3 (start of the fouling window),
+    """First instant with Flag_lux == 4 (start of the fouling window),
     or None if the light is usable for the entire plotted period."""
     flag_lux = pd.to_numeric(db['Flag_lux'], errors='coerce')
-    flagged_times = db.loc[flag_lux == 3, 'Datetime']
+    flagged_times = db.loc[flag_lux == 4, 'Datetime']
     if flagged_times.empty:
         return None
     return flagged_times.iloc[0]
@@ -852,7 +852,7 @@ def plot_hobo_temperature (database, dataViewSettings, site):
 
 def plot_hobo_light (database, dataViewSettings, site):
     """Time series of the HOBO light (log scale) for a site, with the region
-    after the fouling cutoff (Flag_lux == 3) shaded - same visual language
+    after the fouling cutoff (Flag_lux == 4) shaded - same visual language
     as the QCS_light_window.svg generated during qualification."""
     year = dataViewSettings['filterByYear']
     cParam, bcParam = getParamColors()
@@ -883,7 +883,7 @@ def plot_hobo_light (database, dataViewSettings, site):
     if cutoff is not None:
         ax.axvline(cutoff, color='#b30000', lw=1.6)
         ax.axvspan(cutoff, db['Datetime'].iloc[-1], color='#b30000', alpha=0.10,
-                   label='Fouling window (Flag_lux == 3)')
+                   label='Fouling window (Flag_lux == 4)')
         ax.text(cutoff, ax.get_ylim()[1], ' cutoff: %s' % pd.Timestamp(cutoff).date(),
                 color='#b30000', fontsize=9, va='top')
     else:
@@ -897,7 +897,7 @@ def plot_hobo_light (database, dataViewSettings, site):
 
 def plot_hobo_light_multisite (database, dataViewSettings):
     """Multi-site comparison of the HOBO light (log scale). The start of each
-    site's fouling window (first Flag_lux == 3) is marked with a dashed
+    site's fouling window (first Flag_lux == 4) is marked with a dashed
     vertical line in the site's color, to compare when fouling
     started at each one."""
     year = dataViewSettings['filterByYear']
