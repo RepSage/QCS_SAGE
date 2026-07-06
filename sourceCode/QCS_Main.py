@@ -22,6 +22,12 @@ import QCS_Tests as QC
 import QCS_Theme as theme
 from QCS_Theme import ToolTip
 
+# Run with no console window (launched via pythonw): send everything that would
+# have gone to the terminal into the in-app Execution log instead, and never let
+# a crash be silent. The log panel is attached later, once it exists.
+_out = theme.install_output_redirect()
+theme.install_crash_handler('QCS Data Qualification', _out)
+
 # Global configuration
 CONFIG = {
     'tsQualityTests': {
@@ -1198,13 +1204,15 @@ ToolTip(run_button, TOOLTIPS['run_button'])
 # Execution log: progress, warnings and the per-test summary during RUN
 log_console = theme.LogConsole(main_frame, title=" Execution log ", height=6)
 log_console.frame.grid(row=3, column=0, columnspan=2, sticky='nsew', padx=5, pady=(4, 0))
+# from here on, everything printed (including buffered startup messages) shows
+# in this panel instead of a terminal
+_out.set_sink(log_console.log)
 
 def log_line(message):
-    """Writes to the console AND the log panel; redraws so progress
+    """Prints the message (redirected to the log panel) and redraws, so progress
     appears even with the pipeline running on the interface thread."""
     print(message)
     try:
-        log_console.log(message)
         window.update_idletasks()
     except Exception:
         pass

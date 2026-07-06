@@ -7,6 +7,9 @@
 # Optional dependency: sv-ttk (pip install sv-ttk). Without it, the interface
 # keeps working with the old look.
 
+import os
+import sys
+import traceback
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk
@@ -268,3 +271,84 @@ class ToolTip:
         if self.tooltip is not None:
             self.tooltip.destroy()
             self.tooltip = None
+
+
+class StreamToLog:
+    """File-like object that redirects stdout/stderr to the in-app Log, so the
+    program can run with NO console window. Text is buffered until a sink (the
+    Log panel's .log method) is attached with set_sink(); complete lines are
+    then forwarded. Keeps the full history for the crash dump."""
+
+    encoding = 'utf-8'  # some libraries read sys.stdout.encoding
+
+    def __init__(self):
+        self._buffer = ''
+        self._pending = []
+        self._sink = None
+        self.history = []
+
+    def set_sink(self, sink):
+        self._sink = sink
+        pending, self._pending = self._pending, []
+        for line in pending:
+            self._safe(line)
+
+    def _safe(self, line):
+        try:
+            self._sink(line)
+        except Exception:
+            pass  # the log widget may not exist yet or may be destroyed
+
+    def write(self, text):
+        if not text:
+            return
+        self._buffer += text
+        while '\n' in self._buffer:
+            line, self._buffer = self._buffer.split('\n', 1)
+            self.history.append(line)
+            if self._sink is not None:
+                self._safe(line)
+            else:
+                self._pending.append(line)
+
+    def flush(self):
+        pass
+
+    def isatty(self):
+        return False
+
+
+def install_output_redirect():
+    """Redirect stdout/stderr to an in-app Log stream (no console needed).
+    Returns the StreamToLog; attach the panel with stream.set_sink(log.log)
+    once it exists. Early prints are buffered and flushed on attach."""
+    stream = StreamToLog()
+    sys.stdout = stream
+    sys.stderr = stream
+    return stream
+
+
+def install_crash_handler(app_name, out_stream=None, base_dir=None):
+    """Global excepthook: on an uncaught error (e.g. a crash before the window
+    exists, when there is no console to read), write a QCS_crash.log next to the
+    program and show a message box, so the failure is never silent."""
+    base = base_dir or os.path.dirname(os.path.abspath(__file__))
+
+    def _hook(exc_type, exc, tb):
+        report = ''.join(traceback.format_exception(exc_type, exc, tb))
+        path = os.path.join(base, 'QCS_crash.log')
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                if out_stream is not None and out_stream.history:
+                    f.write('\n'.join(out_stream.history) + '\n\n')
+                f.write(report)
+        except Exception:
+            path = '(could not write the crash log)'
+        try:
+            from tkinter import messagebox
+            messagebox.showerror('%s - fatal error' % app_name,
+                                 '%s\n\nA crash log was written to:\n%s' % (exc, path))
+        except Exception:
+            pass
+
+    sys.excepthook = _hook

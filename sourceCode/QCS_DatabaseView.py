@@ -6,6 +6,12 @@ import QCS_DataHandler as data
 import QCS_DataView as view
 import QCS_Theme as theme
 from QCS_Theme import ToolTip
+
+# Run with no console window (launched via pythonw): route everything that would
+# have gone to the terminal into the in-app Execution log, and never let a crash
+# be silent. The log panel is attached later in show_view_window.
+_out = theme.install_output_redirect()
+theme.install_crash_handler('QCS Data Visualization', _out)
 from tkinter import *
 import tkinter as tk
 from tkinter import ttk
@@ -745,8 +751,8 @@ def load_database():
     except Exception as e:
         messagebox.showerror("Error", "Could not build the database:\n%s" % e)
         return None
-    for message in db_build_messages:
-        print(message)
+    # db_build_messages are shown in the Execution log by show_view_window (below),
+    # so they are not printed here (that would duplicate them via the log redirect)
 
     if inputSettings.get('sortByTime', False) == True:
         # purely chronological order (the engine sorts by Site+Datetime)
@@ -1131,6 +1137,9 @@ def show_view_window():
 
     # Create error logger (starts with the database unification summary)
     error_logger = ErrorLogger(scrollable_frame)
+    # route printed output into this window's log (flushes any buffered startup
+    # messages); re-pointed each time a new view window is opened
+    _out.set_sink(error_logger.log)
     for message in db_build_messages:
         error_logger.log(message)
 
