@@ -295,19 +295,20 @@ def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
                            sustain_days=3, recovery_day_frac=0.2):
     """Light sensor fouling analysis (HOBO): the light "usage window".
 
-    Logic: the daily light peak in clean water (baseline = highest peak of the
-    first `baseline_days` days) decays as the sensor gets fouled. When the daily
-    peak stays below `cutoff_frac` x baseline for `sustain_days` CONSECUTIVE
-    days (sustained, so as not to cut at a single cloudy trough), the light
-    stops being reliable starting from the first of those days.
+    Logic: the daily light peak of the unfouled sensor (baseline = highest peak
+    of the first `baseline_days` days) decays as the sensor gets fouled. The
+    proposed cutoff is the start of the FINAL sustained run (>= `sustain_days`)
+    where the daily peak stays below `cutoff_frac` x baseline AND never rises
+    back to the threshold afterwards. In other words, light that recovers above
+    the threshold is kept; only the permanent decline at the end is cut. If the
+    light never permanently drops (it still reaches the threshold at the end, or
+    the final dip is shorter than `sustain_days`), no cutoff is proposed.
 
-    It does NOT assume monotonic decay. After the proposed cutoff, it checks what
-    fraction of the days still REACHES the threshold (daily peak >= threshold): if
-    that fraction exceeds `recovery_day_frac`, the drop is not permanent - the peak
-    rises again many times -, a sign of possible cleaning/redeployment, partial
-    fouling or just cloudy weather. In that case it issues a strong WARNING for
-    the operator to decide during review (the proposed cutoff is unreliable and the
-    file may contain more than one deployment).
+    It does NOT assume monotonic decay. If the daily peak dips below the threshold
+    and later recovers above it, it issues a WARNING: the signal is not clean
+    biofouling - likely sensor cleaning/redeployment or patchy fouling - and the
+    file may span more than one deployment. The operator confirms/adjusts the
+    cutoff during review.
 
     Returns dict: 'evaluable' (bool), 'baseline', 'threshold', 'daily_peak'
     (Series), 'proposed_cutoff' (Timestamp|None), 'recovers' (bool),
@@ -329,41 +330,54 @@ def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
     out['daily_peak'] = daily_peak
     if len(daily_peak) < baseline_days + sustain_days:
         out['warnings'].append('Light fouling test: only %d day(s) of data - too short to '
-                               'establish a clean-water baseline of %d day(s); test not evaluated.'
+                               'establish a clean-sensor baseline of %d day(s); test not evaluated.'
                                % (len(daily_peak), baseline_days))
         return out
 
     baseline = daily_peak.iloc[:baseline_days].max()
     if not np.isfinite(baseline) or baseline <= 0:
-        out['warnings'].append('Light fouling test: clean-water baseline is zero (sensor dark or '
+        out['warnings'].append('Light fouling test: clean-sensor baseline is zero (sensor dark or '
                                'buried from the start?) - test not evaluated.')
         return out
 
     threshold = cutoff_frac * baseline
     out.update({'evaluable': True, 'baseline': float(baseline), 'threshold': float(threshold)})
 
-    run, cutoff = 0, None
-    for day, peak in daily_peak.items():
-        run = run + 1 if peak < threshold else 0
-        if run >= sustain_days:
-            cutoff = day - pd.Timedelta(days=sustain_days - 1)
-            break
+    below_arr = (daily_peak < threshold).to_numpy()
+    ge_positions = np.where(~below_arr)[0]      # days whose peak still reaches the threshold
+    below_positions = np.where(below_arr)[0]
+
+    # Proposed cutoff = start of the FINAL sustained run below the threshold that
+    # reaches the end of the series (the light never recovers to the threshold
+    # after it). Recovered points are kept; only the permanent decline is cut.
+    cutoff = None
+    if len(below_positions) > 0:
+        if len(ge_positions) == 0:
+            cutoff = daily_peak.index[0]            # never reaches threshold: fouled from day 1
+        else:
+            last_ge = int(ge_positions[-1])
+            tail_len = len(daily_peak) - 1 - last_ge   # below-threshold days after the last crossing
+            if tail_len >= sustain_days:
+                cutoff = daily_peak.index[last_ge + 1]
+            # else: only a short dip at the very end (likely clouds) -> no cutoff
     out['proposed_cutoff'] = cutoff
 
-    if cutoff is not None:
-        after = daily_peak[daily_peak.index >= cutoff]
-        if len(after) > 0:
-            frac = float((after >= threshold).mean())
-            out['recovery_day_frac_after'] = frac
-            if frac > recovery_day_frac:
-                out['recovers'] = True
-                out['warnings'].append(
-                    'WARNING: after the proposed light cutoff (%s), the daily peak still reaches '
-                    'the fouling threshold on %.0f%% of the days - the decline is NOT permanent. '
-                    'Likely sensor cleaning/redeployment, patchy fouling or just cloudy spells, '
-                    'not steady biofouling. The proposed cutoff is unreliable: review it on the '
-                    'plot (drag it or press N for no cutoff), and check whether this file spans '
-                    'more than one deployment.' % (cutoff.date(), 100 * frac))
+    # Non-monotonic signal: the peak dipped below the threshold and later rose
+    # back above it (recovery). Warn - likely cleaning/redeployment or patchy
+    # fouling; the file may span more than one deployment.
+    if len(below_positions) > 0 and len(ge_positions) > 0 and below_positions.min() < ge_positions.max():
+        after = daily_peak.iloc[int(below_positions.min()):]
+        frac = float((after >= threshold).mean())
+        out['recovery_day_frac_after'] = frac
+        if frac > recovery_day_frac:
+            out['recovers'] = True
+            out['warnings'].append(
+                'WARNING: the daily light peak dips below the fouling threshold and then '
+                'recovers above it on %.0f%% of the following days - not a clean, monotonic '
+                'biofouling decline. Likely sensor cleaning/redeployment, patchy fouling or '
+                'cloudy spells%s. Review the cutoff on the plot (drag it or press N for no '
+                'cutoff) and check whether this file spans more than one deployment.'
+                % (100 * frac, '' if cutoff is not None else ' - no permanent cutoff was set'))
     return out
 
 

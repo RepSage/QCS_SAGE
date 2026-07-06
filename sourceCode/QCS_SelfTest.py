@@ -155,14 +155,25 @@ assert res['proposed_cutoff'].date() == pd.Timestamp('2026-01-13').date(), res['
 assert res['recovers'] is False, 'permanent decay should not report recovery'
 ok.append('light_fouling_baseline (permanent decay -> firm cutoff)')
 
-# 5c-ii) decay with RECOVERY (light returns after the cutoff) -> WARNING
+# 5c-ii) light dips and RECOVERS to clean at the end: no permanent cutoff, but a
+# non-monotonic WARNING is issued (possible cleaning / multiple deployments)
 decay_rec = [1.0]*10 + [0.8, 0.6, 0.45, 0.4] + [0.3]*6 + [0.9]*10
 lux_rec = [10000.0 * decay_rec[(ts - dt[0]).days] if 8 <= ts.hour <= 16 else 0.0 for ts in dt]
 res_rec = QC.light_fouling_baseline(dt, lux_rec, baseline_days=7, cutoff_frac=0.5, sustain_days=3)
-assert res_rec['proposed_cutoff'] is not None
-assert res_rec['recovers'] is True, 'post-cutoff recovery should be signaled'
-assert any('NOT permanent' in w for w in res_rec['warnings']), res_rec['warnings']
-ok.append('light_fouling_baseline (recovery -> warning)')
+assert res_rec['proposed_cutoff'] is None, 'light that recovers to clean at the end should not be cut'
+assert res_rec['recovers'] is True, 'a mid-series recovery should be signaled'
+assert any('recovers above' in w for w in res_rec['warnings']), res_rec['warnings']
+ok.append('light_fouling_baseline (recovery -> no cut + warning)')
+
+# 5c-ii-bis) dips, RECOVERS, then declines PERMANENTLY: cut only at the final
+# decline (the recovered points before it are kept, not flagged)
+decay_rp = [1.0]*10 + [0.3]*3 + [0.9]*5 + [0.3]*12
+lux_rp = [10000.0 * decay_rp[(ts - dt[0]).days] if 8 <= ts.hour <= 16 else 0.0 for ts in dt]
+res_rp = QC.light_fouling_baseline(dt, lux_rp, baseline_days=7, cutoff_frac=0.5, sustain_days=3)
+assert res_rp['proposed_cutoff'] is not None
+assert res_rp['proposed_cutoff'].date() == pd.Timestamp('2026-01-19').date(), res_rp['proposed_cutoff']
+assert res_rp['recovers'] is True
+ok.append('light_fouling_baseline (recover then permanent -> cut at final decline)')
 
 # 5d) apply_light_window: 1 before / 3 after the cutoff, 9 for NaN, 2 if not evaluable
 lux_nan = list(lux)

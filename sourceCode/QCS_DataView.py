@@ -733,7 +733,7 @@ def plot_light_window(lux_info, site=''):
             color='#b38f00', lw=1.2, label='Daily light peak')
     if np.isfinite(lux_info.get('baseline', np.nan)):
         ax.axhline(lux_info['baseline'], color='#1f7a1f', lw=1.2, linestyle='--',
-                   label='Clean-water baseline (%.0f lux)' % lux_info['baseline'])
+                   label='Clean-sensor baseline (%.0f lux)' % lux_info['baseline'])
         ax.axhline(lux_info['threshold'], color='#b30000', lw=1.2, linestyle=':',
                    label='Fouling threshold (%.0f lux)' % lux_info['threshold'])
     ax.set_yscale('log')
@@ -742,10 +742,11 @@ def plot_light_window(lux_info, site=''):
     ax.legend(loc='lower left', fontsize=8)
     ax.set_title('%s - light usable window (fouling)' % (site or 'HOBO'))
     # cutoff parameters visible on the plot itself
-    rule_text = ('Rule: baseline = max daily peak of the first %d day(s); light becomes '
-                 'SUSPECT when the daily peak stays below %.0f%% of the baseline for %d '
-                 'consecutive day(s).  [Settings: lux_baseline_days / lux_cutoff_frac / lux_sustain_days]'
-                 % (params['baseline_days'], 100 * params['cutoff_frac'], params['sustain_days']))
+    rule_text = ('Rule: baseline = max daily peak of the first %d day(s); light becomes SUSPECT '
+                 'from the start of the FINAL run (>= %d day(s)) where the daily peak stays below '
+                 '%.0f%% of the baseline and never recovers to it.  '
+                 '[Settings: lux_baseline_days / lux_cutoff_frac / lux_sustain_days]'
+                 % (params['baseline_days'], params['sustain_days'], 100 * params['cutoff_frac']))
     fig.text(0.5, 0.015, rule_text, ha='center', fontsize=7.5, color='#444444', wrap=True)
     fig.subplots_adjust(bottom=0.17)
     return fig, ax
@@ -761,18 +762,19 @@ def mark_light_cutoff(ax, cutoff, lux_info):
         artists.append(ax.axvspan(cutoff, daily_peak.index.max(), color='#b30000', alpha=0.10))
         artists.append(ax.text(cutoff, ax.get_ylim()[1], ' cutoff: %s' % pd.Timestamp(cutoff).date(),
                                color='#b30000', fontsize=9, va='top'))
-        if lux_info.get('recovers'):
-            artists.append(ax.text(
-                0.5, 0.94,
-                'WARNING: light recovers above the threshold on %.0f%% of days after the cutoff -\n'
-                'decline is NOT permanent (possible cleaning / multiple deployments). Review!'
-                % (100 * lux_info.get('recovery_day_frac_after', 0)),
-                transform=ax.transAxes, ha='center', va='top', fontsize=8.5,
-                color='#b30000', weight='bold',
-                bbox=dict(boxstyle='round', facecolor='#fff0f0', edgecolor='#b30000')))
     else:
         artists.append(ax.text(0.02, 0.95, 'no cutoff: light usable for the whole deployment',
                                transform=ax.transAxes, color='#1f7a1f', fontsize=9, va='top'))
+    # the non-monotonic recovery warning shows whether or not a cutoff was set
+    if lux_info.get('recovers'):
+        artists.append(ax.text(
+            0.5, 0.94,
+            'WARNING: the light dips and recovers (%.0f%% of later days reach the threshold) -\n'
+            'not clean biofouling (possible cleaning / multiple deployments). Review!'
+            % (100 * lux_info.get('recovery_day_frac_after', 0)),
+            transform=ax.transAxes, ha='center', va='top', fontsize=8.5,
+            color='#b30000', weight='bold',
+            bbox=dict(boxstyle='round', facecolor='#fff0f0', edgecolor='#b30000')))
     return artists
 
 
