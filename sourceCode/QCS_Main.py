@@ -1814,7 +1814,9 @@ def run_full_qualification():
 
     # Export qualified data to .csv/.xlsx file
     os.chdir(OUTPUT['output_file_path'])
-    root_path = OUTPUT['output_file_path'] + '/' + re.search(r'^[^\.]+',INPUT['file_name']).group()
+    # the qualification output folder is named after the input file + '_QLF'
+    # (same for every workflow: Seaguard profile/mooring and HOBO)
+    root_path = OUTPUT['output_file_path'] + '/' + re.search(r'^[^\.]+',INPUT['file_name']).group() + '_QLF'
     os.makedirs(root_path, exist_ok=True)
     data_folder = 'QCS qualified hobo data' if layout_type == 'hobo' else 'QCS qualified tscp data'
     path = root_path + '/' + data_folder + '/'
