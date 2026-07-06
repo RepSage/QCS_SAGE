@@ -30,6 +30,9 @@ TOOLTIPS = {
     'panel1': "Panel 1: Comparison between parameters at the same site",
     'panel2': "Panel 2: Comparison of the same parameter between sites",
     'panel3': "Panel 3: Comparison between parameters at the same site (vertical profile)",
+    'hobo_temp': "HOBO panel: temperature over time, one plot per selected site\nSuspect/bad points (Flag_T >= 3) are highlighted",
+    'hobo_light': "HOBO panel: light over time (log scale), one plot per selected site\nThe fouling window (Flag_lux == 3) is shaded from the cutoff on",
+    'hobo_light_multi': "HOBO panel: light (log scale) with all selected sites together\nEach site's fouling cutoff is marked to compare fouling onset",
     'ts_diagram': "Generate Temperature-Salinity diagram",
     'latitude': "Latitude for TS diagram reference",
     'longitude': "Longitude for TS diagram reference",
@@ -99,6 +102,10 @@ def set_enabled_style(widget):
     else:
         widget.config(state='normal')
 
+def is_hobo_input():
+    """Os paineis da janela Step 2 mudam conforme o instrumento do Step 1."""
+    return inputSettings.get('instrument', 'Seaguard') == 'HOBO'
+
 def toggle_all_controls(enabled=False):
     """Habilita ou desabilita todos os controles dependendo do Data Type selecionado"""
     # Painéis
@@ -152,8 +159,15 @@ def toggle_input_mode():
 
 def toggle_panel_dependent_controls():
     any_panel_selected = panel1.get() or panel2.get() or panel3.get()
-    
-    if any_panel_selected:
+
+    if any_panel_selected and is_hobo_input():
+        # paineis HOBO ja definem a apresentacao (pontos, escala log):
+        # linhas de tendencia e 'show points' nao se aplicam
+        set_disabled_style(tendency_cb)
+        set_disabled_style(tendency_entry)
+        set_disabled_style(points_cb)
+        set_enabled_style(fixed_scale_cb)
+    elif any_panel_selected:
         set_enabled_style(tendency_cb)
         if tendency.get():
             set_enabled_style(tendency_entry)
@@ -168,13 +182,15 @@ def toggle_panel_dependent_controls():
     toggle_scale_controls()
 
 def toggle_parameter_checkboxes():
-    if panel1.get() or panel2.get() or panel3.get():
+    # nos paineis HOBO cada painel ja diz qual variavel plota (temperatura ou
+    # luz), entao o filtro de parametros nao se aplica e fica desabilitado
+    if (panel1.get() or panel2.get() or panel3.get()) and not is_hobo_input():
         for cb in parameter_widgets.values():
             set_enabled_style(cb)
     else:
         for cb in parameter_widgets.values():
             set_disabled_style(cb)
-    
+
     toggle_scale_controls()
 
 def toggle_ts_controls():
@@ -208,9 +224,15 @@ def toggle_data_type():
         return
     
     toggle_all_controls(enabled=True)  # Habilita tudo
-    
+
     # Lógica específica para cada tipo de dado
-    if data_type == 'mooring':
+    if is_hobo_input():
+        # HOBO: os tres checkboxes viram paineis proprios (temperatura/luz);
+        # sem T-S (nao ha salinidade) e sem perfil (nao ha profundidade)
+        set_disabled_style(ts_cb)
+        set_disabled_style(depth_min_entry)
+        set_disabled_style(depth_max_entry)
+    elif data_type == 'mooring':
         set_disabled_style(panel3_cb)
         set_disabled_style(ts_cb)
         # o range de profundidade so se aplica a graficos de perfil
@@ -463,6 +485,41 @@ def generatePanels():
         # panels are generated once for each selected year
         for year in selected_years:
             dataViewSettings['filterByYear'] = year
+            if is_hobo_input():
+                # HOBO: paineis dedicados (temperatura / luz+janela / luz
+                # multi-site); T-S nao se aplica (sem salinidade)
+                selected_sites = dataViewSettings.get('siteList', [])
+                any_hobo_panel = (dataViewSettings.get('panel1', False)
+                                  or dataViewSettings.get('panel2', False)
+                                  or dataViewSettings.get('panel3', False))
+                if any_hobo_panel and not selected_sites:
+                    error_logger.log("ERROR: no site selected - check at least one site in 'Filter by Site'")
+                    continue
+
+                if dataViewSettings.get('panel1', False):
+                    for site in selected_sites:
+                        try:
+                            view.plot_hobo_temperature(database, dataViewSettings, site)
+                            error_logger.log("SUCCESS: HOBO temperature for %s (%d) generated successfully" % (site, year))
+                        except Exception as e:
+                            error_logger.log("ERROR generating HOBO temperature for %s (%d): %s" % (site, year, e))
+
+                if dataViewSettings.get('panel2', False):
+                    for site in selected_sites:
+                        try:
+                            view.plot_hobo_light(database, dataViewSettings, site)
+                            error_logger.log("SUCCESS: HOBO light for %s (%d) generated successfully" % (site, year))
+                        except Exception as e:
+                            error_logger.log("ERROR generating HOBO light for %s (%d): %s" % (site, year, e))
+
+                if dataViewSettings.get('panel3', False):
+                    try:
+                        view.plot_hobo_light_multisite(database, dataViewSettings)
+                        error_logger.log("SUCCESS: HOBO light multi-site (%d) generated successfully" % year)
+                    except Exception as e:
+                        error_logger.log("ERROR generating HOBO light multi-site (%d): %s" % (year, e))
+                continue
+
             if dataViewSettings['dataType'] == 'mooring':
                 if dataViewSettings.get('panel1', False):
                     try:
@@ -787,33 +844,44 @@ def show_view_window():
     main_content_frame.rowconfigure(2, weight=1)
 
     # --- Data Settings ---
-    # Data type
+    # Data type (HOBO so tem serie temporal: perfil nao se aplica)
     ttk.Label(data_frame, text="Data Type:").grid(row=0, column=0, sticky='w', pady=2)
-    dType_combobox = ttk.Combobox(data_frame, values=["tscp profile", "mooring"], width=25, state='readonly')
+    dType_values = ["mooring"] if is_hobo_input() else ["tscp profile", "mooring"]
+    dType_combobox = ttk.Combobox(data_frame, values=dType_values, width=25, state='readonly')
     dType_combobox.grid(row=1, column=0, sticky='w', pady=2)
     dType_combobox.bind("<<ComboboxSelected>>", lambda e: toggle_data_type())
     ToolTip(dType_combobox, TOOLTIPS['data_type'])
 
     # --- Visualization Settings ---
-    # Panels
+    # Panels: para HOBO os tres checkboxes viram os paineis dedicados
+    # (temperatura / luz+janela / luz multi-site) no lugar de Panel 1/2/3
+    if is_hobo_input():
+        panel_labels = ("HOBO Temperature (per site)",
+                        "HOBO Light + fouling window (per site)",
+                        "HOBO Light multi-site")
+        panel_tips = (TOOLTIPS['hobo_temp'], TOOLTIPS['hobo_light'], TOOLTIPS['hobo_light_multi'])
+    else:
+        panel_labels = ("Panel 1 (mooring)", "Panel 2 (mooring)", "Panel 3 (profile)")
+        panel_tips = (TOOLTIPS['panel1'], TOOLTIPS['panel2'], TOOLTIPS['panel3'])
+
     ttk.Label(vis_frame, text="Select Panels:").grid(row=0, column=0, sticky='w', pady=5)
     panel1 = BooleanVar(value=False)
-    panel1_cb = ttk.Checkbutton(vis_frame, text="Panel 1 (mooring)", variable=panel1, 
+    panel1_cb = ttk.Checkbutton(vis_frame, text=panel_labels[0], variable=panel1,
                                command=lambda: [toggle_panel_dependent_controls(), toggle_parameter_checkboxes()])
     panel1_cb.grid(row=1, column=0, sticky='w', pady=2)
-    ToolTip(panel1_cb, TOOLTIPS['panel1'])
+    ToolTip(panel1_cb, panel_tips[0])
 
     panel2 = BooleanVar(value=False)
-    panel2_cb = ttk.Checkbutton(vis_frame, text="Panel 2 (mooring)", variable=panel2, 
+    panel2_cb = ttk.Checkbutton(vis_frame, text=panel_labels[1], variable=panel2,
                                command=lambda: [toggle_panel_dependent_controls(), toggle_parameter_checkboxes()])
     panel2_cb.grid(row=2, column=0, sticky='w', pady=2)
-    ToolTip(panel2_cb, TOOLTIPS['panel2'])
+    ToolTip(panel2_cb, panel_tips[1])
 
     panel3 = BooleanVar(value=False)
-    panel3_cb = ttk.Checkbutton(vis_frame, text="Panel 3 (profile)", variable=panel3, 
+    panel3_cb = ttk.Checkbutton(vis_frame, text=panel_labels[2], variable=panel3,
                                command=lambda: [toggle_panel_dependent_controls(), toggle_parameter_checkboxes()])
     panel3_cb.grid(row=3, column=0, sticky='w', pady=2)
-    ToolTip(panel3_cb, TOOLTIPS['panel3'])
+    ToolTip(panel3_cb, panel_tips[2])
 
     # TS Diagram
     tsDiagram = BooleanVar(value=False)
@@ -1025,7 +1093,8 @@ def show_view_window():
     panel1.set(USER_PREFS.get('dbv_panel1', False))
     panel2.set(USER_PREFS.get('dbv_panel2', False))
     panel3.set(USER_PREFS.get('dbv_panel3', False))
-    tsDiagram.set(USER_PREFS.get('dbv_ts_diagram', False))
+    # T-S nao existe para HOBO (sem salinidade): nunca restaurar marcado
+    tsDiagram.set(False if is_hobo_input() else USER_PREFS.get('dbv_ts_diagram', False))
     tendency.set(USER_PREFS.get('dbv_tendency', False))
     dataPoints.set(USER_PREFS.get('dbv_data_points', False))
     fixedScale.set(USER_PREFS.get('dbv_fixed_scale', False))
@@ -1052,7 +1121,11 @@ def show_view_window():
     if USER_PREFS.get('dbv_ts_param'):
         tsParam_combobox.set(USER_PREFS['dbv_ts_param'])
     # re-apply enable/disable rules with the restored values
-    if USER_PREFS.get('dbv_data_type'):
+    if is_hobo_input():
+        # unica opcao valida para HOBO: ja seleciona e habilita os controles
+        dType_combobox.set('mooring')
+        toggle_data_type()
+    elif USER_PREFS.get('dbv_data_type') in dType_values:
         dType_combobox.set(USER_PREFS['dbv_data_type'])
         toggle_data_type()
 

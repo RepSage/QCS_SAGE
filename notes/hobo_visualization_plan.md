@@ -1,7 +1,10 @@
-# Plano: Visualização dedicada do HOBO (v4.0 — Parte 5, PENDENTE)
+# Plano: Visualização dedicada do HOBO (v4.0 — Parte 5, IMPLEMENTADA em 06/07/2026)
 
-> Documento de trabalho para retomar na próxima sessão (já em `qcs_sage`).
-> É a última parte do plano da v4.0 antes de fechar a versão.
+> IMPLEMENTADA — ver changelog/v4.0.md (Parte 5). Decisões confirmadas com o
+> usuário: os dois layouts (por site + multi-site), sombrear a região incrustada,
+> escala log na luz, destacar Flag_T >= 3 na temperatura, sem T-S para HOBO.
+> Pendente apenas o E2E pela GUI com o arquivo real do PAB3 (abaixo) e a
+> atualização do manual HTML antes de fechar a versão.
 
 ## Contexto (o que já existe)
 - Banco HOBO montado por `data.build_database('HOBO', ...)` tem as colunas:
