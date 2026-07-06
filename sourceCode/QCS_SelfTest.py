@@ -366,5 +366,32 @@ with _tempfile.TemporaryDirectory() as tmp:
     assert len(dbt) == 2 and dbt['Temperature (degC)'].iloc[0] == 25.0, 'qualified csv corrupted on read'
 ok.append('build_database (discovery, dedup, provenance, refuse mix, csv ok)')
 
+# 12) combine_hobo_replicates: temperature mean + spread; light = max of the
+# non-fouled readings, usable window extended to the last replicate to foul
+tgrid = pd.date_range('2026-01-01', periods=10, freq='h')
+repA = pd.DataFrame({'Datetime': tgrid, 'Site': 'PAB3',
+                     'Temperature (degC)': [25.0] * 10,
+                     'Luminosity (lux)': [10000., 9000, 8000, 7000, 6000, 500, 400, 300, 200, 100],
+                     'Flag_T': [1] * 10,
+                     'Flag_lux': [1, 1, 1, 1, 1, 4, 4, 4, 4, 4]})   # A fouls from index 5
+repB = pd.DataFrame({'Datetime': tgrid, 'Site': 'PAB3',
+                     'Temperature (degC)': [25.2, 25.2, 25.2, 26.0, 25.2, 25.2, 25.2, 25.2, 25.2, 25.2],
+                     'Luminosity (lux)': [11000., 9500, 8500, 7500, 6500, 6000, 5500, 5000, 300, 200],
+                     'Flag_T': [1] * 10,
+                     'Flag_lux': [1, 1, 1, 1, 1, 1, 1, 1, 4, 4]})   # B fouls from index 8
+comb, cmsgs = data.combine_hobo_replicates([repA, repB], temp_tol=0.5)
+assert len(comb) == 10, len(comb)
+assert abs(comb['Temperature (degC)'].iloc[0] - 25.1) < 1e-6      # mean(25.0, 25.2)
+assert comb['Flag_T'].iloc[0] == 1
+assert comb['Flag_T'].iloc[3] == 3, 'disagreeing replicate temperatures -> SUSPECT'
+assert abs(comb['Temperature spread (degC)'].iloc[3] - 1.0) < 1e-6
+assert abs(comb['Temperature (degC)'].iloc[3] - 25.5) < 1e-6      # mean(25.0, 26.0)
+assert comb['Luminosity (lux)'].iloc[0] == 11000.0, 'light = max of the clean replicates'
+assert comb['Flag_lux'].iloc[6] == 1 and comb['Luminosity (lux)'].iloc[6] == 5500.0, 'A fouled, B clean -> keep B'
+assert list(comb['Flag_lux']) == [1, 1, 1, 1, 1, 1, 1, 1, 4, 4], comb['Flag_lux'].tolist()
+assert comb['Site'].iloc[0] == 'PAB3'
+assert any('disagree' in m for m in cmsgs) and any('usable until' in m for m in cmsgs), cmsgs
+ok.append('combine_hobo_replicates (T mean+spread, light max-of-clean, window extended)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

@@ -996,3 +996,91 @@ def build_database(instrument, file_list=None, input_path=None):
     messages.append('MESSAGE: database built: %d file(s), %d rows, instrument %s.'
                     % (len(frames), len(database), instrument))
     return database, messages
+
+
+def combine_hobo_replicates(replicates, temp_tol=0.5):
+    """Combine N (2-4) redundant HOBO replicates of the SAME site/deployment,
+    each already qualified independently, into a single series.
+
+    Temperature: the MEAN of the replicates that are acceptable (Flag_T <= 2) at
+    each timestamp. The between-replicate spread (max - min) is kept in a
+    'Temperature spread (degC)' column; when it exceeds `temp_tol` (with >= 2
+    acceptable replicates) the combined Flag_T is SUSPECT (3) - the replicates
+    disagree, which is itself a QC signal.
+
+    Light: the per-timestamp MAX of the NON-fouled readings (Flag_lux != 4).
+    Fouling only attenuates light, so the brightest unfouled sensor is the most
+    reliable. The combined light stays good (Flag_lux 1) while AT LEAST ONE
+    replicate is unfouled, and becomes BAD (4) only once EVERY replicate is
+    fouled - i.e. the usable window is extended to the last replicate to foul.
+    (No naive averaging of light: that would mix clean + fouled sensors.)
+
+    replicates: list of qualified HOBO DataFrames (2-4), each with columns
+    'Datetime', 'Temperature (degC)', 'Luminosity (lux)', 'Flag_T', 'Flag_lux'
+    (and optionally 'Site'). Returns (combined_df, messages)."""
+    if len(replicates) < 2:
+        raise ValueError('combine_hobo_replicates: need at least 2 replicates.')
+    messages = []
+
+    # align every replicate onto the first replicate's time grid (nearest match
+    # within half the sampling interval, to absorb small clock differences)
+    ref_times = pd.DatetimeIndex(pd.to_datetime(replicates[0]['Datetime'])).sort_values()
+    step = ref_times.to_series().diff().median()
+    tol = (step / 2) if (pd.notna(step) and step > pd.Timedelta(0)) else None
+    aligned = []
+    for r in replicates:
+        a = r.copy()
+        a['Datetime'] = pd.to_datetime(a['Datetime'])
+        a = a.set_index('Datetime')
+        a = a[~a.index.duplicated(keep='first')].sort_index()
+        aligned.append(a.reindex(ref_times, method='nearest', tolerance=tol))
+
+    def stack(name):
+        return pd.concat([a[name] for a in aligned], axis=1, ignore_index=True)
+
+    T = stack('Temperature (degC)')
+    FT = stack('Flag_T').apply(pd.to_numeric, errors='coerce')
+    L = stack('Luminosity (lux)')
+    FL = stack('Flag_lux').apply(pd.to_numeric, errors='coerce')
+
+    # temperature: mean over the acceptable (Flag_T <= 2) replicates
+    t_ok = (FT <= 2) & T.notna()
+    T_ok = T.where(t_ok)
+    n_t = t_ok.sum(axis=1)
+    temp_mean = T_ok.mean(axis=1)
+    temp_spread = (T_ok.max(axis=1) - T_ok.min(axis=1)).where(n_t >= 2, 0.0)
+    flag_t = pd.Series(9, index=ref_times)              # none acceptable -> missing
+    flag_t[n_t >= 1] = 1                                # at least one good
+    flag_t[(n_t >= 2) & (temp_spread > temp_tol)] = 3   # replicates disagree -> suspect
+
+    # light: max of the non-fouled (Flag_lux != 4) readings
+    l_clean = (FL != 4) & L.notna()
+    n_clean = l_clean.sum(axis=1)
+    lux_comb = L.where(l_clean).max(axis=1).where(n_clean >= 1, L.max(axis=1))
+    flag_lux = pd.Series(9, index=ref_times)            # all light missing
+    flag_lux[L.notna().any(axis=1)] = 4                 # present but all fouled -> bad
+    flag_lux[n_clean >= 1] = 1                          # at least one unfouled -> good
+
+    out = pd.DataFrame({
+        'Datetime': ref_times,
+        'Temperature (degC)': temp_mean.round(4).values,
+        'Temperature spread (degC)': temp_spread.round(4).values,
+        'Luminosity (lux)': lux_comb.round(4).values,
+        'Flag_T': flag_t.values.astype(int),
+        'Flag_lux': flag_lux.values.astype(int),
+    })
+    if 'Site' in replicates[0].columns and len(replicates[0]):
+        out.insert(1, 'Site', replicates[0]['Site'].iloc[0])
+
+    messages.append('MESSAGE: combined %d HOBO replicates over %d aligned timestamps.'
+                    % (len(replicates), len(out)))
+    n_disagree = int((flag_t == 3).sum())
+    if n_disagree:
+        messages.append('WARNING: %d timestamp(s) where the replicate temperatures disagree by '
+                        'more than %.2f degC - combined Flag_T set to SUSPECT there.'
+                        % (n_disagree, temp_tol))
+    all_fouled = flag_lux[flag_lux == 4]
+    if len(all_fouled):
+        messages.append('MESSAGE: combined light usable until %s (all replicates fouled after that).'
+                        % pd.Timestamp(all_fouled.index[0]))
+    return out, messages
