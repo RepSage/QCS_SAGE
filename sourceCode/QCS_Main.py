@@ -937,6 +937,7 @@ window.resizable(True, True)
 
 # Configure styles (Sun Valley theme; falls back to the old clam look)
 style = theme.apply_theme(window, USER_PREFS.get('ui_theme', 'light'))
+theme.set_window_icon(window)  # custom taskbar/window icon (if sourceCode/qcs_icon.ico exists)
 
 def on_theme_toggle():
     new_theme = 'dark' if dark_mode.get() else 'light'
@@ -1238,9 +1239,8 @@ def review_light_window(lux_info, site):
     from matplotlib.widgets import Button
     fig, ax = view.plot_light_window(lux_info, site)
     ax.set_title(ax.get_title() +
-                 '\nClick = move cutoff  |  N = no cutoff  |  R or button = suggested cutoff  |  '
-                 'Enter/close = confirm')
-    fig.subplots_adjust(bottom=0.24)  # room for the reset button above the rule text
+                 '\nClick = move cutoff  |  buttons below (or keys N / R / Enter)  |  Help explains it')
+    fig.subplots_adjust(bottom=0.30)  # room for the button row above the rule text
     state = {'cutoff': lux_info['proposed_cutoff'], 'artists': []}
 
     def redraw():
@@ -1255,6 +1255,34 @@ def review_light_window(lux_info, site):
     def reset_to_suggested(*_event):
         state['cutoff'] = lux_info['proposed_cutoff']
         redraw()
+
+    def remove_cutoff(*_event):
+        state['cutoff'] = None
+        redraw()
+
+    def show_review_help(*_event):
+        p = lux_info['params']
+        messagebox.showinfo(
+            "Light window - help",
+            "LIGHT USABLE WINDOW (HOBO fouling review)\n\n"
+            "Controls:\n"
+            "  - Click on the plot: set the cutoff at that date/time\n"
+            "  - 'Suggested cutoff' (key R): restore the software's proposal\n"
+            "  - 'Remove cutoff' (key N): no cutoff (light usable all deployment)\n"
+            "  - Enter, or close the window: confirm the current cutoff\n\n"
+            "Method:\n"
+            "  - Baseline = highest daily light peak of the first %d day(s)\n"
+            "    (the unfouled sensor's clean-state light).\n"
+            "  - Fouling threshold = %.0f%% of the baseline.\n"
+            "  - Proposed cutoff = start of the FINAL run of >= %d day(s) where the\n"
+            "    daily peak stays below the threshold and never recovers to it;\n"
+            "    light that recovers above the threshold is kept.\n"
+            "  - From the cutoff on, light is flagged SUSPECT (Flag_lux = 3); the\n"
+            "    values are kept, not deleted.\n\n"
+            "Parameters (lux_baseline_days / lux_cutoff_frac / lux_sustain_days) live in\n"
+            "Settings > Parameters, and are printed on the saved QCS_light_window.svg."
+            % (p['baseline_days'], 100 * p['cutoff_frac'], p['sustain_days']),
+            parent=window)
 
     def on_click(event):
         # clicks on the reset button (a different axes) must not move the cutoff;
@@ -1272,10 +1300,14 @@ def review_light_window(lux_info, site):
         elif event.key == 'enter':
             plt.close(fig)
 
-    # 'Suggested cutoff' button (kept referenced so it is not garbage-collected)
-    reset_ax = fig.add_axes([0.80, 0.135, 0.185, 0.055])
-    reset_btn = Button(reset_ax, 'Suggested cutoff')
+    # button row (kept referenced so matplotlib does not garbage-collect them)
+    reset_btn = Button(fig.add_axes([0.30, 0.175, 0.19, 0.055]), 'Suggested cutoff')
+    remove_btn = Button(fig.add_axes([0.51, 0.175, 0.17, 0.055]), 'Remove cutoff')
+    help_btn = Button(fig.add_axes([0.70, 0.175, 0.11, 0.055]), 'Help')
     reset_btn.on_clicked(reset_to_suggested)
+    remove_btn.on_clicked(remove_cutoff)
+    help_btn.on_clicked(show_review_help)
+    state['buttons'] = (reset_btn, remove_btn, help_btn)
 
     fig.canvas.mpl_connect('button_press_event', on_click)
     fig.canvas.mpl_connect('key_press_event', on_key)

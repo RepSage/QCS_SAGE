@@ -352,3 +352,21 @@ def install_crash_handler(app_name, out_stream=None, base_dir=None):
             pass
 
     sys.excepthook = _hook
+
+
+def set_window_icon(window, icon_name='qcs_icon.ico', app_id='sage.qcs.qualitycontrolsystem'):
+    """Use a custom taskbar/window icon. Sets an explicit Windows AppUserModelID
+    (so the app shows its OWN icon on the taskbar instead of the interpreter's,
+    e.g. Spyder's) and, if an .ico file named `icon_name` sits next to the
+    scripts, applies it. All best-effort: a no-op where unavailable or missing."""
+    try:
+        from ctypes import windll
+        windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+    except Exception:
+        pass
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), icon_name)
+        if os.path.isfile(path):
+            window.iconbitmap(path)
+    except Exception:
+        pass

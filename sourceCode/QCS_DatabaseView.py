@@ -614,6 +614,7 @@ def show_input_window():
 
     # Configure styles (Sun Valley theme; falls back to the old clam look)
     theme.apply_theme(input_window, USER_PREFS.get('ui_theme', 'light'))
+    theme.set_window_icon(input_window)  # custom taskbar/window icon (if sourceCode/qcs_icon.ico exists)
 
     dark_mode = BooleanVar(value=USER_PREFS.get('ui_theme', 'light') == 'dark')
 
@@ -794,6 +795,7 @@ def show_view_window():
 
     # Configure styles (Sun Valley theme; falls back to the old clam look)
     theme.apply_theme(view_window, USER_PREFS.get('ui_theme', 'light'))
+    theme.set_window_icon(view_window)  # custom taskbar/window icon (if sourceCode/qcs_icon.ico exists)
 
     # Create main container with scrollbar
     container = ttk.Frame(view_window)
