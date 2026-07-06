@@ -760,7 +760,8 @@ def mark_light_cutoff(ax, cutoff, lux_info):
     if cutoff is not None and len(daily_peak):
         artists.append(ax.axvline(cutoff, color='#b30000', lw=1.6))
         artists.append(ax.axvspan(cutoff, daily_peak.index.max(), color='#b30000', alpha=0.10))
-        artists.append(ax.text(cutoff, ax.get_ylim()[1], ' cutoff: %s' % pd.Timestamp(cutoff).date(),
+        artists.append(ax.text(cutoff, ax.get_ylim()[1],
+                               ' cutoff: %s' % pd.Timestamp(cutoff).strftime('%Y-%m-%d %H:%M'),
                                color='#b30000', fontsize=9, va='top'))
     else:
         artists.append(ax.text(0.02, 0.95, 'no cutoff: light usable for the whole deployment',

@@ -1231,12 +1231,16 @@ def _error_location(exc):
 
 def review_light_window(lux_info, site):
     """Interactive review of the light usage window (HOBO): clicking the plot
-    sets the cutoff date, key 'n' removes the cutoff, Enter/close confirms.
-    Returns the final cutoff (Timestamp or None)."""
+    sets the cutoff (date and time), key 'n' removes the cutoff, the 'Suggested
+    cutoff' button (or key 'r') restores the software's proposal, Enter/close
+    confirms. Returns the final cutoff (Timestamp or None)."""
     import matplotlib.dates as mdates
+    from matplotlib.widgets import Button
     fig, ax = view.plot_light_window(lux_info, site)
     ax.set_title(ax.get_title() +
-                 '\nClick = move cutoff date  |  key N = no cutoff  |  Enter or close window = confirm')
+                 '\nClick = move cutoff  |  N = no cutoff  |  R or button = suggested cutoff  |  '
+                 'Enter/close = confirm')
+    fig.subplots_adjust(bottom=0.24)  # room for the reset button above the rule text
     state = {'cutoff': lux_info['proposed_cutoff'], 'artists': []}
 
     def redraw():
@@ -1248,17 +1252,30 @@ def review_light_window(lux_info, site):
         state['artists'] = view.mark_light_cutoff(ax, state['cutoff'], lux_info)
         fig.canvas.draw_idle()
 
+    def reset_to_suggested(*_event):
+        state['cutoff'] = lux_info['proposed_cutoff']
+        redraw()
+
     def on_click(event):
+        # clicks on the reset button (a different axes) must not move the cutoff;
+        # keep the FULL clicked timestamp (date and time), not just the date
         if event.inaxes is ax and event.xdata is not None:
-            state['cutoff'] = pd.Timestamp(mdates.num2date(event.xdata).date())
+            state['cutoff'] = pd.Timestamp(mdates.num2date(event.xdata).replace(tzinfo=None))
             redraw()
 
     def on_key(event):
         if event.key in ('n', 'N'):
             state['cutoff'] = None
             redraw()
+        elif event.key in ('r', 'R'):
+            reset_to_suggested()
         elif event.key == 'enter':
             plt.close(fig)
+
+    # 'Suggested cutoff' button (kept referenced so it is not garbage-collected)
+    reset_ax = fig.add_axes([0.80, 0.135, 0.185, 0.055])
+    reset_btn = Button(reset_ax, 'Suggested cutoff')
+    reset_btn.on_clicked(reset_to_suggested)
 
     fig.canvas.mpl_connect('button_press_event', on_click)
     fig.canvas.mpl_connect('key_press_event', on_key)
