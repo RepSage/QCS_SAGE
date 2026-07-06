@@ -846,11 +846,14 @@
     <p>With the sensor at sea, fouling organisms gradually cover the logger and the measured light
     decays — beyond a certain point, it is no longer reliable. The test identifies that point:</p>
     <ol>
-        <li>The <strong>clean-water baseline</strong> is the highest daily light peak of the first
-            <code>lux_baseline_days</code> days;</li>
-        <li>The light becomes <strong>SUSPECT (3)</strong> — the value is kept, not deleted — from
-            the day the daily peak stays below <code>lux_cutoff_frac</code> × baseline for
-            <code>lux_sustain_days</code> consecutive days;</li>
+        <li>The <strong>clean-sensor baseline</strong> is the highest daily light peak of the first
+            <code>lux_baseline_days</code> days (the max, so a cloudy install day does not lower it);</li>
+        <li>From the start of the <strong>final sustained decline</strong> — where the daily peak
+            stays below <code>lux_cutoff_frac</code> × baseline for at least
+            <code>lux_sustain_days</code> consecutive days and <strong>never recovers</strong> to the
+            threshold — the light is flagged <strong>BAD (4, unusable)</strong>. Light that recovers
+            above the threshold is kept. The values stay in the sheet until you remove them with
+            <strong>"Remove Bad Data"</strong>;</li>
         <li>If, after the cutoff, the light still reaches the threshold on a good share of the days
             (~20%+), a <strong>warning</strong> indicates that the decline is not permanent
             (possible sensor cleaning, multiple deployments in the same file, or a cloudy period) —
@@ -990,7 +993,7 @@
         <tr>
             <td>HOBO Light + fouling window (per site)</td>
             <td>Light time series on a <strong>logarithmic scale</strong>, one plot per site,
-                with the region after the fouling cutoff (<code>Flag_lux == 3</code>)
+                with the region after the fouling cutoff (<code>Flag_lux == 4</code>)
                 <strong>shaded</strong> and the cutoff date annotated — it shows how far the light
                 is reliable. Without a cutoff, the plot states that the light is usable for the
                 whole deployment</td>
