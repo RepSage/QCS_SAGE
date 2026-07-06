@@ -291,7 +291,7 @@ def vertical_gradient_test(values, depth, flags, grad_fail, grad_susp, min_dz=0.
     return out
 
 
-def light_fouling_baseline(datetimes, light, baseline_days=5, cutoff_frac=0.5,
+def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
                            sustain_days=3, recovery_day_frac=0.2):
     """Light sensor fouling analysis (HOBO): the light "usage window".
 

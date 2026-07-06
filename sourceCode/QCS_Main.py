@@ -122,7 +122,7 @@ CONFIG = {
         # clean-water baseline = highest daily peak of the first N days;
         # light becomes SUSPECT when the daily peak stays below
         # lux_cutoff_frac x baseline for lux_sustain_days consecutive days
-        'lux_baseline_days': 5,
+        'lux_baseline_days': 7,
         'lux_cutoff_frac': 0.5,
         'lux_sustain_days': 3,
         # out-of-water readings at the ends of the HOBO file: trim while the
@@ -1766,7 +1766,7 @@ def run_full_qualification():
         if tsQualityTests.get('light fouling window', 'OFF') == 'ON' and lux_col in raw_data.columns:
             lux_result = QC.light_fouling_baseline(
                 raw_data['Datetime'], raw_data[lux_col],
-                baseline_days=int(tsSettings.get('lux_baseline_days', 5)),
+                baseline_days=int(tsSettings.get('lux_baseline_days', 7)),
                 cutoff_frac=float(tsSettings.get('lux_cutoff_frac', 0.5)),
                 sustain_days=int(tsSettings.get('lux_sustain_days', 3)))
             for message in lux_result['warnings']:
