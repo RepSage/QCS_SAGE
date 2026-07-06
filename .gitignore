@@ -11,6 +11,21 @@ qcs_user_settings.json
 # configuracao local do Claude Code
 .claude/
 
+# cache do linter ruff
+.ruff_cache/
+
+# saidas geradas pelo programa (se rodado de dentro do repositorio)
+QCS qualified tscp data/
+QCS qualified hobo data/
+QCS DataView (fixed scale)/
+QCS DataView (unfixed scale)/
+DatabaseView/
+QCS_report.csv
+QCS_test_report.csv
+QCS_flag_legend.csv
+QCS_tscp_stat.csv
+QCS_light_window.svg
+
 # arquivos temporarios de trabalho (mensagens de commit/PR, diagnosticos)
 _commitmsg.txt
 _prbody.md
