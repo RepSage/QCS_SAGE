@@ -122,7 +122,7 @@ CONFIG = {
         # clean-water baseline = highest daily peak of the first N days;
         # light becomes SUSPECT when the daily peak stays below
         # lux_cutoff_frac x baseline for lux_sustain_days consecutive days
-        'lux_baseline_days': 7,
+        'lux_baseline_days': 5,
         'lux_cutoff_frac': 0.5,
         'lux_sustain_days': 3,
         # out-of-water readings at the ends of the HOBO file: trim while the
@@ -231,8 +231,8 @@ TS_SETTINGS_TOOLTIPS = {
     'rep_cnt_fail': "Number of repeated values to flag as FAIL\nFor flat line test",
     'rep_cnt_susp': "Number of repeated values to flag as SUSPECT\nFor flat line test",
     'dens_inv_tolerance': "Density inversion tolerance (kg/m3)\nPotential density may decrease with depth up to this\nvalue before the pair is flagged as SUSPECT",
-    'lux_baseline_days': "HOBO light fouling: clean-water baseline =\nmax daily light peak of the FIRST N days after deployment",
-    'lux_cutoff_frac': "HOBO light fouling: fraction of the clean-water baseline\nbelow which light becomes SUSPECT (0.5 = 50%)\nThe applied cutoff is shown in the review plot and saved with the results",
+    'lux_baseline_days': "HOBO light fouling: clean-sensor baseline =\nmax daily light peak of the FIRST N days after deployment\n(max, so a cloudy install day does not lower it)",
+    'lux_cutoff_frac': "HOBO light fouling: fraction of the clean-sensor baseline\nbelow which light becomes SUSPECT (0.5 = 50%)\nThe applied cutoff is shown in the review plot and saved with the results",
     'lux_sustain_days': "HOBO light fouling: the daily peak must stay below the\nthreshold for this many CONSECUTIVE days before cutting\n(avoids cutting on a cloudy spell)",
     'hobo_edge_temp_tol': "HOBO edge trim: leading/trailing samples are discarded while\ntemperature deviates more than this (degC) from the nearby\nstable segment (out-of-water readings at deployment/recovery)",
     #'eps': "Epsilon value for flat line detection\nMinimum difference to consider values different",
@@ -779,6 +779,19 @@ def create_tests_tab(parent):
             
             row += 1
 
+# Parameters tab: variable code -> display name and unit (Min/Max share a row)
+_PARAM_NAME = {'temp': 'Temperature', 'sal': 'Salinity', 'cond': 'Conductivity',
+               'pres': 'Pressure', 'pH': 'pH', 'chl': 'Chlorophyll',
+               'O2': 'Dissolved oxygen', 'org': 'Organic matter', 'tur': 'Turbidity',
+               'lux': 'Luminosity'}
+_PARAM_UNIT = {'temp': '°C', 'sal': 'PSU', 'cond': 'mS/cm', 'pres': 'dbar', 'pH': '',
+               'chl': 'µg/L', 'O2': 'µM', 'org': 'ppb', 'tur': 'FTU', 'lux': 'lux'}
+# units for the single-value 'Other Parameters'
+_OTHER_UNIT = {'rep_cnt_fail': 'samples', 'rep_cnt_susp': 'samples',
+               'dens_inv_tolerance': 'kg/m³', 'hobo_edge_temp_tol': '°C',
+               'lux_baseline_days': 'days', 'lux_sustain_days': 'days',
+               'lux_cutoff_frac': 'fraction'}
+
 def create_params_tab(parent):
     canvas = Canvas(parent, bg=theme.surface_color(), highlightthickness=0)
     scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
@@ -792,53 +805,55 @@ def create_params_tab(parent):
     scrollbar.pack(side="right", fill="y")
     theme.enable_mousewheel(canvas)
 
-    categories = {
-        "Sensor Range": [k for k in CONFIG['tsSettings'] if 'sensor_' in k],
-        "Environmental Range": [k for k in CONFIG['tsSettings'] if 'env_' in k],
-        "Other Parameters": [k for k in CONFIG['tsSettings'] if not ('sensor_' in k or 'env_' in k)]
-    }
-    
-    row = 0
-    for category, params in categories.items():
-        lbl = ttk.Label(scrollable_frame, text=category, font=theme.FONT_BOLD)
-        lbl.grid(row=row, column=0, sticky='w', pady=(10,5), columnspan=3)
-        row += 1
-        
-        for param in params:
-            lbl = ttk.Label(scrollable_frame, text=param.replace('_', ' ').title() + ":")
-            lbl.grid(row=row, column=0, sticky='e', padx=5, pady=2)
-            
-            ent = ttk.Entry(scrollable_frame, width=12)
-            ent.insert(0, str(CONFIG['tsSettings'][param]))
-            ent.grid(row=row, column=1, sticky='w', pady=2)
-            
-            # Add tooltips for each parameter
-            ToolTip(lbl, TS_SETTINGS_TOOLTIPS[param])
-            ToolTip(ent, TS_SETTINGS_TOOLTIPS[param])
-            
-            unit = ""
-            if 'temp' in param:
-                unit = "°C"
-            elif 'sal' in param:
-                unit = "PSU"
-            elif 'cond' in param:
-                unit = "mS/cm"
-            elif 'pres' in param:
-                unit = "dbar"
-            elif 'chl' in param:
-                unit = "μg/L"
-            elif 'O2' in param:
-                unit = "μM"
-            elif 'dens' in param:
-                unit = "kg/m³"
-            elif 'lux' in param:
-                unit = "lux"
+    def add_entry(key, r, col):
+        ent = ttk.Entry(scrollable_frame, width=10)
+        ent.insert(0, str(CONFIG['tsSettings'][key]))
+        ent.grid(row=r, column=col, sticky='w', padx=5, pady=2)
+        ToolTip(ent, TS_SETTINGS_TOOLTIPS[key])
+        CONFIG['tsSettings_entries'][key] = ent
 
+    row = 0
+    # Range categories: one row per variable, with Min and Max side by side
+    for prefix, title in (('sensor', 'Sensor Range'), ('env', 'Environmental Range')):
+        ttk.Label(scrollable_frame, text=title, font=theme.FONT_BOLD).grid(
+            row=row, column=0, sticky='w', pady=(10, 3), columnspan=4)
+        row += 1
+        ttk.Label(scrollable_frame, text='Min', font=theme.FONT_SMALL_BOLD).grid(row=row, column=1, sticky='w', padx=5)
+        ttk.Label(scrollable_frame, text='Max', font=theme.FONT_SMALL_BOLD).grid(row=row, column=2, sticky='w', padx=5)
+        row += 1
+        # variables in order of first appearance for this prefix
+        variables = []
+        for k in CONFIG['tsSettings']:
+            if k.startswith(prefix + '_min_'):
+                var = k[len(prefix + '_min_'):]
+                if var not in variables:
+                    variables.append(var)
+        for var in variables:
+            ttk.Label(scrollable_frame, text=_PARAM_NAME.get(var, var) + ':').grid(
+                row=row, column=0, sticky='e', padx=5, pady=2)
+            add_entry('%s_min_%s' % (prefix, var), row, 1)
+            max_key = '%s_max_%s' % (prefix, var)
+            if max_key in CONFIG['tsSettings']:
+                add_entry(max_key, row, 2)
+            unit = _PARAM_UNIT.get(var, '')
             if unit:
-                ttk.Label(scrollable_frame, text=unit).grid(row=row, column=2, sticky='w', padx=5)
-            
-            CONFIG['tsSettings_entries'][param] = ent
+                ttk.Label(scrollable_frame, text=unit).grid(row=row, column=3, sticky='w', padx=5)
             row += 1
+
+    # Other parameters: a single value each
+    ttk.Label(scrollable_frame, text='Other Parameters', font=theme.FONT_BOLD).grid(
+        row=row, column=0, sticky='w', pady=(10, 3), columnspan=4)
+    row += 1
+    for key in CONFIG['tsSettings']:
+        if 'sensor_' in key or 'env_' in key:
+            continue
+        ttk.Label(scrollable_frame, text=key.replace('_', ' ').title() + ':').grid(
+            row=row, column=0, sticky='e', padx=5, pady=2)
+        add_entry(key, row, 1)
+        unit = _OTHER_UNIT.get(key, '')
+        if unit:
+            ttk.Label(scrollable_frame, text=unit).grid(row=row, column=2, sticky='w', padx=5)
+        row += 1
 
 def create_factors_tab(parent):
     canvas = Canvas(parent, bg=theme.surface_color(), highlightthickness=0)
@@ -1239,7 +1254,7 @@ def review_light_window(lux_info, site):
     from matplotlib.widgets import Button
     fig, ax = view.plot_light_window(lux_info, site)
     ax.set_title(ax.get_title() +
-                 '\nClick = move cutoff  |  buttons below (or keys N / R / Enter)  |  Help explains it')
+                 '\nClick = move cutoff  |  buttons below (or keys R / S / Enter)  |  Help explains it')
     fig.subplots_adjust(bottom=0.30)  # room for the button row above the rule text
     state = {'cutoff': lux_info['proposed_cutoff'], 'artists': []}
 
@@ -1267,8 +1282,8 @@ def review_light_window(lux_info, site):
             "LIGHT USABLE WINDOW (HOBO fouling review)\n\n"
             "Controls:\n"
             "  - Click on the plot: set the cutoff at that date/time\n"
-            "  - 'Suggested cutoff' (key R): restore the software's proposal\n"
-            "  - 'Remove cutoff' (key N): no cutoff (light usable all deployment)\n"
+            "  - 'Suggested cutoff' (key S): restore the software's proposal\n"
+            "  - 'Remove cutoff' (key R): no cutoff (light usable all deployment)\n"
             "  - Enter, or close the window: confirm the current cutoff\n\n"
             "Method:\n"
             "  - Baseline = highest daily light peak of the first %d day(s)\n"
@@ -1292,10 +1307,9 @@ def review_light_window(lux_info, site):
             redraw()
 
     def on_key(event):
-        if event.key in ('n', 'N'):
-            state['cutoff'] = None
-            redraw()
-        elif event.key in ('r', 'R'):
+        if event.key in ('r', 'R', 'n', 'N'):   # R (or N) = remove the cutoff
+            remove_cutoff()
+        elif event.key in ('s', 'S'):            # S = restore the suggested cutoff
             reset_to_suggested()
         elif event.key == 'enter':
             plt.close(fig)
@@ -1752,7 +1766,7 @@ def run_full_qualification():
         if tsQualityTests.get('light fouling window', 'OFF') == 'ON' and lux_col in raw_data.columns:
             lux_result = QC.light_fouling_baseline(
                 raw_data['Datetime'], raw_data[lux_col],
-                baseline_days=int(tsSettings.get('lux_baseline_days', 7)),
+                baseline_days=int(tsSettings.get('lux_baseline_days', 5)),
                 cutoff_frac=float(tsSettings.get('lux_cutoff_frac', 0.5)),
                 sustain_days=int(tsSettings.get('lux_sustain_days', 3)))
             for message in lux_result['warnings']:

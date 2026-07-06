@@ -764,7 +764,7 @@ def mark_light_cutoff(ax, cutoff, lux_info):
                                ' cutoff: %s' % pd.Timestamp(cutoff).strftime('%Y-%m-%d %H:%M'),
                                color='#b30000', fontsize=9, va='top'))
     else:
-        artists.append(ax.text(0.02, 0.95, 'no cutoff: light usable for the whole deployment',
+        artists.append(ax.text(0.02, 0.99, 'no cutoff: light usable for the whole deployment',
                                transform=ax.transAxes, color='#1f7a1f', fontsize=9, va='top'))
     # the non-monotonic recovery warning shows whether or not a cutoff was set
     if lux_info.get('recovers'):
@@ -887,7 +887,7 @@ def plot_hobo_light (database, dataViewSettings, site):
         ax.text(cutoff, ax.get_ylim()[1], ' cutoff: %s' % pd.Timestamp(cutoff).date(),
                 color='#b30000', fontsize=9, va='top')
     else:
-        ax.text(0.02, 0.95, 'no cutoff: light usable for the whole deployment',
+        ax.text(0.02, 0.99, 'no cutoff: light usable for the whole deployment',
                 transform=ax.transAxes, color='#1f7a1f', fontsize=9, va='top')
 
     ax.legend(fontsize=8, loc='lower left')
