@@ -103,6 +103,10 @@ CONFIG = {
         'env_max_org': 50,
         'env_min_tur': 0,
         'env_max_tur': 50,
+        # Faixa da luz: NAO e um teste de QC (a luz usa a janela de incrustacao);
+        # so define o eixo Y do grafico de escala fixa da luminosidade (HOBO).
+        'env_min_lux': 0,
+        'env_max_lux': 20000,
         'rep_cnt_fail': 20,
         'rep_cnt_susp': 15,
         # densidade potencial pode diminuir com a profundidade ate esta
@@ -216,6 +220,8 @@ TS_SETTINGS_TOOLTIPS = {
     'env_max_org': "Maximum expected organic matter (ppb)\nValues above will be flagged",
     'env_min_tur': "Minimum expected turbidity (FTU)\nValues below will be flagged",
     'env_max_tur': "Maximum expected turbidity (FTU)\nValues above will be flagged",
+    'env_min_lux': "Minimum luminosity (lux) for the FIXED-SCALE light plot.\nNot a QC test - only sets the plot's y-axis (HOBO).",
+    'env_max_lux': "Maximum luminosity (lux) for the FIXED-SCALE light plot.\nNot a QC test - only sets the plot's y-axis (HOBO).",
     'rep_cnt_fail': "Number of repeated values to flag as FAIL\nFor flat line test",
     'rep_cnt_susp': "Number of repeated values to flag as SUSPECT\nFor flat line test",
     'dens_inv_tolerance': "Density inversion tolerance (kg/m3)\nPotential density may decrease with depth up to this\nvalue before the pair is flagged as SUSPECT",
@@ -819,6 +825,8 @@ def create_params_tab(parent):
                 unit = "μM"
             elif 'dens' in param:
                 unit = "kg/m³"
+            elif 'lux' in param:
+                unit = "lux"
 
             if unit:
                 ttk.Label(scrollable_frame, text=unit).grid(row=row, column=2, sticky='w', padx=5)

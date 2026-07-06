@@ -203,6 +203,8 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
             ax1.set_ylim(SETTINGS['env_min_org'], SETTINGS['env_max_org'])
         elif re.search('turbidity', variable, re.IGNORECASE):
             ax1.set_ylim(SETTINGS['env_min_tur'], SETTINGS['env_max_tur'])
+        elif re.search('luminosity|lux', variable, re.IGNORECASE):
+            ax1.set_ylim(SETTINGS.get('env_min_lux', 0), SETTINGS.get('env_max_lux', 20000))
 
     if re.search('depth', variable, re.IGNORECASE):
         ax1.invert_yaxis()
@@ -248,7 +250,9 @@ def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SET
             ax1.set_xlim(SETTINGS['env_min_org'], SETTINGS['env_max_org'])
         elif re.search('turbidity', variable, re.IGNORECASE):
             ax1.set_xlim(SETTINGS['env_min_tur'], SETTINGS['env_max_tur'])
-    
+        elif re.search('luminosity|lux', variable, re.IGNORECASE):
+            ax1.set_xlim(SETTINGS.get('env_min_lux', 0), SETTINGS.get('env_max_lux', 20000))
+
     maxProf = qualified_data['Depth (m)'].max()
     maxY = math.ceil(maxProf / 10) * 10
 
