@@ -67,7 +67,7 @@ CONFIG = {
     },
     'tsSettings': {
         #'depth_range': 1.55,
-        # Faixas de sensor (limite do instrumento - padrao Aanderaa SeaGuard II)
+        # Sensor ranges (instrument limit - Aanderaa SeaGuard II default)
         'sensor_min_temp': -5,
         'sensor_max_temp': 40,
         'sensor_min_sal': 0,
@@ -84,7 +84,7 @@ CONFIG = {
         'sensor_max_chl': 500,
         'sensor_min_tur': 0,
         'sensor_max_tur': 1500,
-        # Faixas ambientais (envelope climatologico amplo - toda a costa brasileira, v3.0)
+        # Environmental ranges (broad climatological envelope - entire Brazilian coast, v3.0)
         'env_min_temp': 8,
         'env_max_temp': 35,
         'env_min_sal': 20,
@@ -103,24 +103,24 @@ CONFIG = {
         'env_max_org': 50,
         'env_min_tur': 0,
         'env_max_tur': 50,
-        # Faixa da luz: NAO e um teste de QC (a luz usa a janela de incrustacao);
-        # so define o eixo Y do grafico de escala fixa da luminosidade (HOBO).
+        # Light range: NOT a QC test (light uses the fouling window);
+        # only sets the Y axis of the fixed-scale luminosity plot (HOBO).
         'env_min_lux': 0,
         'env_max_lux': 20000,
         'rep_cnt_fail': 20,
         'rep_cnt_susp': 15,
-        # densidade potencial pode diminuir com a profundidade ate esta
-        # tolerancia (kg/m3) sem marcar inversao (teste de perfis)
+        # potential density may decrease with depth up to this
+        # tolerance (kg/m3) without flagging inversion (profiles test)
         'dens_inv_tolerance': 0.03,
-        # ---- janela de uso da luz do HOBO (teste de incrustacao) ----
-        # baseline de agua limpa = maior pico diario dos primeiros N dias;
-        # luz vira SUSPEITA quando o pico diario fica abaixo de
-        # lux_cutoff_frac x baseline por lux_sustain_days dias consecutivos
+        # ---- HOBO light usage window (fouling test) ----
+        # clean-water baseline = highest daily peak of the first N days;
+        # light becomes SUSPECT when the daily peak stays below
+        # lux_cutoff_frac x baseline for lux_sustain_days consecutive days
         'lux_baseline_days': 7,
         'lux_cutoff_frac': 0.5,
         'lux_sustain_days': 3,
-        # leituras fora d'agua nas pontas do arquivo HOBO: corta enquanto a
-        # temperatura desviar mais que isto (degC) do trecho estavel vizinho
+        # out-of-water readings at the ends of the HOBO file: trim while the
+        # temperature deviates more than this (degC) from the neighboring stable segment
         'hobo_edge_temp_tol': 1.5,
         #'eps': 'AUTO',
     },
@@ -142,8 +142,8 @@ CONFIG = {
     'tsFactors_entries': {}
 }
 
-# copia imutavel dos criterios padrao, usada pelo botao 'Reset to Defaults'
-# (capturada aqui, antes de restore_user_prefs/config poderem alterar CONFIG)
+# immutable copy of the default criteria, used by the 'Reset to Defaults' button
+# (captured here, before restore_user_prefs/config can modify CONFIG)
 import copy
 DEFAULT_QUALITY_CONFIG = {
     'tsQualityTests': dict(CONFIG['tsQualityTests']),
@@ -321,8 +321,8 @@ def selectFiles():
         fileNames_entry.insert(0, filename)
         USER_PREFS['last_data_dir'] = os.path.dirname(filename)
         save_user_prefs()
-        # auto-preenche a saida a partir do arquivo escolhido (o usuario pode
-        # editar depois): mesma pasta e nome-base do arquivo + '_QLF'
+        # auto-fills the output from the chosen file (the user can edit it
+        # afterwards): same folder and base name of the file + '_QLF'
         base = os.path.splitext(os.path.basename(filename))[0]
         outputPath_entry.delete(0, END)
         outputPath_entry.insert(0, os.path.dirname(filename))
@@ -341,8 +341,8 @@ def selectOutputFolder():
         save_user_prefs()
 
 def apply_config_file(config_path):
-    """Carrega um arquivo de configuracao JSON para dentro de CONFIG.
-    Retorna None em caso de sucesso ou a mensagem de erro."""
+    """Loads a JSON configuration file into CONFIG.
+    Returns None on success or the error message."""
     try:
         with open(config_path, 'r') as f:
             config_data = json.load(f)
@@ -358,14 +358,14 @@ def apply_config_file(config_path):
     except Exception as e:
         return str(e)
 
-# NOTA: o campo 'Config File' (importar .json) e o botao 'Export Settings' foram
-# removidos da interface a pedido do usuario (duplicavam a aba de Settings). A
-# funcao selectConfigFile foi retirada por referenciar o widget removido;
-# apply_config_file (acima) e export_config (abaixo) continuam definidas para
-# reativacao facil no futuro (basta recriar os widgets e religar os comandos).
+# NOTE: the 'Config File' field (import .json) and the 'Export Settings' button were
+# removed from the interface at the user's request (they duplicated the Settings tab).
+# The selectConfigFile function was removed because it referenced the removed widget;
+# apply_config_file (above) and export_config (below) remain defined for easy
+# reactivation in the future (just recreate the widgets and rewire the commands).
 
 def export_config():
-    # Atualiza as configurações atuais antes de exportar
+    # Updates the current settings before exporting
     invalid = save_settings_values()
     if invalid:
         messagebox.showwarning("Invalid values",
@@ -395,9 +395,9 @@ def export_config():
             messagebox.showerror("Error", f"Fail exporting settings:\n{str(e)}")
 
 def save_settings_values():
-    """Atualiza CONFIG com os valores atuais da interface.
-    Retorna a lista de campos invalidos (mantidos com o valor anterior),
-    para o chamador avisar o usuario em vez de ignorar em silencio."""
+    """Updates CONFIG with the current interface values.
+    Returns the list of invalid fields (kept with their previous value),
+    so the caller can warn the user instead of ignoring them silently."""
     invalid = []
 
     # Update tsQualityTests
@@ -431,7 +431,7 @@ def save_settings_values():
     return invalid
 
 def collect_input_settings():
-    """Valida e coleta as configuracoes da interface. Retorna True se tudo ok."""
+    """Validates and collects the interface settings. Returns True if all is ok."""
     data_path = fileNames_entry.get().strip()
     if not data_path:
         messagebox.showwarning("Warning", "Select the data file to be qualified\n('Data File' field).")
@@ -445,7 +445,7 @@ def collect_input_settings():
     if inputType_combobox.get() not in ('Seaguard', 'HOBO'):
         messagebox.showwarning("Warning", "Select the instrument type\n('Input Type' field).")
         return False
-    # HOBO nao tem tipo de coleta TSCP (e serie temporal): Data Type fica vazio
+    # HOBO has no TSCP collection type (it is a time series): Data Type stays empty
     if inputType_combobox.get() != 'HOBO' and dType_combobox.get() not in ('TSCP Profile', 'TSCP Mooring'):
         messagebox.showwarning("Warning", "Select the data collection type\n('Data Type' field).")
         return False
@@ -508,7 +508,7 @@ def collect_input_settings():
     else:
         INPUT['profile'] = False
 
-    # guarda as ultimas escolhas do usuario para a proxima sessao
+    # stores the user's last choices for the next session
     USER_PREFS.update({
         'data_file': data_path,
         'input_type': INPUT['input_type'],
@@ -535,7 +535,7 @@ def collect_input_settings():
     return True
 
 def start_qualification():
-    """Executa a qualificacao sem fechar a janela principal, permitindo novas execucoes."""
+    """Runs the qualification without closing the main window, allowing new runs."""
     if not collect_input_settings():
         return
     run_button.config(state='disabled')
@@ -552,7 +552,7 @@ def start_qualification():
                             "You can select another file and run a new qualification "
                             "without closing the program." % OUTPUT.get('last_output_root', ''))
     except Exception as e:
-        # o traceback completo vai para o log; o dialogo aponta arquivo/linha
+        # the full traceback goes to the log; the dialog points to file/line
         for line in traceback.format_exc().strip().splitlines():
             log_line('ERROR: %s' % line)
         status_var.set("Qualification interrupted by an error - see the execution log.")
@@ -569,7 +569,7 @@ def start_qualification():
         window.config(cursor='')
 
 def restore_user_prefs():
-    """Restaura na interface as ultimas escolhas do usuario."""
+    """Restores the user's last choices in the interface."""
     p = USER_PREFS
 
     def set_entry(entry, key):
@@ -602,7 +602,7 @@ def restore_user_prefs():
     remove_bad.set(p.get('remove_bad', False))
     remove_suspect.set(p.get('remove_suspect', False))
     update_profile_checkbox_state()
-    update_inputtype_state()  # reaplica o estado do HOBO (desabilita campos) se for o caso
+    update_inputtype_state()  # reapplies the HOBO state (disables fields) if applicable
     # Restore the quality CRITERIA only if they were saved by the SAME program
     # version. On a version change, keep the new code defaults (so criteria
     # improvements take effect) instead of the user's old saved criteria.
@@ -667,16 +667,16 @@ def open_settings_window():
     notebook.add(factors_frame, text="Factors per Variable")
     create_factors_tab(factors_frame)
 
-    # remove o anel de foco tracejado do rotulo da aba selecionada
+    # remove the dashed focus ring from the selected tab's label
     theme.suppress_notebook_focus_ring(notebook)
 
     # Button frame
     button_frame = ttk.Frame(settings_win)
     button_frame.pack(fill='x', pady=10)
 
-    # 'Export Settings' e o campo 'Config File' (importar) foram removidos da
-    # interface a pedido do usuario (duplicavam a aba de Settings). As funcoes
-    # export_config / selectConfigFile continuam definidas para reativacao facil.
+    # 'Export Settings' and the 'Config File' field (import) were removed from the
+    # interface at the user's request (they duplicated the Settings tab). The functions
+    # export_config / selectConfigFile remain defined for easy reactivation.
     ttk.Button(button_frame, text="Reset to Defaults",
               command=reset_settings_to_defaults, width=20).pack(side='left', padx=5)
 
@@ -874,7 +874,7 @@ def create_factors_tab(parent):
 def save_settings(window):
     invalid = save_settings_values()
     if invalid:
-        # mantem a janela aberta para o usuario corrigir os campos rejeitados
+        # keeps the window open so the user can fix the rejected fields
         messagebox.showwarning("Invalid values",
                                "These fields are not valid and kept their previous value:\n\n- "
                                + "\n- ".join(invalid)
@@ -896,7 +896,7 @@ def save_settings(window):
     window.destroy()
 
 def reset_settings_to_defaults():
-    """Restaura os criterios de qualidade padrao do codigo na janela de Settings."""
+    """Restores the code's default quality criteria in the Settings window."""
     if not messagebox.askyesno("Reset to defaults",
                                "Replace ALL quality tests, parameters and factors\n"
                                "with the software defaults?"):
@@ -905,7 +905,7 @@ def reset_settings_to_defaults():
     CONFIG['tsSettings'].update(DEFAULT_QUALITY_CONFIG['tsSettings'])
     for k, v in DEFAULT_QUALITY_CONFIG['tsFactors'].items():
         CONFIG['tsFactors'][k].update(v)
-    # reflete os padroes nos widgets abertos
+    # reflect the defaults in the open widgets
     for test, var in CONFIG['tsQualityTests_vars'].items():
         var.set(CONFIG['tsQualityTests'][test])
     for param, entry in CONFIG['tsSettings_entries'].items():
@@ -966,11 +966,11 @@ main_frame.rowconfigure(1, weight=1)
 input_frame.columnconfigure(0, weight=1)
 output_frame.columnconfigure(0, weight=1)
 
-# Macrorregioes -> regioes -> (lat, lon) representativas, usadas apenas para RODAR
-# a qualificacao (conversao pressao->profundidade e inversao de densidade).
-# Pequenas variacoes de lat/long nao afetam de forma relevante esses calculos,
-# entao um valor por regiao basta. Estruturado por macrorregiao para acomodar
-# outras partes do mundo no futuro. Editavel livremente.
+# Macroregions -> regions -> representative (lat, lon), used only to RUN the
+# qualification (pressure->depth conversion and density inversion).
+# Small lat/long variations do not meaningfully affect these calculations,
+# so one value per region is enough. Structured by macroregion to accommodate
+# other parts of the world in the future. Freely editable.
 REGIONS = {
     'Brazil': [
         ('Amazonian Reefs / North (AP-MA)',  -1.0, -46.0),
@@ -981,7 +981,7 @@ REGIONS = {
         ('South (PR-RS)',                    -30.0, -49.0),
     ],
 }
-# {macrorregiao: {rotulo_regiao: (lat, lon)}}
+# {macroregion: {region_label: (lat, lon)}}
 REGION_COORDS = {macro: {label: (lat, lon) for label, lat, lon in regions}
                  for macro, regions in REGIONS.items()}
 DEFAULT_MACROREGION = 'Brazil'
@@ -1015,7 +1015,7 @@ def update_profile_checkbox_state(event=None):
         profile_check.config(state="normal")
     else:
         profile_check.config(state="disabled")
-        select_profile_data.set(False)  # Desmarca o checkbox se não for perfil
+        select_profile_data.set(False)  # Unchecks the checkbox if it is not a profile
 
 # bind to combobox selection
 dType_combobox.bind("<<ComboboxSelected>>", update_profile_checkbox_state)
@@ -1046,7 +1046,7 @@ ToolTip(gmt_check, TOOLTIPS['gmt_correction'])
 select_profile_data = BooleanVar(value=False)
 profile_check = ttk.Checkbutton(options_frame, text="Select Profile Data", variable=select_profile_data)
 profile_check.pack(anchor='w', pady=2)
-profile_check.config(state="disabled")  # Começa desabilitado
+profile_check.config(state="disabled")  # Starts disabled
 ToolTip(profile_check, TOOLTIPS['profile_selection'])
 
 check_variables = BooleanVar(value=False)
@@ -1119,8 +1119,8 @@ region_combobox.set(DEFAULT_REGION)
 ToolTip(region_combobox, TOOLTIPS['region'])
 
 def update_regions(event=None):
-    """Repopula as regioes conforme a macrorregiao escolhida (mantem a selecao
-    atual se ainda existir; senao cai na primeira regiao da macrorregiao)."""
+    """Repopulates the regions according to the chosen macroregion (keeps the current
+    selection if it still exists; otherwise falls back to the macroregion's first region)."""
     macro = macroregion_combobox.get()
     regions = [r[0] for r in REGIONS.get(macro, [])]
     region_combobox.config(values=regions)
@@ -1129,25 +1129,25 @@ def update_regions(event=None):
 
 macroregion_combobox.bind("<<ComboboxSelected>>", update_regions)
 
-# guarda a ultima selecao Seaguard de Data Type/Units, para restaurar ao voltar
-# de HOBO (que esvazia esses campos por nao se aplicarem a um logger temp/luz)
+# stores the last Seaguard selection of Data Type/Units, to restore when coming back
+# from HOBO (which empties those fields because they do not apply to a temp/light logger)
 _last_seaguard = {}
 
 def update_inputtype_state(event=None):
-    """HOBO so mede temperatura e luz: Data Type, unidades (pressao/condutividade),
-    correcao GMT-3, selecao de perfil e a regiao (macro + regiao) nao se aplicam e
-    ficam desabilitados e vazios. Data Type e as unidades guardam a ultima selecao
-    Seaguard e a restauram ao voltar. HOBO e serie temporal (tratado nao-perfil)."""
+    """HOBO only measures temperature and light: Data Type, units (pressure/conductivity),
+    GMT-3 correction, profile selection and the region (macro + region) do not apply and
+    stay disabled and empty. Data Type and the units keep the last Seaguard selection
+    and restore it when coming back. HOBO is a time series (treated as non-profile)."""
     if inputType_combobox.get() == 'HOBO':
-        # guarda os valores nao-vazios antes de limpar
+        # store the non-empty values before clearing
         if dType_combobox.get():
             _last_seaguard['data_type'] = dType_combobox.get()
         if pressure_unit_combobox.get():
             _last_seaguard['pressure'] = pressure_unit_combobox.get()
         if conductivity_unit_combobox.get():
             _last_seaguard['conductivity'] = conductivity_unit_combobox.get()
-        dType_combobox.set('')            # HOBO nao e perfil nem mooring TSCP
-        pressure_unit_combobox.set('')    # sem pressao
+        dType_combobox.set('')            # HOBO is neither TSCP profile nor mooring
+        pressure_unit_combobox.set('')    # no pressure
         conductivity_unit_combobox.set('')
         dType_combobox.config(state='disabled')
         pressure_unit_combobox.config(state='disabled')
@@ -1160,7 +1160,7 @@ def update_inputtype_state(event=None):
         region_label.config(state='disabled')
         region_combobox.config(state='disabled')
     else:
-        # restaura a ultima selecao Seaguard guardada (se houver)
+        # restore the last stored Seaguard selection (if any)
         if _last_seaguard.get('data_type'):
             dType_combobox.set(_last_seaguard['data_type'])
         if _last_seaguard.get('pressure'):
@@ -1200,8 +1200,8 @@ log_console = theme.LogConsole(main_frame, title=" Execution log ", height=6)
 log_console.frame.grid(row=3, column=0, columnspan=2, sticky='nsew', padx=5, pady=(4, 0))
 
 def log_line(message):
-    """Escreve no console E no painel de log; redesenha para o progresso
-    aparecer mesmo com o pipeline rodando na thread da interface."""
+    """Writes to the console AND the log panel; redraws so progress
+    appears even with the pipeline running on the interface thread."""
     print(message)
     try:
         log_console.log(message)
@@ -1215,16 +1215,16 @@ status_label = ttk.Label(main_frame, textvariable=status_var, style='Small.TLabe
 status_label.grid(row=4, column=0, columnspan=2, sticky='ew', padx=5, pady=(6, 0))
 
 def _error_location(exc):
-    """Aponta o arquivo/linha QCS mais profundo do traceback: debug direto."""
+    """Points to the deepest QCS file/line in the traceback: direct debugging."""
     frames = traceback.extract_tb(exc.__traceback__)
     qcs_frames = [f for f in frames if os.path.basename(f.filename).startswith('QCS_')]
     f = (qcs_frames or frames)[-1]
     return '%s, line %d, in %s()' % (os.path.basename(f.filename), f.lineno, f.name)
 
 def review_light_window(lux_info, site):
-    """Revisao interativa da janela de uso da luz (HOBO): clique no grafico
-    define a data de corte, tecla 'n' remove o corte, Enter/fechar confirma.
-    Retorna o corte final (Timestamp ou None)."""
+    """Interactive review of the light usage window (HOBO): clicking the plot
+    sets the cutoff date, key 'n' removes the cutoff, Enter/close confirms.
+    Returns the final cutoff (Timestamp or None)."""
     import matplotlib.dates as mdates
     fig, ax = view.plot_light_window(lux_info, site)
     ax.set_title(ax.get_title() +
@@ -1255,7 +1255,7 @@ def review_light_window(lux_info, site):
     fig.canvas.mpl_connect('button_press_event', on_click)
     fig.canvas.mpl_connect('key_press_event', on_key)
     redraw()
-    # espera no loop do Tk (nunca plt.show(block=True) dentro do callback do RUN)
+    # waits on the Tk loop (never plt.show(block=True) inside the RUN callback)
     done = BooleanVar(window, value=False)
     fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
     fig.show()
@@ -1398,7 +1398,7 @@ def run_full_qualification():
                 
                     # exception if no peak found
                     if len(peaks) == 0:
-                        raise ValueError("Nenhum pico encontrado para as condições fornecidas.")
+                        raise ValueError("No peak found for the given conditions.")
                     # Select first peak
                     peak = int(peaks[0])
 
@@ -1414,9 +1414,9 @@ def run_full_qualification():
                     # Tk() root would conflict with the already running interface)
                     peak_window = Toplevel(window)
 
-                    # ans/fig1/peak_window entram como argumento default: callback
-                    # definido dentro de loop captura a variavel por late binding
-                    # (usaria o valor da ULTIMA iteracao, nao o desta)
+                    # ans/fig1/peak_window are passed as default arguments: a callback
+                    # defined inside a loop captures the variable by late binding
+                    # (it would use the value of the LAST iteration, not this one)
                     def acceptPeak(ans=ans, fig1=fig1, peak_window=peak_window):
                         print('MESSAGE: Peak accepted, proceding to profile selection')
                         ans.append('y')
@@ -1467,8 +1467,8 @@ def run_full_qualification():
 
                         selected = None
                         pick_done = BooleanVar(window, value=False)
-                        # pick_done como argumento default: mesmo motivo do
-                        # acceptPeak acima (late binding em callback de loop)
+                        # pick_done as a default argument: same reason as
+                        # acceptPeak above (late binding in a loop callback)
                         def on_pick(event, pick_done=pick_done):
                             nonlocal selected
                             selected = event.artist.get_label()
@@ -1759,9 +1759,9 @@ def run_full_qualification():
     if not output_base:
         output_base = re.search(r'^[^\.]+', INPUT['file_name']).group() + '_QLF'
     if re.search('xlsx', OUTPUT['output_data_format'], re.IGNORECASE):
-        qualified_data.to_excel(os.path.join(path, output_base + '.xlsx'), index=False) ##cria excel
+        qualified_data.to_excel(os.path.join(path, output_base + '.xlsx'), index=False) ##create excel
     if re.search('csv', OUTPUT['output_data_format'], re.IGNORECASE):
-        qualified_data.to_csv(os.path.join(path, output_base + '.csv'), index=False) ##cria csv
+        qualified_data.to_csv(os.path.join(path, output_base + '.csv'), index=False) ##create csv
     log_line('Exported data to: %s' % path)
 
     log_line('Exporting statistics table, reports and flag legend to: %s' % path)
@@ -1809,8 +1809,8 @@ def run_full_qualification():
     QCS_report = pd.DataFrame(report_cols, index=[0])
     QCS_report.to_csv(path + '/QCS_report.csv')
 
-    # HOBO: salva o grafico da janela de uso da luz com o corte e os parametros
-    # aplicados - a documentacao permanente de ONDE e POR QUE a luz foi cortada
+    # HOBO: saves the light usage window plot with the applied cutoff and parameters
+    # - the permanent documentation of WHERE and WHY the light was cut
     if lux_result is not None and lux_result['evaluable']:
         fig_lux, ax_lux = view.plot_light_window(lux_result, INPUT['site'])
         view.mark_light_cutoff(ax_lux, lux_result['final_cutoff'], lux_result)
@@ -1830,8 +1830,8 @@ def run_full_qualification():
                            'Battery voltage (V)', 'Flag', 'Sample number', 'QCS version']
 
     def plottable_variables():
-        # ignora colunas administrativas, colunas de flag e variaveis totalmente
-        # vazias (ex.: as colunas TSCP criadas como NaN para um arquivo HOBO)
+        # ignores administrative columns, flag columns and completely empty
+        # variables (e.g. the TSCP columns created as NaN for a HOBO file)
         return [v for v in qualified_data.keys()
                 if v not in plot_exceptions and not str(v).startswith('Flag')
                 and not qualified_data[v].isna().all()]

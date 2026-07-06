@@ -48,7 +48,7 @@ TOOLTIPS = {
 }
 
 class ErrorLogger(theme.LogConsole):
-    """Log de execucao (console compartilhado do tema), posicionado via pack."""
+    """Execution log (shared theme console), positioned via pack."""
 
     def __init__(self, parent):
         super().__init__(parent, title=" Execution log ", height=8)
@@ -83,7 +83,7 @@ def save_user_prefs():
 load_user_prefs()
 
 def restore_entry(entry, value):
-    # preenche um campo mesmo que ele esteja desabilitado no momento
+    # fills a field even if it is currently disabled
     if not value:
         return
     prev = entry.cget('state')
@@ -93,7 +93,7 @@ def restore_entry(entry, value):
     entry.config(state=prev)
 
 def set_disabled_style(widget):
-    # o tema (sv-ttk ou clam) ja desenha o estado 'disabled' adequadamente
+    # the theme (sv-ttk or clam) already draws the 'disabled' state properly
     widget.config(state='disabled')
 
 def set_enabled_style(widget):
@@ -103,17 +103,17 @@ def set_enabled_style(widget):
         widget.config(state='normal')
 
 def is_hobo_input():
-    """Os paineis da janela Step 2 mudam conforme o instrumento do Step 1."""
+    """The Step 2 window panels change according to the Step 1 instrument."""
     return inputSettings.get('instrument', 'Seaguard') == 'HOBO'
 
 def toggle_all_controls(enabled=False):
-    """Habilita ou desabilita todos os controles dependendo do Data Type selecionado"""
-    # Painéis
+    """Enables or disables all controls depending on the selected Data Type"""
+    # Panels
     panel1_cb.config(state='normal' if enabled else 'disabled')
     panel2_cb.config(state='normal' if enabled else 'disabled')
     panel3_cb.config(state='normal' if enabled else 'disabled')
-    
-    # Opções de exibição
+
+    # Display options
     tendency_cb.config(state='normal' if enabled else 'disabled')
     tendency_entry.config(state='normal' if enabled and tendency.get() else 'disabled')
     points_cb.config(state='normal' if enabled else 'disabled')
@@ -125,7 +125,7 @@ def toggle_all_controls(enabled=False):
     longitude_entry.config(state='normal' if enabled and tsDiagram.get() else 'disabled')
     tsParam_combobox.config(state='readonly' if enabled and tsDiagram.get() else 'disabled')
     
-    # Filtros
+    # Filters
     for cb in year_widgets.values():
         cb.config(state='normal' if enabled else 'disabled')
     for cb in site_widgets.values():
@@ -133,14 +133,14 @@ def toggle_all_controls(enabled=False):
     for cb in parameter_widgets.values():
         cb.config(state='normal' if enabled else 'disabled')
 
-    # Janela de tempo do eixo X (fundeio)
+    # X-axis time window (mooring)
     time_start_entry.config(state='normal' if enabled else 'disabled')
     time_end_entry.config(state='normal' if enabled else 'disabled')
-    # Range do eixo de profundidade (perfil)
+    # Depth-axis range (profile)
     depth_min_entry.config(state='normal' if enabled else 'disabled')
     depth_max_entry.config(state='normal' if enabled else 'disabled')
 
-    # Escalas
+    # Scales
     toggle_scale_controls()
 
 def toggle_input_mode():
@@ -161,8 +161,8 @@ def toggle_panel_dependent_controls():
     any_panel_selected = panel1.get() or panel2.get() or panel3.get()
 
     if any_panel_selected and is_hobo_input():
-        # paineis HOBO ja definem a apresentacao (pontos, escala log):
-        # linhas de tendencia e 'show points' nao se aplicam
+        # HOBO panels already define the presentation (points, log scale):
+        # trend lines and 'show points' do not apply
         set_disabled_style(tendency_cb)
         set_disabled_style(tendency_entry)
         set_disabled_style(points_cb)
@@ -182,8 +182,8 @@ def toggle_panel_dependent_controls():
     toggle_scale_controls()
 
 def toggle_parameter_checkboxes():
-    # nos paineis HOBO cada painel ja diz qual variavel plota (temperatura ou
-    # luz), entao o filtro de parametros nao se aplica e fica desabilitado
+    # in HOBO panels each panel already states which variable it plots
+    # (temperature or light), so the parameter filter does not apply and stays disabled
     if (panel1.get() or panel2.get() or panel3.get()) and not is_hobo_input():
         for cb in parameter_widgets.values():
             set_enabled_style(cb)
@@ -204,7 +204,7 @@ def toggle_ts_controls():
         set_disabled_style(tsParam_combobox)
 
 def toggle_scale_controls():
-    """Habilita ou desabilita os controles de escala com base no fixed_scale e painéis selecionados"""
+    """Enables or disables the scale controls based on fixed_scale and the selected panels"""
     if fixedScale.get() and (panel1.get() or panel2.get() or panel3.get()):
         for entry in min_scale_entries.values():
             set_enabled_style(entry)
@@ -219,29 +219,29 @@ def toggle_scale_controls():
 def toggle_data_type():
     data_type = dType_combobox.get()
     
-    if not data_type:  # Se nenhum Data Type estiver selecionado
+    if not data_type:  # If no Data Type is selected
         toggle_all_controls(enabled=False)
         return
-    
-    toggle_all_controls(enabled=True)  # Habilita tudo
 
-    # Lógica específica para cada tipo de dado
+    toggle_all_controls(enabled=True)  # Enable everything
+
+    # Specific logic for each data type
     if is_hobo_input():
-        # HOBO: os tres checkboxes viram paineis proprios (temperatura/luz);
-        # sem T-S (nao ha salinidade) e sem perfil (nao ha profundidade)
+        # HOBO: the three checkboxes become their own panels (temperature/light);
+        # no T-S (there is no salinity) and no profile (there is no depth)
         set_disabled_style(ts_cb)
         set_disabled_style(depth_min_entry)
         set_disabled_style(depth_max_entry)
     elif data_type == 'mooring':
         set_disabled_style(panel3_cb)
         set_disabled_style(ts_cb)
-        # o range de profundidade so se aplica a graficos de perfil
+        # the depth range only applies to profile plots
         set_disabled_style(depth_min_entry)
         set_disabled_style(depth_max_entry)
     elif data_type == 'tscp profile':
         set_disabled_style(panel1_cb)
         set_disabled_style(panel2_cb)
-        # a janela de tempo do eixo X so se aplica a graficos de fundeio
+        # the X-axis time window only applies to mooring plots
         set_disabled_style(time_start_entry)
         set_disabled_style(time_end_entry)
     
@@ -277,7 +277,7 @@ def selectInputFolder():
         save_user_prefs()
 
 def saveInputSettings():
-    # validacao com avisos claros antes de fechar a janela
+    # validation with clear warnings before closing the window
     if instrument_combobox.get() not in ('Seaguard', 'HOBO'):
         messagebox.showwarning("Warning", "Select the instrument that produced the files\n('Instrument' field).")
         return
@@ -309,7 +309,7 @@ def saveInputSettings():
     inputSettings['sortByTime'] = sort.get()
     inputSettings['instrument'] = instrument_combobox.get()
 
-    # guarda as ultimas escolhas
+    # store the latest choices
     USER_PREFS.update({
         'dbv_database_file': fileNames_entry.get(),
         'dbv_output_name': outputName_entry.get(),
@@ -410,7 +410,7 @@ def saveDataViewSettings():
             if parameter_vars[param].get() == True and param not in selectedParameters:
                 selectedParameters.append(param)
         
-        # Salvar as escalas definidas
+        # Save the defined scales
         scale_settings = {}
         for param in parameter_names:
             min_val = min_scale_entries[param].get()
@@ -428,7 +428,7 @@ def saveDataViewSettings():
         dataViewSettings['siteList'] = selectedSites
         dataViewSettings['parameterList'] = selectedParameters
 
-        # guarda as ultimas escolhas da visualizacao
+        # store the latest visualization choices
         USER_PREFS.update({
             'dbv_data_type': dType_combobox.get(),
             'dbv_selected_years': selectedYears,
@@ -458,10 +458,10 @@ def saveDataViewSettings():
         error_logger.log(f"ERROR saving view settings: {str(e)}")
 
 def generatePanels():
-    error_logger.clear()  # Limpa o log antes de gerar novos painéis
+    error_logger.clear()  # Clear the log before generating new panels
 
-    # salva implicitamente as escolhas atuais da interface: gerar paineis com
-    # configuracoes defasadas era uma armadilha do fluxo salvar->gerar em 2 cliques
+    # implicitly saves the current interface choices: generating panels with
+    # stale settings was a pitfall of the 2-click save->generate flow
     saveDataViewSettings()
 
     if not dataViewSettings.get('dataType'):
@@ -486,8 +486,8 @@ def generatePanels():
         for year in selected_years:
             dataViewSettings['filterByYear'] = year
             if is_hobo_input():
-                # HOBO: paineis dedicados (temperatura / luz+janela / luz
-                # multi-site); T-S nao se aplica (sem salinidade)
+                # HOBO: dedicated panels (temperature / light+window / light
+                # multi-site); T-S does not apply (no salinity)
                 selected_sites = dataViewSettings.get('siteList', [])
                 any_hobo_panel = (dataViewSettings.get('panel1', False)
                                   or dataViewSettings.get('panel2', False)
@@ -596,7 +596,7 @@ inputSettings = {}
 dataViewSettings = {}
 
 def show_input_window():
-    """Janela de selecao do banco de dados; preenche inputSettings ao salvar."""
+    """Database selection window; fills inputSettings on save."""
     global input_window, fileNames_entry, inputPath_entry, browse_file_btn, browse_input_btn
     global join, sort, instrument_combobox, outputName_entry, outputPath_entry
     theme.enable_high_dpi()
@@ -707,7 +707,7 @@ def show_input_window():
     # Save button
     ttk.Button(main_frame, text="Save Input Settings", command=saveInputSettings, style='Accent.TButton').grid(row=2, column=0, columnspan=2, pady=12, ipadx=12)
 
-    # restaura as ultimas escolhas do usuario
+    # restore the user's latest choices
     restore_entry(fileNames_entry, USER_PREFS.get('dbv_database_file', ''))
     restore_entry(outputPath_entry, USER_PREFS.get('dbv_output_path', ''))
     restore_entry(inputPath_entry, USER_PREFS.get('dbv_input_path', ''))
@@ -719,11 +719,11 @@ def show_input_window():
     input_window.mainloop()
 
 
-db_build_messages = []  # mensagens da unificacao, mostradas no log da visualizacao
+db_build_messages = []  # unification messages, shown in the visualization log
 
 def load_database():
-    """Carrega ou monta o banco de dados via build_database (motor unico de
-    unificacao); retorna None (com aviso claro) em caso de erro."""
+    """Loads or builds the database via build_database (single unification
+    engine); returns None (with a clear warning) on error."""
     global db_build_messages
     db_build_messages = []
     instrument = inputSettings.get('instrument', 'Seaguard')
@@ -739,7 +739,7 @@ def load_database():
                 return None
             database, db_build_messages = data.build_database(instrument, file_list=file_paths)
     except ValueError as e:
-        # mensagens do motor ja sao autolocalizadas ('build_database: ...')
+        # the engine messages are already self-labeled ('build_database: ...')
         messagebox.showerror("Error", str(e))
         return None
     except Exception as e:
@@ -749,7 +749,7 @@ def load_database():
         print(message)
 
     if inputSettings.get('sortByTime', False) == True:
-        # ordem puramente cronologica (o motor ordena por Site+Datetime)
+        # purely chronological order (the engine sorts by Site+Datetime)
         database = database.sort_values('Datetime', kind='stable')
         database.index = range(len(database))
 
@@ -771,7 +771,7 @@ def load_database():
     return database
 
 def show_view_window():
-    """Janela de visualizacao; retorna True se o usuario pediu para trocar de arquivo."""
+    """Visualization window; returns True if the user asked to change files."""
     global view_window, dType_combobox, panel1, panel2, panel3, panel1_cb, panel2_cb, panel3_cb
     global tsDiagram, ts_cb, latitude_entry, longitude_entry, tsParam_combobox
     global tendency, tendency_cb, tendency_entry, dataPoints, points_cb, fixedScale, fixed_scale_cb
@@ -844,7 +844,7 @@ def show_view_window():
     main_content_frame.rowconfigure(2, weight=1)
 
     # --- Data Settings ---
-    # Data type (HOBO so tem serie temporal: perfil nao se aplica)
+    # Data type (HOBO only has a time series: profile does not apply)
     ttk.Label(data_frame, text="Data Type:").grid(row=0, column=0, sticky='w', pady=2)
     dType_values = ["mooring"] if is_hobo_input() else ["tscp profile", "mooring"]
     dType_combobox = ttk.Combobox(data_frame, values=dType_values, width=25, state='readonly')
@@ -853,8 +853,8 @@ def show_view_window():
     ToolTip(dType_combobox, TOOLTIPS['data_type'])
 
     # --- Visualization Settings ---
-    # Panels: para HOBO os tres checkboxes viram os paineis dedicados
-    # (temperatura / luz+janela / luz multi-site) no lugar de Panel 1/2/3
+    # Panels: for HOBO the three checkboxes become the dedicated panels
+    # (temperature / light+window / light multi-site) instead of Panel 1/2/3
     if is_hobo_input():
         panel_labels = ("HOBO Temperature (per site)",
                         "HOBO Light + fouling window (per site)",
@@ -981,8 +981,8 @@ def show_view_window():
     # Year filter: one checkbox per year actually present in the database
     ttk.Label(filter_frame, text="Filter by Year:").grid(row=0, column=0, sticky='w', pady=(5,2))
     available_years = sorted(set(int(y) for y in database['Datetime'].dt.year.dropna().unique()))
-    year_vars = {}    # BooleanVar de cada ano
-    year_widgets = {} # Checkbutton de cada ano
+    year_vars = {}    # BooleanVar for each year
+    year_widgets = {} # Checkbutton for each year
     row_n = 1
     for db_year in available_years:
         var = BooleanVar(value=False)
@@ -1000,8 +1000,8 @@ def show_view_window():
     row_n += 1
 
     site_names = sorted(set(database['Site']))
-    site_vars = {}  # Armazena as BooleanVar
-    site_widgets = {}  # Armazena os widgets Checkbutton
+    site_vars = {}  # Stores the BooleanVar
+    site_widgets = {}  # Stores the Checkbutton widgets
 
     for site in site_names:
         var = BooleanVar(value=False)
@@ -1017,7 +1017,7 @@ def show_view_window():
     ToolTip(param_lbl, TOOLTIPS['param_filter'])
 
     if inputSettings.get('instrument', 'Seaguard') == 'HOBO':
-        # HOBO so mede temperatura e luz
+        # HOBO only measures temperature and light
         parameter_names = ['Temperature (degC)', 'Luminosity (lux)']
     else:
         parameter_names = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)',
@@ -1025,8 +1025,8 @@ def show_view_window():
                           'PAR (umol/m2/s)', 'Turbidity (FTU)', 'Chlorophyll (ug/L)',
                           'pH', 'Dissolved organic matter (ppb)', 'Soundspeed (m/s)',
                           'Pressure (dbar)']
-    parameter_vars = {}  # Armazena as BooleanVar
-    parameter_widgets = {}  # Armazena os widgets Checkbutton
+    parameter_vars = {}  # Stores the BooleanVar
+    parameter_widgets = {}  # Stores the Checkbutton widgets
 
     for i, param in enumerate(parameter_names):
         var = BooleanVar(value=False)
@@ -1034,31 +1034,31 @@ def show_view_window():
         cb.grid(row=i+1, column=1, sticky='w', pady=2, padx=10)
         parameter_vars[param] = var
         parameter_widgets[param] = cb
-        set_disabled_style(cb)  # Inicialmente desabilitado
+        set_disabled_style(cb)  # Initially disabled
 
     # --- Scale Settings ---
-    # Cabeçalhos para as colunas de escala
+    # Headers for the scale columns
     ttk.Label(scale_frame, text="Parameter").grid(row=0, column=0, sticky='w', padx=5)
     ttk.Label(scale_frame, text="Min").grid(row=0, column=1, sticky='w', padx=5)
     ttk.Label(scale_frame, text="Max").grid(row=0, column=2, sticky='w', padx=5)
 
-    # Dicionários para armazenar os widgets de entrada de escala
+    # Dictionaries to store the scale entry widgets
     min_scale_entries = {}
     max_scale_entries = {}
 
-    # Criar entradas para cada parâmetro
+    # Create entries for each parameter
     for i, param in enumerate(parameter_names):
-        # Label do parâmetro
+        # Parameter label
         ttk.Label(scale_frame, text=param).grid(row=i+1, column=0, sticky='w', pady=2, padx=5)
-    
-        # Entrada para valor mínimo
+
+        # Entry for minimum value
         min_entry = ttk.Entry(scale_frame, width=10)
         min_entry.grid(row=i+1, column=1, sticky='w', pady=2, padx=5)
         min_scale_entries[param] = min_entry
         set_disabled_style(min_entry)
         ToolTip(min_entry, TOOLTIPS['min_scale'])
-    
-        # Entrada para valor máximo
+
+        # Entry for maximum value
         max_entry = ttk.Entry(scale_frame, width=10)
         max_entry.grid(row=i+1, column=2, sticky='w', pady=2, padx=5)
         max_scale_entries[param] = max_entry
@@ -1083,7 +1083,7 @@ def show_view_window():
     ttk.Button(action_frame, text="Generate Panels", command=generatePanels, style='Accent.TButton').pack(side='left', padx=5)
 
     # Initialize UI state
-    toggle_all_controls(enabled=False)  # Tudo desabilitado inicialmente
+    toggle_all_controls(enabled=False)  # Everything disabled initially
     toggle_data_type()
     toggle_panel_dependent_controls()
     toggle_parameter_checkboxes()
@@ -1093,7 +1093,7 @@ def show_view_window():
     panel1.set(USER_PREFS.get('dbv_panel1', False))
     panel2.set(USER_PREFS.get('dbv_panel2', False))
     panel3.set(USER_PREFS.get('dbv_panel3', False))
-    # T-S nao existe para HOBO (sem salinidade): nunca restaurar marcado
+    # T-S does not exist for HOBO (no salinity): never restore it checked
     tsDiagram.set(False if is_hobo_input() else USER_PREFS.get('dbv_ts_diagram', False))
     tendency.set(USER_PREFS.get('dbv_tendency', False))
     dataPoints.set(USER_PREFS.get('dbv_data_points', False))
@@ -1122,14 +1122,14 @@ def show_view_window():
         tsParam_combobox.set(USER_PREFS['dbv_ts_param'])
     # re-apply enable/disable rules with the restored values
     if is_hobo_input():
-        # unica opcao valida para HOBO: ja seleciona e habilita os controles
+        # the only valid option for HOBO: select it and enable the controls
         dType_combobox.set('mooring')
         toggle_data_type()
     elif USER_PREFS.get('dbv_data_type') in dType_values:
         dType_combobox.set(USER_PREFS['dbv_data_type'])
         toggle_data_type()
 
-    # Create error logger (comeca com o sumario da unificacao do banco)
+    # Create error logger (starts with the database unification summary)
     error_logger = ErrorLogger(scrollable_frame)
     for message in db_build_messages:
         error_logger.log(message)
@@ -1147,7 +1147,7 @@ def show_view_window():
 back_requested = False
 
 def go_back_to_input():
-    """Fecha a visualizacao e volta para a janela de selecao de arquivo."""
+    """Closes the visualization and returns to the file selection window."""
     global back_requested
     back_requested = True
     view_window.destroy()
@@ -1158,12 +1158,12 @@ while True:
     inputSettings.clear()
     show_input_window()
     if not inputSettings:
-        break  # janela fechada sem salvar: encerra
+        break  # window closed without saving: exit
     database = load_database()
     if database is None:
-        continue  # erro ja exibido: volta para a selecao de arquivo
+        continue  # error already shown: back to file selection
     dataViewSettings.clear()
     if not show_view_window():
-        break  # janela de visualizacao fechada: encerra
+        break  # visualization window closed: exit
 
 os.chdir(rootPath)
