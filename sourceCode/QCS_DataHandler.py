@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector
-from os import walk
 
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
@@ -792,7 +791,7 @@ def trim_by_depth(data, tk_root=None):
             plt.close(fig)
 
     # Configura o seletor
-    selector = RectangleSelector(ax, on_select,  # manter referencia viva (widget e coletado pelo GC se nao for guardado)
+    _selector = RectangleSelector(ax, on_select,  # manter referencia viva (widget e coletado pelo GC se nao for guardado)
                                useblit=True,
                                button=[1],
                                minspanx=5, minspany=5,
@@ -852,7 +851,7 @@ def trim_selected_variable(data, name, tk_root=None):
             plt.close(fig)
 
     # Configuração dos eventos
-    selector = RectangleSelector(ax, on_select,  # manter referencia viva (widget e coletado pelo GC se nao for guardado)
+    _selector = RectangleSelector(ax, on_select,  # manter referencia viva (widget e coletado pelo GC se nao for guardado)
                                useblit=True,
                                button=[1],
                                minspanx=5, minspany=5,
@@ -917,7 +916,7 @@ def build_database(instrument, file_list=None, input_path=None):
     elif input_path:
         target_subfolders = QUALIFIED_SUBFOLDERS[expected_layout]
         files = []
-        for root, dirs, names in os.walk(input_path):
+        for root, _dirs, names in os.walk(input_path):
             if os.path.basename(root) in target_subfolders:
                 for name in sorted(names):
                     if name.lower().endswith(('.csv', '.xlsx')) and not name.startswith('QCS_'):
@@ -941,7 +940,7 @@ def build_database(instrument, file_list=None, input_path=None):
             else:
                 df = pd.read_csv(file_path, header=0)
         except Exception as e:
-            raise ValueError('build_database: could not read %s:\n%s' % (file_path, e))
+            raise ValueError('build_database: could not read %s:\n%s' % (file_path, e)) from e
         missing = [c for c in ('Datetime', 'Site') if c not in df.columns]
         if missing:
             raise ValueError("build_database: %s does not look like a QCS qualified file "

@@ -10,7 +10,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import timedelta
 from tkinter import *
-import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
 from tkinter import messagebox
@@ -1331,13 +1330,16 @@ def run_full_qualification():
                     # Tk() root would conflict with the already running interface)
                     peak_window = Toplevel(window)
 
-                    def acceptPeak():
+                    # ans/fig1/peak_window entram como argumento default: callback
+                    # definido dentro de loop captura a variavel por late binding
+                    # (usaria o valor da ULTIMA iteracao, nao o desta)
+                    def acceptPeak(ans=ans, fig1=fig1, peak_window=peak_window):
                         print('MESSAGE: Peak accepted, proceding to profile selection')
                         ans.append('y')
                         plt.close(fig1)
                         peak_window.destroy()
 
-                    def doNotAcceptPeak():
+                    def doNotAcceptPeak(fig1=fig1, peak_window=peak_window):
                         print('MESSAGE: Ignoring data peak, data qualification will continue with the whole dataset')
                         plt.close(fig1)
                         peak_window.destroy()
@@ -1381,11 +1383,13 @@ def run_full_qualification():
 
                         selected = None
                         pick_done = BooleanVar(window, value=False)
-                        def on_pick(event):
+                        # pick_done como argumento default: mesmo motivo do
+                        # acceptPeak acima (late binding em callback de loop)
+                        def on_pick(event, pick_done=pick_done):
                             nonlocal selected
                             selected = event.artist.get_label()
                             pick_done.set(True)
-                        def on_close(event):
+                        def on_close(event, pick_done=pick_done):
                             pick_done.set(True)
 
                         line1.set_picker(True)
