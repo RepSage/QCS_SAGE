@@ -1,11 +1,11 @@
-# QCS_Theme: tema visual compartilhado das interfaces do QCS
-# (QCS_Main e QCS_DatabaseView). Centraliza a correcao de DPI do Windows,
-# o tema Sun Valley (sv-ttk, visual Windows 11) com fallback para o visual
-# clam anterior, as fontes padrao, o tooltip e utilitarios de janela.
-# Este modulo NAO altera nenhuma logica de qualificacao - apenas aparencia.
+# QCS_Theme: shared visual theme for the QCS interfaces
+# (QCS_Main and QCS_DatabaseView). Centralizes Windows DPI correction,
+# the Sun Valley theme (sv-ttk, Windows 11 look) with fallback to the previous
+# clam look, the default fonts, the tooltip and window utilities.
+# This module does NOT change any qualification logic - only appearance.
 #
-# Dependencia opcional: sv-ttk (pip install sv-ttk). Sem ele, a interface
-# continua funcionando com o visual antigo.
+# Optional dependency: sv-ttk (pip install sv-ttk). Without it, the interface
+# keeps working with the old look.
 
 import tkinter as tk
 import tkinter.font as tkfont
@@ -24,7 +24,7 @@ FONT_SMALL_BOLD = (FONT_FAMILY, 9, 'bold')
 FONT_TITLE = (FONT_FAMILY, 16, 'bold')
 FONT_MONO = ('Consolas', 9)
 
-# cores de superficie do Sun Valley (usadas em widgets tk puros, ex.: Canvas)
+# Sun Valley surface colors (used in pure tk widgets, e.g. Canvas)
 _SURFACE = {'light': '#fafafa', 'dark': '#1c1c1c'}
 _SUBTITLE_FG = {'light': '#5f6368', 'dark': '#9aa0a6'}
 
@@ -32,8 +32,8 @@ _current_theme = 'light'
 
 
 def enable_high_dpi():
-    """Torna o processo ciente de DPI (texto nitido em telas com escala).
-    Deve ser chamada ANTES de criar a janela Tk()."""
+    """Makes the process DPI-aware (sharp text on scaled displays).
+    Must be called BEFORE creating the Tk() window."""
     try:
         from ctypes import windll
         windll.shcore.SetProcessDpiAwareness(1)
@@ -42,7 +42,7 @@ def enable_high_dpi():
 
 
 def ui_scale(window):
-    """Fator de escala da tela (1.0 = 96 dpi / 100%)."""
+    """Screen scaling factor (1.0 = 96 dpi / 100%)."""
     try:
         return max(window.winfo_fpixels('1i') / 96.0, 1.0)
     except Exception:
@@ -50,7 +50,7 @@ def ui_scale(window):
 
 
 def set_scaled_geometry(window, width, height, min_width=None, min_height=None):
-    """Aplica geometria em pixels logicos, corrigida pela escala da tela."""
+    """Applies geometry in logical pixels, corrected by the screen scaling."""
     s = ui_scale(window)
     window.geometry('%dx%d' % (int(width * s), int(height * s)))
     if min_width and min_height:
@@ -62,12 +62,12 @@ def current_theme():
 
 
 def surface_color():
-    """Cor de fundo do tema atual, para widgets tk puros (Canvas etc.)."""
+    """Background color of the current theme, for pure tk widgets (Canvas etc.)."""
     return _SURFACE.get(_current_theme, '#fafafa')
 
 
 def apply_theme(window, theme=None):
-    """Aplica o tema visual na janela (Tk root). Retorna o ttk.Style."""
+    """Applies the visual theme to the window (Tk root). Returns the ttk.Style."""
     global _current_theme
     if theme in ('light', 'dark'):
         _current_theme = theme
@@ -80,7 +80,7 @@ def apply_theme(window, theme=None):
     else:
         _apply_legacy_style(style)
 
-    # estilos proprios do QCS, por cima do tema base
+    # QCS's own styles, on top of the base theme
     style.configure('Header.TLabel', font=FONT_BOLD)
     style.configure('Title.TLabel', font=FONT_TITLE)
     style.configure('Subtitle.TLabel', font=FONT_NORMAL,
@@ -88,7 +88,7 @@ def apply_theme(window, theme=None):
     style.configure('Small.TLabel', font=FONT_SMALL,
                     foreground=_SUBTITLE_FG.get(_current_theme, '#5f6368'))
 
-    # o fundo da janela raiz nao e coberto pelo tema ttk
+    # the root window background is not covered by the ttk theme
     try:
         window.configure(bg=surface_color())
     except Exception:
@@ -106,7 +106,7 @@ def _set_default_fonts(window):
 
 
 def _apply_legacy_style(style):
-    """Fallback sem sv-ttk: reproduz o visual clam usado ate a v3.2.x."""
+    """Fallback without sv-ttk: reproduces the clam look used up to v3.2.x."""
     style.theme_use('clam')
     style.configure('TFrame', background='#f0f0f0')
     style.configure('TLabel', background='#f0f0f0', font=FONT_NORMAL)
@@ -125,8 +125,8 @@ def _apply_legacy_style(style):
 
 def build_header(parent, title, subtitle, dark_var=None, on_toggle=None,
                  help_command=None):
-    """Cabecalho padrao das janelas: titulo + subtitulo e, opcionalmente,
-    o interruptor de modo escuro (dark_var/on_toggle) e um botao de ajuda."""
+    """Standard window header: title + subtitle and, optionally,
+    the dark mode switch (dark_var/on_toggle) and a help button."""
     header = ttk.Frame(parent)
     text_frame = ttk.Frame(header)
     text_frame.pack(side='left', anchor='w')
@@ -145,25 +145,26 @@ def build_header(parent, title, subtitle, dark_var=None, on_toggle=None,
 
 
 def enable_mousewheel(canvas):
-    """Rolagem pela roda do mouse enquanto o cursor esta sobre o canvas.
-    So rola quando o conteudo excede a area visivel: se tudo cabe, a roda e
-    ignorada (evita o 'espaco vazio' criado ao rolar um conteudo que ja cabe)."""
+    """Mouse-wheel scrolling while the cursor is over the canvas.
+    Only scrolls when the content exceeds the visible area: if everything fits,
+    the wheel is ignored (avoids the 'empty space' created by scrolling content
+    that already fits)."""
     def _on_wheel(event):
         bbox = canvas.bbox('all')
         if bbox is None:
             return
         content_height = bbox[3] - bbox[1]
         if content_height <= canvas.winfo_height():
-            return  # tudo cabe na janela: nao ha o que rolar
+            return  # everything fits in the window: nothing to scroll
         canvas.yview_scroll(int(-event.delta / 120), 'units')
     canvas.bind('<Enter>', lambda e: canvas.bind_all('<MouseWheel>', _on_wheel))
     canvas.bind('<Leave>', lambda e: canvas.unbind_all('<MouseWheel>'))
 
 
 def suppress_notebook_focus_ring(notebook):
-    """Remove o retangulo tracejado de foco que o ttk desenha no rotulo da aba
-    selecionada: move o foco de teclado para o conteudo da aba (um Frame nao
-    desenha anel de foco). Independe do tema (sv-ttk ou clam)."""
+    """Removes the dashed focus rectangle that ttk draws on the selected tab's
+    label: moves keyboard focus to the tab's content (a Frame does not draw a
+    focus ring). Theme-independent (sv-ttk or clam)."""
     def _focus_tab_content(*_):
         try:
             notebook.nametowidget(notebook.select()).focus_set()
@@ -174,9 +175,9 @@ def suppress_notebook_focus_ring(notebook):
 
 
 class LogConsole:
-    """Painel de log com visual de console e cores por severidade, compartilhado
-    pelo QCS_Main e pelo QCS_DatabaseView. O chamador posiciona `self.frame`
-    (pack ou grid)."""
+    """Log panel with a console look and colors by severity, shared by
+    QCS_Main and QCS_DatabaseView. The caller positions `self.frame`
+    (pack or grid)."""
 
     def __init__(self, parent, title=' Execution log ', height=8):
         self.frame = ttk.LabelFrame(parent, text=title, padding=10)
@@ -223,7 +224,7 @@ class LogConsole:
 
 
 class ToolTip:
-    """Tooltip no estilo Windows 11: fundo escuro, com atraso de exibicao."""
+    """Windows 11-style tooltip: dark background, with a display delay."""
 
     def __init__(self, widget, text, delay=400):
         self.widget = widget

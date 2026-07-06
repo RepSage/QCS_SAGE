@@ -178,10 +178,10 @@ def read_ctd(INPUT):
 
     return dataframe
 
-# 1 lumen/ft2 = 10.7639 lux (HOBO Pendant exportado em unidades US)
+# 1 lumen/ft2 = 10.7639 lux (HOBO Pendant exported in US units)
 LUMEN_FT2_TO_LUX = 10.7639
 
-# padroes das colunas de evento do logger HOBO (pt/en)
+# HOBO logger event column patterns (pt/en)
 _HOBO_EVENT_PATTERN = (r'acoplador|coupler|anfitri|host|parado|stopped|'
                        r'fim do ficheiro|end of file|bateria|battery')
 _HOBO_DETACH_PATTERN = r'acoplador desligado|coupler detached'
@@ -190,26 +190,26 @@ _HOBO_END_PATTERN = (r'acoplador ligado|coupler attached|anfitri|host|'
 
 
 def _hobo_error(file_name, message):
-    # todos os erros do leitor se auto-localizam: "HOBO reader (arquivo): o que faltou"
+    # every reader error is self-localizing: "HOBO reader (file): what was missing"
     return ValueError('HOBO reader (%s): %s' % (file_name, message))
 
 
 def read_hobo(INPUT, tsSettings):
-    """Le exportacoes do HOBOware (.xlsx/.csv) de sensores Pendant Temp/Light.
+    """Reads HOBOware exports (.xlsx/.csv) from Pendant Temp/Light sensors.
 
-    Tolera: cabecalhos em portugues ou ingles, linha de titulo antes do header,
-    frequencia de amostragem variavel, luz em Lux ou lum/ft2 (convertida p/ lux).
-    Remove linhas so-de-evento do logger, corta leituras fora d'agua nas pontas
-    (janela entre eventos de acoplador + heuristica de salto de temperatura) e
-    retorna (dataframe, info): dataframe com Datetime / Temperature (degC) /
-    Luminosity (lux); info['messages'] documenta tudo o que foi feito/descartado.
+    Tolerates: headers in Portuguese or English, a title line before the header,
+    variable sampling frequency, light in Lux or lum/ft2 (converted to lux).
+    Removes logger event-only rows, trims out-of-water readings at the edges
+    (window between coupler events + temperature-jump heuristic) and
+    returns (dataframe, info): dataframe with Datetime / Temperature (degC) /
+    Luminosity (lux); info['messages'] documents everything that was done/discarded.
     """
     file_name = INPUT['file_name']
     file_path = os.path.join(INPUT['raw_data_path'], file_name)
     info = {'messages': []}
     say = info['messages'].append
 
-    # ---------- leitura crua com deteccao da linha de header ----------
+    # ---------- raw read with header line detection ----------
     def header_line(cells):
         joined = ' '.join(str(c) for c in cells).lower()
         return (re.search(r'data\s*hora|date\s*time', joined) is not None
@@ -248,7 +248,7 @@ def read_hobo(INPUT, tsSettings):
     else:
         raise _hobo_error(file_name, 'unsupported format (use the .xlsx or .csv HOBOware export).')
 
-    # ---------- identificacao das colunas ----------
+    # ---------- column identification ----------
     time_col = temp_col = light_col = None
     event_cols = []
     for c in df.columns:
@@ -269,7 +269,7 @@ def read_hobo(INPUT, tsSettings):
     if light_col is None:
         raise _hobo_error(file_name, 'no light column found (expected "Intensidade"/"Intensity"). ' + found)
 
-    # unidade da luz a partir do rotulo do canal
+    # light unit from the channel label
     light_label = str(light_col).lower()
     if re.search(r'lum/?\s*ft|lumen', light_label):
         light_factor = LUMEN_FT2_TO_LUX
@@ -285,7 +285,7 @@ def read_hobo(INPUT, tsSettings):
         say('MESSAGE: timestamps exported as GMT%s (from the header). The "Correct GMT-3" '
             'option would subtract 3 MORE hours - only use it if the export is in GMT+00.' % gmt.group(1))
 
-    # ---------- tipos ----------
+    # ---------- types ----------
     df[time_col] = pd.to_datetime(df[time_col], errors='coerce', dayfirst=True)
     n_bad_ts = int(df[time_col].isna().sum())
     if n_bad_ts:
@@ -296,7 +296,7 @@ def read_hobo(INPUT, tsSettings):
     df[temp_col] = pd.to_numeric(df[temp_col], errors='coerce')
     df[light_col] = pd.to_numeric(df[light_col], errors='coerce') * light_factor
 
-    # ---------- janela de deployment pelos eventos do logger ----------
+    # ---------- deployment window from the logger events ----------
     if event_cols:
         ev_mask = df[event_cols].notna().any(axis=1)
         detach_cols = [c for c in event_cols if re.search(_HOBO_DETACH_PATTERN, str(c).lower())]
@@ -317,7 +317,7 @@ def read_hobo(INPUT, tsSettings):
         if n_window:
             say('MESSAGE: %d sample(s) outside the logger deployment window '
                 '(%s to %s) discarded.' % (n_window, start_t, end_t))
-        # linhas so-de-evento (sem medida) sao removidas
+        # event-only rows (no measurement) are removed
         ev_mask = df[event_cols].notna().any(axis=1) & df[temp_col].isna()
         n_ev = int(ev_mask.sum())
         if n_ev:
@@ -338,7 +338,7 @@ def read_hobo(INPUT, tsSettings):
         df = df.sort_values('Datetime')
     df.index = np.arange(len(df))
 
-    # ---------- corte de leituras fora d'agua nas pontas (salto de temperatura) ----------
+    # ---------- trim of out-of-water readings at the edges (temperature jump) ----------
     tol = float(tsSettings.get('hobo_edge_temp_tol', 1.5))
     interval = df['Datetime'].diff().median()
     n_day = max(int(pd.Timedelta(days=1) / interval), 4) if pd.notna(interval) and interval > pd.Timedelta(0) else 12
@@ -440,7 +440,7 @@ def clean_below_zero(data, settings):
             continue
         clamped, discarded = 0, 0
         if re.search('par|luminosity|lux', name, re.IGNORECASE):
-            # luz/PAR: zero a noite e um valor VALIDO; negativos sao ruido de offset
+            # light/PAR: zero at night is a VALID value; negatives are offset noise
             clamped = int((data[name] < 0).sum())
             data.loc[data[name] < 0, name] = 0.0
         else:
@@ -468,7 +468,7 @@ FLAG_BUCKET_MAP = {
     'T': ['T'], 'S': ['S'], 'C': ['C'], 'P': ['P'], 'pH': ['pH'],
     'chl': ['chl'], 'O2': ['O2'], 'org': ['org'], 'tur': ['tur'],
     'dens': ['T', 'S'],
-    'lux': ['lux'],  # luz do HOBO (teste de incrustacao)
+    'lux': ['lux'],  # HOBO light (fouling test)
 }
 
 def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad):
@@ -518,8 +518,8 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
     # tests (bad > suspect > missing). flag_layout[pos] tells which variable each
     # flag character belongs to, so positions are never hardcoded here.
     var_keys = ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur']
-    # buckets extras presentes no layout (ex.: 'lux' nos arquivos HOBO) ganham
-    # coluna Flag_ propria sem mudar o formato dos arquivos que nao os usam
+    # extra buckets present in the layout (e.g. 'lux' in HOBO files) get their
+    # own Flag_ column without changing the format of files that don't use them
     for pkey in flag_layout:
         for bucket in FLAG_BUCKET_MAP.get(pkey, []):
             if bucket not in var_keys:
@@ -568,7 +568,7 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
     if remove_bad == True:
         for name in output_df.columns:
             if str(name).startswith('Flag'):
-                continue  # colunas de flag nunca sao apagadas (Flag_O2/Flag_lux casam com os padroes)
+                continue  # flag columns are never erased (Flag_O2/Flag_lux match the patterns)
             if re.search('temperature', name, re.IGNORECASE):
                 output_df.loc[T_bdata, name] = np.nan
             if re.search('salinity', name, re.IGNORECASE):
@@ -593,7 +593,7 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
     if remove_suspect == True:
         for name in output_df.columns:
             if str(name).startswith('Flag'):
-                continue  # colunas de flag nunca sao apagadas
+                continue  # flag columns are never erased
             if re.search('temperature', name, re.IGNORECASE):
                 output_df.loc[T_sdata, name] = np.nan
             if re.search('salinity', name, re.IGNORECASE):
@@ -618,9 +618,9 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
 
 def order_var (qualified_data, n_cel, data_type):
     if data_type == 'tscp':
-        # 'Site' logo apos 'Datetime' (identificacao vem antes das medidas).
-        # 'Battery voltage (V)' e mantido como placeholder (hoje vazio; reservado
-        # para quando for extraido do dado bruto). 'Expedition' foi removido.
+        # 'Site' right after 'Datetime' (identification comes before the measurements).
+        # 'Battery voltage (V)' is kept as a placeholder (currently empty; reserved
+        # for when it is extracted from the raw data). 'Expedition' was removed.
         var_priority = {'Sample number': 0, 'Datetime': 1, 'Site': 2, 'Depth (m)': 3, 'Temperature (degC)': 4,
                         'Salinity (PSU)': 5, 'Conductivity (mS/cm)': 6, 'Pressure (dbar)': 7, 'Density (kg/m3)': 8,
                         'CO2 Level (ppm)': 9, 'O2 level (uM)': 10, 'O2 content (mg/L)': 11, 'PAR (umol/m2/s)': 12,
@@ -631,11 +631,11 @@ def order_var (qualified_data, n_cel, data_type):
                         'Flag_chl': 27, 'Flag_O2': 28, 'Flag_org': 29, 'Flag_tur': 30,
                         'Flag_lux': 31, 'QCS version': 32}
     elif data_type == 'hobo':
-        # HOBO Pendant: apenas as variaveis medidas (temperatura em Celsius e luz
-        # em lux), com o mesmo bloco de metadados do padrao TSCP. As demais
-        # variaveis TSCP nao se aplicam e nao aparecem (planilhas nao 'estacaveis').
-        # 'Site' logo apos 'Datetime'; 'Battery voltage (V)' mantido como
-        # placeholder (hoje vazio); 'Expedition' removido.
+        # HOBO Pendant: only the measured variables (temperature in Celsius and
+        # light in lux), with the same metadata block as the TSCP standard. The
+        # other TSCP variables do not apply and do not appear (non-stackable sheets).
+        # 'Site' right after 'Datetime'; 'Battery voltage (V)' kept as a
+        # placeholder (currently empty); 'Expedition' removed.
         var_priority = {'Sample number': 0, 'Datetime': 1, 'Site': 2,
                         'Temperature (degC)': 3, 'Luminosity (lux)': 4,
                         'Battery voltage (V)': 5, 'Flag': 6,
@@ -654,8 +654,8 @@ def order_var (qualified_data, n_cel, data_type):
         if var in qualified_data.columns:
             order[var] = var_priority[var]
         else:
-            # colunas Flag_ so existem quando o teste correspondente rodou
-            # (ex.: Flag_lux apenas em arquivos HOBO) - nao criar vazias
+            # Flag_ columns only exist when the corresponding test ran
+            # (e.g. Flag_lux only in HOBO files) - do not create them empty
             if re.search('correlation', var, re.IGNORECASE) or var.startswith('Flag_'):
                 pass
             else:
@@ -730,10 +730,10 @@ def on_motion(event):
                 event.inaxes.figure.canvas.draw_idle()
 
 def _show_and_wait(fig, tk_root):
-    # Mostra a figura interativa sem congelar a interface. plt.show(block=True)
-    # dentro de um callback do Tkinter cria um loop de eventos aninhado que trava
-    # a janela principal (mesmo problema do Select Profile Data, corrigido na
-    # v3.2.1); com tk_root, espera no proprio loop do Tk ate a figura fechar.
+    # Shows the interactive figure without freezing the interface. plt.show(block=True)
+    # inside a Tkinter callback creates a nested event loop that hangs the main
+    # window (same problem as Select Profile Data, fixed in v3.2.1); with tk_root,
+    # it waits in Tk's own loop until the figure is closed.
     if tk_root is None:
         plt.show(block=True)
         return
@@ -745,25 +745,25 @@ def _show_and_wait(fig, tk_root):
 
 
 def trim_by_depth(data, tk_root=None):
-    # Cria cópia do dataframe
+    # Create a copy of the dataframe
     trimmed_data = data.copy()
-    
-    # Define x e y
+
+    # Define x and y
     y = data['Depth (m)']
     x = data['Depth (m)'].index
 
-    # Cria o plot
+    # Create the plot
     fig, ax = plt.subplots()
     ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
     ax.set_title('Select points within rectangle to remove - Depth (m)\nPress Enter when you are done')
     ax.set_ylabel('Depth (m)')
     ax.set_xlabel('Sample number')
 
-    # Armazena índices removidos
+    # Stores removed indices
     removed_indices = set()
     selection_complete = False
 
-    # Função para remover dados selecionados
+    # Function to remove selected data
     def on_select(eclick, erelease):
         nonlocal trimmed_data
         x0, y0 = eclick.xdata, eclick.ydata
@@ -777,7 +777,7 @@ def trim_by_depth(data, tk_root=None):
         # errors='ignore' prevents a crash when the same points are selected twice
         trimmed_data.drop(index=current_indices, inplace=True, errors='ignore')
 
-        # Atualiza o plot
+        # Update the plot
         remaining_mask = np.isin(np.arange(len(y)), list(removed_indices), invert=True)
         new_x = x[remaining_mask]
         new_y = y[remaining_mask]
@@ -795,52 +795,52 @@ def trim_by_depth(data, tk_root=None):
             selection_complete = True
             plt.close(fig)
 
-    # Configura o seletor
-    _selector = RectangleSelector(ax, on_select,  # manter referencia viva (widget e coletado pelo GC se nao for guardado)
+    # Configure the selector
+    _selector = RectangleSelector(ax, on_select,  # keep the reference alive (the widget is collected by the GC if not stored)
                                useblit=True,
                                button=[1],
                                minspanx=5, minspany=5,
                                spancoords='pixels',
                                interactive=True)
 
-    # Conecta os eventos
+    # Connect the events
     fig.canvas.mpl_connect('key_press_event', on_key_press)
 
-    # Configura os limites
+    # Configure the limits
     ax.set_xlim(np.nanmin(x) - 0.1, np.nanmax(x) + 0.1)
     ax.set_ylim(np.nanmin(y) - 0.1, np.nanmax(y) + 0.1)
 
-    # Mostra o gráfico e aguarda sem travar a interface
+    # Show the plot and wait without freezing the interface
     _show_and_wait(fig, tk_root)
 
-    # Reindexa antes de retornar
+    # Reindex before returning
     trimmed_data.index = np.arange(len(trimmed_data))
 
     return trimmed_data
 
 def trim_selected_variable(data, name, tk_root=None):
-    # Faz uma cópia explícita da coluna para evitar o alerta de SettingWithCopyWarning
+    # Make an explicit copy of the column to avoid the SettingWithCopyWarning alert
     y = data[name].copy()
-    x = data.index  # Usar o índice diretamente sem copiar
+    x = data.index  # Use the index directly without copying
 
-    # Criação do gráfico
+    # Plot creation
     fig, ax = plt.subplots()
     ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
     ax.set_title(f'Select points within rectangle to remove - {name}\nPress Enter when you are done')
     ax.set_ylabel(name)
     ax.set_xlabel('Sample number')
 
-    # Variável para controle do loop
+    # Variable for loop control
     selection_complete = False
 
-    # Função para remover pontos selecionados
+    # Function to remove selected points
     def on_select(eclick, erelease):
         nonlocal y
         x0, y0 = eclick.xdata, eclick.ydata
         x1, y1 = erelease.xdata, erelease.ydata
         mask = (x > min(x0, x1)) & (x < max(x0, x1)) & \
                (y > min(y0, y1)) & (y < max(y0, y1))
-        y[mask] = np.nan  # Substitui pontos selecionados por NaN
+        y[mask] = np.nan  # Replace selected points with NaN
 
         ax.clear()
         ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
@@ -855,8 +855,8 @@ def trim_selected_variable(data, name, tk_root=None):
             selection_complete = True
             plt.close(fig)
 
-    # Configuração dos eventos
-    _selector = RectangleSelector(ax, on_select,  # manter referencia viva (widget e coletado pelo GC se nao for guardado)
+    # Event configuration
+    _selector = RectangleSelector(ax, on_select,  # keep the reference alive (the widget is collected by the GC if not stored)
                                useblit=True,
                                button=[1],
                                minspanx=5, minspany=5,
@@ -865,19 +865,19 @@ def trim_selected_variable(data, name, tk_root=None):
 
     fig.canvas.mpl_connect('key_press_event', on_key_press)
 
-    # Configuração dos limites
+    # Limit configuration
     ax.set_xlim(np.nanmin(x)-0.1, np.nanmax(x)+0.1)
     ax.set_ylim(np.nanmin(y)-0.1, np.nanmax(y)+0.1)
 
-    # Exibe o gráfico e aguarda sem travar a interface
+    # Show the plot and wait without freezing the interface
     _show_and_wait(fig, tk_root)
 
-    # Atualiza os dados após fechar a janela
+    # Update the data after closing the window
     data[name] = y
     return data
 
-# subpastas de saida do QCS onde vivem as planilhas qualificadas de cada
-# instrumento (o nome tscp e o mesmo desde as versoes pre-v4)
+# QCS output subfolders where each instrument's qualified spreadsheets live
+# (the tscp name is the same since the pre-v4 versions)
 QUALIFIED_SUBFOLDERS = {
     'tscp': ('QCS qualified tscp data',),
     'hobo': ('QCS qualified hobo data',),
@@ -885,8 +885,8 @@ QUALIFIED_SUBFOLDERS = {
 
 
 def detect_qualified_layout(df):
-    """'hobo' = so temperatura+luz (tem Luminosity, nao tem Salinity);
-    qualquer outra planilha qualificada e 'tscp' (Seaguard)."""
+    """'hobo' = only temperature+light (has Luminosity, no Salinity);
+    any other qualified spreadsheet is 'tscp' (Seaguard)."""
     cols = set(str(c) for c in df.columns)
     if 'Luminosity (lux)' in cols and 'Salinity (PSU)' not in cols:
         return 'hobo'
@@ -894,24 +894,24 @@ def detect_qualified_layout(df):
 
 
 def build_database(instrument, file_list=None, input_path=None):
-    """Motor unico de unificacao de planilhas qualificadas (Seaguard e HOBO).
+    """Single unification engine for qualified spreadsheets (Seaguard and HOBO).
 
-    Entrada (uma das duas):
-    - file_list: arquivos qualificados escolhidos a mao (multi-selecao); ou
-    - input_path: pasta-mae varrida recursivamente atras das subpastas de
-      saida do QCS ('QCS qualified tscp data' / 'QCS qualified hobo data').
+    Input (one of the two):
+    - file_list: qualified files chosen by hand (multi-selection); or
+    - input_path: parent folder swept recursively looking for the QCS output
+      subfolders ('QCS qualified tscp data' / 'QCS qualified hobo data').
 
-    Regras (v4.0, substitui join_files_to_database):
-    - ignora os arquivos de relatorio (nome comecando com 'QCS_');
-    - le .csv (header na linha 0 - o antigo header=1 corrompia csvs) e .xlsx;
-    - valida cada arquivo: precisa de Datetime+Site e o layout precisa bater
-      com o instrumento (HOBO e Seaguard NUNCA sao empilhaveis);
-    - adiciona a coluna 'Source file' (proveniencia de cada linha);
-    - ordena por Site+Datetime; remove duplicatas exatas (mantendo a primeira,
-      com aviso) e reporta linhas com mesmo Site+Datetime e valores diferentes.
+    Rules (v4.0, replaces join_files_to_database):
+    - ignores the report files (name starting with 'QCS_');
+    - reads .csv (header on line 0 - the old header=1 corrupted csvs) and .xlsx;
+    - validates each file: needs Datetime+Site and the layout must match
+      the instrument (HOBO and Seaguard are NEVER stackable);
+    - adds the 'Source file' column (provenance of each row);
+    - sorts by Site+Datetime; removes exact duplicates (keeping the first,
+      with a warning) and reports rows with the same Site+Datetime and different values.
 
-    Retorna (database, messages). Problemas levantam ValueError com mensagem
-    autolocalizada ('build_database: ...').
+    Returns (database, messages). Problems raise a ValueError with a
+    self-localizing message ('build_database: ...').
     """
     expected_layout = 'hobo' if str(instrument).strip().upper() == 'HOBO' else 'tscp'
     messages = []
@@ -972,7 +972,7 @@ def build_database(instrument, file_list=None, input_path=None):
 
     database = database.sort_values(['Site', 'Datetime'], kind='stable')
 
-    # duplicatas exatas (mesmos valores em todas as colunas, exceto a proveniencia)
+    # exact duplicates (same values in all columns, except the provenance)
     value_cols = [c for c in database.columns if c != 'Source file']
     n_before = len(database)
     database = database.drop_duplicates(subset=value_cols, keep='first')
@@ -981,7 +981,7 @@ def build_database(instrument, file_list=None, input_path=None):
         messages.append('WARNING: %d exact duplicate row(s) (same Site+Datetime+values) '
                         'discarded - kept the first occurrence.' % n_exact)
 
-    # sobreposicoes com valores DIFERENTES: mantidas, mas o operador precisa saber
+    # overlaps with DIFFERENT values: kept, but the operator needs to know
     overlap_mask = database.duplicated(subset=['Site', 'Datetime'], keep=False)
     if overlap_mask.any():
         offenders = sorted(database.loc[overlap_mask, 'Source file'].unique())

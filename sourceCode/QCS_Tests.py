@@ -27,8 +27,8 @@ def get_eps(series):
 
 
 def parse_time_window_samples(time_window, sample_interval_s, n_total):
-    """Converte a janela de tempo ('2D'/'3H'/'30M'/'45S'/'WHOLE') em numero de
-    amostras. Retorna n_total para 'WHOLE' ou formato nao reconhecido."""
+    """Converts the time window ('2D'/'3H'/'30M'/'45S'/'WHOLE') into a number of
+    samples. Returns n_total for 'WHOLE' or an unrecognized format."""
     if re.search("whole", time_window, re.IGNORECASE):
         return n_total
     if re.search(r"\d+d", time_window, re.IGNORECASE):
@@ -44,17 +44,18 @@ def parse_time_window_samples(time_window, sample_interval_s, n_total):
     return int(seconds / sample_interval_s)
 
 
-# minimo de amostras para estimar um sigma local estavel: com menos que isso o
-# MAD degenera (ex.: 3 pontos -> sigma ~0 e ruido vira reprovacao em massa)
+# minimum number of samples to estimate a stable local sigma: with fewer than
+# this the MAD degenerates (e.g. 3 points -> sigma ~0 and noise becomes mass rejection)
 MIN_SIGMA_SAMPLES = 11
 
 
 def robust_rolling_sigma(pop, win):
-    """Sigma robusto (1.4826 x MAD) rolante, usado como referencia de limiar nos
-    testes de spike e rate-of-change: nao e inflado pelos proprios outliers que
-    os testes procuram. Onde o MAD e 0 (dados quase constantes) recai no desvio
-    padrao rolante para nao reprovar ruido de resolucao. Janela menor que
-    MIN_SIGMA_SAMPLES ou maior que a serie -> valor global constante."""
+    """Rolling robust sigma (1.4826 x MAD), used as the threshold reference in the
+    spike and rate-of-change tests: it is not inflated by the very outliers that
+    the tests are looking for. Where the MAD is 0 (nearly constant data) it falls
+    back to the rolling standard deviation so as not to reject resolution noise.
+    A window smaller than MIN_SIGMA_SAMPLES or larger than the series -> constant
+    global value."""
     n = len(pop)
     if win >= n or win < MIN_SIGMA_SAMPLES:
         med = pop.median()
@@ -92,7 +93,7 @@ def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interva
     spike_vals = spike.to_numpy()
 
     missing = np.where(dataframe[parameter].isna())[0]
-    # spike/limiar NaN => sem vizinhos validos ou sigma indeterminado: nao avaliavel
+    # spike/threshold NaN => no valid neighbours or indeterminate sigma: not evaluable
     unevaluated = np.where(np.isnan(spike_vals) | np.isnan(upperLimit))[0]
     unevaluated = [i for i in unevaluated if i not in missing]
     reproved = list(np.where(spike_vals > upperLimit)[0])
@@ -111,9 +112,9 @@ def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interva
 
 
 def range_test(parameter, flags, range_min, range_max, fail_flag=QC_flags.BAD_DATA):
-    # fail_flag: BAD_DATA para faixa do sensor (fisicamente impossivel);
-    # SUSPECT para faixa ambiental/climatologica (QARTOD: valores fora do
-    # envelope regional sao suspeitos, nao necessariamente ruins)
+    # fail_flag: BAD_DATA for the sensor range (physically impossible);
+    # SUSPECT for the environmental/climatological range (QARTOD: values outside
+    # the regional envelope are suspect, not necessarily bad)
     missing = np.where(parameter.isna())[0]
     bad = np.concatenate(
         (np.where(range_max < parameter)[0], np.where((parameter < range_min))[0])
@@ -133,17 +134,18 @@ def sigma_rate_of_change_test(
     n_lines, ParamObs, n_cel, flags, ms_interval, time_window, rc_fail, rc_susp, DIR,
     var_positions=None
 ):
-    # QARTOD rate-of-change test: |V_n - V_(n-1)| comparado a fator x sigma local.
-    # Alinhado ao QARTOD, o excedente e marcado como SUSPECT (3), nunca BAD:
-    # variacoes rapidas reais (frentes, ressurgencia) existem.
-    # var_positions: posicoes da string de flags que pertencem a ESTA variavel;
-    # usadas para propagar 'nao avaliavel' quando o valor anterior desta variavel
-    # ja foi reprovado/faltante (sem elas, flags de outras variaveis contaminariam).
+    # QARTOD rate-of-change test: |V_n - V_(n-1)| compared to factor x local sigma.
+    # Aligned with QARTOD, the exceedance is flagged SUSPECT (3), never BAD:
+    # real rapid variations (fronts, upwelling) do occur.
+    # var_positions: positions of the flag string that belong to THIS variable;
+    # used to propagate 'not evaluable' when the previous value of this variable
+    # was already rejected/missing (without them, flags of other variables would
+    # contaminate).
     interval_s = ms_interval.item().total_seconds()
     n_samples = parse_time_window_samples(time_window, interval_s, n_lines)
     if n_samples < MIN_SIGMA_SAMPLES:
-        # janela pequena demais nao estima sigma local estavel; antes disso o
-        # teste virava um no-op silencioso (sigma NaN -> nada reprovado)
+        # a window too small does not estimate a stable local sigma; before this
+        # the test silently became a no-op (sigma NaN -> nothing rejected)
         print("WARNING: rate-of-change window '%s' spans only %d sample(s) at this "
               "sampling interval; using the whole-series sigma instead."
               % (time_window, n_samples))
@@ -175,11 +177,11 @@ def sigma_rate_of_change_test(
             if DIR == False
             else np.abs((PO.diff() + 180 + 360) % 360 - 180)
         )
-        # QARTOD: rate-of-change so gera SUSPECT; os dois fatores viram niveis
-        # do mesmo flag (>= susp ja e suspeito)
+        # QARTOD: rate-of-change only produces SUSPECT; the two factors become
+        # levels of the same flag (>= susp is already suspect)
         suspect += list((PO.loc[RC >= rc_susp * std.sigma]).index)
         missing += list((PO.loc[PO.isna()]).index)
-        # valor anterior faltante -> diff nao avaliavel (independe de flags previas)
+        # previous value missing -> diff not evaluable (independent of prior flags)
         unknown += list(PO.index[PO.shift(1).isna() & PO.notna()])
     for f in range(len(df_flags)):
         if f < n_cel:
@@ -211,27 +213,27 @@ def sigma_rate_of_change_test(
 def single_flat_line_test(
     n_samples, n_cel, data, flags, rep_cnt_fail, rep_cnt_suspect
 ):
-    # Flat line test (QARTOD): rep_cnt observacoes consecutivas que nao diferem
-    # mais que eps => sensor travado. NaNs esporadicos NAO interrompem a
-    # contagem (um sensor travado que emite NaNs ocasionais continua detectavel):
-    # a sequencia e avaliada sobre os valores validos. Vetorizado (O(n)).
+    # Flat line test (QARTOD): rep_cnt consecutive observations that do not differ
+    # by more than eps => stuck sensor. Sporadic NaNs do NOT interrupt the
+    # count (a stuck sensor that emits occasional NaNs remains detectable):
+    # the sequence is evaluated over the valid values. Vectorized (O(n)).
     eps = get_eps(data)
     v = np.asarray(data, dtype=float)
-    missing_mask = np.isnan(v) | (v == -9)  # -9: sentinela legada de faltante
+    missing_mask = np.isnan(v) | (v == -9)  # -9: legacy missing-value sentinel
     out_char = np.full(n_samples, '%d' % QC_flags.GOOD_DATA, dtype='<U1')
     out_char[missing_mask] = '%d' % QC_flags.MISSING
 
     valid_idx = np.where(~missing_mask)[0]
     vv = v[valid_idx]
     if len(vv) > 0:
-        # comprimento da sequencia "plana" terminando em cada amostra valida
+        # length of the "flat" sequence ending at each valid sample
         same = np.abs(np.diff(vv)) <= eps
         starts = np.r_[True, ~same]
         pos = np.arange(len(vv))
         start_idx = np.maximum.accumulate(np.where(starts, pos, 0))
         run = pos - start_idx + 1
-        # sequencia plana que encosta no inicio dos dados e ainda nao atingiu
-        # rep_cnt_fail: pode ser continuacao de um trecho anterior -> nao avaliavel
+        # flat sequence that touches the start of the data and has not yet reached
+        # rep_cnt_fail: may be a continuation of an earlier stretch -> not evaluable
         unknown_mask = (start_idx == 0) & (run == pos + 1) & (pos + 1 < rep_cnt_fail)
         char_vv = np.where(run >= rep_cnt_fail, '%d' % QC_flags.BAD_DATA,
                    np.where(run >= rep_cnt_suspect, '%d' % QC_flags.SUSPECT,
@@ -243,12 +245,12 @@ def single_flat_line_test(
 
 
 def vertical_gradient_test(values, depth, flags, grad_fail, grad_susp, min_dz=0.05):
-    # Teste de gradiente vertical (perfis): |dV/dz| entre amostras consecutivas,
-    # comparado a limiares relativos (fator x sigma robusto dos gradientes do
-    # perfil). Usa a profundidade real (dV/dz), nao a sequencia temporal.
-    # - valor NaN -> MISSING
-    # - primeiro ponto, vizinho de NaN ou |dz| < min_dz (parado na mesma
-    #   profundidade) -> UNKNOWN (gradiente indeterminado)
+    # Vertical gradient test (profiles): |dV/dz| between consecutive samples,
+    # compared to relative thresholds (factor x robust sigma of the profile's
+    # gradients). Uses the real depth (dV/dz), not the time sequence.
+    # - NaN value -> MISSING
+    # - first point, neighbour of a NaN or |dz| < min_dz (stopped at the same
+    #   depth) -> UNKNOWN (indeterminate gradient)
     v = np.asarray(values, dtype=float)
     z = np.asarray(depth, dtype=float)
     n = len(v)
@@ -262,9 +264,9 @@ def vertical_gradient_test(values, depth, flags, grad_fail, grad_susp, min_dz=0.
     computable[1:] = (~np.isnan(v[1:])) & (~np.isnan(v[:-1])) & \
                      (~np.isnan(dz[1:])) & (np.abs(dz[1:]) >= min_dz)
 
-    # o desvio e medido em relacao ao gradiente TIPICO do perfil (mediana):
-    # um perfil estratificado tem gradiente de fundo diferente de zero, e o
-    # teste procura desvios anomalos desse comportamento, nao o gradiente em si
+    # the deviation is measured relative to the profile's TYPICAL gradient (median):
+    # a stratified profile has a nonzero background gradient, and the test looks
+    # for anomalous deviations from that behaviour, not the gradient itself
     valid_grads = grad[computable]
     if len(valid_grads) >= 4:
         med = np.nanmedian(valid_grads)
@@ -272,7 +274,7 @@ def vertical_gradient_test(values, depth, flags, grad_fail, grad_susp, min_dz=0.
         if not np.isfinite(sigma) or sigma <= 0:
             sigma = np.nanstd(valid_grads)
     else:
-        med, sigma = np.nan, np.nan  # gradientes insuficientes: nao avaliavel
+        med, sigma = np.nan, np.nan  # insufficient gradients: not evaluable
 
     out = []
     for i in range(n):
@@ -291,25 +293,25 @@ def vertical_gradient_test(values, depth, flags, grad_fail, grad_susp, min_dz=0.
 
 def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
                            sustain_days=3, recovery_day_frac=0.2):
-    """Analise de incrustacao do sensor de luz (HOBO): a "janela de uso" da luz.
+    """Light sensor fouling analysis (HOBO): the light "usage window".
 
-    Logica: o pico diario de luz em agua limpa (baseline = maior pico dos
-    primeiros `baseline_days` dias) decai conforme o sensor incrusta. Quando o
-    pico diario fica abaixo de `cutoff_frac` x baseline por `sustain_days` dias
-    CONSECUTIVOS (sustentado, para nao cortar num unico vale nublado), a luz
-    deixa de ser confiavel a partir do primeiro desses dias.
+    Logic: the daily light peak in clean water (baseline = highest peak of the
+    first `baseline_days` days) decays as the sensor gets fouled. When the daily
+    peak stays below `cutoff_frac` x baseline for `sustain_days` CONSECUTIVE
+    days (sustained, so as not to cut at a single cloudy trough), the light
+    stops being reliable starting from the first of those days.
 
-    NAO assume decaimento monotonico. Depois do corte proposto, verifica que
-    fracao dos dias ainda ALCANCA o limiar (pico diario >= limiar): se essa
-    fracao passar de `recovery_day_frac`, a queda nao e permanente - o pico
-    volta a subir muitas vezes -, sinal de possivel limpeza/recolocacao,
-    incrustacao parcial ou so tempo nublado. Nesse caso emite um AVISO forte
-    para o operador decidir na revisao (o corte proposto nao e confiavel e o
-    arquivo pode conter mais de um deployment).
+    It does NOT assume monotonic decay. After the proposed cutoff, it checks what
+    fraction of the days still REACHES the threshold (daily peak >= threshold): if
+    that fraction exceeds `recovery_day_frac`, the drop is not permanent - the peak
+    rises again many times -, a sign of possible cleaning/redeployment, partial
+    fouling or just cloudy weather. In that case it issues a strong WARNING for
+    the operator to decide during review (the proposed cutoff is unreliable and the
+    file may contain more than one deployment).
 
-    Retorna dict: 'evaluable' (bool), 'baseline', 'threshold', 'daily_peak'
+    Returns dict: 'evaluable' (bool), 'baseline', 'threshold', 'daily_peak'
     (Series), 'proposed_cutoff' (Timestamp|None), 'recovers' (bool),
-    'recovery_day_frac_after' (float) e 'warnings' (list[str]).
+    'recovery_day_frac_after' (float) and 'warnings' (list[str]).
     """
     out = {'evaluable': False, 'baseline': np.nan, 'threshold': np.nan,
            'daily_peak': pd.Series(dtype=float), 'proposed_cutoff': None,
@@ -366,9 +368,9 @@ def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
 
 
 def apply_light_window(datetimes, light, flags, cutoff, evaluable=True):
-    """Apende 1 caractere de flag por amostra para a luz:
-    9 = valor faltante; 2 = teste nao avaliavel; 3 = apos o corte de
-    incrustacao (suspeito; o valor e mantido); 1 = dentro da janela de uso."""
+    """Appends 1 flag character per sample for the light:
+    9 = missing value; 2 = test not evaluable; 3 = after the fouling cutoff
+    (suspect; the value is kept); 1 = inside the usage window."""
     ts = pd.DatetimeIndex(datetimes)
     v = np.asarray(light, dtype=float)
     out = []
