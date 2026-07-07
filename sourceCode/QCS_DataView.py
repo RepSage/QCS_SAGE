@@ -1,6 +1,5 @@
 import re
 import math
-import datetime
 import numpy as np # type: ignore
 import pandas as pd # type: ignore
 import matplotlib.pyplot as plt # type: ignore
@@ -60,21 +59,22 @@ def getParamColors (parameter_names=None):
     # cParam: light tone (data points) / bcParam: dark tone (trend lines, axes).
     # Hues were chosen to be strongly contrasting and intuitive
     # (temperature=red, chlorophyll=green, oxygen=blue, salinity=orange, etc).
-    cParam =  {'Temperature (degC)': '#ff4d4d',                # vermelho
-                'Salinity (PSU)': '#ffa64d',                   # laranja
+    cParam =  {'Temperature (degC)': '#ff4d4d',                # red
+                'Salinity (PSU)': '#ffa64d',                   # orange
                 'Conductivity (mS/cm)': '#33cccc',             # teal
-                'Density (kg/m3)': '#b380ff',                  # roxo
-                'CO2 level (ppm)': '#a6a6a6',                  # cinza
+                'Density (kg/m3)': '#b380ff',                  # purple
+                'CO2 level (ppm)': '#a6a6a6',                  # gray
                 'CO2 Level (ppm)': '#a6a6a6',
-                'O2 level (uM)': '#4d94ff',                    # azul
-                'O2 content (mg/L)': '#4d94ff',                # azul
-                'PAR (umol/m2/s)': '#ffd11a',                  # amarelo
-                'Turbidity (FTU)': '#bf8040',                  # marrom
-                'Chlorophyll (ug/L)': '#5cd65c',               # verde
-                'pH': '#ff66cc',                               # rosa/magenta
-                'Dissolved organic matter (ppb)': '#cccc29',   # oliva
-                'Soundspeed (m/s)': '#8585ad',                 # azul-acinzentado
-                'Pressure (dbar)': '#808080'                   # cinza escuro
+                'O2 level (uM)': '#4d94ff',                    # blue
+                'O2 content (mg/L)': '#4d94ff',                # blue
+                'PAR (umol/m2/s)': '#ffd11a',                  # yellow
+                'Turbidity (FTU)': '#bf8040',                  # brown
+                'Chlorophyll (ug/L)': '#5cd65c',               # green
+                'pH': '#ff66cc',                               # pink/magenta
+                'Dissolved organic matter (ppb)': '#cccc29',   # olive
+                'Soundspeed (m/s)': '#8585ad',                 # gray-blue
+                'Pressure (dbar)': '#808080',                  # dark gray
+                'Luminosity (lux)': '#f2c14e'                  # amber (HOBO light)
                 }
     bcParam = {'Temperature (degC)': '#b30000',
                 'Salinity (PSU)': '#cc6600',
@@ -90,7 +90,8 @@ def getParamColors (parameter_names=None):
                 'pH': '#cc0099',
                 'Dissolved organic matter (ppb)': '#666614',
                 'Soundspeed (m/s)': '#3d3d5c',
-                'Pressure (dbar)': '#1a1a1a'
+                'Pressure (dbar)': '#1a1a1a',
+                'Luminosity (lux)': '#a3781f'
                 }
 
     return cParam, bcParam
@@ -173,15 +174,14 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
     #mirror_var.loc[not_nan, variable] = np.nan
     #ax1.plot(mirror_var['Datetime'], mirror_var[variable], marker='o', c='red', linestyle='none', markersize=2, label='Reproved data')
 
-    # use only valid timestamps: a NaT at the edges would break datetime()
+    # use only valid timestamps: a NaT at the edges would break the limits.
+    # Limits come from the full first/last timestamps (day floor / day ceiling),
+    # so deployments crossing a new year keep a valid, increasing X axis.
     valid_times = qualified_data['Datetime'].dropna()
-    year = valid_times.iloc[0].year
-    month_firstday = valid_times.iloc[0].month
-    month_finalday = valid_times.iloc[-1].month
-    firstday = valid_times.iloc[0].day
-    finalday = valid_times.iloc[-1].day
-    x_inflim = pd.Timestamp(datetime.datetime(year, month_firstday, firstday, 0, 0))
-    x_suplim = pd.Timestamp(datetime.datetime(year, month_finalday, finalday, 23, 59))
+    t_start = valid_times.iloc[0]
+    t_end = valid_times.iloc[-1]
+    x_inflim = t_start.normalize()
+    x_suplim = t_end.normalize() + pd.Timedelta(hours=23, minutes=59)
     ax1.set_xlim(x_inflim, x_suplim)
 
     if fixed_scale == True:
@@ -203,12 +203,16 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
             ax1.set_ylim(SETTINGS['env_min_org'], SETTINGS['env_max_org'])
         elif re.search('turbidity', variable, re.IGNORECASE):
             ax1.set_ylim(SETTINGS['env_min_tur'], SETTINGS['env_max_tur'])
+        elif re.search('luminosity|lux', variable, re.IGNORECASE):
+            ax1.set_ylim(SETTINGS.get('env_min_lux', 0), SETTINGS.get('env_max_lux', 20000))
 
     if re.search('depth', variable, re.IGNORECASE):
         ax1.invert_yaxis()
 
-    ax1.set_title('Site: %s  /   year: %s   /  month: %s'%(qualified_data['Site'].iloc[0], year, month_firstday))
-    plt.savefig(dataview_path + '/' + re.search(r'^[^\(]+',variable, re.IGNORECASE).group() + ' series.svg', bbox_inches='tight', dpi=100)
+    ax1.set_title('Site: %s   /   %s  to  %s' % (qualified_data['Site'].iloc[0],
+                                                 t_start.strftime('%d/%m/%Y'),
+                                                 t_end.strftime('%d/%m/%Y')))
+    plt.savefig(dataview_path + '/' + re.search(r'^[^\(]+',variable, re.IGNORECASE).group().strip() + ' series.svg', bbox_inches='tight', dpi=100)
     plt.close(fig)
 
 def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SETTINGS, fixed_scale):
@@ -246,7 +250,9 @@ def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SET
             ax1.set_xlim(SETTINGS['env_min_org'], SETTINGS['env_max_org'])
         elif re.search('turbidity', variable, re.IGNORECASE):
             ax1.set_xlim(SETTINGS['env_min_tur'], SETTINGS['env_max_tur'])
-    
+        elif re.search('luminosity|lux', variable, re.IGNORECASE):
+            ax1.set_xlim(SETTINGS.get('env_min_lux', 0), SETTINGS.get('env_max_lux', 20000))
+
     maxProf = qualified_data['Depth (m)'].max()
     maxY = math.ceil(maxProf / 10) * 10
 
@@ -254,7 +260,7 @@ def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SET
 
     ax1.invert_yaxis()
     ax1.set_title('Site: %s  /   year: %s   /  month: %s'%(qualified_data['Site'].iloc[0], year, month))
-    plt.savefig(dataview_path + '/' + re.search(r'^[^\(]+',variable, re.IGNORECASE).group() + ' profile.svg', bbox_inches='tight', dpi=100)
+    plt.savefig(dataview_path + '/' + re.search(r'^[^\(]+',variable, re.IGNORECASE).group().strip() + ' profile.svg', bbox_inches='tight', dpi=100)
     plt.close(fig)
 
 def identify_valid_interval (y):
@@ -447,24 +453,24 @@ def plot_database_panel1 (database, dataViewSettings):
 
 def plot_database_panel2(database, dataViewSettings):
     """
-    Gera gráficos de séries temporais para múltiplos parâmetros e sites, adaptado para coletas de até 48 horas.
-    
-    Parâmetros:
-        database (DataFrame): DataFrame contendo os dados a serem plotados
-        dataViewSettings (dict): Dicionário com configurações de visualização contendo:
-            - siteList: lista de sites/locais
-            - parameterList: lista de parâmetros
-            - filterByYear: ano para filtrar
-            - tendencyLines: bool para linhas de tendência
-            - linearRegressionDegree: grau da regressão
-            - viewDataPoints: bool para mostrar pontos
-            - fixedScale: bool para escala fixa
-            - scaleSettings: configurações de escala
-    
-    Retorno:
-        None (gera e salva gráficos como arquivos SVG)
+    Generates time series plots for multiple parameters and sites, adapted for deployments of up to 48 hours.
+
+    Parameters:
+        database (DataFrame): DataFrame containing the data to be plotted
+        dataViewSettings (dict): Dictionary with visualization settings containing:
+            - siteList: list of sites/locations
+            - parameterList: list of parameters
+            - filterByYear: year to filter by
+            - tendencyLines: bool for trend lines
+            - linearRegressionDegree: regression degree
+            - viewDataPoints: bool to show points
+            - fixedScale: bool for fixed scale
+            - scaleSettings: scale settings
+
+    Returns:
+        None (generates and saves plots as SVG files)
     """
-    # Extrai configurações
+    # Extract settings
     site_names = dataViewSettings['siteList']
     parameter_names = dataViewSettings['parameterList']
     year = dataViewSettings['filterByYear']
@@ -472,24 +478,24 @@ def plot_database_panel2(database, dataViewSettings):
     deg = dataViewSettings['linearRegressionDegree']
     points = dataViewSettings['viewDataPoints']  
     
-    # Pré-processamento dos dados
+    # Data pre-processing
     db_raw = database.copy()
     db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
     db_raw.index = db_raw['Datetime']
     db_raw = db_raw.rename_axis('dt_index')
     db_raw = db_raw.sort_values(by='dt_index')
 
-    # Configuração de cores
+    # Color configuration
     colors = getSiteColors(site_names)
     rParam = renameParameters(parameter_names)
-    
-    # Divisão por semestres
+
+    # Split by semesters
     db = {
         '1stSemester': db_raw[(db_raw.loc[:,'Datetime'].dt.month >= 1) & (db_raw.loc[:,'Datetime'].dt.month <= 6)],
         '2ndSemester': db_raw[(db_raw.loc[:,'Datetime'].dt.month >= 7) & (db_raw.loc[:,'Datetime'].dt.month <= 12)]
     }
 
-    # Loop principal de plotagem
+    # Main plotting loop
     for semester in db.keys():
         for parameter in parameter_names:
             display_param = rParam[parameter_names.index(parameter)]
@@ -500,7 +506,7 @@ def plot_database_panel2(database, dataViewSettings):
             control = 0
             
             for site in site_names:
-                # Extrai dados para o site específico
+                # Extract data for the specific site
                 y = db[semester].copy()
                 y = y[parameter][(y.loc[:,'Site'] == site)]
                 y = y.loc[~(y.index.duplicated(keep=False) & y.isna())]
@@ -510,15 +516,15 @@ def plot_database_panel2(database, dataViewSettings):
                     continue
                 
                 control += 1
-                y, gap_ids = fill_NaT_gap(y)  # Preenche gaps
+                y, gap_ids = fill_NaT_gap(y)  # Fill gaps
 
-                # Calcula horas decorridas desde o início da coleta (ou desde o
-                # início da janela de tempo fixa, quando definida pelo usuário)
+                # Compute elapsed hours since the start of the deployment (or since
+                # the start of the fixed time window, when defined by the user)
                 x_start = dataViewSettings.get('xAxisStart')
                 time_origin = pd.Timestamp(x_start) if x_start is not None else y.index.min()
-                x_hours = (y.index - time_origin).total_seconds() / 3600  # Converte para horas
-                
-                # Plotagem dos dados
+                x_hours = (y.index - time_origin).total_seconds() / 3600  # Convert to hours
+
+                # Plotting the data
                 if fit_lin_regression:
                     xp, yp = linear_regression(y, degree=deg)
                     xp_hours = (xp - time_origin).total_seconds() / 3600
@@ -535,7 +541,7 @@ def plot_database_panel2(database, dataViewSettings):
                         ax1.plot(x_hours, y, linestyle='none', marker='.', 
                                 color=colors[site], markersize=3, label=f'{site} data')
             
-            # Configurações do gráfico
+            # Plot settings
             if control == 0:
                 plt.close(fig)
                 continue
@@ -552,19 +558,19 @@ def plot_database_panel2(database, dataViewSettings):
                 ax1.set_xticks(np.arange(0, total_hours + tick_step * 0.5, tick_step))
             else:
                 ax1.set_xlabel('Elapsed Time (hours)')
-                ax1.set_xlim(0, 48)  # padrao: 48 horas
-                ax1.set_xticks(np.arange(0, 49, 6))  # Ticks a cada 6 horas
-            
-            # Legenda e layout
+                ax1.set_xlim(0, 48)  # default: 48 hours
+                ax1.set_xticks(np.arange(0, 49, 6))  # Ticks every 6 hours
+
+            # Legend and layout
             ax1.legend(loc='upper left', bbox_to_anchor=(1, 1.01), fontsize=7)
             plt.subplots_adjust(left=0.06, right=0.80, top=0.88, bottom=0.11)
-            
-            # Escala fixa se necessário
+
+            # Fixed scale if needed
             if dataViewSettings['fixedScale'] and parameter in dataViewSettings['scaleSettings']:
                 ax1.set_ylim(dataViewSettings['scaleSettings'][parameter]['min'],
                             dataViewSettings['scaleSettings'][parameter]['max'])
-            
-            # Limpa parênteses no nome do arquivo
+
+            # Strip parentheses from the file name
             parameter_r = re.sub(r'\([^()]*\)', '', parameter).strip()
             plt.savefig(f'panel2_{parameter_r}_{semester}_{year}.svg')
             plt.show()
@@ -713,33 +719,225 @@ def plot_database_panel3(database, dataViewSettings):
                           loc='upper center', bbox_to_anchor=(1.1, 1.01),
                           ncol=1, fontsize=7)
                 
-                plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year))
+                plt.savefig('panel3_%s_%s_%d.svg'%(site, semester, year))
                 plt.show()
 
-def plot_hobo_split_site (database, dataview_path):
-    site_names = list(set(database['Site']))
+def plot_light_window(lux_info, site=''):
+    """Daily envelope of the HOBO light with baseline and fouling threshold.
+    The parameters used are written ON the plot (traceability of the cutoff).
+    Returns (fig, ax); the cutoff is drawn separately by mark_light_cutoff."""
+    daily_peak = lux_info['daily_peak']
+    params = lux_info['params']
+    fig, ax = plt.subplots(figsize=(11, 5.5))
+    ax.plot(daily_peak.index, daily_peak.values, '-', marker='.', ms=4,
+            color='#b38f00', lw=1.2, label='Daily light peak')
+    if np.isfinite(lux_info.get('baseline', np.nan)):
+        ax.axhline(lux_info['baseline'], color='#1f7a1f', lw=1.2, linestyle='--',
+                   label='Clean-sensor baseline (%.0f lux)' % lux_info['baseline'])
+        ax.axhline(lux_info['threshold'], color='#b30000', lw=1.2, linestyle=':',
+                   label='Fouling threshold (%.0f lux)' % lux_info['threshold'])
+    ax.set_yscale('log')
+    ax.set_ylabel('Lux (log scale)')
+    ax.grid(alpha=0.3)
+    ax.legend(loc='lower left', fontsize=8)
+    ax.set_title('%s - light usable window (fouling)' % (site or 'HOBO'))
+    # cutoff parameters visible on the plot itself
+    rule_text = ('Rule: baseline = max daily peak of the first %d day(s); light becomes BAD '
+                 'from the start of the FINAL run (>= %d day(s)) where the daily peak stays below '
+                 '%.0f%% of the baseline and never recovers to it.  '
+                 '[Settings: lux_baseline_days / lux_cutoff_frac / lux_sustain_days]'
+                 % (params['baseline_days'], params['sustain_days'], 100 * params['cutoff_frac']))
+    fig.text(0.5, 0.015, rule_text, ha='center', fontsize=7.5, color='#444444', wrap=True)
+    fig.subplots_adjust(bottom=0.17)
+    return fig, ax
+
+
+def mark_light_cutoff(ax, cutoff, lux_info):
+    """Draws (or redraws) the cutoff date on the light window plot.
+    Returns the list of created artists so the caller can remove them."""
+    artists = []
+    daily_peak = lux_info['daily_peak']
+    if cutoff is not None and len(daily_peak):
+        artists.append(ax.axvline(cutoff, color='#b30000', lw=1.6))
+        artists.append(ax.axvspan(cutoff, daily_peak.index.max(), color='#b30000', alpha=0.10))
+        artists.append(ax.text(cutoff, ax.get_ylim()[1],
+                               ' cutoff: %s' % pd.Timestamp(cutoff).strftime('%Y-%m-%d %H:%M'),
+                               color='#b30000', fontsize=9, va='top'))
+    else:
+        artists.append(ax.text(0.02, 0.99, 'no cutoff: light usable for the whole deployment',
+                               transform=ax.transAxes, color='#1f7a1f', fontsize=9, va='top'))
+    # the non-monotonic recovery warning shows whether or not a cutoff was set
+    if lux_info.get('recovers'):
+        artists.append(ax.text(
+            0.5, 0.94,
+            'WARNING: the light dips and recovers (%.0f%% of later days reach the threshold) -\n'
+            'not clean biofouling (possible cleaning / multiple deployments). Review!'
+            % (100 * lux_info.get('recovery_day_frac_after', 0)),
+            transform=ax.transAxes, ha='center', va='top', fontsize=8.5,
+            color='#b30000', weight='bold',
+            bbox=dict(boxstyle='round', facecolor='#fff0f0', edgecolor='#b30000')))
+    return artists
+
+
+def _hobo_site_slice (database, year, site):
+    """Slice by year and site used by the HOBO panels (same annual slicing
+    rule as the Seaguard panels), sorted in time."""
+    db = database.copy()
+    db = db[(db['Datetime'].dt.year == year) & (db['Site'] == site)]
+    return db.sort_values('Datetime')
+
+
+def _hobo_light_cutoff_start (db):
+    """First instant with Flag_lux == 4 (start of the fouling window),
+    or None if the light is usable for the entire plotted period."""
+    flag_lux = pd.to_numeric(db['Flag_lux'], errors='coerce')
+    flagged_times = db.loc[flag_lux == 4, 'Datetime']
+    if flagged_times.empty:
+        return None
+    return flagged_times.iloc[0]
+
+
+def _apply_hobo_common_settings (ax, dataViewSettings):
+    """Optional fixed X-axis time window (same option as panels 1/2)
+    and a date format suited to multi-month deployments."""
+    if dataViewSettings.get('xAxisStart') is not None and dataViewSettings.get('xAxisEnd') is not None:
+        ax.set_xlim(pd.Timestamp(dataViewSettings['xAxisStart']),
+                    pd.Timestamp(dataViewSettings['xAxisEnd']))
+    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m/%Y'))
+
+
+def _mask_nonpositive_lux (lux, site):
+    """A log scale cannot represent values <= 0 (night readings): they become
+    gaps in the plot. The total omitted is always reported to the console."""
+    n_nonpositive = int((lux <= 0).sum())
+    if n_nonpositive:
+        print('MESSAGE: %d light reading(s) <= 0 lux for %s omitted from the log-scale plot (night readings).'
+              % (n_nonpositive, site))
+    return lux.where(lux > 0)
+
+
+def plot_hobo_temperature (database, dataViewSettings, site):
+    """Time series of the HOBO temperature for a site, with the
+    suspect/bad points (Flag_T >= 3) highlighted, as in the Seaguard."""
+    year = dataViewSettings['filterByYear']
+    cParam, bcParam = getParamColors()
+    db = _hobo_site_slice(database, year, site)
+    if db.empty:
+        print('\nNo HOBO data for %s during %d.' % (site, year))
+        return
+    temp = pd.to_numeric(db['Temperature (degC)'], errors='coerce')
+    flag_t = pd.to_numeric(db['Flag_T'], errors='coerce')
+
+    fig, ax = plt.subplots(figsize=(980 / 100, 500 / 100))
+    plt.xticks(rotation=35)
+    ax.grid(True, linestyle='dotted', linewidth=0.5)
+    ax.plot(db['Datetime'], temp, linestyle='None', marker='.', markersize=3,
+            color=bcParam['Temperature (degC)'], label='Temperature')
+    # highlight: flags 3 (suspect) and 4 (bad); 9 = missing, not highlighted
+    flagged = flag_t.isin([3, 4])
+    if flagged.any():
+        ax.plot(db.loc[flagged, 'Datetime'], temp[flagged], linestyle='None',
+                marker='x', markersize=5, color='black',
+                label='Suspect/bad (Flag_T >= 3)')
+    ax.set_ylabel(renameParameters(['Temperature (degC)'])[0])
+    ax.set_title('HOBO temperature for %s during %d' % (site, year))
+    if dataViewSettings.get('fixedScale') and 'Temperature (degC)' in dataViewSettings.get('scaleSettings', {}):
+        ax.set_ylim(dataViewSettings['scaleSettings']['Temperature (degC)']['min'],
+                    dataViewSettings['scaleSettings']['Temperature (degC)']['max'])
+    _apply_hobo_common_settings(ax, dataViewSettings)
+    ax.legend(fontsize=8)
+    plt.savefig('hobo_temperature_%s_%d.svg' % (site, year), bbox_inches='tight')
+    plt.show()
+
+
+def plot_hobo_light (database, dataViewSettings, site):
+    """Time series of the HOBO light (log scale) for a site, with the region
+    after the fouling cutoff (Flag_lux == 4) shaded - same visual language
+    as the QCS_light_window.svg generated during qualification."""
+    year = dataViewSettings['filterByYear']
+    cParam, bcParam = getParamColors()
+    db = _hobo_site_slice(database, year, site)
+    if db.empty:
+        print('\nNo HOBO data for %s during %d.' % (site, year))
+        return
+    lux = _mask_nonpositive_lux(pd.to_numeric(db['Luminosity (lux)'], errors='coerce'), site)
+
+    fig, ax = plt.subplots(figsize=(980 / 100, 500 / 100))
+    plt.xticks(rotation=35)
+    ax.grid(True, linestyle='dotted', linewidth=0.5)
+    ax.plot(db['Datetime'], lux, linestyle='None', marker='.', markersize=3,
+            color=bcParam['Luminosity (lux)'], label='Luminosity')
+    ax.set_yscale('log')
+    ax.set_ylabel('Luminosity (lux, log scale)')
+    ax.set_title('HOBO light for %s during %d' % (site, year))
+    if dataViewSettings.get('fixedScale') and 'Luminosity (lux)' in dataViewSettings.get('scaleSettings', {}):
+        lim = dataViewSettings['scaleSettings']['Luminosity (lux)']
+        if lim['min'] > 0:
+            ax.set_ylim(lim['min'], lim['max'])
+        else:
+            print('WARNING: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
+    _apply_hobo_common_settings(ax, dataViewSettings)
+
+    # fouling window: same colors as mark_light_cutoff (qualification)
+    cutoff = _hobo_light_cutoff_start(db)
+    if cutoff is not None:
+        ax.axvline(cutoff, color='#b30000', lw=1.6)
+        ax.axvspan(cutoff, db['Datetime'].iloc[-1], color='#b30000', alpha=0.10,
+                   label='Fouling window (Flag_lux == 4)')
+        ax.text(cutoff, ax.get_ylim()[1], ' cutoff: %s' % pd.Timestamp(cutoff).date(),
+                color='#b30000', fontsize=9, va='top')
+    else:
+        ax.text(0.02, 0.99, 'no cutoff: light usable for the whole deployment',
+                transform=ax.transAxes, color='#1f7a1f', fontsize=9, va='top')
+
+    ax.legend(fontsize=8, loc='lower left')
+    plt.savefig('hobo_light_%s_%d.svg' % (site, year), bbox_inches='tight')
+    plt.show()
+
+
+def plot_hobo_light_multisite (database, dataViewSettings):
+    """Multi-site comparison of the HOBO light (log scale). The start of each
+    site's fouling window (first Flag_lux == 4) is marked with a dashed
+    vertical line in the site's color, to compare when fouling
+    started at each one."""
+    year = dataViewSettings['filterByYear']
+    site_names = dataViewSettings['siteList']
+    colors = getSiteColors(site_names)
+
+    fig, ax = plt.subplots(figsize=(980 / 100, 500 / 100))
+    plt.xticks(rotation=35)
+    ax.grid(True, linestyle='dotted', linewidth=0.5)
+    plotted_sites = 0
     for site in site_names:
-        siteDatabase = database[(database['Site'] == site)]
-
-        fig = plt.figure()
-        fig.set_size_inches(10,6)
-        ax1 = fig.gca()
-        plt.grid(axis='both', color='k', linestyle='--', linewidth=0.2)
-        ax1.set_ylabel('Temperature (degC)')
-        plt.title('%s'%site)
-        plt.plot(siteDatabase['Datetime'], siteDatabase['Temperature (degC)'], linestyle='None', marker='.', markersize=3)
-        plt.tight_layout()
-        plt.savefig(dataview_path + '/' + 'hobo_%s_temperature.svg'%site, bbox_inches='tight', dpi=100)
-
-        fig = plt.figure()
-        fig.set_size_inches(10,6)
-        ax1 = fig.gca()
-        plt.grid(axis='both', color='k', linestyle='--', linewidth=0.2)
-        ax1.set_ylabel('Luminosity (lux)')
-        plt.title('%s'%site)
-        plt.plot(siteDatabase['Datetime'], siteDatabase['Luminosity (lux)'], linestyle='None', marker='.', markersize=3)
-        plt.tight_layout()
-        plt.savefig(dataview_path + '/' + 'hobo_%s_luminosity.svg'%site, bbox_inches='tight', dpi=100)
+        db = _hobo_site_slice(database, year, site)
+        if db.empty:
+            print('\nNo HOBO data for %s during %d.' % (site, year))
+            continue
+        lux = _mask_nonpositive_lux(pd.to_numeric(db['Luminosity (lux)'], errors='coerce'), site)
+        ax.plot(db['Datetime'], lux, linestyle='None', marker='.', markersize=3,
+                color=colors[site], label=site)
+        cutoff = _hobo_light_cutoff_start(db)
+        if cutoff is not None:
+            ax.axvline(cutoff, color=colors[site], lw=1.4, linestyle='--',
+                       label='%s cutoff (%s)' % (site, pd.Timestamp(cutoff).date()))
+        plotted_sites += 1
+    if plotted_sites == 0:
+        plt.close(fig)
+        print('\nNo HOBO data for any selected site during %d.' % year)
+        return
+    ax.set_yscale('log')
+    ax.set_ylabel('Luminosity (lux, log scale)')
+    ax.set_title('HOBO light comparison between sites during %d' % year)
+    if dataViewSettings.get('fixedScale') and 'Luminosity (lux)' in dataViewSettings.get('scaleSettings', {}):
+        lim = dataViewSettings['scaleSettings']['Luminosity (lux)']
+        if lim['min'] > 0:
+            ax.set_ylim(lim['min'], lim['max'])
+        else:
+            print('WARNING: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
+    _apply_hobo_common_settings(ax, dataViewSettings)
+    ax.legend(fontsize=8, loc='lower left')
+    plt.savefig('hobo_light_multisite_%d.svg' % year, bbox_inches='tight')
+    plt.show()
 
 def plot_TS_diagram (database, dataViewSettings):
     import gsw # type: ignore

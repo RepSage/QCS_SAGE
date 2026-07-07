@@ -1,41 +1,41 @@
 # QCS — Quality Control System (SAGE)
 
-Ferramenta de qualificação e visualização de dados físico-químicos oceanográficos
-(perfis e fundeios), desenvolvida para os dados do projeto SAGE.
+Tool for qualification and visualization of oceanographic physico-chemical data
+(profiles and moorings), developed for the SAGE project data.
 
-## Como rodar
+## How to run
 
-O programa roda diretamente pelos scripts Python, usando o Python do Anaconda. Há dois
-atalhos prontos na pasta principal (dois cliques para abrir):
+The program runs directly from the Python scripts, using Anaconda's Python. Two
+ready-made shortcuts sit in the main folder (double-click to open):
 
-- **`QCS - Qualificacao de Dados.bat`** — ferramenta de qualificação (`sourceCode/QCS_Main.py`).
-- **`QCS - Visualizacao de Dados.bat`** — ferramenta de visualização (`sourceCode/QCS_DatabaseView.py`).
+- **`QCS - Data Qualification.bat`** — qualification tool (`sourceCode/QCS_Main.py`).
+- **`QCS - Data Visualization.bat`** — visualization tool (`sourceCode/QCS_DatabaseView.py`).
 
-Uma janela de terminal abre junto e mostra o progresso; ela fecha sozinha ao encerrar o
-programa (só permanece aberta se ocorrer um erro).
+The app runs with no terminal window; progress and any errors are shown in the
+in-app Execution log.
 
-## Dependências
+## Dependencies
 
-Python (Anaconda) com os pacotes listados em [`sourceCode/requirements.txt`](sourceCode/requirements.txt):
-`numpy`, `pandas`, `matplotlib`, `scipy`, `openpyxl` e `gsw`. Para instalar:
+Python (Anaconda) with the packages listed in [`sourceCode/requirements.txt`](sourceCode/requirements.txt):
+`numpy`, `pandas`, `matplotlib`, `scipy`, `openpyxl` and `gsw`. To install:
 
 ```
 python -m pip install -r sourceCode/requirements.txt
 ```
 
-## Estrutura
+## Structure
 
-- `sourceCode/` — código-fonte:
-  - `QCS_Main.py` — ferramenta de qualificação (interface + pipeline de testes de QC).
-  - `QCS_DatabaseView.py` — ferramenta de visualização de banco de dados.
-  - `QCS_DataHandler.py` — leitura, conversão e formatação de dados; constante `QCS_VERSION`.
-  - `QCS_DataView.py` — geração de gráficos e painéis.
-  - `QCS_Tests.py` — testes de controle de qualidade.
-  - `QCS_SelfTest.py` — autotestes com dados sintéticos (`python QCS_SelfTest.py`).
-  - `qcs_user_settings.json` — preferências do usuário (geradas automaticamente).
-- `changelog/` — histórico de mudanças, um arquivo por versão.
-- `Manual de Uso Quality Control System (SAGE).html` — manual de uso.
+- `sourceCode/` — source code:
+  - `QCS_Main.py` — qualification tool (interface + QC test pipeline).
+  - `QCS_DatabaseView.py` — database visualization tool.
+  - `QCS_DataHandler.py` — data reading, conversion and formatting; the `QCS_VERSION` constant.
+  - `QCS_DataView.py` — plot and panel generation.
+  - `QCS_Tests.py` — quality control tests.
+  - `QCS_SelfTest.py` — self-tests with synthetic data (`python QCS_SelfTest.py`).
+  - `qcs_user_settings.json` — user preferences (auto-generated).
+- `changelog/` — change history, one file per version.
+- `Quality Control System (SAGE) - User Manual.html` — user manual.
 
-## Versão
+## Version
 
-A versão é definida em um único lugar: `QCS_VERSION`, em `sourceCode/QCS_DataHandler.py`.
+The version is defined in a single place: `QCS_VERSION`, in `sourceCode/QCS_DataHandler.py`.

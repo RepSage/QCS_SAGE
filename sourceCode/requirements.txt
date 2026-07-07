@@ -6,3 +6,4 @@ matplotlib
 scipy
 openpyxl   # leitura/escrita de arquivos .xlsx
 gsw        # diagrama T-S (QCS_DataView.plot_TS_diagram)
+sv-ttk     # tema visual moderno da interface (QCS_Theme); opcional, com fallback

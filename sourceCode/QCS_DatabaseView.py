@@ -4,22 +4,26 @@ import json
 import pandas as pd
 import QCS_DataHandler as data
 import QCS_DataView as view
+import QCS_Theme as theme
+from QCS_Theme import ToolTip
+
+# Run with no console window (launched via pythonw): route everything that would
+# have gone to the terminal into the in-app Execution log, and never let a crash
+# be silent. The log panel is attached later in show_view_window.
+_out = theme.install_output_redirect()
+theme.install_crash_handler('QCS Data Visualization', _out)
 from tkinter import *
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
 from tkinter import messagebox
 
-# Configurações de estilo para campos desabilitados
-DISABLED_BG = '#f0f0f0'
-DISABLED_FG = '#a0a0a0'
-
 # Tooltips dictionary
 TOOLTIPS = {
-    'database_files': "Select database file (xlsx) to visualize\nMultiple files can be selected",
-    'join_files': "Combine multiple files into a single database",
+    'database_files': "Select database or qualified file(s) to visualize\nMultiple files can be selected (they are combined,\nvalidated and deduplicated automatically)",
+    'join_files': "Build a database from a parent folder: scans the\n'QCS qualified ... data' subfolders of the QCS outputs,\nskips report files and combines everything",
     'sort_time': "Sort data chronologically by datetime",
-    'input_format': "Format of input files (CSV or Excel)",
+    'instrument': "Which instrument produced the qualified files\nSeaguard (TSCP) and HOBO spreadsheets are never\nstackable - build separate databases",
     'output_name': "Name for processed database file",
     'input_path': "Folder containing input files",
     'output_path': "Folder where results will be saved",
@@ -32,6 +36,9 @@ TOOLTIPS = {
     'panel1': "Panel 1: Comparison between parameters at the same site",
     'panel2': "Panel 2: Comparison of the same parameter between sites",
     'panel3': "Panel 3: Comparison between parameters at the same site (vertical profile)",
+    'hobo_temp': "HOBO panel: temperature over time, one plot per selected site\nSuspect/bad points (Flag_T >= 3) are highlighted",
+    'hobo_light': "HOBO panel: light over time (log scale), one plot per selected site\nThe fouling window (Flag_lux == 4) is shaded from the cutoff on",
+    'hobo_light_multi': "HOBO panel: light (log scale) with all selected sites together\nEach site's fouling cutoff is marked to compare fouling onset",
     'ts_diagram': "Generate Temperature-Salinity diagram",
     'latitude': "Latitude for TS diagram reference",
     'longitude': "Longitude for TS diagram reference",
@@ -46,60 +53,12 @@ TOOLTIPS = {
     'max_scale': "Maximum value for parameter scale"
 }
 
-class ToolTip:
-    def __init__(self, widget, text):
-        self.widget = widget
-        self.text = text
-        self.tooltip = None
-        self.widget.bind("<Enter>", self.show)
-        self.widget.bind("<Leave>", self.hide)
+class ErrorLogger(theme.LogConsole):
+    """Execution log (shared theme console), positioned via pack."""
 
-    def show(self, event=None):
-        x, y, _, _ = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 25
-        y += self.widget.winfo_rooty() + 25
-
-        self.tooltip = tk.Toplevel(self.widget)
-        self.tooltip.wm_overrideredirect(True)
-        self.tooltip.wm_geometry(f"+{x}+{y}")
-        
-        label = tk.Label(self.tooltip, text=self.text, justify='left',
-                        background="#ffffe0", relief='solid', borderwidth=1,
-                        font=('Arial', 10), padx=5, pady=5)
-        label.pack()
-
-    def hide(self, event=None):
-        if self.tooltip:
-            self.tooltip.destroy()
-            self.tooltip = None
-
-class ErrorLogger:
     def __init__(self, parent):
-        self.frame = ttk.LabelFrame(parent, text=" ERROR LOG ", padding=10)
+        super().__init__(parent, title=" Execution log ", height=8)
         self.frame.pack(fill='both', expand=True, padx=5, pady=5)
-        
-        self.text = tk.Text(self.frame, height=8, wrap='word', state='disabled',
-                           bg='#f0f0f0', fg='red', font=('Consolas', 9))
-        self.text.pack(fill='both', expand=True)
-        
-        scrollbar = ttk.Scrollbar(self.text)
-        scrollbar.pack(side='right', fill='y')
-        self.text.config(yscrollcommand=scrollbar.set)
-        scrollbar.config(command=self.text.yview)
-        
-        self.clear_button = ttk.Button(self.frame, text="Clear Log", command=self.clear)
-        self.clear_button.pack(side='right', padx=5, pady=5)
-    
-    def log(self, message):
-        self.text.config(state='normal')
-        self.text.insert('end', message + '\n')
-        self.text.see('end')
-        self.text.config(state='disabled')
-    
-    def clear(self):
-        self.text.config(state='normal')
-        self.text.delete('1.0', 'end')
-        self.text.config(state='disabled')
 
 
 # ----- user preferences: shared with QCS_Main (same json file) -----
@@ -130,7 +89,7 @@ def save_user_prefs():
 load_user_prefs()
 
 def restore_entry(entry, value):
-    # preenche um campo mesmo que ele esteja desabilitado no momento
+    # fills a field even if it is currently disabled
     if not value:
         return
     prev = entry.cget('state')
@@ -140,34 +99,27 @@ def restore_entry(entry, value):
     entry.config(state=prev)
 
 def set_disabled_style(widget):
-    if isinstance(widget, (ttk.Entry, ttk.Combobox)):
-        widget.config(state='disabled', foreground=DISABLED_FG)
-        widget.configure(style='Disabled.TEntry')
-    elif isinstance(widget, ttk.Button):
-        widget.config(state='disabled')
-    elif isinstance(widget, ttk.Checkbutton):
-        widget.config(state='disabled')
+    # the theme (sv-ttk or clam) already draws the 'disabled' state properly
+    widget.config(state='disabled')
 
 def set_enabled_style(widget):
-    if isinstance(widget, ttk.Entry):
-        widget.config(state='normal', foreground='black')
-        widget.configure(style='TEntry')
-    elif isinstance(widget, ttk.Combobox):
-        widget.config(state='readonly', foreground='black')
-        widget.configure(style='TCombobox')
-    elif isinstance(widget, ttk.Button):
-        widget.config(state='normal')
-    elif isinstance(widget, ttk.Checkbutton):
+    if isinstance(widget, ttk.Combobox):
+        widget.config(state='readonly')
+    else:
         widget.config(state='normal')
 
+def is_hobo_input():
+    """The Step 2 window panels change according to the Step 1 instrument."""
+    return inputSettings.get('instrument', 'Seaguard') == 'HOBO'
+
 def toggle_all_controls(enabled=False):
-    """Habilita ou desabilita todos os controles dependendo do Data Type selecionado"""
-    # Painéis
+    """Enables or disables all controls depending on the selected Data Type"""
+    # Panels
     panel1_cb.config(state='normal' if enabled else 'disabled')
     panel2_cb.config(state='normal' if enabled else 'disabled')
     panel3_cb.config(state='normal' if enabled else 'disabled')
-    
-    # Opções de exibição
+
+    # Display options
     tendency_cb.config(state='normal' if enabled else 'disabled')
     tendency_entry.config(state='normal' if enabled and tendency.get() else 'disabled')
     points_cb.config(state='normal' if enabled else 'disabled')
@@ -179,7 +131,7 @@ def toggle_all_controls(enabled=False):
     longitude_entry.config(state='normal' if enabled and tsDiagram.get() else 'disabled')
     tsParam_combobox.config(state='readonly' if enabled and tsDiagram.get() else 'disabled')
     
-    # Filtros
+    # Filters
     for cb in year_widgets.values():
         cb.config(state='normal' if enabled else 'disabled')
     for cb in site_widgets.values():
@@ -187,14 +139,14 @@ def toggle_all_controls(enabled=False):
     for cb in parameter_widgets.values():
         cb.config(state='normal' if enabled else 'disabled')
 
-    # Janela de tempo do eixo X (fundeio)
+    # X-axis time window (mooring)
     time_start_entry.config(state='normal' if enabled else 'disabled')
     time_end_entry.config(state='normal' if enabled else 'disabled')
-    # Range do eixo de profundidade (perfil)
+    # Depth-axis range (profile)
     depth_min_entry.config(state='normal' if enabled else 'disabled')
     depth_max_entry.config(state='normal' if enabled else 'disabled')
 
-    # Escalas
+    # Scales
     toggle_scale_controls()
 
 def toggle_input_mode():
@@ -203,22 +155,25 @@ def toggle_input_mode():
         set_disabled_style(browse_file_btn)
         set_enabled_style(inputPath_entry)
         set_enabled_style(browse_input_btn)
-        inputFilesFormat_combobox.config(state='readonly')
-        inputFilesFormat_combobox.configure(style='TCombobox')
         set_enabled_style(outputName_entry)
     else:  # If Join Files is unchecked
         set_enabled_style(fileNames_entry)
         set_enabled_style(browse_file_btn)
         set_disabled_style(inputPath_entry)
         set_disabled_style(browse_input_btn)
-        inputFilesFormat_combobox.config(state='disabled')
-        inputFilesFormat_combobox.configure(style='Disabled.TEntry')
         set_disabled_style(outputName_entry)
 
 def toggle_panel_dependent_controls():
     any_panel_selected = panel1.get() or panel2.get() or panel3.get()
-    
-    if any_panel_selected:
+
+    if any_panel_selected and is_hobo_input():
+        # HOBO panels already define the presentation (points, log scale):
+        # trend lines and 'show points' do not apply
+        set_disabled_style(tendency_cb)
+        set_disabled_style(tendency_entry)
+        set_disabled_style(points_cb)
+        set_enabled_style(fixed_scale_cb)
+    elif any_panel_selected:
         set_enabled_style(tendency_cb)
         if tendency.get():
             set_enabled_style(tendency_entry)
@@ -233,29 +188,29 @@ def toggle_panel_dependent_controls():
     toggle_scale_controls()
 
 def toggle_parameter_checkboxes():
-    if panel1.get() or panel2.get() or panel3.get():
+    # in HOBO panels each panel already states which variable it plots
+    # (temperature or light), so the parameter filter does not apply and stays disabled
+    if (panel1.get() or panel2.get() or panel3.get()) and not is_hobo_input():
         for cb in parameter_widgets.values():
             set_enabled_style(cb)
     else:
         for cb in parameter_widgets.values():
             set_disabled_style(cb)
-    
+
     toggle_scale_controls()
 
 def toggle_ts_controls():
     if tsDiagram.get():
         set_enabled_style(latitude_entry)
         set_enabled_style(longitude_entry)
-        tsParam_combobox.config(state='readonly')
-        tsParam_combobox.configure(style='TCombobox')
+        set_enabled_style(tsParam_combobox)
     else:
         set_disabled_style(latitude_entry)
         set_disabled_style(longitude_entry)
-        tsParam_combobox.config(state='disabled')
-        tsParam_combobox.configure(style='Disabled.TEntry')
+        set_disabled_style(tsParam_combobox)
 
 def toggle_scale_controls():
-    """Habilita ou desabilita os controles de escala com base no fixed_scale e painéis selecionados"""
+    """Enables or disables the scale controls based on fixed_scale and the selected panels"""
     if fixedScale.get() and (panel1.get() or panel2.get() or panel3.get()):
         for entry in min_scale_entries.values():
             set_enabled_style(entry)
@@ -270,23 +225,29 @@ def toggle_scale_controls():
 def toggle_data_type():
     data_type = dType_combobox.get()
     
-    if not data_type:  # Se nenhum Data Type estiver selecionado
+    if not data_type:  # If no Data Type is selected
         toggle_all_controls(enabled=False)
         return
-    
-    toggle_all_controls(enabled=True)  # Habilita tudo
-    
-    # Lógica específica para cada tipo de dado
-    if data_type == 'mooring':
+
+    toggle_all_controls(enabled=True)  # Enable everything
+
+    # Specific logic for each data type
+    if is_hobo_input():
+        # HOBO: the three checkboxes become their own panels (temperature/light);
+        # no T-S (there is no salinity) and no profile (there is no depth)
+        set_disabled_style(ts_cb)
+        set_disabled_style(depth_min_entry)
+        set_disabled_style(depth_max_entry)
+    elif data_type == 'mooring':
         set_disabled_style(panel3_cb)
         set_disabled_style(ts_cb)
-        # o range de profundidade so se aplica a graficos de perfil
+        # the depth range only applies to profile plots
         set_disabled_style(depth_min_entry)
         set_disabled_style(depth_max_entry)
     elif data_type == 'tscp profile':
         set_disabled_style(panel1_cb)
         set_disabled_style(panel2_cb)
-        # a janela de tempo do eixo X so se aplica a graficos de fundeio
+        # the X-axis time window only applies to mooring plots
         set_disabled_style(time_start_entry)
         set_disabled_style(time_end_entry)
     
@@ -322,13 +283,13 @@ def selectInputFolder():
         save_user_prefs()
 
 def saveInputSettings():
-    # validacao com avisos claros antes de fechar a janela
+    # validation with clear warnings before closing the window
+    if instrument_combobox.get() not in ('Seaguard', 'HOBO'):
+        messagebox.showwarning("Warning", "Select the instrument that produced the files\n('Instrument' field).")
+        return
     if join.get():
         if not inputPath_entry.get().strip() or not os.path.isdir(inputPath_entry.get().strip()):
             messagebox.showwarning("Warning", "To join files, select a valid input folder\n('Input Path' field).")
-            return
-        if inputFilesFormat_combobox.get() not in ('csv', 'xlsx'):
-            messagebox.showwarning("Warning", "Select the input files format\n(csv or xlsx).")
             return
         if not outputName_entry.get().strip():
             messagebox.showwarning("Warning", "Define a name for the generated database\n('Output Name' field).")
@@ -352,16 +313,16 @@ def saveInputSettings():
     inputSettings['outputPath'] = outputPath_entry.get()
     inputSettings['inputPath'] = inputPath_entry.get()
     inputSettings['sortByTime'] = sort.get()
-    inputSettings['inputFilesFormat'] = inputFilesFormat_combobox.get()
+    inputSettings['instrument'] = instrument_combobox.get()
 
-    # guarda as ultimas escolhas
+    # store the latest choices
     USER_PREFS.update({
         'dbv_database_file': fileNames_entry.get(),
         'dbv_output_name': outputName_entry.get(),
         'dbv_output_path': outputPath_entry.get(),
         'dbv_input_path': inputPath_entry.get(),
         'dbv_sort_by_time': sort.get(),
-        'dbv_input_format': inputFilesFormat_combobox.get(),
+        'dbv_instrument': instrument_combobox.get(),
     })
     save_user_prefs()
     input_window.destroy()
@@ -378,9 +339,24 @@ def saveDataViewSettings():
         
         dataViewSettings['tsDiagram'] = tsDiagram.get()
         if dataViewSettings['tsDiagram'] == True:
-            dataViewSettings['latitude'] = float(latitude_entry.get()) if latitude_entry.get() else None
-            dataViewSettings['longitude'] = float(longitude_entry.get()) if longitude_entry.get() else None
-            dataViewSettings['tsParam'] = tsParam_combobox.get()
+            # the T-S diagram is the ONE place coordinates are mandatory: they
+            # enter gsw's absolute salinity / conservative temperature and do NOT
+            # cancel out. Refuse to run it without valid lat/long (clear message).
+            try:
+                lat_ts = float(latitude_entry.get())
+                lon_ts = float(longitude_entry.get())
+                if not (-90 <= lat_ts <= 90 and -180 <= lon_ts <= 180):
+                    raise ValueError
+                dataViewSettings['latitude'] = lat_ts
+                dataViewSettings['longitude'] = lon_ts
+                dataViewSettings['tsParam'] = tsParam_combobox.get()
+            except ValueError:
+                messagebox.showwarning("Warning",
+                                       "The T-S Diagram needs a valid Latitude and Longitude.\n\n"
+                                       "Fill both (decimal degrees, e.g. -17.5 and -40.0) or uncheck\n"
+                                       "'T-S Diagram'. The diagram will be skipped this run.")
+                error_logger.log("WARNING: T-S Diagram skipped - missing/invalid Latitude/Longitude")
+                dataViewSettings['tsDiagram'] = False
 
         dataViewSettings['tendencyLines'] = tendency.get()
         if dataViewSettings['tendencyLines'] == True:
@@ -440,7 +416,7 @@ def saveDataViewSettings():
             if parameter_vars[param].get() == True and param not in selectedParameters:
                 selectedParameters.append(param)
         
-        # Salvar as escalas definidas
+        # Save the defined scales
         scale_settings = {}
         for param in parameter_names:
             min_val = min_scale_entries[param].get()
@@ -458,7 +434,7 @@ def saveDataViewSettings():
         dataViewSettings['siteList'] = selectedSites
         dataViewSettings['parameterList'] = selectedParameters
 
-        # guarda as ultimas escolhas da visualizacao
+        # store the latest visualization choices
         USER_PREFS.update({
             'dbv_data_type': dType_combobox.get(),
             'dbv_selected_years': selectedYears,
@@ -488,7 +464,11 @@ def saveDataViewSettings():
         error_logger.log(f"ERROR saving view settings: {str(e)}")
 
 def generatePanels():
-    error_logger.clear()  # Limpa o log antes de gerar novos painéis
+    error_logger.clear()  # Clear the log before generating new panels
+
+    # implicitly saves the current interface choices: generating panels with
+    # stale settings was a pitfall of the 2-click save->generate flow
+    saveDataViewSettings()
 
     if not dataViewSettings.get('dataType'):
         error_logger.log("ERROR: No settings saved yet - configure the options and click 'Save View Settings' first")
@@ -511,6 +491,41 @@ def generatePanels():
         # panels are generated once for each selected year
         for year in selected_years:
             dataViewSettings['filterByYear'] = year
+            if is_hobo_input():
+                # HOBO: dedicated panels (temperature / light+window / light
+                # multi-site); T-S does not apply (no salinity)
+                selected_sites = dataViewSettings.get('siteList', [])
+                any_hobo_panel = (dataViewSettings.get('panel1', False)
+                                  or dataViewSettings.get('panel2', False)
+                                  or dataViewSettings.get('panel3', False))
+                if any_hobo_panel and not selected_sites:
+                    error_logger.log("ERROR: no site selected - check at least one site in 'Filter by Site'")
+                    continue
+
+                if dataViewSettings.get('panel1', False):
+                    for site in selected_sites:
+                        try:
+                            view.plot_hobo_temperature(database, dataViewSettings, site)
+                            error_logger.log("SUCCESS: HOBO temperature for %s (%d) generated successfully" % (site, year))
+                        except Exception as e:
+                            error_logger.log("ERROR generating HOBO temperature for %s (%d): %s" % (site, year, e))
+
+                if dataViewSettings.get('panel2', False):
+                    for site in selected_sites:
+                        try:
+                            view.plot_hobo_light(database, dataViewSettings, site)
+                            error_logger.log("SUCCESS: HOBO light for %s (%d) generated successfully" % (site, year))
+                        except Exception as e:
+                            error_logger.log("ERROR generating HOBO light for %s (%d): %s" % (site, year, e))
+
+                if dataViewSettings.get('panel3', False):
+                    try:
+                        view.plot_hobo_light_multisite(database, dataViewSettings)
+                        error_logger.log("SUCCESS: HOBO light multi-site (%d) generated successfully" % year)
+                    except Exception as e:
+                        error_logger.log("ERROR generating HOBO light multi-site (%d): %s" % (year, e))
+                continue
+
             if dataViewSettings['dataType'] == 'mooring':
                 if dataViewSettings.get('panel1', False):
                     try:
@@ -587,69 +602,59 @@ inputSettings = {}
 dataViewSettings = {}
 
 def show_input_window():
-    """Janela de selecao do banco de dados; preenche inputSettings ao salvar."""
+    """Database selection window; fills inputSettings on save."""
     global input_window, fileNames_entry, inputPath_entry, browse_file_btn, browse_input_btn
-    global join, sort, inputFilesFormat_combobox, outputName_entry, outputPath_entry
+    global join, sort, instrument_combobox, outputName_entry, outputPath_entry
+    theme.enable_high_dpi()
     input_window = Tk()
     input_window.title("Database Input Settings - QCS %s" % data.QCS_VERSION)
 
-    input_window.geometry("650x450")
-    input_window.resizable(False, False)
+    theme.set_scaled_geometry(input_window, 720, 520, min_width=680, min_height=480)
+    input_window.resizable(True, True)
 
-    # Configure styles
-    style = ttk.Style()
-    style.theme_use('clam')
+    # Configure styles (Sun Valley theme; falls back to the old clam look)
+    theme.apply_theme(input_window, USER_PREFS.get('ui_theme', 'light'))
+    theme.set_window_icon(input_window)  # custom taskbar/window icon (if sourceCode/qcs_icon.ico exists)
 
-    # Configure disabled style
-    style.configure('Disabled.TEntry', fieldbackground=DISABLED_BG, foreground=DISABLED_FG)
-    style.map('Disabled.TEntry',
-              fieldbackground=[('disabled', DISABLED_BG)],
-              foreground=[('disabled', DISABLED_FG)])
+    dark_mode = BooleanVar(value=USER_PREFS.get('ui_theme', 'light') == 'dark')
 
-    style.configure('TFrame', background='#f0f0f0')
-    style.configure('TLabel', background='#f0f0f0', font=('Arial', 10))
-    style.configure('TLabelframe', background='#f0f0f0')
-    style.configure('TLabelframe.Label', background='#f0f0f0')
-    style.configure('Header.TLabel', font=('Arial', 10, 'bold'))
-    style.configure('TButton', padding=5)
-    style.configure('Accent.TButton', foreground='white', background='#4a90e2', font=('Arial', 10, 'bold'))
-    style.configure('Help.TButton', foreground='white', background='#666666', font=('Arial', 9))
-    style.map('Accent.TButton', background=[('active', '#544ae2')])
-
-    style.configure('TCombobox', arrowsize=12)
-    style.map('TCombobox', 
-              fieldbackground=[('readonly', 'white')],
-              foreground=[('readonly', 'black')])
-
-    # Add menu bar
-    menubar = Menu(input_window)
-    helpmenu = Menu(menubar, tearoff=0)
-    helpmenu.add_command(label="Help", command=show_help)
-    helpmenu.add_command(label="About", command=lambda: messagebox.showinfo("About", "QCS Database View Tool\nVersion %s" % data.QCS_VERSION))
-    menubar.add_cascade(label="Menu", menu=helpmenu)
-    input_window.config(menu=menubar)
+    def on_theme_toggle():
+        new_theme = 'dark' if dark_mode.get() else 'light'
+        theme.apply_theme(input_window, new_theme)
+        USER_PREFS['ui_theme'] = new_theme
+        save_user_prefs()
 
     # Main container
-    main_frame = ttk.Frame(input_window, padding="10")
+    main_frame = ttk.Frame(input_window, padding="16")
     main_frame.pack(fill='both', expand=True)
 
+    # Header: title, version, dark-mode switch and help button
+    header = theme.build_header(main_frame,
+                                "Database View",
+                                "Step 1 of 2 - choose or build the database  ·  QCS %s" % data.QCS_VERSION,
+                                dark_var=dark_mode, on_toggle=on_theme_toggle,
+                                help_command=show_help)
+    header.grid(row=0, column=0, columnspan=2, sticky='ew', padx=5, pady=(0, 12))
+
     # Input settings frame
-    input_frame = ttk.LabelFrame(main_frame, text=" INPUT SETTINGS ", padding=10)
-    input_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+    input_frame = ttk.LabelFrame(main_frame, text=" Input settings ", padding=12)
+    input_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
     # Output settings frame
-    output_frame = ttk.LabelFrame(main_frame, text=" OUTPUT SETTINGS ", padding=10)
-    output_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+    output_frame = ttk.LabelFrame(main_frame, text=" Output settings ", padding=12)
+    output_frame.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
 
     # Configure grid weights
     main_frame.columnconfigure(0, weight=1)
     main_frame.columnconfigure(1, weight=1)
-    main_frame.rowconfigure(0, weight=1)
+    main_frame.rowconfigure(1, weight=1)
+    input_frame.columnconfigure(0, weight=1)
+    output_frame.columnconfigure(0, weight=1)
 
     # --- Input Section ---
     # File selection
     ttk.Label(input_frame, text="Database File(s):", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
-    fileNames_entry = ttk.Entry(input_frame, width=30)
+    fileNames_entry = ttk.Entry(input_frame, width=24)
     fileNames_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
     ToolTip(fileNames_entry, TOOLTIPS['database_files'])
 
@@ -659,7 +664,7 @@ def show_input_window():
 
     # Input path
     ttk.Label(input_frame, text="Input Path:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(5,2))
-    inputPath_entry = ttk.Entry(input_frame, width=30)
+    inputPath_entry = ttk.Entry(input_frame, width=24)
     inputPath_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
     set_disabled_style(inputPath_entry)
     ToolTip(inputPath_entry, TOOLTIPS['input_path'])
@@ -680,24 +685,25 @@ def show_input_window():
     sort_cb.grid(row=5, column=0, sticky='w', pady=2)
     ToolTip(sort_cb, TOOLTIPS['sort_time'])
 
-    # File format
-    ttk.Label(input_frame, text="Input Format:", style='Header.TLabel').grid(row=6, column=0, sticky='w', pady=(5,2))
-    inputFilesFormat_combobox = ttk.Combobox(input_frame, values=["csv", "xlsx"], width=28)
-    inputFilesFormat_combobox.grid(row=7, column=0, sticky='w', pady=(0,5))
-    set_disabled_style(inputFilesFormat_combobox)
-    ToolTip(inputFilesFormat_combobox, TOOLTIPS['input_format'])
+    # Instrument (Seaguard/TSCP or HOBO): the two are never stackable, so the
+    # database is built for one instrument at a time (.csv and .xlsx both read)
+    ttk.Label(input_frame, text="Instrument:", style='Header.TLabel').grid(row=6, column=0, sticky='w', pady=(5,2))
+    instrument_combobox = ttk.Combobox(input_frame, values=["Seaguard", "HOBO"], width=15, state='readonly')
+    instrument_combobox.set("Seaguard")
+    instrument_combobox.grid(row=7, column=0, sticky='w', pady=(0,5))
+    ToolTip(instrument_combobox, TOOLTIPS['instrument'])
 
     # --- Output Section ---
     # Output naming
     ttk.Label(output_frame, text="Output Name:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
-    outputName_entry = ttk.Entry(output_frame, width=30)
+    outputName_entry = ttk.Entry(output_frame, width=24)
     outputName_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
     set_disabled_style(outputName_entry)
     ToolTip(outputName_entry, TOOLTIPS['output_name'])
 
     # Output path
     ttk.Label(output_frame, text="Output Path:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(5,2))
-    outputPath_entry = ttk.Entry(output_frame, width=30)
+    outputPath_entry = ttk.Entry(output_frame, width=24)
     outputPath_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
     ToolTip(outputPath_entry, TOOLTIPS['output_path'])
 
@@ -706,56 +712,53 @@ def show_input_window():
     ToolTip(browse_output_btn, TOOLTIPS['output_path'])
 
     # Save button
-    ttk.Button(main_frame, text="Save Input Settings", command=saveInputSettings, style='Accent.TButton').grid(row=1, column=0, columnspan=2, pady=10)
+    ttk.Button(main_frame, text="Save Input Settings", command=saveInputSettings, style='Accent.TButton').grid(row=2, column=0, columnspan=2, pady=12, ipadx=12)
 
-    # restaura as ultimas escolhas do usuario
+    # restore the user's latest choices
     restore_entry(fileNames_entry, USER_PREFS.get('dbv_database_file', ''))
     restore_entry(outputPath_entry, USER_PREFS.get('dbv_output_path', ''))
     restore_entry(inputPath_entry, USER_PREFS.get('dbv_input_path', ''))
     restore_entry(outputName_entry, USER_PREFS.get('dbv_output_name', ''))
-    if USER_PREFS.get('dbv_input_format'):
-        inputFilesFormat_combobox.set(USER_PREFS['dbv_input_format'])
+    if USER_PREFS.get('dbv_instrument') in ('Seaguard', 'HOBO'):
+        instrument_combobox.set(USER_PREFS['dbv_instrument'])
     sort.set(USER_PREFS.get('dbv_sort_by_time', False))
 
     input_window.mainloop()
 
 
+db_build_messages = []  # unification messages, shown in the visualization log
+
 def load_database():
-    """Carrega ou monta o banco de dados; retorna None (com aviso) em caso de erro."""
-
-    # Prepare data
-
-    if inputSettings.get('joinFiles', False) == True:
-        try:
-            database = data.join_files_to_database(inputSettings['inputPath'], inputSettings['inputFilesFormat'])
-        except Exception as e:
-            messagebox.showerror("Error", "Could not join the files from folder:\n%s\n\nDetails: %s" % (inputSettings.get('inputPath', ''), e))
-            return None
-    else:
-        if inputSettings.get('databaseFileName', '') != '':
-            try:
-                database = pd.read_excel(inputSettings['databaseFileName'])
-            except Exception as e:
-                messagebox.showerror("Error", "Could not read the database file:\n%s\n\nDetails: %s" % (inputSettings['databaseFileName'], e))
-                return None
-        else:
-            messagebox.showerror("Error", "Select a database file or provide a valid input folder.")
-            return None
-
-    if inputSettings.get('sortByTime', False) == True:
-        try:
-            database.index = database['Datetime']
-            database = database.rename_axis('dt_index')
-            database = database.sort_values(by='dt_index')
-            database.index = range(len(database))
-        except Exception as e:
-            print(f"ERROR sorting by time: {str(e)}")
+    """Loads or builds the database via build_database (single unification
+    engine); returns None (with a clear warning) on error."""
+    global db_build_messages
+    db_build_messages = []
+    instrument = inputSettings.get('instrument', 'Seaguard')
 
     try:
-        database['Datetime'] = pd.to_datetime(database['Datetime'])
-    except Exception as e:
-        messagebox.showerror("Error", "Could not parse the 'Datetime' column of the database.\n\nDetails: %s" % e)
+        if inputSettings.get('joinFiles', False) == True:
+            database, db_build_messages = data.build_database(instrument,
+                                                              input_path=inputSettings['inputPath'])
+        else:
+            file_paths = [p.strip() for p in inputSettings.get('databaseFileName', '').split(';') if p.strip()]
+            if not file_paths:
+                messagebox.showerror("Error", "Select a database file or provide a valid input folder.")
+                return None
+            database, db_build_messages = data.build_database(instrument, file_list=file_paths)
+    except ValueError as e:
+        # the engine messages are already self-labeled ('build_database: ...')
+        messagebox.showerror("Error", str(e))
         return None
+    except Exception as e:
+        messagebox.showerror("Error", "Could not build the database:\n%s" % e)
+        return None
+    # db_build_messages are shown in the Execution log by show_view_window (below),
+    # so they are not printed here (that would duplicate them via the log redirect)
+
+    if inputSettings.get('sortByTime', False) == True:
+        # purely chronological order (the engine sorts by Site+Datetime)
+        database = database.sort_values('Datetime', kind='stable')
+        database.index = range(len(database))
 
     try:
         databaseViewPath = os.path.join(inputSettings['outputPath'], 'DatabaseView')
@@ -765,15 +768,17 @@ def load_database():
         messagebox.showerror("Error", "Could not create the output folder:\n%s\n\nDetails: %s" % (inputSettings.get('outputPath', ''), e))
         return None
 
-    if inputSettings.get('databaseFileName', '') == '':
+    if inputSettings.get('joinFiles', False) == True:
         try:
-            database.to_excel(inputSettings['outputFileName']+'.xlsx')
+            data.save_excel_autofit(database, inputSettings['outputFileName'] + '.xlsx')
+            print('MESSAGE: unified database saved to %s.xlsx'
+                  % os.path.join(databaseViewPath, inputSettings['outputFileName']))
         except Exception as e:
             print(f"ERROR saving database: {str(e)}")
     return database
 
 def show_view_window():
-    """Janela de visualizacao; retorna True se o usuario pediu para trocar de arquivo."""
+    """Visualization window; returns True if the user asked to change files."""
     global view_window, dType_combobox, panel1, panel2, panel3, panel1_cb, panel2_cb, panel3_cb
     global tsDiagram, ts_cb, latitude_entry, longitude_entry, tsParam_combobox
     global tendency, tendency_cb, tendency_entry, dataPoints, points_cb, fixedScale, fixed_scale_cb
@@ -785,20 +790,16 @@ def show_view_window():
     view_window = Tk()
     view_window.title("Data View Settings - QCS %s" % data.QCS_VERSION)
 
-    view_window.geometry("1300x750")  # Aumentado para acomodar o log
-    view_window.resizable(False, False)
+    theme.set_scaled_geometry(view_window, 1380, 800, min_width=1150, min_height=650)
+    view_window.resizable(True, True)
 
-    # Add menu bar
-    menubar = Menu(view_window)
-    helpmenu = Menu(menubar, tearoff=0)
-    helpmenu.add_command(label="Help", command=show_help)
-    helpmenu.add_command(label="About", command=lambda: messagebox.showinfo("About", "QCS Database View Tool\nVersion %s" % data.QCS_VERSION))
-    menubar.add_cascade(label="Menu", menu=helpmenu)
-    view_window.config(menu=menubar)
+    # Configure styles (Sun Valley theme; falls back to the old clam look)
+    theme.apply_theme(view_window, USER_PREFS.get('ui_theme', 'light'))
+    theme.set_window_icon(view_window)  # custom taskbar/window icon (if sourceCode/qcs_icon.ico exists)
 
     # Create main container with scrollbar
     container = ttk.Frame(view_window)
-    canvas = tk.Canvas(container)
+    canvas = tk.Canvas(container, bg=theme.surface_color(), highlightthickness=0)
     scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
     scrollable_frame = ttk.Frame(canvas)
 
@@ -817,60 +818,78 @@ def show_view_window():
     scrollbar.pack(side="right", fill="y")
 
     # Main frame inside scrollable area
-    main_content_frame = ttk.Frame(scrollable_frame)
+    main_content_frame = ttk.Frame(scrollable_frame, padding=(12, 8))
     main_content_frame.pack(fill='both', expand=True)
 
+    # Header: title, version and help button
+    header = theme.build_header(main_content_frame,
+                                "Database View",
+                                "Step 2 of 2 - visualization settings  ·  QCS %s" % data.QCS_VERSION,
+                                help_command=show_help)
+    header.grid(row=0, column=0, columnspan=3, sticky='ew', padx=5, pady=(0, 10))
+
     # Data settings frame
-    data_frame = ttk.LabelFrame(main_content_frame, text=" DATA SETTINGS ", padding=10)
-    data_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+    data_frame = ttk.LabelFrame(main_content_frame, text=" Data settings ", padding=12)
+    data_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
     # Visualization frame
-    vis_frame = ttk.LabelFrame(main_content_frame, text=" VISUALIZATION SETTINGS ", padding=10)
-    vis_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+    vis_frame = ttk.LabelFrame(main_content_frame, text=" Visualization settings ", padding=12)
+    vis_frame.grid(row=2, column=0, padx=5, pady=5, sticky="nsew")
 
     # Filter frame
-    filter_frame = ttk.LabelFrame(main_content_frame, text=" FILTER SETTINGS ", padding=10)
-    filter_frame.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
+    filter_frame = ttk.LabelFrame(main_content_frame, text=" Filter settings ", padding=12)
+    filter_frame.grid(row=2, column=1, padx=5, pady=5, sticky="nsew")
 
     # Scale frame
-    scale_frame = ttk.LabelFrame(main_content_frame, text=" SCALE SETTINGS ", padding=10)
-    scale_frame.grid(row=1, column=2, padx=5, pady=5, sticky="nsew")
+    scale_frame = ttk.LabelFrame(main_content_frame, text=" Scale settings ", padding=12)
+    scale_frame.grid(row=2, column=2, padx=5, pady=5, sticky="nsew")
 
     # Configure grid weights
     main_content_frame.columnconfigure(0, weight=1)
     main_content_frame.columnconfigure(1, weight=1)
     main_content_frame.columnconfigure(2, weight=1)
-    main_content_frame.rowconfigure(0, weight=1)
     main_content_frame.rowconfigure(1, weight=1)
+    main_content_frame.rowconfigure(2, weight=1)
 
     # --- Data Settings ---
-    # Data type
+    # Data type (HOBO only has a time series: profile does not apply)
     ttk.Label(data_frame, text="Data Type:").grid(row=0, column=0, sticky='w', pady=2)
-    dType_combobox = ttk.Combobox(data_frame, values=["tscp profile", "mooring"], width=25)
+    dType_values = ["mooring"] if is_hobo_input() else ["tscp profile", "mooring"]
+    dType_combobox = ttk.Combobox(data_frame, values=dType_values, width=25, state='readonly')
     dType_combobox.grid(row=1, column=0, sticky='w', pady=2)
     dType_combobox.bind("<<ComboboxSelected>>", lambda e: toggle_data_type())
     ToolTip(dType_combobox, TOOLTIPS['data_type'])
 
     # --- Visualization Settings ---
-    # Panels
+    # Panels: for HOBO the three checkboxes become the dedicated panels
+    # (temperature / light+window / light multi-site) instead of Panel 1/2/3
+    if is_hobo_input():
+        panel_labels = ("HOBO Temperature (per site)",
+                        "HOBO Light + fouling window (per site)",
+                        "HOBO Light multi-site")
+        panel_tips = (TOOLTIPS['hobo_temp'], TOOLTIPS['hobo_light'], TOOLTIPS['hobo_light_multi'])
+    else:
+        panel_labels = ("Panel 1 (mooring)", "Panel 2 (mooring)", "Panel 3 (profile)")
+        panel_tips = (TOOLTIPS['panel1'], TOOLTIPS['panel2'], TOOLTIPS['panel3'])
+
     ttk.Label(vis_frame, text="Select Panels:").grid(row=0, column=0, sticky='w', pady=5)
     panel1 = BooleanVar(value=False)
-    panel1_cb = ttk.Checkbutton(vis_frame, text="Panel 1 (mooring)", variable=panel1, 
+    panel1_cb = ttk.Checkbutton(vis_frame, text=panel_labels[0], variable=panel1,
                                command=lambda: [toggle_panel_dependent_controls(), toggle_parameter_checkboxes()])
     panel1_cb.grid(row=1, column=0, sticky='w', pady=2)
-    ToolTip(panel1_cb, TOOLTIPS['panel1'])
+    ToolTip(panel1_cb, panel_tips[0])
 
     panel2 = BooleanVar(value=False)
-    panel2_cb = ttk.Checkbutton(vis_frame, text="Panel 2 (mooring)", variable=panel2, 
+    panel2_cb = ttk.Checkbutton(vis_frame, text=panel_labels[1], variable=panel2,
                                command=lambda: [toggle_panel_dependent_controls(), toggle_parameter_checkboxes()])
     panel2_cb.grid(row=2, column=0, sticky='w', pady=2)
-    ToolTip(panel2_cb, TOOLTIPS['panel2'])
+    ToolTip(panel2_cb, panel_tips[1])
 
     panel3 = BooleanVar(value=False)
-    panel3_cb = ttk.Checkbutton(vis_frame, text="Panel 3 (profile)", variable=panel3, 
+    panel3_cb = ttk.Checkbutton(vis_frame, text=panel_labels[2], variable=panel3,
                                command=lambda: [toggle_panel_dependent_controls(), toggle_parameter_checkboxes()])
     panel3_cb.grid(row=3, column=0, sticky='w', pady=2)
-    ToolTip(panel3_cb, TOOLTIPS['panel3'])
+    ToolTip(panel3_cb, panel_tips[2])
 
     # TS Diagram
     tsDiagram = BooleanVar(value=False)
@@ -943,7 +962,7 @@ def show_view_window():
                                                          data_end.strftime('%d/%m/%Y %H:%M'))
     else:
         coverage_text = "Data available: unknown (invalid dates)"
-    ttk.Label(vis_frame, text=coverage_text, font=('Arial', 8), foreground='#555555').grid(
+    ttk.Label(vis_frame, text=coverage_text, style='Small.TLabel').grid(
         row=10, column=1, sticky='w', pady=(2,5))
 
     # Depth-axis range (profile plots) - analogous to the time window above
@@ -963,15 +982,15 @@ def show_view_window():
                                                              database['Depth (m)'].max())
     else:
         depth_text = "Depth available: no depth column"
-    ttk.Label(vis_frame, text=depth_text, font=('Arial', 8), foreground='#555555').grid(
+    ttk.Label(vis_frame, text=depth_text, style='Small.TLabel').grid(
         row=15, column=1, sticky='w', pady=(2,5))
 
     # --- Filter Settings ---
     # Year filter: one checkbox per year actually present in the database
     ttk.Label(filter_frame, text="Filter by Year:").grid(row=0, column=0, sticky='w', pady=(5,2))
     available_years = sorted(set(int(y) for y in database['Datetime'].dt.year.dropna().unique()))
-    year_vars = {}    # BooleanVar de cada ano
-    year_widgets = {} # Checkbutton de cada ano
+    year_vars = {}    # BooleanVar for each year
+    year_widgets = {} # Checkbutton for each year
     row_n = 1
     for db_year in available_years:
         var = BooleanVar(value=False)
@@ -989,8 +1008,8 @@ def show_view_window():
     row_n += 1
 
     site_names = sorted(set(database['Site']))
-    site_vars = {}  # Armazena as BooleanVar
-    site_widgets = {}  # Armazena os widgets Checkbutton
+    site_vars = {}  # Stores the BooleanVar
+    site_widgets = {}  # Stores the Checkbutton widgets
 
     for site in site_names:
         var = BooleanVar(value=False)
@@ -1005,13 +1024,17 @@ def show_view_window():
     param_lbl.grid(row=0, column=1, sticky='w', pady=(5,2), padx=10)
     ToolTip(param_lbl, TOOLTIPS['param_filter'])
 
-    parameter_names = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)', 
-                      'Density (kg/m3)', 'CO2 level (ppm)', 'O2 level (uM)', 
-                      'PAR (umol/m2/s)', 'Turbidity (FTU)', 'Chlorophyll (ug/L)', 
-                      'pH', 'Dissolved organic matter (ppb)', 'Soundspeed (m/s)', 
-                      'Pressure (dbar)']
-    parameter_vars = {}  # Armazena as BooleanVar
-    parameter_widgets = {}  # Armazena os widgets Checkbutton
+    if inputSettings.get('instrument', 'Seaguard') == 'HOBO':
+        # HOBO only measures temperature and light
+        parameter_names = ['Temperature (degC)', 'Luminosity (lux)']
+    else:
+        parameter_names = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)',
+                          'Density (kg/m3)', 'CO2 level (ppm)', 'O2 level (uM)',
+                          'PAR (umol/m2/s)', 'Turbidity (FTU)', 'Chlorophyll (ug/L)',
+                          'pH', 'Dissolved organic matter (ppb)', 'Soundspeed (m/s)',
+                          'Pressure (dbar)']
+    parameter_vars = {}  # Stores the BooleanVar
+    parameter_widgets = {}  # Stores the Checkbutton widgets
 
     for i, param in enumerate(parameter_names):
         var = BooleanVar(value=False)
@@ -1019,31 +1042,31 @@ def show_view_window():
         cb.grid(row=i+1, column=1, sticky='w', pady=2, padx=10)
         parameter_vars[param] = var
         parameter_widgets[param] = cb
-        set_disabled_style(cb)  # Inicialmente desabilitado
+        set_disabled_style(cb)  # Initially disabled
 
     # --- Scale Settings ---
-    # Cabeçalhos para as colunas de escala
+    # Headers for the scale columns
     ttk.Label(scale_frame, text="Parameter").grid(row=0, column=0, sticky='w', padx=5)
     ttk.Label(scale_frame, text="Min").grid(row=0, column=1, sticky='w', padx=5)
     ttk.Label(scale_frame, text="Max").grid(row=0, column=2, sticky='w', padx=5)
 
-    # Dicionários para armazenar os widgets de entrada de escala
+    # Dictionaries to store the scale entry widgets
     min_scale_entries = {}
     max_scale_entries = {}
 
-    # Criar entradas para cada parâmetro
+    # Create entries for each parameter
     for i, param in enumerate(parameter_names):
-        # Label do parâmetro
+        # Parameter label
         ttk.Label(scale_frame, text=param).grid(row=i+1, column=0, sticky='w', pady=2, padx=5)
-    
-        # Entrada para valor mínimo
+
+        # Entry for minimum value
         min_entry = ttk.Entry(scale_frame, width=10)
         min_entry.grid(row=i+1, column=1, sticky='w', pady=2, padx=5)
         min_scale_entries[param] = min_entry
         set_disabled_style(min_entry)
         ToolTip(min_entry, TOOLTIPS['min_scale'])
-    
-        # Entrada para valor máximo
+
+        # Entry for maximum value
         max_entry = ttk.Entry(scale_frame, width=10)
         max_entry.grid(row=i+1, column=2, sticky='w', pady=2, padx=5)
         max_scale_entries[param] = max_entry
@@ -1068,7 +1091,7 @@ def show_view_window():
     ttk.Button(action_frame, text="Generate Panels", command=generatePanels, style='Accent.TButton').pack(side='left', padx=5)
 
     # Initialize UI state
-    toggle_all_controls(enabled=False)  # Tudo desabilitado inicialmente
+    toggle_all_controls(enabled=False)  # Everything disabled initially
     toggle_data_type()
     toggle_panel_dependent_controls()
     toggle_parameter_checkboxes()
@@ -1078,7 +1101,8 @@ def show_view_window():
     panel1.set(USER_PREFS.get('dbv_panel1', False))
     panel2.set(USER_PREFS.get('dbv_panel2', False))
     panel3.set(USER_PREFS.get('dbv_panel3', False))
-    tsDiagram.set(USER_PREFS.get('dbv_ts_diagram', False))
+    # T-S does not exist for HOBO (no salinity): never restore it checked
+    tsDiagram.set(False if is_hobo_input() else USER_PREFS.get('dbv_ts_diagram', False))
     tendency.set(USER_PREFS.get('dbv_tendency', False))
     dataPoints.set(USER_PREFS.get('dbv_data_points', False))
     fixedScale.set(USER_PREFS.get('dbv_fixed_scale', False))
@@ -1105,12 +1129,21 @@ def show_view_window():
     if USER_PREFS.get('dbv_ts_param'):
         tsParam_combobox.set(USER_PREFS['dbv_ts_param'])
     # re-apply enable/disable rules with the restored values
-    if USER_PREFS.get('dbv_data_type'):
+    if is_hobo_input():
+        # the only valid option for HOBO: select it and enable the controls
+        dType_combobox.set('mooring')
+        toggle_data_type()
+    elif USER_PREFS.get('dbv_data_type') in dType_values:
         dType_combobox.set(USER_PREFS['dbv_data_type'])
         toggle_data_type()
 
-    # Create error logger
+    # Create error logger (starts with the database unification summary)
     error_logger = ErrorLogger(scrollable_frame)
+    # route printed output into this window's log (flushes any buffered startup
+    # messages); re-pointed each time a new view window is opened
+    _out.set_sink(error_logger.log)
+    for message in db_build_messages:
+        error_logger.log(message)
 
     # Configure canvas scrolling
     def _on_mousewheel(event):
@@ -1125,7 +1158,7 @@ def show_view_window():
 back_requested = False
 
 def go_back_to_input():
-    """Fecha a visualizacao e volta para a janela de selecao de arquivo."""
+    """Closes the visualization and returns to the file selection window."""
     global back_requested
     back_requested = True
     view_window.destroy()
@@ -1136,12 +1169,12 @@ while True:
     inputSettings.clear()
     show_input_window()
     if not inputSettings:
-        break  # janela fechada sem salvar: encerra
+        break  # window closed without saving: exit
     database = load_database()
     if database is None:
-        continue  # erro ja exibido: volta para a selecao de arquivo
+        continue  # error already shown: back to file selection
     dataViewSettings.clear()
     if not show_view_window():
-        break  # janela de visualizacao fechada: encerra
+        break  # visualization window closed: exit
 
 os.chdir(rootPath)

@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Manual of the QCS System (Quality Control System)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        h1, h2, h3, h4 {
+            color: #2c3e50;
+        }
+        h1 {
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+        h3 {
+            margin-top: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        code {
+            background-color: #f5f5f5;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .note {
+            background-color: #e7f4ff;
+            padding: 15px;
+            border-left: 4px solid #3498db;
+            margin: 20px 0;
+        }
+        .warning {
+            background-color: #fff3e0;
+            padding: 15px;
+            border-left: 4px solid #ff9800;
+            margin: 20px 0;
+        }
+        .indice {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .indice ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .indice li {
+            margin-bottom: 5px;
+        }
+        .indice a {
+            text-decoration: none;
+            color: #3498db;
+        }
+        .indice a:hover {
+            text-decoration: underline;
+        }
+    </style>
+    <style>
+        .code-block {
+            background-color: #f5f5f5;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 20px 0;
+            overflow-x: auto;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .code-block pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+
+        .code-block code {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9em;
+            line-height: 1.5;
+            color: #333;
+        }
+
+        .language-bash {
+            color: #d63384;
+        }
+
+        .code-block code .flag {
+            color: #007bff;
+        }
+
+        .code-block code .file {
+            color: #28a745;
+        }
+    </style>
+    <style>
+        .code-container {
+            position: relative;
+            margin: 20px 0;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            padding: 3px 8px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+
+        .copy-btn:hover {
+            opacity: 1;
+        }
+
+        .code-block {
+            background-color: #f5f5f5;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            overflow-x: auto;
+            border-radius: 0 4px 4px 0;
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Complete Manual of the QCS System (Quality Control System)</h1>
+    <p style="text-align:center; opacity:0.7;"><em>For version v4.0</em></p>
+
+    <div class="indice">
+        <h2>Contents</h2>
+        <ul>
+            <li><a href="#introduction">1. Introduction</a></li>
+            <li><a href="#installation">2. Installation</a></li>
+            <li><a href="#interface_qcs_main">3. QCS_Main Interface</a></li>
+            <li><a href="#interface_qcs_databaseview">4. QCS_DatabaseView Interface</a></li>
+            <li><a href="#qualification_flags">5. Qualification Flags</a></li>
+            <li><a href="#settings_management">6. Settings Management</a></li>
+            <li><a href="#configuration_parameters">7. Detailed Configuration Parameters</a></li>
+            <li><a href="#qualification_tests">8. Qualification Tests</a></li>
+            <li><a href="#hobo_data">9. HOBO Data (Temperature and Light)</a></li>
+            <li><a href="#generated_outputs">10. Generated Outputs</a></li>
+            <li><a href="#data_visualization">11. Data Visualization</a></li>
+            <li><a href="#best_practices">12. Best Practices</a></li>
+            <li><a href="#running_from_source">13. Running from Source Code</a></li>
+            <li><a href="#troubleshooting">14. Troubleshooting</a></li>
+        </ul>
+    </div>
+
+    <h2 id="introduction">1. Introduction</h2>
+    <p>QCS (Quality Control System) is a complete solution for the qualification and visualization
+    of oceanographic data from two instrument families: <strong>Seaguard/TSCP</strong>
+    (temperature, salinity, conductivity, pressure, O₂, pH, chlorophyll, turbidity — profiles and
+    moorings) and, since v4.0, <strong>HOBO Pendant</strong> (temperature and light — see section 9).
+    This manual covers every aspect of the system, from installation to advanced operations.</p>
+
+    <h2 id="installation">2. Installation</h2>
+    <h3>Minimum Requirements</h3>
+    <ul>
+        <li>Windows 10 or later (64-bit)</li>
+        <li>Python (Anaconda is recommended) with the packages from <code>sourceCode/requirements.txt</code>:
+            <code>numpy</code>, <code>pandas</code>, <code>matplotlib</code>, <code>scipy</code>, <code>openpyxl</code> and <code>gsw</code></li>
+        <li><code>sv-ttk</code> (optional, included in requirements.txt): the "Sun Valley" visual theme
+            (Windows 11 look, with light/dark mode). Without it, the interface uses the classic
+            look — nothing stops working.</li>
+    </ul>
+    <div class="note">
+        <p><strong>New in v4.0:</strong> a modernized interface with a <strong>dark mode</strong>
+        (toggle in the window header, preference remembered across sessions), crisp text on
+        high-resolution displays, and an <strong>"Execution log"</strong> panel in the main windows
+        that shows the progress, warnings and errors of each run, color-coded by severity.</p>
+    </div>
+
+    <h3>Basic Installation</h3>
+    <p>QCS runs directly from the Python scripts (there are no more executables). To set it up:</p>
+    <ol>
+        <li>Obtain the project folder (containing the <strong>sourceCode</strong> subfolder and the <code>.bat</code> shortcuts)</li>
+        <li>Install the dependencies by running in the terminal:
+            <pre><code>python -m pip install -r sourceCode/requirements.txt</code></pre></li>
+        <li>To qualify data, open <strong>QCS - Data Qualification.bat</strong></li>
+        <li>To visualize data, open <strong>QCS - Data Visualization.bat</strong></li>
+    </ol>
+    <p>Since v4.0, the app runs with <strong>no terminal window</strong> (launched via
+    <code>pythonw</code>): all progress, warnings and errors appear in the <strong>Execution log</strong>
+    panel at the bottom of each window. If a fatal error happens before the window can open, a message
+    box appears and a <code>sourceCode/QCS_crash.log</code> file is written with the details.</p>
+
+    <h2 id="interface_qcs_main">3. QCS_Main Interface</h2>
+    <h3>INPUT SETTINGS Section</h3>
+    <table>
+        <tr>
+            <th>Element</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>Data File</td>
+            <td>Selects the raw data file (CSV or XLSX). A tooltip explains the supported formats.</td>
+        </tr>
+        <tr>
+            <td>Browse...</td>
+            <td>Opens the file explorer for selection.</td>
+        </tr>
+        <tr>
+            <td>Input Type</td>
+            <td>Dropdown to select the instrument type (Seaguard or HOBO). When you choose
+            <strong>HOBO</strong>, the fields that do not apply to a temperature/light logger
+            are disabled: Data Type, Pressure/Conductivity Unit, Correct GMT-3,
+            Select Profile Data, Macroregion and Region. Data Type and the Units are cleared
+            (to avoid misleading the user), but they remember the last Seaguard selection and
+            restore it when Input Type is switched back to Seaguard.</td>
+        </tr>
+        <tr>
+            <td>Data Type</td>
+            <td>Dropdown to select the data type (TSCP Profile or TSCP Mooring).</td>
+        </tr>
+        <tr>
+            <td>Pressure Unit</td>
+            <td>Dropdown to select the pressure unit in the raw data.</td>
+        </tr>
+        <tr>
+            <td>Conductivity Unit</td>
+            <td>Dropdown to select the conductivity unit.</td>
+        </tr>
+        <tr>
+            <td>Correct GMT-3</td>
+            <td>Checkbox to apply the GMT-3 time-zone correction.</td>
+        </tr>
+        <tr>
+            <td>Select Profile Data</td>
+            <td>Checkbox (enabled only for profiles) to select the downcast/upcast phase.</td>
+        </tr>
+        <tr>
+            <td>Check Variables</td>
+            <td>Checkbox to enable manual review of the variable limits.</td>
+        </tr>
+        <tr>
+            <td>Macroregion / Region</td>
+            <td>Two cascading dropdowns. <strong>Macroregion</strong> is the broad region
+            (currently only <em>Brazil</em>, structured to add other parts of the world in the
+            future) and <strong>Region</strong> is the sector within it — for Brazil: Amazonian
+            Reefs/North, Northeast–northern, Northeast–eastern, East/Abrolhos, Southeast, South.
+            Each region defines a representative latitude/longitude, used <strong>only to
+            run</strong> the qualification (pressure-to-depth conversion and the density
+            inversion test). Small coordinate variations do not affect these calculations, so
+            picking a region is enough and simpler than typing values. The coordinates are
+            <strong>not written</strong> to the qualified spreadsheet. Not applicable to HOBO
+            (no pressure).</td>
+        </tr>
+    </table>
+    <div class="note">
+        <p><strong>New in v4.0:</strong> when you choose the <strong>Data File</strong>, the
+        <em>Output Folder</em> and <em>Output File Name</em> are pre-filled automatically
+        (same folder as the file, and base name + <code>_QLF</code>); you can edit them freely.
+        The old <em>Config File</em> field (import .json) and the <em>Export Settings</em> button
+        were removed — all configuration is done in the Settings window.</p>
+    </div>
+
+    <h3>OUTPUT SETTINGS Section</h3>
+    <table>
+        <tr>
+            <th>Element</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>Output Folder</td>
+            <td>Sets the folder where results will be saved.</td>
+        </tr>
+        <tr>
+            <td>Browse...</td>
+            <td>Opens the explorer to select a folder.</td>
+        </tr>
+        <tr>
+            <td>Output File Name</td>
+            <td>Sets the base name for the output files.</td>
+        </tr>
+        <tr>
+            <td>Output Format</td>
+            <td>Format of the <strong>qualified data</strong> file (CSV or XLSX). The automatic
+                report files are always written as <strong>.xlsx</strong> (since v4.0), with
+                columns auto-fitted to their content.</td>
+        </tr>
+        <tr>
+            <td>Remove Bad Data</td>
+            <td>Checkbox to automatically drop data with flag 4.</td>
+        </tr>
+        <tr>
+            <td>Remove Suspect Data</td>
+            <td>Checkbox to automatically drop data with flag 3.</td>
+        </tr>
+        <tr>
+            <td>Site Code</td>
+            <td>Field to enter the site identification code (up to 5 characters).</td>
+        </tr>
+    </table>
+
+    <h3>Action Buttons</h3>
+    <table>
+        <tr>
+            <th>Button</th>
+            <th>Function</th>
+        </tr>
+        <tr>
+            <td>Help</td>
+            <td>Opens a window with basic usage information.</td>
+        </tr>
+        <tr>
+            <td>Settings</td>
+            <td>Opens the detailed test configuration window.</td>
+        </tr>
+        <tr>
+            <td>RUN QUALIFICATION</td>
+            <td>Starts the qualification process with the configured parameters. The main window
+            stays open at the end, allowing you to select another file and qualify again without
+            reopening the program. A message confirms completion (or explains the error, if any).</td>
+        </tr>
+    </table>
+
+    <h2 id="interface_qcs_databaseview">4. QCS_DatabaseView Interface</h2>
+    <h3>Database Input Settings Window</h3>
+    <table>
+        <tr>
+            <th>Element</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>Database File(s)</td>
+            <td>Selects existing database files.</td>
+        </tr>
+        <tr>
+            <td>Browse...</td>
+            <td>Opens the explorer for multiple file selection.</td>
+        </tr>
+        <tr>
+            <td>Input Path</td>
+            <td>Sets the folder containing files to combine.</td>
+        </tr>
+        <tr>
+            <td>Browse...</td>
+            <td>Opens the explorer to select a folder.</td>
+        </tr>
+        <tr>
+            <td>Join Data Files</td>
+            <td>Checkbox to enable file-combining mode.</td>
+        </tr>
+        <tr>
+            <td>Sort by Time</td>
+            <td>Checkbox to sort the data chronologically.</td>
+        </tr>
+        <tr>
+            <td>Instrument</td>
+            <td>Selects the instrument that produced the qualified files (Seaguard or HOBO).
+            Seaguard and HOBO spreadsheets have different layouts and are <strong>never combined
+            with each other</strong> — build a separate database for each instrument. Both .csv
+            and .xlsx files are read automatically (the old format selector was removed in v4.0).</td>
+        </tr>
+        <tr>
+            <td>Output Name</td>
+            <td>Name for the processed database.</td>
+        </tr>
+        <tr>
+            <td>Output Path</td>
+            <td>Output folder for the results.</td>
+        </tr>
+        <tr>
+            <td>Browse...</td>
+            <td>Opens the explorer to select the output folder.</td>
+        </tr>
+        <tr>
+            <td>Save Input Settings</td>
+            <td>Saves the settings and moves on to visualization.</td>
+        </tr>
+    </table>
+
+    <h3>Data View Settings Window</h3>
+    <table>
+        <tr>
+            <th>Element</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>Data Type</td>
+            <td>Dropdown to select the data type (profile/mooring).</td>
+        </tr>
+        <tr>
+            <td>Filter by Year</td>
+            <td>Checkboxes for the years actually present in the loaded spreadsheet (detected
+            automatically). You can check more than one year — panels are generated for each
+            checked year. If none is checked, a warning lists the available years.</td>
+        </tr>
+        <tr>
+            <td>Panel 1</td>
+            <td>Checkbox to enable the panel comparing parameters (Seaguard).
+            <strong>With Instrument = HOBO</strong>, this checkbox becomes
+            <em>"HOBO Temperature (per site)"</em> — see section 11.</td>
+        </tr>
+        <tr>
+            <td>Panel 2</td>
+            <td>Checkbox to enable the panel comparing sites (Seaguard).
+            <strong>With Instrument = HOBO</strong>, it becomes
+            <em>"HOBO Light + fouling window (per site)"</em>.</td>
+        </tr>
+        <tr>
+            <td>Panel 3</td>
+            <td>Checkbox to enable the vertical-profile panel (Seaguard).
+            <strong>With Instrument = HOBO</strong>, it becomes <em>"HOBO Light multi-site"</em>.</td>
+        </tr>
+        <tr>
+            <td>T-S Diagram</td>
+            <td>Checkbox to generate the temperature-salinity diagram. It is the only plot where
+            Latitude/Longitude are <strong>required</strong> (they enter the absolute salinity and
+            conservative temperature calculation and do not cancel out); without valid coordinates
+            the diagram is skipped with a warning. Unavailable for HOBO databases (no salinity).</td>
+        </tr>
+        <tr>
+            <td>Latitude/Longitude</td>
+            <td>Fields for the reference coordinates of the T-S diagram (decimal degrees).</td>
+        </tr>
+        <tr>
+            <td>T-S Parameters</td>
+            <td>Dropdown to select the type of T-S parameters.</td>
+        </tr>
+        <tr>
+            <td>Trend Lines</td>
+            <td>Checkbox to add trend lines.</td>
+        </tr>
+        <tr>
+            <td>Degree</td>
+            <td>Field for the degree of the trend polynomial.</td>
+        </tr>
+        <tr>
+            <td>Show Data Points</td>
+            <td>Checkbox to show individual data points on the plots.</td>
+        </tr>
+        <tr>
+            <td>Fixed Scale</td>
+            <td>Checkbox to use fixed scales (defined in SCALE SETTINGS), allowing direct
+            comparison between plots.</td>
+        </tr>
+        <tr>
+            <td>X-Axis Start / X-Axis End (mooring)</td>
+            <td>(Optional) Start and end of the time axis in mooring plots, in the format
+            <code>DD/MM/YYYY HH:MM</code>. Standardizes the time scale across plots, even where there
+            is no data (e.g. from 09:00 one day to 09:00 the next). Greyed out when the type is profile.
+            A label below shows the date range available in the loaded spreadsheet.</td>
+        </tr>
+        <tr>
+            <td>Depth-Axis Min / Max (profile)</td>
+            <td>(Optional) Minimum and maximum of the depth axis in profile plots (panel 3),
+            in meters. Standardizes the depth scale across profiles. Greyed out when the type is
+            mooring. A label below shows the depth range available in the loaded spreadsheet.</td>
+        </tr>
+        <tr>
+            <td>Filter by Site</td>
+            <td>List of checkboxes to select the sites to include.</td>
+        </tr>
+        <tr>
+            <td>Select Parameters</td>
+            <td>List of checkboxes to select the parameters to include.</td>
+        </tr>
+        <tr>
+            <td>&lt; Change Database</td>
+            <td>Returns to the selection window to load another database without closing the program.</td>
+        </tr>
+        <tr>
+            <td>Save View Settings</td>
+            <td>Saves the visualization settings. The choices (panels, sites, variables, scales,
+            years and time window) are kept across runs and sessions.</td>
+        </tr>
+        <tr>
+            <td>Generate Panels</td>
+            <td>Generates the plots with the current settings.</td>
+        </tr>
+    </table>
+
+    <h2 id="qualification_flags">5. Qualification Flags</h2>
+    <h3>Flag Structure</h3>
+    <p>Each data point receives a flag string in the format [TEST1][TEST2]...[TESTN], where each test is represented by a digit:</p>
+    <table>
+        <tr>
+            <th>Code</th>
+            <th>Meaning</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>1</td>
+            <td>GOOD_DATA</td>
+            <td>Data passed the test</td>
+        </tr>
+        <tr>
+            <td>2</td>
+            <td>UNKNOWN</td>
+            <td>Test could not be applied (insufficient data)</td>
+        </tr>
+        <tr>
+            <td>3</td>
+            <td>SUSPECT</td>
+            <td>Suspect data (failed by a margin)</td>
+        </tr>
+        <tr>
+            <td>4</td>
+            <td>BAD_DATA</td>
+            <td>Data failed the test</td>
+        </tr>
+        <tr>
+            <td>5</td>
+            <td>DISMISSED</td>
+            <td>Test was disabled by the user</td>
+        </tr>
+        <tr>
+            <td>9</td>
+            <td>MISSING</td>
+            <td>Missing data/NaN</td>
+        </tr>
+    </table>
+
+    <h3>Flag Construction</h3>
+    <ul>
+        <li>Tests are applied sequentially</li>
+        <li>Each test appends its code to the end of the flag string</li>
+        <li>The test order is fixed (sensor range → environmental range → spikes → rate of
+            change → flat line → vertical gradient and density inversion, these two for profiles
+            only → light usable window, HOBO only)</li>
+        <li>Flags are cumulative - a data point can have multiple codes</li>
+        <li>The exact position → test → variable mapping is written to the
+            <code>QCS_flag_legend.xlsx</code> file, generated with each qualification (v4.0)</li>
+    </ul>
+
+    <h4>Example</h4>
+    <p>The flag <code>1942</code> means:</p>
+    <ul>
+        <li>1: Passed the first test (sensor range)</li>
+        <li>9: Missing data in the second test</li>
+        <li>4: Failed the third test</li>
+        <li>2: Test not applied in the fourth test</li>
+    </ul>
+
+    <h3>Per-variable Flag_ columns (v4.0)</h3>
+    <p>Besides the full <code>Flag</code> string, the qualified file carries a summary column
+    per variable (<code>Flag_T</code>, <code>Flag_S</code>, <code>Flag_C</code>, ...,
+    <code>Flag_lux</code> in HOBO files), with the <strong>worst flag</strong> of that variable
+    in that row (priority 4 &gt; 3 &gt; 9 &gt; 1 &gt; 2 &gt; 5). This way you do not need to
+    decode the string position by position to filter data by quality — for example, keeping only
+    the rows with <code>Flag_T &lt;= 2</code> in a temperature analysis.</p>
+
+    <h2 id="settings_management">6. Settings Management</h2>
+    <p>All quality criteria (tests on/off, parameters and per-variable factors) are adjusted in the
+    <strong>Settings</strong> window, opened by the Settings button in the main window. The choices
+    are saved automatically across sessions.</p>
+    <div class="note">
+        <p><strong>Change in v4.0:</strong> the old <em>Export Settings</em> (export .json) and
+        <em>Config File</em> (import .json) were <strong>removed from the interface</strong> —
+        configuration is now done entirely in the Settings window. Preferences are still saved
+        automatically in the <code>qcs_user_settings.json</code> file (generated by the program,
+        not versioned).</p>
+    </div>
+
+    <h3>Reset to defaults</h3>
+    <p>The Settings window has a <strong>"Reset to Defaults"</strong> button that returns all
+    criteria to the defaults of the installed version. Invalid values typed in the fields are
+    listed in a warning, instead of being silently ignored.</p>
+    <div class="note">
+        <p><strong>Note when upgrading from older versions:</strong> because of the version control
+        of the preferences, the first time you run v4.0 the quality criteria saved from v3.2.1 are
+        replaced by the current defaults (intentional behavior — the criteria were revised). File
+        paths and last choices are preserved.</p>
+    </div>
+
+    <h3>Settings structure (JSON)</h3>
+    <pre><code>{
+    "tsQualityTests": {
+        "temperature sensor range": "ON",
+        "salinity sensor range": "ON",
+        ...
+    },
+    "tsSettings": {
+        "sensor_min_temp": -5,
+        "sensor_max_temp": 35,
+        ...
+    }
+}</code></pre>
+
+    <h2 id="configuration_parameters">7. Detailed Configuration Parameters</h2>
+    <p><strong>Note (v3.1):</strong> <code>time_window</code>, <code>fail_factor</code> and
+    <code>susp_factor</code> are now defined <strong>per variable</strong>, in the
+    <strong>"Factors per Variable"</strong> tab of the Settings window (one row per variable,
+    columns Fail / Susp / Time window). The descriptions below apply to each variable.</p>
+    <h3>time_window</h3>
+    <p>Defines the time window for standard-deviation calculations in the spike and rate-of-change tests.</p>
+    <p><strong>Accepted formats:</strong></p>
+    <ul>
+        <li>"WHOLE": Uses the whole dataset</li>
+        <li>"Xd": X days (e.g. "7d")</li>
+        <li>"Xh": X hours (e.g. "24h")</li>
+        <li>"Xm": X minutes (e.g. "30m")</li>
+        <li>"Xs": X seconds (e.g. "300s")</li>
+    </ul>
+
+    <p><strong>Effects:</strong></p>
+    <ul>
+        <li>Smaller windows are more sensitive to local variations</li>
+        <li>Larger windows smooth variations but may mask anomalies</li>
+        <li>For long mooring data, 1h-12h is recommended (depending on the sampling interval)</li>
+        <li>For profiles, 1m-6m is usually adequate</li>
+    </ul>
+
+    <h3>fail_factor and susp_factor</h3>
+    <p>Deviation multipliers for classifying data. Since v4.0, the reference for the spike and
+    rate-of-change tests is a <strong>robust deviation</strong> (1.4826 × MAD, the median absolute
+    deviation): the spurious value itself no longer inflates the threshold that should detect it.
+    Where the MAD degenerates (near-constant series), the calculation falls back to the ordinary
+    standard deviation.</p>
+    <p><strong>Behavior:</strong></p>
+    <ul>
+        <li>fail_factor > susp_factor (typically 3 and 2.5)</li>
+        <li>High values reduce false positives but may let errors through</li>
+        <li>Low values increase sensitivity but also false positives</li>
+        <li>For noisy data, increase both by 0.5-1.0</li>
+        <li>For very stable data, you can reduce by 0.5</li>
+    </ul>
+
+    <h3>HOBO light-window parameters (lux_*)</h3>
+    <p>In the <strong>Parameters</strong> tab of the Settings window, the parameters with the
+    <code>lux_</code> prefix control the light fouling test (HOBO only — see section 8):</p>
+    <ul>
+        <li><code>lux_baseline_days</code>: how many initial days define the clean-water baseline
+            (the highest daily light peak in that period)</li>
+        <li><code>lux_cutoff_frac</code>: the fraction of the baseline below which the daily peak
+            indicates fouling</li>
+        <li><code>lux_sustain_days</code>: for how many consecutive days the peak must stay below
+            the threshold to confirm the cutoff</li>
+    </ul>
+    <p>The values used are written on the <code>QCS_light_window.svg</code> plot itself, in the log
+    and in <code>QCS_test_report.xlsx</code> — the cutoff is always traceable.</p>
+
+    <h3>How to Access Help</h3>
+    <ul>
+        <li><strong>Tooltips:</strong> Hover over any interface element to see a hint</li>
+        <li><strong>Help button (?):</strong> In the header of each window; it includes the basic
+            instructions and the information about the software (the old menu bar was removed in v4.0)</li>
+    </ul>
+
+    <h2 id="qualification_tests">8. Qualification Tests</h2>
+    <h3>Processing Flow</h3>
+    <ol>
+        <li>Pre-processing (unit corrections, GMT-3)</li>
+        <li>Range Tests (sensor and environmental)</li>
+        <li>Spike Tests</li>
+        <li>Rate-of-Change Tests</li>
+        <li>Flat Line Tests</li>
+        <li>(For profiles) Vertical Gradient and Density Inversion Tests</li>
+        <li>(For HOBO) Light usable window (fouling)</li>
+        <li>Output generation</li>
+    </ol>
+    <p>The log announces the pipeline in 5 stages (reading → pre-processing → tests →
+    output/reports → plots), which makes it easier to find where a run failed.</p>
+
+    <h3>Sequential Order of the Qualification Tests (v4.0)</h3>
+    <ol>
+        <li><strong>Sensor Range Tests</strong> — failure becomes <strong>BAD (4)</strong>
+            (physically impossible value for the sensor)
+            <ul>
+                <li>Temperature, Salinity, Conductivity, Pressure, Dissolved Oxygen,
+                    pH, Chlorophyll, Turbidity</li>
+            </ul>
+        </li>
+        <li><strong>Environmental Range Tests</strong> — failure becomes
+            <strong>SUSPECT (3)</strong> (QARTOD alignment: outside the regional envelope is
+            suspect, since a real extreme event is possible)
+            <ul>
+                <li>Temperature, Salinity, Conductivity, Pressure, pH, Chlorophyll,
+                    Dissolved Oxygen, Dissolved Organic Matter, Turbidity</li>
+            </ul>
+        </li>
+        <li><strong>Spike Tests (Spurious Values)</strong> — 3-point method
+            <ul>
+                <li>Temperature, Salinity, Conductivity, Pressure, pH, Chlorophyll,
+                    Dissolved Oxygen, Dissolved Organic Matter, Turbidity</li>
+            </ul>
+        </li>
+        <li><strong>Rate-of-Change Tests</strong> — failure becomes at most
+            <strong>SUSPECT (3)</strong> (QARTOD: real rapid variation exists)
+            <ul>
+                <li>Temperature, Salinity, Conductivity, Pressure</li>
+            </ul>
+        </li>
+        <li><strong>Flat Line Tests</strong>
+            <ul>
+                <li>Temperature, Salinity, Conductivity, Pressure</li>
+            </ul>
+        </li>
+        <li><strong>Vertical Gradient Tests (Profile data only)</strong> —
+            real |ΔV/Δz| relative to the profile's typical gradient
+            <ul>
+                <li>Temperature, Salinity, Conductivity</li>
+            </ul>
+        </li>
+        <li><strong>Density Inversion Test (Profile data only)</strong>
+            <ul>
+                <li>Checks water-column stability: the potential density (computed from T, S and
+                pressure) must not decrease with depth beyond a tolerance (configurable in
+                Settings; default 0.03 kg/m³). An inversion indicates a
+                <strong>suspect</strong> temperature/salinity pair (flag 3) and implicates both —
+                it is not force-dropped; it only leaves the result if "Remove Suspect Data" is on.</li>
+            </ul>
+        </li>
+        <li><strong>Light usable window (HOBO only)</strong>
+            <ul>
+                <li>Light fouling (biofouling) test — see the
+                <a href="#hobo_data">HOBO Data</a> section. It generates the light flag position
+                (<code>Flag_lux</code>).</li>
+            </ul>
+        </li>
+    </ol>
+
+    <div class="note">
+        <p><strong>HOBO files:</strong> since the HOBO Pendant measures only temperature and light,
+        only the <strong>temperature</strong> tests from the list above are run, plus the light
+        window test. The flag string stays short and free of meaningless positions.</p>
+    </div>
+
+    <p><strong>Note (v3.0):</strong> the qualification criteria were revised in this version to be
+    broad and general (valid for the entire Brazilian coast, from the South to the Amazonian reefs).
+    The spike test switched to the 3-point method (|V₂ − (V₁+V₃)/2|), and the density inversion test
+    was added for profiles. Because it changes the qualification results relative to the 2.x versions,
+    it is a major version (v3.0).</p>
+
+    <p><strong>Note (v4.0):</strong> a new revision that <strong>changes results</strong> relative to
+    v3.x: the environmental range and rate of change now produce SUSPECT (not BAD), per QARTOD; the
+    spike/rate-of-change reference is now the robust deviation (1.4826×MAD); the vertical gradient now
+    actually uses depth (|ΔV/Δz|); and several bug fixes (detailed in the project's
+    <code>changelog/v4.0.md</code> file). With "Remove Bad Data", values outside the environmental
+    envelope are <strong>no longer removed</strong> automatically — use "Remove Suspect Data" for the
+    old behavior.</p>
+
+    <h3>Test Details</h3>
+    <p>Each test produces detailed logs in the console, including:</p>
+    <ul>
+        <li>Execution time</li>
+        <li>Number of failed data points</li>
+        <li>Failure percentage</li>
+    </ul>
+
+    <h3>Section: Joining Files in QCS_DatabaseView (build_database engine — v4.0)</h3>
+    <h4>Two ways to build the database</h4>
+    <p>In the Database Input Settings window, first choose the <strong>Instrument</strong>
+    (Seaguard or HOBO — the two are never mixed in the same database) and then:</p>
+    <ol>
+        <li><strong>Manual selection:</strong> in "Database File(s)", select one or several
+            qualified files (.csv or .xlsx, in any combination) — they are combined, validated
+            and deduplicated automatically; <em>or</em></li>
+        <li><strong>Join Data Files (parent folder):</strong> check the option and point
+            "Input Path" to the folder that contains the QCS outputs. The scan is
+            <strong>recursive</strong>: any subfolder named exactly
+            <code>QCS qualified tscp data</code> (Seaguard) or
+            <code>QCS qualified hobo data</code> (HOBO) is found, at any level.</li>
+    </ol>
+
+    <h4>Folder structure (example for Join mode)</h4>
+    <pre>All_Data/
+├── Camp1/
+│   └── QCS qualified tscp data/
+│       └── data_camp1.csv
+├── Camp2/
+│   └── QCS qualified tscp data/
+│       └── data_camp2.xlsx
+└── Camp3/
+    └── QCS qualified tscp data/
+        └── data_camp3.csv</pre>
+
+    <h4>What the unification engine does</h4>
+    <ul>
+        <li><strong>Validates the layout</strong> of each file (requires the
+            <code>Datetime</code> and <code>Site</code> columns) and detects whether it is Seaguard
+            or HOBO — mixing types is refused with a clear message.</li>
+        <li><strong>Ignores the report files</strong> (anything starting with
+            <code>QCS_</code>: report, stat, flag legend, etc.) — only data enters the database.</li>
+        <li><strong>Discards exact duplicates</strong> (same site, timestamp and values),
+            keeping the first occurrence and warning in the log; overlaps with
+            <strong>different</strong> values (same site+timestamp from distinct files) are kept
+            and reported with the list of files involved, for the operator to decide.</li>
+        <li><strong>Adds a <code>Source file</code> column</strong> (which file each row came
+            from — provenance) and sorts by Site + Datetime.</li>
+        <li>Shows a <strong>per-site summary</strong> in the visualization window log (number of
+            rows and period covered).</li>
+    </ul>
+
+    <div class="note">
+        <p>If "Join Data Files" is checked, the unified database is also saved as
+        <code>.xlsx</code> (with the name from the "Output Name" field) in the
+        <code>DatabaseView</code> folder inside the Output Path, for reuse.</p>
+    </div>
+
+    <h2 id="hobo_data">9. HOBO Data (Temperature and Light)</h2>
+    <p>Since v4.0, QCS qualifies and visualizes data from the <strong>HOBO Pendant
+    (Temperature/Light)</strong> loggers, in addition to Seaguard. Select
+    <strong>Input Type = HOBO</strong> in the main window and point to the HOBOware export.</p>
+
+    <h3>Reading the files</h3>
+    <ul>
+        <li>Accepts the <strong>.xlsx and .csv</strong> HOBOware exports, with headers in
+            Portuguese or English (the header row and the delimiter are detected automatically;
+            broken accents are tolerated).</li>
+        <li><strong>Automatic light unit:</strong> <code>lux</code> is used directly;
+            <code>lum/ft²</code> (foot-candle) is converted to lux (×10.7639). The output is
+            always in <strong>lux</strong>.</li>
+        <li><strong>Deployment window from the logger events</strong> (Coupler
+            On/Off, Stopped, End of File): rows outside the in-water period and event-only rows
+            are discarded, with a note in the log. Out-of-water readings at the edges are also
+            trimmed by a temperature jump (parameter <code>hobo_edge_temp_tol</code>, with a
+            safeguard against removing more than 10% of the series).</li>
+        <li>Zero light at night is a <strong>valid</strong> value (never becomes missing);
+            negatives become 0.</li>
+    </ul>
+
+    <h3>Qualification</h3>
+    <p>The <strong>temperature</strong> tests applicable to a mooring are run (sensor and
+    environmental range, spike, rate of change and flat line — producing <code>Flag_T</code>) plus
+    the HOBO-exclusive test:</p>
+
+    <h4>Light usable window (fouling test)</h4>
+    <p>With the sensor at sea, fouling organisms gradually cover the logger and the measured light
+    decays — beyond a certain point, it is no longer reliable. The test identifies that point:</p>
+    <ol>
+        <li>The <strong>clean-sensor baseline</strong> is the highest daily light peak of the first
+            <code>lux_baseline_days</code> days (the max, so a cloudy install day does not lower it);</li>
+        <li>From the start of the <strong>final sustained decline</strong> — where the daily peak
+            stays below <code>lux_cutoff_frac</code> × baseline for at least
+            <code>lux_sustain_days</code> consecutive days and <strong>never recovers</strong> to the
+            threshold — the light is flagged <strong>BAD (4, unusable)</strong>. Light that recovers
+            above the threshold is kept. The values stay in the sheet until you remove them with
+            <strong>"Remove Bad Data"</strong>;</li>
+        <li>If, after the cutoff, the light still reaches the threshold on a good share of the days
+            (~20%+), a <strong>warning</strong> indicates that the decline is not permanent
+            (possible sensor cleaning, multiple deployments in the same file, or a cloudy period) —
+            review it.</li>
+    </ol>
+    <p><strong>Interactive review:</strong> before applying, the program shows the daily light
+    envelope with the proposed cutoff — a click moves the cutoff date, the <strong>N</strong> key
+    removes the cutoff, Enter/close confirms. The final plot is saved as
+    <code>QCS_light_window.svg</code> in the output folder, with the parameters used written on it.</p>
+
+    <div class="warning">
+        <p><strong>Limitation:</strong> the test identifies <strong>one cutoff per file</strong>.
+        If the sensor was cleaned and returned to the water in the same file, the recovery warning
+        will fire — it is recommended to qualify each deployment (between cleanings) as a separate
+        file.</p>
+    </div>
+
+    <h3>Output</h3>
+    <p>The qualified HOBO spreadsheet contains only the measured variables + metadata:
+    <code>Sample number</code>, <code>Datetime</code>, <code>Temperature (degC)</code>,
+    <code>Luminosity (lux)</code>, <code>Expedition</code>, <code>Site</code>,
+    <code>Battery voltage (V)</code>, <code>Flag</code>, <code>Flag_T</code>,
+    <code>Flag_lux</code>, <code>QCS version</code>. It is saved in the
+    <code>QCS qualified hobo data</code> subfolder (the Seaguard one remains
+    <code>QCS qualified tscp data</code>). HOBO and Seaguard spreadsheets are <strong>never</strong>
+    combined in the same database.</p>
+    <p>To visualize HOBO databases (dedicated temperature and light panels with the fouling window
+    shaded), see section 11.</p>
+
+    <h3>Redundant replicates (2-4 HOBOs)</h3>
+    <p>When two or more HOBOs are deployed together for redundancy, set
+    <strong>Replicates</strong> (2-4) in the main window and select all N files at once with Browse.
+    Each replicate is qualified <strong>independently</strong> (its own light-window review) and then
+    combined into a single series, saved to a <code>&lt;site&gt;_&lt;start&gt;_&lt;end&gt;_combined_QLF</code>
+    folder (the individual per-file <code>_QLF</code> outputs are also kept). The method is written to
+    <code>QCS_combine_method.txt</code> in the combined folder, and each replicate's
+    <code>QCS_light_window_&lt;replicate&gt;.svg</code> is copied there.</p>
+    <ul>
+        <li><strong>Temperature:</strong> the <strong>mean</strong> of the replicates that are
+        acceptable (<code>Flag_T &le; 2</code>) at each timestamp. Replicates are aligned to the first
+        replicate's timestamps by <strong>nearest match within half the sampling interval</strong>
+        (redundant HOBOs are never started at the exact same second, but that offset is tiny versus the
+        sampling step, so paired readings are effectively simultaneous — it is a nearest match, not
+        interpolation). The between-replicate <strong>spread</strong> (max − min) is kept in the
+        <code>Temperature spread (degC)</code> column; when it exceeds 0.5 °C the combined
+        <code>Flag_T</code> is set to <strong>SUSPECT (3)</strong> — the replicates disagree, which is
+        itself a QC signal.</li>
+        <li><strong>Light:</strong> the per-timestamp <strong>maximum of the non-fouled</strong>
+        readings (<code>Flag_lux &ne; 4</code>). Fouling only attenuates light, so the brightest
+        unfouled sensor is the most reliable. The combined light stays good while <strong>at least
+        one</strong> replicate is unfouled and becomes BAD (4) only once <strong>every</strong>
+        replicate is fouled — the usable window is <strong>extended to the last replicate to
+        foul</strong>. Light is not averaged (that would mix clean and fouled sensors).</li>
+    </ul>
+
+    <h2 id="generated_outputs">10. Generated Outputs</h2>
+    <h3>Folder Structure</h3>
+    <pre>Root/
+├── QCS qualified tscp data/   (or QCS qualified hobo data/, depending on the instrument)
+│   ├── Qualified data (.csv or .xlsx)
+│   ├── QCS_report.xlsx
+│   ├── QCS_test_report.xlsx
+│   ├── QCS_flag_legend.xlsx
+│   ├── QCS_tscp_stat.xlsx
+│   └── QCS_light_window.svg   (HOBO only)
+├── QCS DataView (fixed scale)/
+│   └── Fixed-scale plots
+└── QCS DataView (unfixed scale)/
+    └── Auto-scale plots</pre>
+
+    <h3>File Contents</h3>
+    <ul>
+        <li><strong>Qualified File:</strong>
+            <ul>
+                <li>All the raw data (except what "Remove Bad/Suspect Data" removes)</li>
+                <li>A "Flag" column (full string) and <code>Flag_T</code>,
+                    <code>Flag_S</code>, ... columns per variable (worst flag of the row — v4.0)</li>
+                <li>Metadata (site, QCS version). Latitude/Longitude are not written
+                    (identical column layout across spreadsheets)</li>
+            </ul>
+        </li>
+        <li><strong>Report (QCS_report.xlsx):</strong>
+            <ul>
+                <li>Bad/suspect/missing counts for the 9 variables</li>
+                <li>Timestamp checks (backward steps, duplicates, large gaps)</li>
+                <li>"Valid" discounts rows with bad data in any variable</li>
+            </ul>
+        </li>
+        <li><strong>Per-test report (QCS_test_report.xlsx — v4.0):</strong>
+            <ul>
+                <li>One row per executed test: good/suspect/bad/missing counts,
+                    test off, and execution time</li>
+            </ul>
+        </li>
+        <li><strong>Flag legend (QCS_flag_legend.xlsx — v4.0):</strong>
+            <ul>
+                <li>Two sheets: <em>flag_positions</em> (flag-string position → test → variable)
+                    and <em>flag_codes</em> (the meaning of each code)</li>
+            </ul>
+        </li>
+        <li><strong>Statistics (QCS_tscp_stat.xlsx):</strong>
+            <ul>
+                <li>Mean, median, standard deviation</li>
+                <li>Minimum and maximum values</li>
+                <li>Valid-data count (all variables present)</li>
+            </ul>
+        </li>
+        <li><strong>Light window (QCS_light_window.svg — HOBO only, v4.0):</strong>
+            <ul>
+                <li>Daily light envelope with the baseline, threshold and fouling cutoff
+                    applied, and the parameters used written on the plot</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h2 id="data_visualization">11. Data Visualization</h2>
+    <p>The QCS_DatabaseView module offers advanced tools for visualizing and analyzing qualified oceanographic data.</p>
+
+    <h3>Visualization Panels (Seaguard databases)</h3>
+    <table>
+        <tr>
+            <th>Panel</th>
+            <th>Description</th>
+            <th>Recommended Data Type</th>
+        </tr>
+        <tr>
+            <td>Panel 1</td>
+            <td>Comparison between parameters at the same site</td>
+            <td>Mooring data</td>
+        </tr>
+        <tr>
+            <td>Panel 2</td>
+            <td>Comparison of the same parameter between sites</td>
+            <td>Mooring data</td>
+        </tr>
+        <tr>
+            <td>Panel 3</td>
+            <td>Vertical profile of parameters</td>
+            <td>Profile data</td>
+        </tr>
+        <tr>
+            <td>T-S Diagram</td>
+            <td>Temperature-Salinity diagram (requires valid Latitude/Longitude)</td>
+            <td>Both (with proper configuration)</td>
+        </tr>
+    </table>
+
+    <h3>Visualization Panels (HOBO databases — v4.0)</h3>
+    <p>With <strong>Instrument = HOBO</strong> in the input window, the visualization window
+    offers the dedicated HOBO panels instead of panels 1/2/3 (Data Type is fixed to "mooring"
+    and the T-S diagram is unavailable, since there is no salinity):</p>
+    <table>
+        <tr>
+            <th>Panel</th>
+            <th>Description</th>
+            <th>Generated file</th>
+        </tr>
+        <tr>
+            <td>HOBO Temperature (per site)</td>
+            <td>Temperature time series, one plot per selected site, with the suspect/bad points
+                (<code>Flag_T &ge; 3</code>) highlighted with ×</td>
+            <td><code>hobo_temperature_&lt;site&gt;_&lt;year&gt;.svg</code></td>
+        </tr>
+        <tr>
+            <td>HOBO Light + fouling window (per site)</td>
+            <td>Light time series on a <strong>logarithmic scale</strong>, one plot per site,
+                with the region after the fouling cutoff (<code>Flag_lux == 4</code>)
+                <strong>shaded</strong> and the cutoff date annotated — it shows how far the light
+                is reliable. Without a cutoff, the plot states that the light is usable for the
+                whole deployment</td>
+            <td><code>hobo_light_&lt;site&gt;_&lt;year&gt;.svg</code></td>
+        </tr>
+        <tr>
+            <td>HOBO Light multi-site</td>
+            <td>Light from all selected sites on the same log axis, with each site's fouling
+                onset marked by a dashed line in the site's color — it compares when fouling
+                started at each location</td>
+            <td><code>hobo_light_multisite_&lt;year&gt;.svg</code></td>
+        </tr>
+    </table>
+    <div class="note">
+        <p>On the logarithmic axes, light readings equal to 0 (night) cannot be represented and
+        become gaps in the plot; the number omitted is reported in the console. The fixed
+        luminosity scale is only applied if the minimum is greater than 0.</p>
+    </div>
+
+    <h3>Scale Configuration</h3>
+    <p>Advanced control over the plot scales through the "SCALE SETTINGS" panel.</p>
+
+    <h4>Fixed vs. Automatic Scales</h4>
+    <table>
+        <tr>
+            <th>Type</th>
+            <th>Description</th>
+            <th>When to Use</th>
+        </tr>
+        <tr>
+            <td>Fixed Scale</td>
+            <td>Lets you set manual minimum and maximum values for each parameter</td>
+            <td>
+                <ul>
+                    <li>Direct comparison between different datasets</li>
+                    <li>Keeping visual consistency between plots</li>
+                    <li>Highlighting specific variations in known ranges</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>Automatic Scale</td>
+            <td>The system adjusts automatically to show all the data</td>
+            <td>
+                <ul>
+                    <li>Initial exploratory analysis</li>
+                    <li>When the data amplitude varies significantly</li>
+                    <li>To view the full data distribution</li>
+                </ul>
+            </td>
+        </tr>
+    </table>
+
+    <h4>How to Configure Fixed Scales</h4>
+    <ol>
+        <li>Check the "Fixed Scale" option in the visualization section</li>
+        <li>Select the desired parameters in the "Select Parameters" section</li>
+        <li>For each selected parameter:
+            <ul>
+                <li>Type the minimum value in the corresponding field in the "Min Value" column</li>
+                <li>Type the maximum value in the corresponding field in the "Max Value" column</li>
+            </ul>
+        </li>
+        <li>Save the settings with "Save View Settings"</li>
+    </ol>
+
+    <div class="note">
+        <p><strong>Tip:</strong> The scale fields are only enabled when:
+        <ol>
+            <li>The "Fixed Scale" option is checked</li>
+            <li>The corresponding parameter is selected</li>
+            <li>At least one visualization panel is active</li>
+        </ol>
+        </p>
+    </div>
+
+    <h3>Filters and Data Selection</h3>
+    <p>The system offers multiple options to focus on specific subsets of the data:</p>
+
+    <h4>Time Filter</h4>
+    <ul>
+        <li><strong>By Year:</strong> Type a specific year in the "Filter by Year" field</li>
+        <li><strong>By Date/Time:</strong> Use the chronological sorting ("Sort by Time" in the input window)</li>
+    </ul>
+
+    <h4>Spatial Filter</h4>
+    <ul>
+        <li>Select specific sites in the "Filter by Site" list</li>
+        <li>For profiles, the coordinates can be used in the T-S Diagram</li>
+    </ul>
+
+    <h4>Parameter Selection</h4>
+    <ul>
+        <li>Enable/disable parameters individually as the analysis requires</li>
+        <li>Combine relevant parameters for multivariate analysis</li>
+    </ul>
+
+    <h3>Advanced Visualization Options</h3>
+    <table>
+        <tr>
+            <th>Option</th>
+            <th>Description</th>
+            <th>Application</th>
+        </tr>
+        <tr>
+            <td>Trend Lines</td>
+            <td>Adds polynomial trend lines</td>
+            <td>Identify temporal patterns</td>
+        </tr>
+        <tr>
+            <td>Show Data Points</td>
+            <td>Shows individual points in addition to the line</td>
+            <td>Visualize data density</td>
+        </tr>
+        <tr>
+            <td>Fixed Scale</td>
+            <td>Keeps consistent scales between plots</td>
+            <td>Quantitative comparison</td>
+        </tr>
+    </table>
+
+    <div class="warning">
+        <p><strong>Warning:</strong> Poorly configured fixed scales can:
+        <ul>
+            <li>Hide important variations if the range is too wide</li>
+            <li>Cut off valid data if the range is too narrow</li>
+            <li>Distort the visualization if the min/max are inverted</li>
+        </ul>
+        Always check the raw data before setting fixed scales.
+        </p>
+    </div>
+
+    <h3>Recommended Workflow</h3>
+    <ol>
+        <li>Start with automatic-scale visualizations for initial exploration</li>
+        <li>Identify typical ranges for each parameter</li>
+        <li>Apply filters to focus on the relevant data</li>
+        <li>Configure fixed scales for systematic comparisons</li>
+        <li>Use trend lines to identify patterns</li>
+        <li>Save useful settings for reuse</li>
+    </ol>
+
+    <h2 id="best_practices">12. Best Practices</h2>
+    <h3>For Data Qualification</h3>
+    <ul>
+        <li>Always check the console logs after processing</li>
+        <li>Start with the default settings and adjust as needed</li>
+        <li>For new sites, review the environmental ranges</li>
+        <li>Reuse successful settings across runs</li>
+    </ul>
+
+    <h3>For Visualization</h3>
+    <ul>
+        <li>Use a fixed scale to compare different datasets</li>
+        <li>Filter by year/site for focused analysis</li>
+        <li>Combine panels 1 and 2 for multivariate analysis</li>
+        <li>Save frequently used visualization settings</li>
+    </ul>
+
+    <h2 id="running_from_source">13. Running from Source Code</h2>
+
+    <p>Since version 2.2, QCS runs directly from the Python scripts — there are no more executable
+    (<code>.exe</code>) builds. This means any fix in the scripts takes effect immediately, with no
+    need to recompile.</p>
+
+    <h3>Requirements</h3>
+    <ul>
+        <li>Python (Anaconda is recommended)</li>
+        <li>The project dependencies installed (see section 2): <code>numpy</code>, <code>pandas</code>,
+            <code>matplotlib</code>, <code>scipy</code>, <code>openpyxl</code>, <code>gsw</code>
+            (and optionally <code>sv-ttk</code> for the modern theme)</li>
+    </ul>
+
+    <h3>How to run</h3>
+    <p>The recommended way is via the <code>.bat</code> shortcuts in the main folder, which already
+    call the correct Python. Alternatively, in the <strong>sourceCode</strong> folder, you can run
+    the scripts directly:</p>
+    <div class="code-container">
+        <button class="copy-btn" onclick="copyToClipboard('qcs-run-code')">Copy</button>
+        <div class="code-block" id="qcs-run-code">
+        <pre><code class="language-bash">python QCS_Main.py          # qualification tool
+python QCS_DatabaseView.py  # visualization tool</code></pre>
+        </div>
+    </div>
+
+    <h3>Quick check (self-tests)</h3>
+    <p>To confirm the qualification functions are intact after a change, run in the
+    <strong>sourceCode</strong> folder:</p>
+    <div class="code-container">
+        <button class="copy-btn" onclick="copyToClipboard('qcs-test-code')">Copy</button>
+        <div class="code-block" id="qcs-test-code">
+        <pre><code class="language-bash">python QCS_SelfTest.py</code></pre>
+        </div>
+    </div>
+
+    <h2 id="troubleshooting">14. Troubleshooting</h2>
+    <h3>Common Problems and Solutions</h3>
+    <table>
+        <tr>
+            <th>Problem</th>
+            <th>Solution</th>
+        </tr>
+        <tr>
+            <td>File does not load</td>
+            <td>Check the format and encoding (use UTF-8)</td>
+        </tr>
+        <tr>
+            <td>Tests not applied</td>
+            <td>Check that the parameter name matches what is expected</td>
+        </tr>
+        <tr>
+            <td>Plots not generated</td>
+            <td>Check that the data has valid values</td>
+        </tr>
+        <tr>
+            <td>Memory error</td>
+            <td>Reduce the dataset size or add memory</td>
+        </tr>
+        <tr>
+            <td>The program does not open / closes with a message box</td>
+            <td>A fatal error occurred before the window could open. Read the message box, and check
+            <code>sourceCode/QCS_crash.log</code> for the full details</td>
+        </tr>
+        <tr>
+            <td>"No year selected" when generating panels</td>
+            <td>Check at least one year in "Filter by Year" and click "Save View Settings" again</td>
+        </tr>
+        <tr>
+            <td>"build_database: ..." when building the database</td>
+            <td>The message points to the file and the exact problem (missing column, mixing of
+            Seaguard/HOBO layouts, etc.). Check that the selected Instrument matches the files and
+            that all of them are qualified QCS outputs</td>
+        </tr>
+        <tr>
+            <td>T-S diagram skipped</td>
+            <td>Fill in Latitude and Longitude with valid values (decimal degrees) — they are
+            required for the T-S</td>
+        </tr>
+        <tr>
+            <td>Light recovery warning after the cutoff (HOBO)</td>
+            <td>The file may contain more than one deployment (sensor cleaned and returned to the
+            water); review the cutoff in the interactive window or qualify each deployment separately</td>
+        </tr>
+    </table>
+
+    <h3>Support Contact</h3>
+    <p>For questions not resolved in this manual, contact:</p>
+    <p><em>fccardoso@sage.coppe.ufrj.br</em></p>
+
+    <div class="note">
+        <p>This manual covers all the functionality of the QCS system. For updates and newer versions, refer to the project's official repository.</p>
+    </div>
+    <script>
+        function copyToClipboard(id) {
+            // Get the element that contains the code
+            const codeElement = document.getElementById(id);
+
+            // Get the text and remove:
+            // - Backslashes at the end of the line (\)
+            // - Line breaks (\n)
+            // - Extra whitespace at the start/end of each line
+            const textToCopy = codeElement.textContent
+                .replace(/\\\n\s*/g, ' ')  // Remove \ and breaks, replacing with a space
+                .trim();                   // Remove extra whitespace at start/end
+
+            // Copy to the clipboard
+            navigator.clipboard.writeText(textToCopy)
+                .then(() => {
+                    alert("Command copied successfully!");
+                })
+                .catch(err => {
+                    console.error("Failed to copy: ", err);
+                    alert("Error copying. Try manually.");
+                });
+        }
+        </script>
+</body>
+</html>

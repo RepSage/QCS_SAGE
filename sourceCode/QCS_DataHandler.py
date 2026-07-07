@@ -4,12 +4,11 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector
-from os import walk
 
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v3.2.1'
+QCS_VERSION = 'v4.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -179,25 +178,200 @@ def read_ctd(INPUT):
 
     return dataframe
 
-def read_unified_hobo(file_path):
-    col_names = ['Site', 'Hour', 'Temperature (degC)', 'Luminosity (lux)',
-                 'Luminosity(lm/ft2)', 'Hobo Units', 'Date', 'Datetime' ]
+# 1 lumen/ft2 = 10.7639 lux (HOBO Pendant exported in US units)
+LUMEN_FT2_TO_LUX = 10.7639
 
-    dataframe = pd.read_csv(file_path, names=col_names, skiprows=1)
-    dataframe['Datetime'] = pd.to_datetime(dataframe['Datetime'])
-    dataframe = dataframe[['Site', 'Temperature (degC)', 'Luminosity (lux)',
-                           'Hobo Units', 'Datetime']]
+# HOBO logger event column patterns (pt/en)
+_HOBO_EVENT_PATTERN = (r'acoplador|coupler|anfitri|host|parado|stopped|'
+                       r'fim do ficheiro|end of file|bateria|battery')
+_HOBO_DETACH_PATTERN = r'acoplador desligado|coupler detached'
+_HOBO_END_PATTERN = (r'acoplador ligado|coupler attached|anfitri|host|'
+                     r'parado|stopped|fim do ficheiro|end of file')
 
-    valid_idx = np.where(dataframe['Datetime'].isna()==False)[0]
-    dataframe = dataframe.iloc[valid_idx]
 
-    dataframe.index = dataframe['Datetime']
-    dataframe = dataframe.rename_axis('dt_index')
-    dataframe = dataframe.sort_values(by='dt_index')
-    dataframe.index = np.arange(len(dataframe))
-    tempFrame = dataframe[['Site', 'Temperature (degC)', 'Hobo Units', 'Datetime']]
-    lumiFrame = dataframe[['Site', 'Luminosity (lux)', 'Hobo Units', 'Datetime']]
-    return dataframe, tempFrame, lumiFrame
+def _hobo_error(file_name, message):
+    # every reader error is self-localizing: "HOBO reader (file): what was missing"
+    return ValueError('HOBO reader (%s): %s' % (file_name, message))
+
+
+def read_hobo(INPUT, tsSettings):
+    """Reads HOBOware exports (.xlsx/.csv) from Pendant Temp/Light sensors.
+
+    Tolerates: headers in Portuguese or English, a title line before the header,
+    variable sampling frequency, light in Lux or lum/ft2 (converted to lux).
+    Removes logger event-only rows, trims out-of-water readings at the edges
+    (window between coupler events + temperature-jump heuristic) and
+    returns (dataframe, info): dataframe with Datetime / Temperature (degC) /
+    Luminosity (lux); info['messages'] documents everything that was done/discarded.
+    """
+    file_name = INPUT['file_name']
+    file_path = os.path.join(INPUT['raw_data_path'], file_name)
+    info = {'messages': []}
+    say = info['messages'].append
+
+    # ---------- raw read with header line detection ----------
+    def header_line(cells):
+        joined = ' '.join(str(c) for c in cells).lower()
+        return (re.search(r'data\s*hora|date\s*time', joined) is not None
+                and re.search(r'temp', joined) is not None)
+
+    if file_name.lower().endswith('.xlsx'):
+        sample = pd.read_excel(file_path, header=None, nrows=20)
+        header_row = next((i for i, row in sample.iterrows() if header_line(row.tolist())), None)
+        if header_row is None:
+            raise _hobo_error(file_name, "could not find the header row: expected a line "
+                              "containing 'Data Hora'/'Date Time' AND 'Temp' in the first 20 rows. "
+                              "Is this a HOBOware export?")
+        df = pd.read_excel(file_path, skiprows=header_row, header=0)
+    elif file_name.lower().endswith('.csv'):
+        raw_lines, used_encoding = None, None
+        for enc in ('utf-8-sig', 'cp1252', 'latin-1'):
+            try:
+                with open(file_path, 'r', encoding=enc) as f:
+                    raw_lines = f.readlines()
+                used_encoding = enc
+                break
+            except UnicodeDecodeError:
+                continue
+        if raw_lines is None:
+            raise _hobo_error(file_name, 'could not decode the file with utf-8, cp1252 or latin-1.')
+        header_row = next((i for i, line in enumerate(raw_lines[:20])
+                           if header_line([line])), None)
+        if header_row is None:
+            raise _hobo_error(file_name, "could not find the header row: expected a line "
+                              "containing 'Data Hora'/'Date Time' AND 'Temp' in the first 20 lines. "
+                              "Is this a HOBOware export?")
+        delimiter = ';' if raw_lines[header_row].count(';') > raw_lines[header_row].count(',') else ','
+        df = pd.read_csv(file_path, skiprows=header_row, header=0,
+                         sep=delimiter, encoding=used_encoding, engine='python')
+        say('MESSAGE: csv read with encoding %s and delimiter %r' % (used_encoding, delimiter))
+    else:
+        raise _hobo_error(file_name, 'unsupported format (use the .xlsx or .csv HOBOware export).')
+
+    # ---------- column identification ----------
+    time_col = temp_col = light_col = None
+    event_cols = []
+    for c in df.columns:
+        low = str(c).lower()
+        if time_col is None and re.search(r'data\s*hora|date\s*time', low):
+            time_col = c
+        elif temp_col is None and re.search(r'temp', low):
+            temp_col = c
+        elif light_col is None and re.search(r'intensidade|intensity|lux|lum', low):
+            light_col = c
+        elif re.search(_HOBO_EVENT_PATTERN, low):
+            event_cols.append(c)
+    found = 'columns found: %s' % ', '.join(repr(str(c)) for c in df.columns)
+    if time_col is None:
+        raise _hobo_error(file_name, 'no time column found (expected "Data Hora"/"Date Time"). ' + found)
+    if temp_col is None:
+        raise _hobo_error(file_name, 'no temperature column found (expected "Temp"). ' + found)
+    if light_col is None:
+        raise _hobo_error(file_name, 'no light column found (expected "Intensidade"/"Intensity"). ' + found)
+
+    # light unit from the channel label
+    light_label = str(light_col).lower()
+    if re.search(r'lum/?\s*ft|lumen', light_label):
+        light_factor = LUMEN_FT2_TO_LUX
+        say('MESSAGE: light channel is in lum/ft2; converted to lux (x%.4f).' % LUMEN_FT2_TO_LUX)
+    elif re.search(r'lux', light_label):
+        light_factor = 1.0
+    else:
+        raise _hobo_error(file_name, 'light column %r has no recognizable unit '
+                          '(expected Lux or lum/ft2 in the header).' % str(light_col))
+
+    gmt = re.search(r'GMT\s*([+-]\d{1,2}):?(\d{2})?', str(time_col))
+    if gmt:
+        say('MESSAGE: timestamps exported as GMT%s (from the header). The "Correct GMT-3" '
+            'option would subtract 3 MORE hours - only use it if the export is in GMT+00.' % gmt.group(1))
+
+    # ---------- types ----------
+    df[time_col] = pd.to_datetime(df[time_col], errors='coerce', dayfirst=True)
+    n_bad_ts = int(df[time_col].isna().sum())
+    if n_bad_ts:
+        say('WARNING: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
+        df = df[df[time_col].notna()]
+    if df.empty:
+        raise _hobo_error(file_name, 'no rows with valid timestamps after reading.')
+    df[temp_col] = pd.to_numeric(df[temp_col], errors='coerce')
+    df[light_col] = pd.to_numeric(df[light_col], errors='coerce') * light_factor
+
+    # ---------- deployment window from the logger events ----------
+    if event_cols:
+        ev_mask = df[event_cols].notna().any(axis=1)
+        detach_cols = [c for c in event_cols if re.search(_HOBO_DETACH_PATTERN, str(c).lower())]
+        end_cols = [c for c in event_cols if re.search(_HOBO_END_PATTERN, str(c).lower())]
+        start_t = df.loc[df[detach_cols].notna().any(axis=1), time_col].min() if detach_cols else pd.NaT
+        end_t = pd.NaT
+        if end_cols:
+            end_times = df.loc[df[end_cols].notna().any(axis=1), time_col]
+            if pd.notna(start_t):
+                end_times = end_times[end_times > start_t]
+            end_t = end_times.min() if not end_times.empty else pd.NaT
+        before = len(df)
+        if pd.notna(start_t):
+            df = df[df[time_col] >= start_t]
+        if pd.notna(end_t):
+            df = df[df[time_col] < end_t]
+        n_window = before - len(df)
+        if n_window:
+            say('MESSAGE: %d sample(s) outside the logger deployment window '
+                '(%s to %s) discarded.' % (n_window, start_t, end_t))
+        # event-only rows (no measurement) are removed
+        ev_mask = df[event_cols].notna().any(axis=1) & df[temp_col].isna()
+        n_ev = int(ev_mask.sum())
+        if n_ev:
+            say('MESSAGE: %d logger-event row(s) (no measurement) discarded.' % n_ev)
+        df = df[~ev_mask]
+    else:
+        say('WARNING: no logger event columns found - deployment window not applied; '
+            'check the file edges for out-of-water readings.')
+
+    if df.empty:
+        raise _hobo_error(file_name, 'no measurement rows left after removing logger events. '
+                          'Check the deployment window events in the file.')
+
+    df = df[[time_col, temp_col, light_col]]
+    df.columns = ['Datetime', 'Temperature (degC)', 'Luminosity (lux)']
+    if not df['Datetime'].is_monotonic_increasing:
+        say('WARNING: timestamps were not in chronological order; sorted by time.')
+        df = df.sort_values('Datetime')
+    df.index = np.arange(len(df))
+
+    # ---------- trim of out-of-water readings at the edges (temperature jump) ----------
+    tol = float(tsSettings.get('hobo_edge_temp_tol', 1.5))
+    interval = df['Datetime'].diff().median()
+    n_day = max(int(pd.Timedelta(days=1) / interval), 4) if pd.notna(interval) and interval > pd.Timedelta(0) else 12
+    temp = df['Temperature (degC)']
+
+    def edge_trim_count(series, reference):
+        count = 0
+        for value in series:
+            if pd.notna(value) and abs(value - reference) > tol:
+                count += 1
+            else:
+                break
+        return count
+
+    n_head = edge_trim_count(temp.iloc[:n_day], temp.iloc[:5 * n_day].median())
+    n_tail = edge_trim_count(temp.iloc[::-1].iloc[:n_day], temp.iloc[-5 * n_day:].median())
+    if n_head + n_tail > 0.1 * len(df):
+        say('WARNING: edge trim would remove >10%% of the series (%d+%d samples) - '
+            'NOT applied; review the temperature plot manually.' % (n_head, n_tail))
+    else:
+        if n_head:
+            say('MESSAGE: %d leading sample(s) trimmed - temperature deviates more than '
+                '%.1f degC from the deployment start (out-of-water reading).' % (n_head, tol))
+        if n_tail:
+            say('MESSAGE: %d trailing sample(s) trimmed - temperature deviates more than '
+                '%.1f degC from the deployment end (out-of-water reading).' % (n_tail, tol))
+        if n_head or n_tail:
+            df = df.iloc[n_head: len(df) - n_tail]
+            df.index = np.arange(len(df))
+
+    say('MESSAGE: HOBO file read: %d samples, %s to %s, median interval %s.'
+        % (len(df), df['Datetime'].iloc[0], df['Datetime'].iloc[-1], interval))
+    return df, info
 # Conversion functions
 
 def convert_tscp_units (data, pressure_unit, conductivity_unit):
@@ -251,28 +425,40 @@ def clean_below_zero(data, settings):
     #   sensor error -> NaN. The boundary is 5% of the variable's environmental
     #   span (tune via env_min/env_max if needed).
     # - All other variables: <= 0 -> NaN (sensor failure for marine data).
+    #
+    # Returns (data, report): report[column] = {'clamped': n, 'discarded': n},
+    # only for columns where something was changed, so the caller can log it.
     exceptions = ['Datetime', 'Sample number', 'Pitch[Deg]', 'Roll[Deg]', 'Timer[s]', 'Site']
     optical = {
         'chlorophyll': ('env_min_chl', 'env_max_chl'),
         'turbidity': ('env_min_tur', 'env_max_tur'),
         'organic matter': ('env_min_org', 'env_max_org'),
     }
+    report = {}
     for name in data.columns:
         if name in exceptions:
             continue
-        if re.search('par', name, re.IGNORECASE):
+        clamped, discarded = 0, 0
+        if re.search('par|luminosity|lux', name, re.IGNORECASE):
+            # light/PAR: zero at night is a VALID value; negatives are offset noise
+            clamped = int((data[name] < 0).sum())
             data.loc[data[name] < 0, name] = 0.0
-            continue
-        opt_key = next((k for k in optical if re.search(k, name, re.IGNORECASE)), None)
-        if opt_key is not None:
-            lo_key, hi_key = optical[opt_key]
-            span = settings.get(hi_key, 0) - settings.get(lo_key, 0)
-            tol = 0.05 * span if span > 0 else 0
-            data.loc[(data[name] < 0) & (data[name] >= -tol), name] = 0.0
-            data.loc[data[name] < -tol, name] = np.nan
         else:
-            data.loc[data[name] <= 0, name] = np.nan
-    return data
+            opt_key = next((k for k in optical if re.search(k, name, re.IGNORECASE)), None)
+            if opt_key is not None:
+                lo_key, hi_key = optical[opt_key]
+                span = settings.get(hi_key, 0) - settings.get(lo_key, 0)
+                tol = 0.05 * span if span > 0 else 0
+                clamped = int(((data[name] < 0) & (data[name] >= -tol)).sum())
+                discarded = int((data[name] < -tol).sum())
+                data.loc[(data[name] < 0) & (data[name] >= -tol), name] = 0.0
+                data.loc[data[name] < -tol, name] = np.nan
+            else:
+                discarded = int((data[name] <= 0).sum())
+                data.loc[data[name] <= 0, name] = np.nan
+        if clamped or discarded:
+            report[name] = {'clamped': clamped, 'discarded': discarded}
+    return data, report
 
 # Function for preparing output files
 
@@ -282,6 +468,7 @@ FLAG_BUCKET_MAP = {
     'T': ['T'], 'S': ['S'], 'C': ['C'], 'P': ['P'], 'pH': ['pH'],
     'chl': ['chl'], 'O2': ['O2'], 'org': ['org'], 'tur': ['tur'],
     'dens': ['T', 'S'],
+    'lux': ['lux'],  # HOBO light (fouling test)
 }
 
 def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad):
@@ -331,9 +518,24 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
     # tests (bad > suspect > missing). flag_layout[pos] tells which variable each
     # flag character belongs to, so positions are never hardcoded here.
     var_keys = ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur']
+    # extra buckets present in the layout (e.g. 'lux' in HOBO files) get their
+    # own Flag_ column without changing the format of files that don't use them
+    for pkey in flag_layout:
+        for bucket in FLAG_BUCKET_MAP.get(pkey, []):
+            if bucket not in var_keys:
+                var_keys.append(bucket)
     bdata = {k: [] for k in var_keys}
     sdata = {k: [] for k in var_keys}
     mdata = {k: [] for k in var_keys}
+    agg_flags = {k: [] for k in var_keys}  # rollup flag per row/variable (Flag_T etc.)
+
+    def worst_flag(chars):
+        # aggregation priority: bad > suspect > missing > good > not-evaluated > off
+        for code in ('4', '3', '9', '1', '2'):
+            if code in chars:
+                return int(code)
+        return 5
+
     for i in range(len(flags)):
         flagstr = flags[i]
         per_var = {k: '' for k in var_keys}
@@ -349,6 +551,12 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 sdata[k].append(i)
             elif '9' in chars:
                 mdata[k].append(i)
+            agg_flags[k].append(worst_flag(chars))
+
+    # per-variable rollup columns: downstream users read Flag_T etc. directly,
+    # without having to decode the positional flag string
+    for k in var_keys:
+        output_df['Flag_' + k] = agg_flags[k]
 
     T_bdata, S_bdata, C_bdata, P_bdata = (np.asarray(bdata['T']), np.asarray(bdata['S']), np.asarray(bdata['C']), np.asarray(bdata['P']))
     pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata = (np.asarray(bdata['pH']), np.asarray(bdata['chl']), np.asarray(bdata['O2']), np.asarray(bdata['org']), np.asarray(bdata['tur']))
@@ -359,6 +567,8 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
     # changing bad or suspect data to NaN according from operators input
     if remove_bad == True:
         for name in output_df.columns:
+            if str(name).startswith('Flag'):
+                continue  # flag columns are never erased (Flag_O2/Flag_lux match the patterns)
             if re.search('temperature', name, re.IGNORECASE):
                 output_df.loc[T_bdata, name] = np.nan
             if re.search('salinity', name, re.IGNORECASE):
@@ -378,8 +588,12 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 output_df.loc[org_bdata, name] = np.nan
             if re.search('turbidity|tss', name, re.IGNORECASE):
                 output_df.loc[tur_bdata, name] = np.nan
+            if re.search('luminosity|lux', name, re.IGNORECASE) and 'lux' in bdata:
+                output_df.loc[bdata['lux'], name] = np.nan
     if remove_suspect == True:
         for name in output_df.columns:
+            if str(name).startswith('Flag'):
+                continue  # flag columns are never erased
             if re.search('temperature', name, re.IGNORECASE):
                 output_df.loc[T_sdata, name] = np.nan
             if re.search('salinity', name, re.IGNORECASE):
@@ -398,25 +612,53 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 output_df.loc[org_sdata, name] = np.nan
             if re.search('turbidity|tss', name, re.IGNORECASE):
                 output_df.loc[tur_sdata, name] = np.nan
+            if re.search('luminosity|lux', name, re.IGNORECASE) and 'lux' in sdata:
+                output_df.loc[sdata['lux'], name] = np.nan
     return output_df, input_df, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata
 
 def order_var (qualified_data, n_cel, data_type):
     if data_type == 'tscp':
-        var_priority = {'Sample number': 0, 'Datetime': 1, 'Depth (m)': 2, 'Temperature (degC)': 3, 'Salinity (PSU)': 4,
-                        'Conductivity (mS/cm)': 5, 'Pressure (dbar)': 6, 'Density (kg/m3)': 7, 'CO2 Level (ppm)': 8,
-                        'O2 level (uM)': 9, 'O2 content (mg/L)': 10, 'PAR (umol/m2/s)': 11, 'Turbidity (FTU)': 12, 'TSS (mg/L)': 13, 
-                        'Chlorophyll (ug/L)': 14, 'pH': 15, 'Dissolved organic matter (ppb)': 16, 'Luminosity (lux)': 17,
-                        'Soundspeed (m/s)': 18, 'Expedition': 19, 'Site': 20, 'Longitude': 21, 'Latitude': 22,
-                        'Battery voltage (V)': 23, 'Flag': 24}
+        # 'Site' right after 'Datetime' (identification comes before the measurements).
+        # 'Battery voltage (V)' is kept as a placeholder (currently empty; reserved
+        # for when it is extracted from the raw data). 'Expedition' was removed.
+        var_priority = {'Sample number': 0, 'Datetime': 1, 'Site': 2, 'Depth (m)': 3, 'Temperature (degC)': 4,
+                        'Salinity (PSU)': 5, 'Conductivity (mS/cm)': 6, 'Pressure (dbar)': 7, 'Density (kg/m3)': 8,
+                        'CO2 Level (ppm)': 9, 'O2 level (uM)': 10, 'O2 content (mg/L)': 11, 'PAR (umol/m2/s)': 12,
+                        'Turbidity (FTU)': 13, 'TSS (mg/L)': 14, 'Chlorophyll (ug/L)': 15, 'pH': 16,
+                        'Dissolved organic matter (ppb)': 17, 'Luminosity (lux)': 18, 'Soundspeed (m/s)': 19,
+                        'Battery voltage (V)': 20, 'Flag': 21,
+                        'Flag_T': 22, 'Flag_S': 23, 'Flag_C': 24, 'Flag_P': 25, 'Flag_pH': 26,
+                        'Flag_chl': 27, 'Flag_O2': 28, 'Flag_org': 29, 'Flag_tur': 30,
+                        'Flag_lux': 31, 'QCS version': 32}
+    elif data_type == 'hobo':
+        # HOBO Pendant: only the measured variables (temperature in Celsius and
+        # light in lux), with the same metadata block as the TSCP standard. The
+        # other TSCP variables do not apply and do not appear (non-stackable sheets).
+        # 'Site' right after 'Datetime'; 'Battery voltage (V)' kept as a
+        # placeholder (currently empty); 'Expedition' removed.
+        # 'Temperature spread (degC)' is a FIXED column: the between-replicate spread
+        # when N>1 redundant HOBOs are combined; empty for single files.
+        var_priority = {'Sample number': 0, 'Datetime': 1, 'Site': 2,
+                        'Temperature (degC)': 3, 'Temperature spread (degC)': 4,
+                        'Luminosity (lux)': 5, 'Battery voltage (V)': 6, 'Flag': 7,
+                        'Flag_T': 8, 'Flag_lux': 9, 'QCS version': 10}
     else:
-        raise ValueError("Unsupported data_type '%s' in order_var (only 'tscp' is supported)" % data_type)
+        raise ValueError("Unsupported data_type '%s' in order_var (use 'tscp' or 'hobo')" % data_type)
+
+    # Latitude/Longitude are never part of the qualified output (kept out on
+    # purpose so every file has the same column layout); drop them if present.
+    for coord in ('Latitude', 'Longitude'):
+        if coord in qualified_data.columns:
+            qualified_data = qualified_data.drop(columns=[coord])
 
     order = {}
     for var in var_priority.keys():
         if var in qualified_data.columns:
             order[var] = var_priority[var]
         else:
-            if re.search('correlation', var, re.IGNORECASE):
+            # Flag_ columns only exist when the corresponding test ran
+            # (e.g. Flag_lux only in HOBO files) - do not create them empty
+            if re.search('correlation', var, re.IGNORECASE) or var.startswith('Flag_'):
                 pass
             else:
                 qualified_data[var] = np.nan
@@ -444,10 +686,38 @@ def order_var (qualified_data, n_cel, data_type):
                     qualified_data = qualified_data.drop(columns=[var])
     return qualified_data
 
+def _autofit_worksheet(ws, dataframe, index=False):
+    """Widens each column of an openpyxl worksheet to fit its content."""
+    from openpyxl.utils import get_column_letter
+    offset = 1 if index else 0  # column A is the index when index=True
+    for i, col in enumerate(dataframe.columns):
+        value_len = int(dataframe[col].astype(str).map(len).max()) if len(dataframe) else 0
+        width = min(max(len(str(col)), value_len) + 2, 60)  # +padding, capped so it stays sane
+        ws.column_dimensions[get_column_letter(i + 1 + offset)].width = width
+
+def save_excel_autofit(dataframe, path, index=False):
+    """Writes a DataFrame to an .xlsx with each column widened to fit its content
+    (header and values), so the sheet is readable without resizing by hand.
+    Used for every spreadsheet the app writes."""
+    with pd.ExcelWriter(path, engine='openpyxl') as writer:
+        dataframe.to_excel(writer, index=index)
+        _autofit_worksheet(writer.sheets[next(iter(writer.sheets))], dataframe, index)
+
+def save_excel_sheets(sheets, path, index=False):
+    """Writes {sheet_name: DataFrame} to a single .xlsx, each column auto-fitted."""
+    with pd.ExcelWriter(path, engine='openpyxl') as writer:
+        for name, df in sheets.items():
+            df.to_excel(writer, sheet_name=name, index=index)
+            _autofit_worksheet(writer.sheets[name], df, index)
+
 def tscp_stats_table (qualified_data):
     # builds the statistics table with whichever of the main variables
     # are present and hold at least one valid value
-    expected = ['Temperature (degC)', 'Salinity (PSU)', 'Pressure (dbar)']
+    expected = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)',
+                'Pressure (dbar)', 'Depth (m)', 'Density (kg/m3)', 'pH',
+                'O2 level (uM)', 'O2 content (mg/L)', 'Chlorophyll (ug/L)',
+                'Turbidity (FTU)', 'Dissolved organic matter (ppb)',
+                'PAR (umol/m2/s)', 'Soundspeed (m/s)', 'Luminosity (lux)']
     present = [var for var in expected
                if var in qualified_data.columns and not qualified_data[var].isna().all()]
     stat = pd.DataFrame({'Variable': present,
@@ -485,26 +755,41 @@ def on_motion(event):
                 # update plot
                 event.inaxes.figure.canvas.draw_idle()
 
-def trim_by_depth(data):
-    # Cria cópia do dataframe
+def _show_and_wait(fig, tk_root):
+    # Shows the interactive figure without freezing the interface. plt.show(block=True)
+    # inside a Tkinter callback creates a nested event loop that hangs the main
+    # window (same problem as Select Profile Data, fixed in v3.2.1); with tk_root,
+    # it waits in Tk's own loop until the figure is closed.
+    if tk_root is None:
+        plt.show(block=True)
+        return
+    import tkinter as tk
+    done = tk.BooleanVar(tk_root, value=False)
+    fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
+    fig.show()
+    tk_root.wait_variable(done)
+
+
+def trim_by_depth(data, tk_root=None):
+    # Create a copy of the dataframe
     trimmed_data = data.copy()
-    
-    # Define x e y
+
+    # Define x and y
     y = data['Depth (m)']
     x = data['Depth (m)'].index
 
-    # Cria o plot
+    # Create the plot
     fig, ax = plt.subplots()
     ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
     ax.set_title('Select points within rectangle to remove - Depth (m)\nPress Enter when you are done')
     ax.set_ylabel('Depth (m)')
     ax.set_xlabel('Sample number')
 
-    # Armazena índices removidos
+    # Stores removed indices
     removed_indices = set()
     selection_complete = False
 
-    # Função para remover dados selecionados
+    # Function to remove selected data
     def on_select(eclick, erelease):
         nonlocal trimmed_data
         x0, y0 = eclick.xdata, eclick.ydata
@@ -518,7 +803,7 @@ def trim_by_depth(data):
         # errors='ignore' prevents a crash when the same points are selected twice
         trimmed_data.drop(index=current_indices, inplace=True, errors='ignore')
 
-        # Atualiza o plot
+        # Update the plot
         remaining_mask = np.isin(np.arange(len(y)), list(removed_indices), invert=True)
         new_x = x[remaining_mask]
         new_y = y[remaining_mask]
@@ -536,52 +821,52 @@ def trim_by_depth(data):
             selection_complete = True
             plt.close(fig)
 
-    # Configura o seletor
-    selector = RectangleSelector(ax, on_select,  # manter referencia viva (widget e coletado pelo GC se nao for guardado)
+    # Configure the selector
+    _selector = RectangleSelector(ax, on_select,  # keep the reference alive (the widget is collected by the GC if not stored)
                                useblit=True,
                                button=[1],
                                minspanx=5, minspany=5,
                                spancoords='pixels',
                                interactive=True)
 
-    # Conecta os eventos
+    # Connect the events
     fig.canvas.mpl_connect('key_press_event', on_key_press)
 
-    # Configura os limites
+    # Configure the limits
     ax.set_xlim(np.nanmin(x) - 0.1, np.nanmax(x) + 0.1)
     ax.set_ylim(np.nanmin(y) - 0.1, np.nanmax(y) + 0.1)
 
-    # Mostra o gráfico
-    plt.show(block=True)
-    
-    # Reindexa antes de retornar
+    # Show the plot and wait without freezing the interface
+    _show_and_wait(fig, tk_root)
+
+    # Reindex before returning
     trimmed_data.index = np.arange(len(trimmed_data))
-    
+
     return trimmed_data
 
-def trim_selected_variable(data, name):
-    # Faz uma cópia explícita da coluna para evitar o alerta de SettingWithCopyWarning
+def trim_selected_variable(data, name, tk_root=None):
+    # Make an explicit copy of the column to avoid the SettingWithCopyWarning alert
     y = data[name].copy()
-    x = data.index  # Usar o índice diretamente sem copiar
+    x = data.index  # Use the index directly without copying
 
-    # Criação do gráfico
+    # Plot creation
     fig, ax = plt.subplots()
     ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
     ax.set_title(f'Select points within rectangle to remove - {name}\nPress Enter when you are done')
     ax.set_ylabel(name)
     ax.set_xlabel('Sample number')
 
-    # Variável para controle do loop
+    # Variable for loop control
     selection_complete = False
 
-    # Função para remover pontos selecionados
+    # Function to remove selected points
     def on_select(eclick, erelease):
         nonlocal y
         x0, y0 = eclick.xdata, eclick.ydata
         x1, y1 = erelease.xdata, erelease.ydata
         mask = (x > min(x0, x1)) & (x < max(x0, x1)) & \
                (y > min(y0, y1)) & (y < max(y0, y1))
-        y[mask] = np.nan  # Substitui pontos selecionados por NaN
+        y[mask] = np.nan  # Replace selected points with NaN
 
         ax.clear()
         ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
@@ -596,8 +881,8 @@ def trim_selected_variable(data, name):
             selection_complete = True
             plt.close(fig)
 
-    # Configuração dos eventos
-    selector = RectangleSelector(ax, on_select,  # manter referencia viva (widget e coletado pelo GC se nao for guardado)
+    # Event configuration
+    _selector = RectangleSelector(ax, on_select,  # keep the reference alive (the widget is collected by the GC if not stored)
                                useblit=True,
                                button=[1],
                                minspanx=5, minspany=5,
@@ -606,46 +891,222 @@ def trim_selected_variable(data, name):
 
     fig.canvas.mpl_connect('key_press_event', on_key_press)
 
-    # Configuração dos limites
+    # Limit configuration
     ax.set_xlim(np.nanmin(x)-0.1, np.nanmax(x)+0.1)
     ax.set_ylim(np.nanmin(y)-0.1, np.nanmax(y)+0.1)
 
-    # Exibe o gráfico e aguarda
-    plt.show(block=True)
-    
-    # Atualiza os dados após fechar a janela
+    # Show the plot and wait without freezing the interface
+    _show_and_wait(fig, tk_root)
+
+    # Update the data after closing the window
     data[name] = y
     return data
 
-def join_files_to_database(path, inputFilesFormat):
-    folder_names = next(walk(path), (None, None, []))[1]
-    folder_names = [item for item in folder_names if '__pycache__' not in item]
-    dic = {}
-    for folder in folder_names:
-        subfolder_names = next(walk(path + '/' + folder), (None, None, []))[1]
-        subfolder_names = [item for item in subfolder_names if '__pycache__' not in item]
-        for ff in subfolder_names:
-            if not re.search('data', ff, re.IGNORECASE):
-                continue
-            f = ff
-            os.chdir(path + '/' + folder + '/' + f)
-            file_names = next(walk(path + '/' + folder + '/' + f), (None, None, []))[2]
-            file_names = [item for item in file_names if '__pycache__' not in item]
-            for file in file_names:
-                if re.search('xlsx', inputFilesFormat, re.IGNORECASE):
-                    if re.search('.xlsx', file, re.IGNORECASE):
-                        df = pd.read_excel(file, header=0)
-                        #site = file[4:8] if file[4] == 'P' or file[4] == 'R' else file[4:7]
-                        #df['Site'] = site
-                        dic[file] = df
+# QCS output subfolders where each instrument's qualified spreadsheets live
+# (the tscp name is the same since the pre-v4 versions)
+QUALIFIED_SUBFOLDERS = {
+    'tscp': ('QCS qualified tscp data',),
+    'hobo': ('QCS qualified hobo data',),
+}
 
-                if re.search('csv', inputFilesFormat, re.IGNORECASE):
-                    if re.search('.csv', file, re.IGNORECASE):
-                        df = pd.read_csv(file, header=1)
-                        #site = file[4:8] if file[4] == 'P' or file[4] == 'R' else file[4:7]
-                        #df['Site'] = site
-                        dic[file] = df
 
-    database = pd.concat(dic, ignore_index=True)
+def detect_qualified_layout(df):
+    """'hobo' = only temperature+light (has Luminosity, no Salinity);
+    any other qualified spreadsheet is 'tscp' (Seaguard)."""
+    cols = set(str(c) for c in df.columns)
+    if 'Luminosity (lux)' in cols and 'Salinity (PSU)' not in cols:
+        return 'hobo'
+    return 'tscp'
+
+
+def build_database(instrument, file_list=None, input_path=None):
+    """Single unification engine for qualified spreadsheets (Seaguard and HOBO).
+
+    Input (one of the two):
+    - file_list: qualified files chosen by hand (multi-selection); or
+    - input_path: parent folder swept recursively looking for the QCS output
+      subfolders ('QCS qualified tscp data' / 'QCS qualified hobo data').
+
+    Rules (v4.0, replaces join_files_to_database):
+    - ignores the report files (name starting with 'QCS_');
+    - reads .csv (header on line 0 - the old header=1 corrupted csvs) and .xlsx;
+    - validates each file: needs Datetime+Site and the layout must match
+      the instrument (HOBO and Seaguard are NEVER stackable);
+    - adds the 'Source file' column (provenance of each row);
+    - sorts by Site+Datetime; removes exact duplicates (keeping the first,
+      with a warning) and reports rows with the same Site+Datetime and different values.
+
+    Returns (database, messages). Problems raise a ValueError with a
+    self-localizing message ('build_database: ...').
+    """
+    expected_layout = 'hobo' if str(instrument).strip().upper() == 'HOBO' else 'tscp'
+    messages = []
+
+    if file_list:
+        files = [f.strip() for f in file_list if f and f.strip()]
+    elif input_path:
+        target_subfolders = QUALIFIED_SUBFOLDERS[expected_layout]
+        files = []
+        for root, _dirs, names in os.walk(input_path):
+            if os.path.basename(root) in target_subfolders:
+                for name in sorted(names):
+                    if name.lower().endswith(('.csv', '.xlsx')) and not name.startswith('QCS_'):
+                        files.append(os.path.join(root, name))
+        if not files:
+            raise ValueError("build_database: no qualified %s files found under:\n%s\n"
+                             "(searched inside '%s' subfolders for .csv/.xlsx not named 'QCS_*')."
+                             % (instrument, input_path, "'/'".join(target_subfolders)))
+    else:
+        raise ValueError('build_database: provide file_list or input_path.')
+
+    frames = []
+    for file_path in files:
+        base = os.path.basename(file_path)
+        if base.startswith('QCS_'):
+            messages.append('MESSAGE: report file skipped: %s' % base)
+            continue
+        try:
+            if file_path.lower().endswith('.xlsx'):
+                df = pd.read_excel(file_path, header=0)
+            else:
+                df = pd.read_csv(file_path, header=0)
+        except Exception as e:
+            raise ValueError('build_database: could not read %s:\n%s' % (file_path, e)) from e
+        missing = [c for c in ('Datetime', 'Site') if c not in df.columns]
+        if missing:
+            raise ValueError("build_database: %s does not look like a QCS qualified file "
+                             "(missing column(s): %s).\nColumns found: %s"
+                             % (base, ', '.join(missing), ', '.join(str(c) for c in df.columns[:12])))
+        layout = detect_qualified_layout(df)
+        if layout != expected_layout:
+            raise ValueError("build_database: %s looks like a %s spreadsheet, but the selected "
+                             "instrument is %s. HOBO and Seaguard qualified files are never "
+                             "stackable - unify them into separate databases." % (base, layout.upper(), instrument))
+        df['Source file'] = base
+        frames.append(df)
+        messages.append('MESSAGE: %s: %d rows' % (base, len(df)))
+
+    if not frames:
+        raise ValueError('build_database: no readable qualified files in the selection.')
+
+    database = pd.concat(frames, ignore_index=True)
+    database['Datetime'] = pd.to_datetime(database['Datetime'], errors='coerce')
+    n_bad_ts = int(database['Datetime'].isna().sum())
+    if n_bad_ts:
+        messages.append('WARNING: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
+        database = database[database['Datetime'].notna()]
+
+    database = database.sort_values(['Site', 'Datetime'], kind='stable')
+
+    # exact duplicates (same values in all columns, except the provenance)
+    value_cols = [c for c in database.columns if c != 'Source file']
+    n_before = len(database)
+    database = database.drop_duplicates(subset=value_cols, keep='first')
+    n_exact = n_before - len(database)
+    if n_exact:
+        messages.append('WARNING: %d exact duplicate row(s) (same Site+Datetime+values) '
+                        'discarded - kept the first occurrence.' % n_exact)
+
+    # overlaps with DIFFERENT values: kept, but the operator needs to know
+    overlap_mask = database.duplicated(subset=['Site', 'Datetime'], keep=False)
+    if overlap_mask.any():
+        offenders = sorted(database.loc[overlap_mask, 'Source file'].unique())
+        messages.append('WARNING: %d row(s) share the same Site+Datetime with DIFFERENT values '
+                        '(overlapping qualifications?) - ALL kept; check the files: %s'
+                        % (int(overlap_mask.sum()), ', '.join(offenders)))
+
     database.index = np.arange(len(database))
-    return database
+    for site, group in database.groupby('Site'):
+        messages.append('MESSAGE: site %s: %d rows, %s to %s'
+                        % (site, len(group), group['Datetime'].min(), group['Datetime'].max()))
+    messages.append('MESSAGE: database built: %d file(s), %d rows, instrument %s.'
+                    % (len(frames), len(database), instrument))
+    return database, messages
+
+
+def combine_hobo_replicates(replicates, temp_tol=0.5):
+    """Combine N (2-4) redundant HOBO replicates of the SAME site/deployment,
+    each already qualified independently, into a single series.
+
+    Temperature: the MEAN of the replicates that are acceptable (Flag_T <= 2) at
+    each timestamp. The between-replicate spread (max - min) is kept in a
+    'Temperature spread (degC)' column; when it exceeds `temp_tol` (with >= 2
+    acceptable replicates) the combined Flag_T is SUSPECT (3) - the replicates
+    disagree, which is itself a QC signal.
+
+    Light: the per-timestamp MAX of the NON-fouled readings (Flag_lux != 4).
+    Fouling only attenuates light, so the brightest unfouled sensor is the most
+    reliable. The combined light stays good (Flag_lux 1) while AT LEAST ONE
+    replicate is unfouled, and becomes BAD (4) only once EVERY replicate is
+    fouled - i.e. the usable window is extended to the last replicate to foul.
+    (No naive averaging of light: that would mix clean + fouled sensors.)
+
+    replicates: list of qualified HOBO DataFrames (2-4), each with columns
+    'Datetime', 'Temperature (degC)', 'Luminosity (lux)', 'Flag_T', 'Flag_lux'
+    (and optionally 'Site'). Returns (combined_df, messages)."""
+    if len(replicates) < 2:
+        raise ValueError('combine_hobo_replicates: need at least 2 replicates.')
+    messages = []
+
+    # align every replicate onto the first replicate's time grid (nearest match
+    # within half the sampling interval, to absorb small clock differences)
+    ref_times = pd.DatetimeIndex(pd.to_datetime(replicates[0]['Datetime'])).sort_values()
+    step = ref_times.to_series().diff().median()
+    tol = (step / 2) if (pd.notna(step) and step > pd.Timedelta(0)) else None
+    aligned = []
+    for r in replicates:
+        a = r.copy()
+        a['Datetime'] = pd.to_datetime(a['Datetime'])
+        a = a.set_index('Datetime')
+        a = a[~a.index.duplicated(keep='first')].sort_index()
+        aligned.append(a.reindex(ref_times, method='nearest', tolerance=tol))
+
+    def stack(name):
+        return pd.concat([a[name] for a in aligned], axis=1, ignore_index=True)
+
+    T = stack('Temperature (degC)')
+    FT = stack('Flag_T').apply(pd.to_numeric, errors='coerce')
+    L = stack('Luminosity (lux)')
+    FL = stack('Flag_lux').apply(pd.to_numeric, errors='coerce')
+
+    # temperature: mean over the acceptable (Flag_T <= 2) replicates
+    t_ok = (FT <= 2) & T.notna()
+    T_ok = T.where(t_ok)
+    n_t = t_ok.sum(axis=1)
+    temp_mean = T_ok.mean(axis=1)
+    temp_spread = (T_ok.max(axis=1) - T_ok.min(axis=1)).where(n_t >= 2, 0.0)
+    flag_t = pd.Series(9, index=ref_times)              # none acceptable -> missing
+    flag_t[n_t >= 1] = 1                                # at least one good
+    flag_t[(n_t >= 2) & (temp_spread > temp_tol)] = 3   # replicates disagree -> suspect
+
+    # light: max of the non-fouled (Flag_lux != 4) readings
+    l_clean = (FL != 4) & L.notna()
+    n_clean = l_clean.sum(axis=1)
+    lux_comb = L.where(l_clean).max(axis=1).where(n_clean >= 1, L.max(axis=1))
+    flag_lux = pd.Series(9, index=ref_times)            # all light missing
+    flag_lux[L.notna().any(axis=1)] = 4                 # present but all fouled -> bad
+    flag_lux[n_clean >= 1] = 1                          # at least one unfouled -> good
+
+    out = pd.DataFrame({
+        'Datetime': ref_times,
+        'Temperature (degC)': temp_mean.round(4).values,
+        'Temperature spread (degC)': temp_spread.round(4).values,
+        'Luminosity (lux)': lux_comb.round(4).values,
+        'Flag_T': flag_t.values.astype(int),
+        'Flag_lux': flag_lux.values.astype(int),
+    })
+    if 'Site' in replicates[0].columns and len(replicates[0]):
+        out.insert(1, 'Site', replicates[0]['Site'].iloc[0])
+
+    messages.append('MESSAGE: combined %d HOBO replicates over %d aligned timestamps.'
+                    % (len(replicates), len(out)))
+    n_disagree = int((flag_t == 3).sum())
+    if n_disagree:
+        messages.append('WARNING: %d timestamp(s) where the replicate temperatures disagree by '
+                        'more than %.2f degC - combined Flag_T set to SUSPECT there.'
+                        % (n_disagree, temp_tol))
+    all_fouled = flag_lux[flag_lux == 4]
+    if len(all_fouled):
+        messages.append('MESSAGE: combined light usable until %s (all replicates fouled after that).'
+                        % pd.Timestamp(all_fouled.index[0]))
+    return out, messages
