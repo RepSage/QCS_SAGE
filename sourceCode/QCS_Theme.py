@@ -362,19 +362,38 @@ def install_crash_handler(app_name, out_stream=None, base_dir=None):
     sys.excepthook = _hook
 
 
+_icon_photo_ref = None  # keep the iconphoto PhotoImage alive (else the GC drops it)
+
 def set_window_icon(window, icon_name='qcs_icon.ico', app_id='sage.qcs.qualitycontrolsystem'):
     """Use a custom taskbar/window icon. Sets an explicit Windows AppUserModelID
     (so the app shows its OWN icon on the taskbar instead of the interpreter's,
-    e.g. Spyder's) and, if an .ico file named `icon_name` sits next to the
-    scripts, applies it. All best-effort: a no-op where unavailable or missing."""
+    e.g. Spyder's), then applies the icon. All best-effort: a no-op where
+    unavailable or missing.
+
+    Taskbar crispness: Tk's iconbitmap(.ico) often renders blurry on the taskbar
+    (it picks a small frame and upscales). Applying a high-res PNG via iconphoto
+    LAST gives Windows a 256px image to scale down cleanly."""
+    global _icon_photo_ref
     try:
         from ctypes import windll
         windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
     except Exception:
         pass
+    base = os.path.dirname(os.path.abspath(__file__))
+    # 1) .ico first (title-bar icon, has the small crisp frames)
     try:
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), icon_name)
-        if os.path.isfile(path):
-            window.iconbitmap(path)
+        ico = os.path.join(base, icon_name)
+        if os.path.isfile(ico):
+            window.iconbitmap(ico)
+    except Exception:
+        pass
+    # 2) high-res PNG via iconphoto LAST -> crisp taskbar icon (Tk 8.6 reads PNG)
+    try:
+        import tkinter as tk
+        png = os.path.join(base, os.path.splitext(icon_name)[0] + '.png')
+        if os.path.isfile(png):
+            if _icon_photo_ref is None:
+                _icon_photo_ref = tk.PhotoImage(master=window, file=png)
+            window.iconphoto(True, _icon_photo_ref)
     except Exception:
         pass

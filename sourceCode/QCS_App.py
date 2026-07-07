@@ -105,6 +105,10 @@ def main(run=True):
         frame = qual_tab if idx == 0 else viz_tab
         frame.tkraise()
         frame.focus_set()
+        # after a qualification run, pre-select the just-made file in Visualization
+        if idx == 1 and getattr(qual, 'PENDING_VIZ_PREFILL', None):
+            viz.apply_pending_prefill(qual.PENDING_VIZ_PREFILL)
+            qual.PENDING_VIZ_PREFILL = None
     notebook.bind('<<NotebookTabChanged>>', on_tab_changed)
     # clicking the ALREADY selected tab fires no <<NotebookTabChanged>>, so also
     # defocus on plain clicks (separate event: does not clobber the bind above)

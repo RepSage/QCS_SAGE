@@ -264,14 +264,16 @@
         </tr>
         <tr>
             <td>Check Variables (manual point cut)</td>
-            <td>Opens interactive point-cut panels to manually remove spurious points.
-                Since v5.0 you first pick <strong>which</strong> variables to review
-                (with "All variables" / "None"), then a panel per variable lets you drag a
-                box over points to <strong>dismiss</strong> them (Undo / Reset / Skip / Done /
-                Help, live counter). Dismissed points are <strong>not deleted</strong>: they
-                get <strong>flag 5</strong> and their value is blanked, so the manual cut stays
-                traceable. Without this option, only the mooring <em>Depth</em> review opens
-                (which now also dismisses via flag 5 instead of deleting rows).</td>
+            <td>Opens interactive point-cut panels to manually remove spurious points. Since
+                v5.0 this is the single opt-in for all interactive review: you first pick
+                <strong>which</strong> series to review (with "All variables" / "None"),
+                including the mooring <strong>Depth</strong> series. Depth is reviewed first
+                and its whole-row cuts carry over (greyed) into the following per-variable
+                panels, so the same points are never cut twice. Each panel lets you drag a box
+                to <strong>dismiss</strong> points (mouse-wheel zoom; Undo / Reset / Skip / Done /
+                Help; live counter and an "X of N" progress). Dismissed points are
+                <strong>not deleted</strong>: they get <strong>flag 5</strong> and their value is
+                blanked, so the manual cut stays traceable.</td>
         </tr>
         <tr>
             <td>Macroregion / Region</td>

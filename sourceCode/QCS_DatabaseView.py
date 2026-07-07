@@ -1283,6 +1283,29 @@ def _apply_recent(event=None):
     if entry.get('instrument') in ('Seaguard', 'HOBO'):
         instrument_combobox.set(entry['instrument'])
 
+def apply_pending_prefill(info):
+    """Pre-fill Step 1 from a just-finished qualification (called by the QCS_App
+    shell when the user switches to the Visualization tab). info holds
+    {'file', 'out_root', 'instrument'}. Ensures Step 1 is showing."""
+    if not info or globals().get('fileNames_entry') is None:
+        return
+    try:
+        if _step2_frame is not None and _step2_frame.winfo_ismapped():
+            _go_step1()   # come back from Step 2 so the fields are visible
+    except Exception:
+        pass
+    join.set(False)
+    toggle_input_mode()
+    restore_entry(fileNames_entry, info.get('file', ''))
+    restore_entry(outputPath_entry, info.get('out_root', ''))
+    restore_entry(outputName_entry,
+                  os.path.splitext(os.path.basename(info.get('file', '')))[0])
+    if info.get('instrument') in ('Seaguard', 'HOBO'):
+        instrument_combobox.set(info['instrument'])
+    _preview_cache['key'] = None   # force a rebuild for the new selection
+    print('MESSAGE: Visualization pre-selected the just-qualified file: %s'
+          % os.path.basename(info.get('file', '')))
+
 def _go_step2():
     """Next: validate Step 1, build the database (or reuse the previewed one),
     then show Step 2 in place."""

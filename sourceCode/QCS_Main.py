@@ -179,7 +179,7 @@ TOOLTIPS = {
     'conductivity_unit': "Conductivity unit of raw data\nAutomatic conversion to mS/cm",
     'gmt_correction': "Applies GMT-3 hour correction for data\ncollected in Brazilian timezone",
     'profile_selection': "Allows selecting only descent or ascent\nfor profile data (removes inversion)",
-    'variable_check': "Opens interactive point-cut panels to manually DISMISS\nspurious points, one per chosen variable (you pick which).\nDismissed points get flag 5 and are kept for traceability.\nWithout this, only the mooring Depth review opens.",
+    'variable_check': "Opens interactive point-cut panels to manually DISMISS\nspurious points. You pick which series to review\n(Depth included, for moorings). Dismissed points get\nflag 5 and are kept in the sheet for traceability.",
     'output_folder': "Folder where qualification results\nwill be saved",
     'output_name': "Base name for output files\n(without extension)",
     'output_format': "Output format for the qualified data\n.csv: Delimited text\n.xlsx: Excel\n(the automatic report files are always .xlsx)",
@@ -641,9 +641,12 @@ def write_combined_replicates(combined, light_plots=()):
     folder = os.path.join(root, 'QCS qualified hobo data')
     os.makedirs(folder, exist_ok=True)
     if 'csv' in OUTPUT.get('output_data_format', '.xlsx').lower():
-        ordered.to_csv(os.path.join(folder, base + '.csv'), index=False)
+        combined_file = os.path.join(folder, base + '.csv')
+        ordered.to_csv(combined_file, index=False)
     else:
-        data.save_excel_autofit(ordered, os.path.join(folder, base + '.xlsx'))
+        combined_file = os.path.join(folder, base + '.xlsx')
+        data.save_excel_autofit(ordered, combined_file)
+    OUTPUT['last_qualified_file'] = combined_file  # so Visualization can pre-select it
     # copy each replicate's light-window plot (kept with the 'QCS_' prefix so
     # build_database keeps ignoring them when scanning folders)
     for plot in light_plots:
@@ -675,25 +678,35 @@ def start_qualification():
             INPUT['file_name'] = os.path.basename(fpath)
             INPUT['raw_data_path'] = os.path.dirname(fpath)
             if n > 1:
-                status_var.set("Qualifying replicate %d of %d..." % (idx, n))
                 log_line('=== Replicate %d/%d: %s ===' % (idx, n, INPUT['file_name']))
             else:
-                status_var.set("Running qualification... the window may not respond while processing.")
-                log_line('=== Qualification started: %s ===' % INPUT['file_name'])
+                log_line('=== Qualification started: %s (the window may not respond while processing) ==='
+                         % INPUT['file_name'])
             window.update_idletasks()
             run_full_qualification()
             qualified_dfs.append(OUTPUT['last_qualified_df'])
             if OUTPUT.get('last_light_plot'):
                 light_plots.append(OUTPUT['last_light_plot'])
         if n > 1:
-            status_var.set("Combining %d replicates..." % n)
+            log_line('Combining %d replicates...' % n)
             window.update_idletasks()
             combined, cmsgs = data.combine_hobo_replicates(qualified_dfs)
             for m in cmsgs:
                 log_line(m)
             OUTPUT['last_output_root'] = write_combined_replicates(combined, light_plots)
             log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
-        status_var.set("Done - results saved to %s" % OUTPUT.get('last_output_root', ''))
+        log_line('=== Qualification complete. Results saved to: %s ==='
+                 % OUTPUT.get('last_output_root', ''))
+        # hand the just-qualified file to the Visualization tab so it can
+        # pre-select it (Database File + Output Path) on the next switch there.
+        # A module-level handoff (read by the QCS_App shell on tab change) avoids
+        # the two modules' separate in-memory USER_PREFS getting out of sync.
+        global PENDING_VIZ_PREFILL
+        if OUTPUT.get('last_qualified_file'):
+            PENDING_VIZ_PREFILL = {
+                'file': OUTPUT['last_qualified_file'],
+                'out_root': OUTPUT.get('last_output_root', ''),
+                'instrument': 'HOBO' if INPUT.get('input_type') == 'HOBO' else 'Seaguard'}
         messagebox.showinfo("Done",
                             "Qualification completed successfully!\n\n"
                             "Results saved to:\n%s\n\n"
@@ -703,7 +716,6 @@ def start_qualification():
         # the full traceback goes to the log; the dialog points to file/line
         for line in traceback.format_exc().strip().splitlines():
             log_line('ERROR: %s' % line)
-        status_var.set("Qualification interrupted by an error - see the execution log.")
         messagebox.showerror("Qualification error",
                              "The qualification was interrupted by an error:\n\n%s\n\n"
                              "Location: %s\n(full traceback in the Execution log)\n\n"
@@ -1084,6 +1096,11 @@ INPUT = {}
 OUTPUT = {}
 rootPath = os.getcwd()
 
+# Handoff to the Visualization tab: after a successful qualification this holds
+# {'file', 'out_root', 'instrument'} so the shell can pre-select the just-made
+# file there; the shell clears it once applied.
+PENDING_VIZ_PREFILL = None
+
 # Manual point-cut: map each reviewable column to its flag key, so a manual
 # dismissal can be written as flag 5 at that variable's positions (traceable).
 # Only variables that HAVE a QC flag column are offered (a cut must be flaggable).
@@ -1101,7 +1118,7 @@ def choose_variables_to_check(candidates, root):
     win = Toplevel(root)
     win.title("Check Variables - choose which to review")
     win.transient(root)
-    theme.set_scaled_geometry(win, 380, 420, min_width=320, min_height=300)
+    theme.set_scaled_geometry(win, 440, 580, min_width=360, min_height=420)
     frame = ttk.Frame(win, padding=14)
     frame.pack(fill='both', expand=True)
     ttk.Label(frame, text="Select the variables to review and cut manually:",
@@ -1171,7 +1188,7 @@ def build_qualification_tab(container, root, shared_log=None):
     global outputFilesFormat_combobox, filter_frame, remove_bad, bad_check, remove_suspect, suspect_check
     global siteSelect_entry, macroregion_label, macroregion_combobox, region_label, region_combobox, update_regions
     global _last_seaguard, update_inputtype_state, action_frame, settings_btn, run_button
-    global log_console, log_line, status_var, status_label, _error_location, review_light_window
+    global log_console, log_line, _error_location, review_light_window
     global run_full_qualification
     window = root
     # Main container
@@ -1448,10 +1465,8 @@ def build_qualification_tab(container, root, shared_log=None):
         except Exception:
             pass
 
-    # Status bar
-    status_var = StringVar(value="Ready")
-    status_label = ttk.Label(main_frame, textvariable=status_var, style='Small.TLabel', anchor='w')
-    status_label.grid(row=4, column=0, columnspan=2, sticky='ew', padx=5, pady=(6, 0))
+    # (the former status bar was removed in v5.0: all progress and the
+    # "results saved" outcome go to the single Execution log)
 
     def _error_location(exc):
         """Points to the deepest QCS file/line in the traceback: direct debugging."""
@@ -1789,22 +1804,37 @@ def build_qualification_tab(container, root, shared_log=None):
 
         # Manual point-cut panels record DISMISSALS (flag 5), applied to the flag
         # string + values just before handle_output_file - nothing is deleted here.
-        manual_dismiss_rows = set()       # whole-row dismissals (depth review)
+        # All interactive review is opt-in via 'Check Variables': the user picks
+        # which series to review (Depth included, for moorings). Depth is reviewed
+        # FIRST and its whole-row cuts carry over (greyed/locked) into the
+        # per-variable panels so the same points are never cut twice.
+        manual_dismiss_rows = set()       # whole-row dismissals (Depth review)
         manual_dismiss_cols = {}          # {column_name: set of row positions}
-
-        if INPUT['profile'] == False and 'Depth (m)' in raw_data.columns:
-            manual_dismiss_rows |= data.trim_by_depth(raw_data, tk_root=window)
 
         # number of lines and cells
         n_cel = 1
         n_samples = len(raw_data)
 
         if INPUT['check_variables'] == True:
-            candidates = [name for name, _key in MANUAL_CUT_COLUMNS if name in raw_data.columns]
-            for name in choose_variables_to_check(candidates, window):
-                rows = data.trim_selected_variable(raw_data, name, tk_root=window)
-                if rows:
-                    manual_dismiss_cols[name] = rows
+            candidates = []
+            if INPUT['profile'] == False and 'Depth (m)' in raw_data.columns:
+                candidates.append('Depth (m)')
+            candidates += [name for name, _key in MANUAL_CUT_COLUMNS if name in raw_data.columns]
+            chosen = choose_variables_to_check(candidates, window)
+            # Depth first (whole-row dismissal), then the per-variable panels
+            ordered = ([c for c in chosen if c == 'Depth (m)'] +
+                       [c for c in chosen if c != 'Depth (m)'])
+            for i, name in enumerate(ordered, start=1):
+                progress = (i, len(ordered))
+                if name == 'Depth (m)':
+                    manual_dismiss_rows |= data.trim_by_depth(raw_data, tk_root=window,
+                                                              progress=progress)
+                else:
+                    rows = data.trim_selected_variable(raw_data, name, tk_root=window,
+                                                       locked=manual_dismiss_rows,
+                                                       progress=progress)
+                    if rows:
+                        manual_dismiss_cols[name] = rows
         #create list for flag codes
         flags = ['' for n in range(len(raw_data))]
 
@@ -2100,10 +2130,14 @@ def build_qualification_tab(container, root, shared_log=None):
         else:
             output_base = re.sub(r'\.(csv|xlsx)$', '', OUTPUT['output_file_name'],
                                  flags=re.IGNORECASE).strip() or input_qlf
-        if re.search('xlsx', OUTPUT['output_data_format'], re.IGNORECASE):
+        wrote_xlsx = bool(re.search('xlsx', OUTPUT['output_data_format'], re.IGNORECASE))
+        if wrote_xlsx:
             data.save_excel_autofit(qualified_data, os.path.join(path, output_base + '.xlsx'))  ##create excel
         if re.search('csv', OUTPUT['output_data_format'], re.IGNORECASE):
             qualified_data.to_csv(os.path.join(path, output_base + '.csv'), index=False) ##create csv
+        # remember the qualified file (prefer .xlsx) so the Visualization tab can
+        # pre-select it after the run
+        OUTPUT['last_qualified_file'] = os.path.join(path, output_base + ('.xlsx' if wrote_xlsx else '.csv'))
         log_line('Exported data to: %s' % path)
 
         log_line('Exporting statistics table, reports and flag legend to: %s' % path)

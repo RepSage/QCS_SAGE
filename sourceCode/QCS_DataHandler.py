@@ -790,39 +790,57 @@ def _show_and_wait(fig, tk_root):
     tk_root.wait_variable(done)
 
 
-def manual_cut_panel(x, y, label, tk_root=None):
+def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     """Interactive panel to manually DISMISS points of a series. Drag a rectangle
-    over points to mark them dismissed; Undo/Reset/Skip/Done/Help buttons and a
-    live counter. Returns a SET of positional indices to dismiss (empty if none),
-    or None if the user pressed Skip. Never modifies data or deletes rows - the
-    caller records the dismissals as flag 5 (traceable)."""
+    over points to mark them dismissed; mouse wheel zooms; Undo/Reset/Skip/Done/
+    Help buttons and a live counter. Returns a SET of positional indices to
+    dismiss (empty if none), or None if the user pressed Skip. Never modifies data.
+
+    locked:   indices already dismissed upstream (e.g. the Depth whole-row cut) -
+              shown greyed and not selectable, and excluded from the returned set.
+    progress: (i, total) shown in the title, e.g. '[2 of 5]'."""
+    import matplotlib as mpl
     x = np.asarray(x)
     y = np.asarray(y, dtype=float)
+    locked = set() if locked is None else set(int(i) for i in locked)
     dismissed = set()
     history = []          # stack of per-box selections, for Undo
     state = {'skipped': False, 'drawn': False}
 
-    fig, ax = plt.subplots()
-    plt.subplots_adjust(bottom=0.22)
+    # wheel zoom replaces the toolbar lens, so drop the navigation toolbar
+    _old_tb = mpl.rcParams['toolbar']
+    mpl.rcParams['toolbar'] = 'none'
+    try:
+        fig, ax = plt.subplots(figsize=(10, 6.5))
+    finally:
+        mpl.rcParams['toolbar'] = _old_tb
+    plt.subplots_adjust(bottom=0.20, top=0.88)
 
     def redraw(keep_view=True):
-        # preserve the current view (user zoom/pan) across redraws; the first
-        # draw (and Reset) autoscales to fit the whole series. NB: detect "first
-        # draw" with an explicit flag, NOT ax.lines/collections - the interactive
-        # RectangleSelector adds handle artists, which would falsely read as data.
+        # preserve the current view (zoom/pan) across redraws; the first draw
+        # (and Reset) autoscales. Track "first draw" with an explicit flag, NOT
+        # ax.lines/collections - the RectangleSelector adds handle artists.
         restore = keep_view and state['drawn']
         if restore:
             xlim, ylim = ax.get_xlim(), ax.get_ylim()
         ax.clear()
-        keep = np.array([i not in dismissed for i in range(len(y))], dtype=bool)
+        gone = dismissed | locked
+        keep = np.array([i not in gone for i in range(len(y))], dtype=bool)
         ax.plot(x[keep], y[keep], linestyle='-', marker='x',
                 markeredgecolor='r', markerfacecolor='r', picker=5)
+        if locked:
+            li = sorted(locked)
+            ax.scatter(x[li], y[li], marker='o', facecolors='none',
+                       edgecolors='0.75', s=40)   # already cut upstream (lighter)
         if dismissed:
-            idx = sorted(dismissed)
-            ax.scatter(x[idx], y[idx], marker='o', facecolors='none',
-                       edgecolors='0.55', s=45)
-        ax.set_title('%s - drag a box to DISMISS points (flag 5)   |   wheel = zoom\n'
-                     '%d point(s) dismissed    |    Enter = Done' % (label, len(dismissed)))
+            di = sorted(dismissed)
+            ax.scatter(x[di], y[di], marker='o', facecolors='none',
+                       edgecolors='0.45', s=45)
+        prog = ('   [%d of %d]' % progress) if progress else ''
+        extra = ('    (+%d already cut via Depth)' % len(locked)) if locked else ''
+        ax.set_title('%s%s - drag a box to DISMISS points (flag 5)   |   wheel = zoom\n'
+                     '%d dismissed here%s    |    Enter = Done'
+                     % (label, prog, len(dismissed), extra))
         ax.set_ylabel(label)
         ax.set_xlabel('Sample number')
         if restore:
@@ -851,7 +869,7 @@ def manual_cut_panel(x, y, label, tk_root=None):
         x0, y0 = eclick.xdata, eclick.ydata
         x1, y1 = erelease.xdata, erelease.ydata
         mask = (x > min(x0, x1)) & (x < max(x0, x1)) & (y > min(y0, y1)) & (y < max(y0, y1))
-        new_sel = set(int(i) for i in np.nonzero(mask)[0]) - dismissed
+        new_sel = set(int(i) for i in np.nonzero(mask)[0]) - dismissed - locked
         if new_sel:
             history.append(new_sel)
             dismissed.update(new_sel)
@@ -879,16 +897,17 @@ def manual_cut_panel(x, y, label, tk_root=None):
         try:
             from tkinter import messagebox
             # parent the dialog to the PLOT window so it pops over the plot
-            # instead of sending it behind the main program window
+            # instead of raising the main program window behind it
             parent = getattr(getattr(fig.canvas, 'manager', None), 'window', None)
             messagebox.showinfo(
                 'Manual point cut - help',
                 'Drag a rectangle over points to mark them DISMISSED (flag 5).\n'
                 'Mouse wheel zooms in/out around the cursor.\n\n'
                 'The points are NOT deleted: they stay in the sheet with flag 5 and\n'
-                'their value blanked, so the manual cut stays traceable.\n\n'
+                'their value blanked, so the manual cut stays traceable. Points already\n'
+                'cut in the Depth review appear greyed and are kept dismissed.\n\n'
                 'Undo   - undo the last box\n'
-                'Reset  - clear every dismissal and reset the zoom\n'
+                'Reset  - clear the dismissals made here and reset the zoom\n'
                 'Skip   - leave this series untouched\n'
                 'Done   - confirm and continue (shortcut: Enter)',
                 parent=parent)
@@ -917,20 +936,23 @@ def manual_cut_panel(x, y, label, tk_root=None):
     return None if state['skipped'] else dismissed
 
 
-def trim_by_depth(data, tk_root=None):
+def trim_by_depth(data, tk_root=None, locked=None, progress=None):
     """Manual review of a mooring depth series. Returns the SET of row positions
     the operator dismissed (whole-row dismissal). Does not modify `data`; the
     caller flags those rows DISMISSED (5) and blanks their values."""
     got = manual_cut_panel(data['Depth (m)'].index.to_numpy(),
-                           data['Depth (m)'].to_numpy(), 'Depth (m)', tk_root)
+                           data['Depth (m)'].to_numpy(), 'Depth (m)', tk_root,
+                           locked=locked, progress=progress)
     return set() if got is None else set(got)
 
 
-def trim_selected_variable(data, name, tk_root=None):
+def trim_selected_variable(data, name, tk_root=None, locked=None, progress=None):
     """Manual review of a single variable. Returns the SET of row positions the
-    operator dismissed for that variable. Does not modify `data`; the caller
-    flags those points DISMISSED (5) for this variable and blanks the value."""
-    got = manual_cut_panel(np.arange(len(data)), data[name].to_numpy(), name, tk_root)
+    operator dismissed for that variable (excluding any `locked` rows already cut
+    upstream). Does not modify `data`; the caller flags those points DISMISSED (5)
+    for this variable and blanks the value."""
+    got = manual_cut_panel(np.arange(len(data)), data[name].to_numpy(), name, tk_root,
+                           locked=locked, progress=progress)
     return set() if got is None else set(got)
 
 
