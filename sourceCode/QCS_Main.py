@@ -610,7 +610,7 @@ def write_combined_replicates(combined, light_plots=()):
     folder = os.path.join(root, 'QCS qualified hobo data')
     os.makedirs(folder, exist_ok=True)
     if 'xlsx' in OUTPUT.get('output_data_format', '.xlsx').lower():
-        ordered.to_excel(os.path.join(folder, base + '.xlsx'), index=False)
+        data.save_excel_autofit(ordered, os.path.join(folder, base + '.xlsx'))
     else:
         ordered.to_csv(os.path.join(folder, base + '.csv'), index=False)
     # copy each replicate's light-window plot (kept with the 'QCS_' prefix so
@@ -1966,7 +1966,7 @@ def run_full_qualification():
         output_base = re.sub(r'\.(csv|xlsx)$', '', OUTPUT['output_file_name'],
                              flags=re.IGNORECASE).strip() or input_qlf
     if re.search('xlsx', OUTPUT['output_data_format'], re.IGNORECASE):
-        qualified_data.to_excel(os.path.join(path, output_base + '.xlsx'), index=False) ##create excel
+        data.save_excel_autofit(qualified_data, os.path.join(path, output_base + '.xlsx'))  ##create excel
     if re.search('csv', OUTPUT['output_data_format'], re.IGNORECASE):
         qualified_data.to_csv(os.path.join(path, output_base + '.csv'), index=False) ##create csv
     log_line('Exported data to: %s' % path)

@@ -770,7 +770,7 @@ def load_database():
 
     if inputSettings.get('joinFiles', False) == True:
         try:
-            database.to_excel(inputSettings['outputFileName']+'.xlsx', index=False)
+            data.save_excel_autofit(database, inputSettings['outputFileName'] + '.xlsx')
             print('MESSAGE: unified database saved to %s.xlsx'
                   % os.path.join(databaseViewPath, inputSettings['outputFileName']))
         except Exception as e:
