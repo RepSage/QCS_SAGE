@@ -395,5 +395,26 @@ assert comb['Site'].iloc[0] == 'PAB3'
 assert any('disagree' in m for m in cmsgs) and any('usable until' in m for m in cmsgs), cmsgs
 ok.append('combine_hobo_replicates (T mean+spread, light max-of-clean, window extended)')
 
+# 13) read_ctd: Seaguard export with a COMMA decimal separator (locale-dependent)
+# must be parsed as numbers, not left as text (which broke every numeric test).
+with _tempfile.TemporaryDirectory() as tmp:
+    csv_path = _os.path.join(tmp, 'PISCINA_qlf.csv')
+    with open(csv_path, 'w', encoding='utf-8') as f:
+        f.write('Description;Seaguard II Platform\n')
+        f.write('Serial Number;2104\n')
+        f.write(';;;;;;\n')  # a metadata/blank row above the header
+        f.write('Record Time;Record Number;Pressure[kPa];Temperature[DegC];Salinity[PSU]\n')
+        f.write('16/03/2026 18:02:00;1;131,7655;28,62414;35,3102\n')
+        f.write('16/03/2026 18:03:00;2;132,2957;28,62993;35,30405\n')
+        f.write('16/03/2026 18:04:00;3;130,9420;28,64612;35,29525\n')
+    d = data.read_ctd({'raw_data_path': tmp, 'file_name': 'PISCINA_qlf.csv'})
+    assert len(d) == 3, len(d)
+    for c in ('Pressure (kPa)', 'Temperature (degC)', 'Salinity (PSU)'):
+        assert str(d[c].dtype).startswith('float'), '%s not numeric (%s)' % (c, d[c].dtype)
+    assert abs(d['Pressure (kPa)'].iloc[0] - 131.7655) < 1e-6, d['Pressure (kPa)'].iloc[0]
+    assert abs(d['Temperature (degC)'].iloc[2] - 28.64612) < 1e-6
+    assert str(d['Datetime'].dtype).startswith('datetime64')
+ok.append('read_ctd (Seaguard comma-decimal export parsed as numbers)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

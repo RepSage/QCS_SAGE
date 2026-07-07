@@ -167,6 +167,26 @@ def read_ctd(INPUT):
     # set datetime column
     dataframe['Datetime'] = pd.to_datetime(dataframe['Datetime'], dayfirst=True)
 
+    # Numeric columns: Seaguard exports use either '.' or ',' as the decimal
+    # separator (locale-dependent). pandas parses '.'-decimals as floats, but a
+    # ','-decimal column (e.g. '131,7655') is read as TEXT, which breaks every
+    # numeric test downstream. Coerce every value column to float, accepting the
+    # comma decimal, and report any value that could not be parsed (never dropped
+    # silently). Columns already numeric ('.'-decimal files) are left untouched.
+    for col in dataframe.columns:
+        if col == 'Datetime' or dataframe[col].dtype != object:
+            continue
+        raw = dataframe[col]
+        cleaned = raw.where(raw.isna(),
+                            raw.astype(str).str.strip().str.replace(',', '.', regex=False))
+        converted = pd.to_numeric(cleaned, errors='coerce')
+        was_value = raw.notna() & (raw.astype(str).str.strip() != '')
+        lost = int((converted.isna() & was_value).sum())
+        if lost > 0:
+            print("WARNING: %d unparseable value(s) in column '%s' set to NaN (%s)"
+                  % (lost, col, INPUT['file_name']))
+        dataframe[col] = converted
+
     # discard records without a valid timestamp (e.g. truncated trailing rows
     # left by interrupted sensor exports) — they cannot be qualified
     n_invalid = int(dataframe['Datetime'].isna().sum())
