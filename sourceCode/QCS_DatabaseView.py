@@ -223,17 +223,34 @@ def toggle_ts_controls():
         set_disabled_style(tsParam_combobox)
 
 def toggle_scale_controls():
-    """Enables or disables the scale controls based on fixed_scale and the selected panels"""
-    if fixedScale.get() and (panel1.get() or panel2.get() or panel3.get()):
-        for entry in min_scale_entries.values():
-            set_enabled_style(entry)
-        for entry in max_scale_entries.values():
-            set_enabled_style(entry)
-    else:
-        for entry in min_scale_entries.values():
-            set_disabled_style(entry)
-        for entry in max_scale_entries.values():
-            set_disabled_style(entry)
+    """Per-parameter scale controls: the Min/Max of a parameter are editable only
+    when Fixed scale is on, a panel is selected AND that parameter is checked.
+    Enabling pre-fills the data's own min/max (once, if empty); disabling clears
+    the fields. Scale values are per-imported-sheet and are not persisted."""
+    active = fixedScale.get() and (panel1.get() or panel2.get() or panel3.get())
+    for param, min_e in min_scale_entries.items():
+        max_e = max_scale_entries[param]
+        on = active and param in parameter_vars and parameter_vars[param].get()
+        for entry, kind in ((min_e, 'min'), (max_e, 'max')):
+            if on:
+                if not entry.get().strip():
+                    dv = _param_data_extreme(param, kind)
+                    if dv:
+                        entry.config(state='normal')
+                        entry.delete(0, END)
+                        entry.insert(0, dv)
+                set_enabled_style(entry)
+            else:
+                entry.config(state='normal')
+                entry.delete(0, END)
+                set_disabled_style(entry)
+
+def _param_data_extreme(param, kind):
+    """Formatted min/max of a parameter in the loaded database ('' if unavailable)."""
+    if database is None or param not in database.columns or not database[param].notna().any():
+        return ''
+    value = database[param].min() if kind == 'min' else database[param].max()
+    return '' if pd.isna(value) else ('%.4g' % value)
 
 def toggle_data_type():
     data_type = dType_combobox.get()
@@ -528,8 +545,8 @@ def saveDataViewSettings():
             'dbv_data_points': dataPoints.get(),
             'dbv_fixed_scale': fixedScale.get(),
             'dbv_selected_sites': selectedSites,
-            'dbv_selected_params': selectedParameters,
-            'dbv_scale_settings': scale_settings,
+            # NOTE: parameter selection and scale values are per-imported-sheet
+            # (defaults recomputed from the data each time) and are NOT persisted.
         })
         save_user_prefs()
 
@@ -927,8 +944,8 @@ def build_step2(parent):
                         "HOBO Light multi-site")
         panel_tips = (TOOLTIPS['hobo_temp'], TOOLTIPS['hobo_light'], TOOLTIPS['hobo_light_multi'])
     else:
-        panel_labels = ("Parameters at a site (mooring)",
-                        "A parameter across sites (mooring)",
+        panel_labels = ("Parameters at a site",
+                        "A parameter across sites",
                         "Vertical profile at a site")
         panel_tips = (TOOLTIPS['panel1'], TOOLTIPS['panel2'], TOOLTIPS['panel3'])
 
@@ -1096,9 +1113,16 @@ def build_step2(parent):
     parameter_vars = {}  # Stores the BooleanVar
     parameter_widgets = {}  # Stores the Checkbutton widgets
 
+    # parameters this database actually carries data for (a column present with at
+    # least one non-null value) - used as the default selection and for defaults
+    params_with_data = [p for p in parameter_names
+                        if p in database.columns and database[p].notna().any()]
+
     for i, param in enumerate(parameter_names):
         var = BooleanVar(value=False)
-        cb = ttk.Checkbutton(filter_frame, text=param, variable=var)
+        # toggling a parameter updates its per-parameter scale row (enable/fill/clear)
+        cb = ttk.Checkbutton(filter_frame, text=param, variable=var,
+                             command=toggle_scale_controls)
         cb.grid(row=i+1, column=1, sticky='w', pady=2, padx=10)
         parameter_vars[param] = var
         parameter_widgets[param] = cb
@@ -1169,16 +1193,20 @@ def build_step2(parent):
     for site in USER_PREFS.get('dbv_selected_sites', []):
         if site in site_vars:
             site_vars[site].set(True)
-    for param in USER_PREFS.get('dbv_selected_params', []):
-        if param in parameter_vars:
-            parameter_vars[param].set(True)
-    for param, limits in USER_PREFS.get('dbv_scale_settings', {}).items():
-        if param in min_scale_entries:
-            restore_entry(min_scale_entries[param], str(limits.get('min', '')))
-            restore_entry(max_scale_entries[param], str(limits.get('max', '')))
     for y in USER_PREFS.get('dbv_selected_years', []):
         if y in year_vars:
             year_vars[y].set(True)
+    # Year/Site: default to the FIRST available (and, if there is only one, it is
+    # selected by definition) when nothing valid was restored for this database.
+    if not any(v.get() for v in year_vars.values()) and available_years:
+        year_vars[available_years[0]].set(True)
+    if not any(v.get() for v in site_vars.values()) and site_names:
+        site_vars[site_names[0]].set(True)
+    # Parameters: default to the ones that actually HAVE data in this database
+    # (recomputed per imported sheet; NOT persisted between sessions).
+    for param, var in parameter_vars.items():
+        var.set(param in params_with_data)
+    # Scale settings are per-sheet too: not restored from preferences.
     restore_entry(time_start_entry, USER_PREFS.get('dbv_time_start', ''))
     restore_entry(time_end_entry, USER_PREFS.get('dbv_time_end', ''))
     restore_entry(depth_min_entry, USER_PREFS.get('dbv_depth_min', ''))
@@ -1211,11 +1239,13 @@ def build_step2(parent):
     if _pending_step2.get('longitude') is not None:
         restore_entry(longitude_entry, str(_pending_step2['longitude']))
 
-    # X-axis start defaults to the first available date (mooring plots). A saved
-    # value is kept only if it falls inside this database's range (a value left
-    # over from another database would plot an empty window).
-    if pd.notna(data_start) and str(time_start_entry.cget('state')) != 'disabled':
-        cur = time_start_entry.get().strip()
+    # X-axis start/end default to the first/last available date (mooring plots).
+    # A saved value is kept only if it falls inside this database's range (a value
+    # left over from another database would plot an empty window).
+    def _default_time(entry, default_dt):
+        if pd.isna(default_dt) or str(entry.cget('state')) == 'disabled':
+            return
+        cur = entry.get().strip()
         keep = False
         if cur:
             try:
@@ -1224,8 +1254,11 @@ def build_step2(parent):
             except Exception:
                 keep = False
         if not keep:
-            time_start_entry.delete(0, END)
-            time_start_entry.insert(0, data_start.strftime('%d/%m/%Y %H:%M'))
+            entry.delete(0, END)
+            entry.insert(0, default_dt.strftime('%d/%m/%Y %H:%M'))
+
+    _default_time(time_start_entry, data_start)
+    _default_time(time_end_entry, data_end)
 
     _pending_step2 = {}  # consumed
 

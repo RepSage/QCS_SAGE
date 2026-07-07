@@ -718,6 +718,12 @@ def start_qualification():
                             "Results saved to:\n%s\n\n"
                             "You can select another file and run a new qualification "
                             "without closing the program." % OUTPUT.get('last_output_root', ''))
+    except data.ManualCutCancelled:
+        # Cancel/Esc during a manual-cut panel or the variable chooser: abort
+        # cleanly and return to the form (no error dialog, nothing written)
+        log_line('Qualification cancelled by the user (manual point cut).')
+        plt.close('all')
+        os.chdir(rootPath)
     except Exception as e:
         # the full traceback goes to the log; the dialog points to file/line
         for line in traceback.format_exc().strip().splitlines():
@@ -1144,15 +1150,22 @@ def choose_variables_to_check(candidates, root):
     ttk.Button(btns, text="None",
                command=lambda: [v.set(False) for v in vars_map.values()]).pack(side='left', padx=6)
 
-    result = {'chosen': []}
+    # 'chosen' None means the user cancelled -> abort the whole run (the caller
+    # raises ManualCutCancelled); an empty list means "review nothing, proceed".
+    result = {'chosen': None}
     def confirm():
         result['chosen'] = [n for n, v in vars_map.items() if v.get()]
         win.destroy()
+    def cancel():
+        result['chosen'] = None
+        win.destroy()
     action = ttk.Frame(frame)
     action.pack(fill='x', pady=(12, 0))
-    ttk.Button(action, text="Cancel", command=win.destroy).pack(side='right')
+    ttk.Button(action, text="Cancel", command=cancel).pack(side='right')
     ttk.Button(action, text="Review selected", command=confirm,
                style='Accent.TButton').pack(side='right', padx=6)
+    win.bind('<Escape>', lambda e: cancel())
+    win.protocol('WM_DELETE_WINDOW', cancel)  # window X = cancel too
     win.grab_set()
     root.wait_window(win)
     return result['chosen']
@@ -1828,6 +1841,8 @@ def build_qualification_tab(container, root, shared_log=None):
         if INPUT['check_variables'] == True:
             candidates = [name for name, _key in MANUAL_CUT_COLUMNS if name in raw_data.columns]
             chosen = choose_variables_to_check(candidates, window)
+            if chosen is None:            # Cancel/Esc in the chooser -> abort run
+                raise data.ManualCutCancelled()
             for i, name in enumerate(chosen, start=1):
                 rows = data.trim_selected_variable(raw_data, name, tk_root=window,
                                                    locked=manual_dismiss_rows,

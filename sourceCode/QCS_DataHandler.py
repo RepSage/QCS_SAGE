@@ -800,6 +800,12 @@ def _show_and_wait(fig, tk_root):
     tk_root.wait_variable(done)
 
 
+class ManualCutCancelled(Exception):
+    """Raised when the operator presses Cancel/Esc in a manual point-cut panel
+    (or the variable chooser): the caller aborts the whole qualification run and
+    returns to the input form instead of proceeding."""
+
+
 def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     """Interactive panel to manually DISMISS points of a series. Drag a rectangle
     over points to mark them dismissed; mouse wheel zooms; Undo/Reset/Skip/Done/
@@ -814,7 +820,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     locked = set() if locked is None else set(int(i) for i in locked)
     dismissed = set()
     history = []          # stack of per-box selections, for Undo
-    state = {'skipped': False, 'drawn': False}
+    state = {'skipped': False, 'drawn': False, 'cancelled': False}
 
     fig, ax = plt.subplots(figsize=(10, 6.5))
     plt.subplots_adjust(bottom=0.20, top=0.88)
@@ -926,6 +932,12 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
         dismissed.clear()
         plt.close(fig)
 
+    def do_cancel(_=None):
+        # abort the WHOLE qualification and go back to the form (not just this
+        # series); raised after the window closes
+        state['cancelled'] = True
+        plt.close(fig)
+
     def do_help(_=None):
         try:
             from tkinter import messagebox
@@ -941,17 +953,23 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
                 'cut in the Depth review appear greyed and are kept dismissed.\n\n'
                 'Undo   - undo the last box\n'
                 'Reset  - clear the dismissals made here and reset the zoom\n'
-                'Skip   - leave this series untouched\n'
+                'Skip   - leave this series untouched (continue)\n'
+                'Cancel - abort the whole qualification (shortcut: Esc)\n'
                 'Done   - confirm and continue (shortcut: Enter)',
                 parent=parent)
         except Exception:
             pass
 
+    def on_key(event):
+        if event.key == 'enter':
+            do_done()
+        elif event.key == 'escape':
+            do_cancel()
+
     _selector = RectangleSelector(ax, on_select, useblit=True, button=[1],  # noqa: F841 (kept alive vs GC)
                                   minspanx=5, minspany=5, spancoords='pixels',
                                   interactive=True)
-    fig.canvas.mpl_connect('key_press_event',
-                           lambda e: do_done() if e.key == 'enter' else None)
+    fig.canvas.mpl_connect('key_press_event', on_key)
     fig.canvas.mpl_connect('scroll_event', on_scroll)
     fig.canvas.mpl_connect('button_press_event', on_pan_press)
     fig.canvas.mpl_connect('motion_notify_event', on_pan_move)
@@ -960,15 +978,17 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     # buttons along the bottom (kept referenced so the GC does not collect them)
     _buttons = []
     for i, (txt, cb) in enumerate([('Undo', do_undo), ('Reset', do_reset),
-                                   ('Skip', do_skip), ('Help', do_help),
-                                   ('Done', do_done)]):
-        bax = fig.add_axes([0.09 + i * 0.165, 0.04, 0.145, 0.07])
+                                   ('Skip', do_skip), ('Cancel', do_cancel),
+                                   ('Help', do_help), ('Done', do_done)]):
+        bax = fig.add_axes([0.025 + i * 0.163, 0.04, 0.145, 0.07])
         b = Button(bax, txt)
         b.on_clicked(cb)
         _buttons.append(b)
 
     redraw()
     _show_and_wait(fig, tk_root)
+    if state['cancelled']:
+        raise ManualCutCancelled()
     return None if state['skipped'] else dismissed
 
 
