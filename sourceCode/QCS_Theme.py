@@ -318,14 +318,22 @@ class StreamToLog:
         return False
 
 
+_redirect_stream = None
+
 def install_output_redirect():
     """Redirect stdout/stderr to an in-app Log stream (no console needed).
     Returns the StreamToLog; attach the panel with stream.set_sink(log.log)
-    once it exists. Early prints are buffered and flushed on attach."""
-    stream = StreamToLog()
-    sys.stdout = stream
-    sys.stderr = stream
-    return stream
+    once it exists. Early prints are buffered and flushed on attach.
+
+    Idempotent: repeated calls return the SAME stream, so the unified app
+    (which imports both tool modules) keeps a single redirect and one shared
+    log sink instead of two competing ones."""
+    global _redirect_stream
+    if _redirect_stream is None:
+        _redirect_stream = StreamToLog()
+        sys.stdout = _redirect_stream
+        sys.stderr = _redirect_stream
+    return _redirect_stream
 
 
 def install_crash_handler(app_name, out_stream=None, base_dir=None):
