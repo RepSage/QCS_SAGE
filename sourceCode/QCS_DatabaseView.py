@@ -156,11 +156,18 @@ def toggle_input_mode():
         set_enabled_style(inputPath_entry)
         set_enabled_style(browse_input_btn)
         set_enabled_style(outputName_entry)
+        # the output name is only used to name the built database - restore the
+        # remembered name when the field becomes active
+        if not outputName_entry.get().strip():
+            restore_entry(outputName_entry, USER_PREFS.get('dbv_output_name', ''))
     else:  # unchecked: pick files one by one (multi-select already joins them)
         set_enabled_style(fileNames_entry)
         set_enabled_style(browse_file_btn)
         set_disabled_style(inputPath_entry)
         set_disabled_style(browse_input_btn)
+        # single-file mode does not use an output name: leave it blank + disabled
+        outputName_entry.config(state='normal')
+        outputName_entry.delete(0, END)
         set_disabled_style(outputName_entry)
 
 def toggle_panel_dependent_controls():
@@ -280,10 +287,10 @@ def selectFiles():
         out_root = _default_output_root(filenames[0])
         outputPath_entry.delete(0, END)
         outputPath_entry.insert(0, out_root)
-        # auto-fill Output Name from the first file's base name (restore_entry
-        # bypasses the field's disabled state in single-file mode)
+        # remember an output name (used only if the user later switches to
+        # 'Build database from a folder'); the field itself stays blank/disabled
+        # in single-file mode
         out_name = os.path.splitext(os.path.basename(filenames[0]))[0]
-        restore_entry(outputName_entry, out_name)
         USER_PREFS['dbv_output_path'] = out_root
         USER_PREFS['dbv_output_name'] = out_name
         USER_PREFS['dbv_last_output_dir'] = out_root
@@ -775,6 +782,7 @@ def build_step1(parent):
     if USER_PREFS.get('dbv_instrument') in ('Seaguard', 'HOBO'):
         instrument_combobox.set(USER_PREFS['dbv_instrument'])
     sort.set(USER_PREFS.get('dbv_sort_by_time', False))
+    toggle_input_mode()  # set the initial enabled/blank state (Output Name off)
 
 
 db_build_messages = []  # unification messages, shown in the visualization log
@@ -1294,14 +1302,15 @@ def apply_pending_prefill(info):
             _go_step1()   # come back from Step 2 so the fields are visible
     except Exception:
         pass
-    join.set(False)
-    toggle_input_mode()
     restore_entry(fileNames_entry, info.get('file', ''))
     restore_entry(outputPath_entry, info.get('out_root', ''))
-    restore_entry(outputName_entry,
-                  os.path.splitext(os.path.basename(info.get('file', '')))[0])
+    # remember an output name for the folder-build mode; the visible field stays
+    # blank/disabled in single-file mode (handled by toggle_input_mode)
+    USER_PREFS['dbv_output_name'] = os.path.splitext(os.path.basename(info.get('file', '')))[0]
     if info.get('instrument') in ('Seaguard', 'HOBO'):
         instrument_combobox.set(info['instrument'])
+    join.set(False)
+    toggle_input_mode()
     _preview_cache['key'] = None   # force a rebuild for the new selection
     print('MESSAGE: Visualization pre-selected the just-qualified file: %s'
           % os.path.basename(info.get('file', '')))

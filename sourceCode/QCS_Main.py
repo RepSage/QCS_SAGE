@@ -179,7 +179,7 @@ TOOLTIPS = {
     'conductivity_unit': "Conductivity unit of raw data\nAutomatic conversion to mS/cm",
     'gmt_correction': "Applies GMT-3 hour correction for data\ncollected in Brazilian timezone",
     'profile_selection': "Allows selecting only descent or ascent\nfor profile data (removes inversion)",
-    'variable_check': "Opens interactive point-cut panels to manually DISMISS\nspurious points. You pick which series to review\n(Depth included, for moorings). Dismissed points get\nflag 5 and are kept in the sheet for traceability.",
+    'variable_check': "Opens a per-variable point-cut panel to manually DISMISS\nspurious points; you pick which variables to review.\nDismissed points get flag 5 and are kept for traceability.\n(The mooring Depth review runs on its own, without this.)",
     'output_folder': "Folder where qualification results\nwill be saved",
     'output_name': "Base name for output files\n(without extension)",
     'output_format': "Output format for the qualified data\n.csv: Delimited text\n.xlsx: Excel\n(the automatic report files are always .xlsx)",
@@ -695,7 +695,7 @@ def start_qualification():
                 log_line(m)
             OUTPUT['last_output_root'] = write_combined_replicates(combined, light_plots)
             log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
-        log_line('=== Qualification complete. Results saved to: %s ==='
+        log_line('SUCCESS: qualification finished - results saved to: %s'
                  % OUTPUT.get('last_output_root', ''))
         # hand the just-qualified file to the Visualization tab so it can
         # pre-select it (Database File + Output Path) on the next switch there.
@@ -1294,7 +1294,7 @@ def build_qualification_tab(container, root, shared_log=None):
     ToolTip(profile_check, TOOLTIPS['profile_selection'])
 
     check_variables = BooleanVar(value=False)
-    var_check = ttk.Checkbutton(options_frame, text="Check Variables (manual point cut)", variable=check_variables)
+    var_check = ttk.Checkbutton(options_frame, text="Check Variables", variable=check_variables)
     var_check.pack(anchor='w', pady=2)
     ToolTip(var_check, TOOLTIPS['variable_check'])
 
@@ -1804,37 +1804,29 @@ def build_qualification_tab(container, root, shared_log=None):
 
         # Manual point-cut panels record DISMISSALS (flag 5), applied to the flag
         # string + values just before handle_output_file - nothing is deleted here.
-        # All interactive review is opt-in via 'Check Variables': the user picks
-        # which series to review (Depth included, for moorings). Depth is reviewed
-        # FIRST and its whole-row cuts carry over (greyed/locked) into the
-        # per-variable panels so the same points are never cut twice.
         manual_dismiss_rows = set()       # whole-row dismissals (Depth review)
         manual_dismiss_cols = {}          # {column_name: set of row positions}
+
+        # Depth review ALWAYS runs for moorings (quick removal of spurious depths
+        # from equipment handling), independent of Check Variables.
+        if INPUT['profile'] == False and 'Depth (m)' in raw_data.columns:
+            manual_dismiss_rows |= data.trim_by_depth(raw_data, tk_root=window)
 
         # number of lines and cells
         n_cel = 1
         n_samples = len(raw_data)
 
+        # Check Variables opens the per-variable panels for the chosen variables;
+        # Depth's whole-row cuts carry over (greyed/locked) so they are not re-cut.
         if INPUT['check_variables'] == True:
-            candidates = []
-            if INPUT['profile'] == False and 'Depth (m)' in raw_data.columns:
-                candidates.append('Depth (m)')
-            candidates += [name for name, _key in MANUAL_CUT_COLUMNS if name in raw_data.columns]
+            candidates = [name for name, _key in MANUAL_CUT_COLUMNS if name in raw_data.columns]
             chosen = choose_variables_to_check(candidates, window)
-            # Depth first (whole-row dismissal), then the per-variable panels
-            ordered = ([c for c in chosen if c == 'Depth (m)'] +
-                       [c for c in chosen if c != 'Depth (m)'])
-            for i, name in enumerate(ordered, start=1):
-                progress = (i, len(ordered))
-                if name == 'Depth (m)':
-                    manual_dismiss_rows |= data.trim_by_depth(raw_data, tk_root=window,
-                                                              progress=progress)
-                else:
-                    rows = data.trim_selected_variable(raw_data, name, tk_root=window,
-                                                       locked=manual_dismiss_rows,
-                                                       progress=progress)
-                    if rows:
-                        manual_dismiss_cols[name] = rows
+            for i, name in enumerate(chosen, start=1):
+                rows = data.trim_selected_variable(raw_data, name, tk_root=window,
+                                                   locked=manual_dismiss_rows,
+                                                   progress=(i, len(chosen)))
+                if rows:
+                    manual_dismiss_cols[name] = rows
         #create list for flag codes
         flags = ['' for n in range(len(raw_data))]
 

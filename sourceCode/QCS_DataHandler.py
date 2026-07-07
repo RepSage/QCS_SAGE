@@ -787,6 +787,16 @@ def _show_and_wait(fig, tk_root):
     done = tk.BooleanVar(tk_root, value=False)
     fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
     fig.show()
+    # bring the plot window to the FRONT (it otherwise opens behind the main app
+    # window and has to be fished out from the taskbar); topmost briefly, then off
+    try:
+        win = fig.canvas.manager.window
+        win.lift()
+        win.attributes('-topmost', True)
+        win.after(300, lambda: win.attributes('-topmost', False))
+        win.focus_force()
+    except Exception:
+        pass
     tk_root.wait_variable(done)
 
 
@@ -799,7 +809,6 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     locked:   indices already dismissed upstream (e.g. the Depth whole-row cut) -
               shown greyed and not selectable, and excluded from the returned set.
     progress: (i, total) shown in the title, e.g. '[2 of 5]'."""
-    import matplotlib as mpl
     x = np.asarray(x)
     y = np.asarray(y, dtype=float)
     locked = set() if locked is None else set(int(i) for i in locked)
@@ -807,14 +816,17 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     history = []          # stack of per-box selections, for Undo
     state = {'skipped': False, 'drawn': False}
 
-    # wheel zoom replaces the toolbar lens, so drop the navigation toolbar
-    _old_tb = mpl.rcParams['toolbar']
-    mpl.rcParams['toolbar'] = 'none'
-    try:
-        fig, ax = plt.subplots(figsize=(10, 6.5))
-    finally:
-        mpl.rcParams['toolbar'] = _old_tb
+    fig, ax = plt.subplots(figsize=(10, 6.5))
     plt.subplots_adjust(bottom=0.20, top=0.88)
+    # keep the useful navigation toolbar but drop the Zoom lens (wheel zoom
+    # replaces it); best-effort and backend-dependent
+    try:
+        tb = fig.canvas.manager.toolbar
+        zoom_btn = getattr(tb, '_buttons', {}).get('Zoom')
+        if zoom_btn is not None:
+            zoom_btn.pack_forget()
+    except Exception:
+        pass
 
     def redraw(keep_view=True):
         # preserve the current view (zoom/pan) across redraws; the first draw
@@ -836,7 +848,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
             di = sorted(dismissed)
             ax.scatter(x[di], y[di], marker='o', facecolors='none',
                        edgecolors='0.45', s=45)
-        prog = ('   [%d of %d]' % progress) if progress else ''
+        prog = (' [%d of %d]' % progress) if progress else ''
         extra = ('    (+%d already cut via Depth)' % len(locked)) if locked else ''
         ax.set_title('%s%s - drag a box to DISMISS points (flag 5)   |   wheel = zoom\n'
                      '%d dismissed here%s    |    Enter = Done'
