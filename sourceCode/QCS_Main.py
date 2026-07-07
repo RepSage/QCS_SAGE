@@ -182,7 +182,7 @@ TOOLTIPS = {
     'variable_check': "Activates manual limit verification\nfor each variable before processing",
     'output_folder': "Folder where qualification results\nwill be saved",
     'output_name': "Base name for output files\n(without extension)",
-    'output_format': "Output file format\n.xlsx: Excel spreadsheet",
+    'output_format': "Output format for the qualified data\n.csv: Delimited text\n.xlsx: Excel\n(the automatic report files are always .xlsx)",
     'remove_bad': "Automatically removes data flagged\nas BAD (flag 4) in output",
     'remove_suspect': "Automatically removes data flagged\nas SUSPECT (flag 3) in output",
     'site_code': "Identification code for the\ncollection site (max 5 characters)",
@@ -511,8 +511,8 @@ def collect_input_settings():
     if not outputName_entry.get().strip():
         messagebox.showwarning("Warning", "Define a name for the output files\n('Output File Name' field).")
         return False
-    if outputFilesFormat_combobox.get() != '.xlsx':
-        messagebox.showwarning("Warning", "Select the output format (.xlsx).")
+    if outputFilesFormat_combobox.get() not in ('.csv', '.xlsx'):
+        messagebox.showwarning("Warning", "Select the output format\n(.csv or .xlsx).")
         return False
 
     file_name_match = re.search(r'[^\\/]+$', data_path, re.IGNORECASE)
@@ -640,7 +640,10 @@ def write_combined_replicates(combined, light_plots=()):
     root = os.path.join(OUTPUT['output_file_path'], base)
     folder = os.path.join(root, 'QCS qualified hobo data')
     os.makedirs(folder, exist_ok=True)
-    data.save_excel_autofit(ordered, os.path.join(folder, base + '.xlsx'))
+    if 'csv' in OUTPUT.get('output_data_format', '.xlsx').lower():
+        ordered.to_csv(os.path.join(folder, base + '.csv'), index=False)
+    else:
+        data.save_excel_autofit(ordered, os.path.join(folder, base + '.xlsx'))
     # copy each replicate's light-window plot (kept with the 'QCS_' prefix so
     # build_database keeps ignoring them when scanning folders)
     for plot in light_plots:
@@ -1247,7 +1250,7 @@ ToolTip(outputName_entry, TOOLTIPS['output_name'])
 
 # Output format
 ttk.Label(output_frame, text="Output Format:", style='Header.TLabel').grid(row=4, column=0, sticky='w', pady=(0,2))
-outputFilesFormat_combobox = ttk.Combobox(output_frame, values=[".xlsx"], width=8, state='readonly')
+outputFilesFormat_combobox = ttk.Combobox(output_frame, values=[".csv", ".xlsx"], width=8, state='readonly')
 outputFilesFormat_combobox.grid(row=5, column=0, sticky='w', pady=(0,5))
 ToolTip(outputFilesFormat_combobox, TOOLTIPS['output_format'])
 
@@ -1974,7 +1977,7 @@ def run_full_qualification():
     layout_type = 'hobo' if INPUT['input_type'] == 'HOBO' else 'tscp'
     qualified_data = data.order_var (qualified_data, n_cel, data_type=layout_type)
 
-    # Export qualified data to .xlsx file
+    # Export qualified data to .csv/.xlsx file (user's choice; reports are always .xlsx)
     os.chdir(OUTPUT['output_file_path'])
     # the qualification output folder is named after the input file + '_QLF'
     # (same for every workflow: Seaguard profile/mooring and HOBO)
@@ -1998,7 +2001,10 @@ def run_full_qualification():
     else:
         output_base = re.sub(r'\.(csv|xlsx)$', '', OUTPUT['output_file_name'],
                              flags=re.IGNORECASE).strip() or input_qlf
-    data.save_excel_autofit(qualified_data, os.path.join(path, output_base + '.xlsx'))  ##create excel
+    if re.search('xlsx', OUTPUT['output_data_format'], re.IGNORECASE):
+        data.save_excel_autofit(qualified_data, os.path.join(path, output_base + '.xlsx'))  ##create excel
+    if re.search('csv', OUTPUT['output_data_format'], re.IGNORECASE):
+        qualified_data.to_csv(os.path.join(path, output_base + '.csv'), index=False) ##create csv
     log_line('Exported data to: %s' % path)
 
     log_line('Exporting statistics table, reports and flag legend to: %s' % path)

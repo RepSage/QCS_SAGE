@@ -45,7 +45,7 @@ python -m ruff check .
 
 - Commit messages in English, prefixed with the version, e.g. `v4.0: short description`.
 - Propose the next SemVer number for each change set. Any change that alters QC results (flags, thresholds, test logic) is a MAJOR bump.
-- On each release: create a new file in `changelog/` listing all changes for the version, update the HTML user manual (`Manual de Uso Quality Control System (SAGE).html`) with the version and changes, and tag the version in Git.
+- On each release: create a new file in `changelog/` listing all changes for the version, update the HTML user manual (`Quality Control System (SAGE) - User Manual.html`) with the version and changes, and tag the version in Git.
 
 ## Pending work
 

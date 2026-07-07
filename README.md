@@ -34,7 +34,7 @@ python -m pip install -r sourceCode/requirements.txt
   - `QCS_SelfTest.py` — autotestes com dados sintéticos (`python QCS_SelfTest.py`).
   - `qcs_user_settings.json` — preferências do usuário (geradas automaticamente).
 - `changelog/` — histórico de mudanças, um arquivo por versão.
-- `Manual de Uso Quality Control System (SAGE).html` — manual de uso.
+- `Quality Control System (SAGE) - User Manual.html` — user manual.
 
 ## Versão
 

@@ -302,8 +302,9 @@
         </tr>
         <tr>
             <td>Output Format</td>
-            <td>Output format. Since v4.0 every spreadsheet the app writes is <strong>.xlsx</strong>
-                (Excel), with columns auto-fitted to their content.</td>
+            <td>Format of the <strong>qualified data</strong> file (CSV or XLSX). The automatic
+                report files are always written as <strong>.xlsx</strong> (since v4.0), with
+                columns auto-fitted to their content.</td>
         </tr>
         <tr>
             <td>Remove Bad Data</td>
@@ -914,7 +915,7 @@
     <h3>Folder Structure</h3>
     <pre>Root/
 ├── QCS qualified tscp data/   (or QCS qualified hobo data/, depending on the instrument)
-│   ├── Qualified data (.xlsx)
+│   ├── Qualified data (.csv or .xlsx)
 │   ├── QCS_report.xlsx
 │   ├── QCS_test_report.xlsx
 │   ├── QCS_flag_legend.xlsx
