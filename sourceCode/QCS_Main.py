@@ -1152,11 +1152,11 @@ DEFAULT_REGION = 'East / Abrolhos (BA-ES)'
 # File selection
 ttk.Label(input_frame, text="Data File:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
 fileNames_entry = ttk.Entry(input_frame, width=24)
-fileNames_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
+fileNames_entry.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(0,5))
 ToolTip(fileNames_entry, TOOLTIPS['data_file'])
 
 browse_file_btn = ttk.Button(input_frame, text="Browse...", command=selectFiles, width=10)
-browse_file_btn.grid(row=1, column=1, padx=5)
+browse_file_btn.grid(row=1, column=2, padx=(5,0))
 ToolTip(browse_file_btn, TOOLTIPS['data_file'])
 
 # Data type selection
@@ -1242,7 +1242,7 @@ ToolTip(browse_output_btn, TOOLTIPS['output_folder'])
 # File naming
 ttk.Label(output_frame, text="Output File Name:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(0,2))
 outputName_entry = ttk.Entry(output_frame, width=24)
-outputName_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
+outputName_entry.grid(row=3, column=0, columnspan=2, sticky='ew', pady=(0,5))
 ToolTip(outputName_entry, TOOLTIPS['output_name'])
 
 # Output format
@@ -1333,7 +1333,9 @@ def update_inputtype_state(event=None):
         macroregion_combobox.config(state='disabled')
         region_label.config(state='disabled')
         region_combobox.config(state='disabled')
-        replicate_combobox.config(state='readonly')   # replicates apply to HOBO
+        if not replicate_combobox.get():               # restore a usable value when returning from Seaguard
+            replicate_combobox.set('1')
+        replicate_combobox.config(state='readonly')    # replicates apply to HOBO
     else:
         # restore the last stored Seaguard selection (if any)
         if _last_seaguard.get('data_type'):
@@ -1350,7 +1352,7 @@ def update_inputtype_state(event=None):
         macroregion_combobox.config(state='readonly')
         region_label.config(state='normal')
         region_combobox.config(state='readonly')
-        replicate_combobox.set('1')                    # replicates are HOBO-only
+        replicate_combobox.set('')                     # replicates are HOBO-only: leave empty for Seaguard
         replicate_combobox.config(state='disabled')
         update_profile_checkbox_state()
     apply_output_name()  # keep the Output File Name in sync (single vs combined)
