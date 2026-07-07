@@ -794,7 +794,9 @@ def _show_and_wait(fig, tk_root):
         win.lift()
         win.attributes('-topmost', True)
         win.after(300, lambda: win.attributes('-topmost', False))
-        win.focus_force()
+        # focus the CANVAS widget (not just the window) so key events - Enter =
+        # Done, Esc = Cancel - fire without the user clicking the plot first
+        fig.canvas.get_tk_widget().focus_force()
     except Exception:
         pass
     tk_root.wait_variable(done)
@@ -978,8 +980,8 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     # buttons along the bottom (kept referenced so the GC does not collect them)
     _buttons = []
     for i, (txt, cb) in enumerate([('Undo', do_undo), ('Reset', do_reset),
-                                   ('Skip', do_skip), ('Cancel', do_cancel),
-                                   ('Help', do_help), ('Done', do_done)]):
+                                   ('Skip', do_skip), ('Help', do_help),
+                                   ('Done', do_done), ('Cancel', do_cancel)]):
         bax = fig.add_axes([0.025 + i * 0.163, 0.04, 0.145, 0.07])
         b = Button(bax, txt)
         b.on_clicked(cb)
