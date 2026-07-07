@@ -1512,7 +1512,9 @@ def build_qualification_tab(container, root, shared_log=None):
                 "Parameters (lux_baseline_days / lux_cutoff_frac / lux_sustain_days) live in\n"
                 "Settings > Parameters, and are printed on the saved QCS_light_window.svg."
                 % (p['baseline_days'], 100 * p['cutoff_frac'], p['sustain_days']),
-                parent=window)
+                # parent the dialog to the PLOT window so it pops over the plot
+                # instead of raising the main program window behind it
+                parent=getattr(getattr(fig.canvas, 'manager', None), 'window', None))
 
         def on_click(event):
             # clicks on the reset button (a different axes) must not move the cutoff;

@@ -805,7 +805,14 @@ def manual_cut_panel(x, y, label, tk_root=None):
     fig, ax = plt.subplots()
     plt.subplots_adjust(bottom=0.22)
 
-    def redraw():
+    def redraw(keep_view=True):
+        # preserve the current view (user zoom/pan) across redraws; the very
+        # first draw (and Reset) autoscales to fit the whole series
+        had_data = bool(ax.lines or ax.collections)
+        if had_data and keep_view:
+            xlim, ylim = ax.get_xlim(), ax.get_ylim()
+        else:
+            had_data = False
         ax.clear()
         keep = np.array([i not in dismissed for i in range(len(y))], dtype=bool)
         ax.plot(x[keep], y[keep], linestyle='-', marker='x',
@@ -814,10 +821,24 @@ def manual_cut_panel(x, y, label, tk_root=None):
             idx = sorted(dismissed)
             ax.scatter(x[idx], y[idx], marker='o', facecolors='none',
                        edgecolors='0.55', s=45)
-        ax.set_title('%s - drag a box over points to DISMISS them (flag 5)\n'
+        ax.set_title('%s - drag a box to DISMISS points (flag 5)   |   wheel = zoom\n'
                      '%d point(s) dismissed    |    Enter = Done' % (label, len(dismissed)))
         ax.set_ylabel(label)
         ax.set_xlabel('Sample number')
+        if had_data:
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+        fig.canvas.draw_idle()
+
+    def on_scroll(event):
+        # mouse-wheel zoom centred on the cursor (no need for the toolbar lens)
+        if event.inaxes is not ax:
+            return
+        scale = 1 / 1.2 if event.button == 'up' else 1.2   # wheel up = zoom in
+        xlim, ylim = ax.get_xlim(), ax.get_ylim()
+        xd, yd = event.xdata, event.ydata
+        ax.set_xlim(xd - (xd - xlim[0]) * scale, xd + (xlim[1] - xd) * scale)
+        ax.set_ylim(yd - (yd - ylim[0]) * scale, yd + (ylim[1] - yd) * scale)
         fig.canvas.draw_idle()
 
     def on_select(eclick, erelease):
@@ -838,7 +859,7 @@ def manual_cut_panel(x, y, label, tk_root=None):
     def do_reset(_=None):
         dismissed.clear()
         history.clear()
-        redraw()
+        redraw(keep_view=False)   # also reset the zoom to fit the whole series
 
     def do_done(_=None):
         plt.close(fig)
@@ -851,15 +872,20 @@ def manual_cut_panel(x, y, label, tk_root=None):
     def do_help(_=None):
         try:
             from tkinter import messagebox
+            # parent the dialog to the PLOT window so it pops over the plot
+            # instead of sending it behind the main program window
+            parent = getattr(getattr(fig.canvas, 'manager', None), 'window', None)
             messagebox.showinfo(
                 'Manual point cut - help',
-                'Drag a rectangle over points to mark them DISMISSED (flag 5).\n\n'
+                'Drag a rectangle over points to mark them DISMISSED (flag 5).\n'
+                'Mouse wheel zooms in/out around the cursor.\n\n'
                 'The points are NOT deleted: they stay in the sheet with flag 5 and\n'
                 'their value blanked, so the manual cut stays traceable.\n\n'
                 'Undo   - undo the last box\n'
-                'Reset  - clear every dismissal for this series\n'
+                'Reset  - clear every dismissal and reset the zoom\n'
                 'Skip   - leave this series untouched\n'
-                'Done   - confirm and continue (shortcut: Enter)')
+                'Done   - confirm and continue (shortcut: Enter)',
+                parent=parent)
         except Exception:
             pass
 
@@ -868,6 +894,7 @@ def manual_cut_panel(x, y, label, tk_root=None):
                                   interactive=True)
     fig.canvas.mpl_connect('key_press_event',
                            lambda e: do_done() if e.key == 'enter' else None)
+    fig.canvas.mpl_connect('scroll_event', on_scroll)
 
     # buttons along the bottom (kept referenced so the GC does not collect them)
     _buttons = []
