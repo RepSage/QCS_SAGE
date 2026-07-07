@@ -179,7 +179,7 @@ TOOLTIPS = {
     'conductivity_unit': "Conductivity unit of raw data\nAutomatic conversion to mS/cm",
     'gmt_correction': "Applies GMT-3 hour correction for data\ncollected in Brazilian timezone",
     'profile_selection': "Allows selecting only descent or ascent\nfor profile data (removes inversion)",
-    'variable_check': "Activates manual limit verification\nfor each variable before processing",
+    'variable_check': "Opens interactive point-cut panels to manually DISMISS\nspurious points, one per chosen variable (you pick which).\nDismissed points get flag 5 and are kept for traceability.\nWithout this, only the mooring Depth review opens.",
     'output_folder': "Folder where qualification results\nwill be saved",
     'output_name': "Base name for output files\n(without extension)",
     'output_format': "Output format for the qualified data\n.csv: Delimited text\n.xlsx: Excel\n(the automatic report files are always .xlsx)",
@@ -1084,6 +1084,56 @@ INPUT = {}
 OUTPUT = {}
 rootPath = os.getcwd()
 
+# Manual point-cut: map each reviewable column to its flag key, so a manual
+# dismissal can be written as flag 5 at that variable's positions (traceable).
+# Only variables that HAVE a QC flag column are offered (a cut must be flaggable).
+MANUAL_CUT_COLUMNS = [
+    ('Temperature (degC)', 'T'), ('Salinity (PSU)', 'S'),
+    ('Conductivity (mS/cm)', 'C'), ('Pressure (dbar)', 'P'),
+    ('O2 level (uM)', 'O2'), ('pH', 'pH'), ('Chlorophyll (ug/L)', 'chl'),
+    ('Turbidity (FTU)', 'tur'), ('Dissolved organic matter (ppb)', 'org'),
+]
+
+def choose_variables_to_check(candidates, root):
+    """Modal list to pick WHICH variables to review in the manual point-cut
+    panels (instead of stepping through all of them). Returns the chosen column
+    names, or [] if the user cancels. 'All'/'None' toggle every checkbox."""
+    win = Toplevel(root)
+    win.title("Check Variables - choose which to review")
+    win.transient(root)
+    theme.set_scaled_geometry(win, 380, 420, min_width=320, min_height=300)
+    frame = ttk.Frame(win, padding=14)
+    frame.pack(fill='both', expand=True)
+    ttk.Label(frame, text="Select the variables to review and cut manually:",
+              style='Header.TLabel').pack(anchor='w', pady=(0, 8))
+    vars_map = {}
+    box = ttk.Frame(frame)
+    box.pack(fill='both', expand=True)
+    for name in candidates:
+        v = BooleanVar(value=True)
+        ttk.Checkbutton(box, text=name, variable=v).pack(anchor='w', pady=1)
+        vars_map[name] = v
+
+    btns = ttk.Frame(frame)
+    btns.pack(fill='x', pady=(10, 0))
+    ttk.Button(btns, text="All variables",
+               command=lambda: [v.set(True) for v in vars_map.values()]).pack(side='left')
+    ttk.Button(btns, text="None",
+               command=lambda: [v.set(False) for v in vars_map.values()]).pack(side='left', padx=6)
+
+    result = {'chosen': []}
+    def confirm():
+        result['chosen'] = [n for n, v in vars_map.items() if v.get()]
+        win.destroy()
+    action = ttk.Frame(frame)
+    action.pack(fill='x', pady=(12, 0))
+    ttk.Button(action, text="Cancel", command=win.destroy).pack(side='right')
+    ttk.Button(action, text="Review selected", command=confirm,
+               style='Accent.TButton').pack(side='right', padx=6)
+    win.grab_set()
+    root.wait_window(win)
+    return result['chosen']
+
 
 # --- Collection regions (module-level constants; used by the qualification UI) ---
 # Macroregions -> regions -> representative (lat, lon), used only to RUN the
@@ -1227,7 +1277,7 @@ def build_qualification_tab(container, root, shared_log=None):
     ToolTip(profile_check, TOOLTIPS['profile_selection'])
 
     check_variables = BooleanVar(value=False)
-    var_check = ttk.Checkbutton(options_frame, text="Check Variables", variable=check_variables)
+    var_check = ttk.Checkbutton(options_frame, text="Check Variables (manual point cut)", variable=check_variables)
     var_check.pack(anchor='w', pady=2)
     ToolTip(var_check, TOOLTIPS['variable_check'])
 
@@ -1735,19 +1785,24 @@ def build_qualification_tab(container, root, shared_log=None):
                         pass
 
 
+        # Manual point-cut panels record DISMISSALS (flag 5), applied to the flag
+        # string + values just before handle_output_file - nothing is deleted here.
+        manual_dismiss_rows = set()       # whole-row dismissals (depth review)
+        manual_dismiss_cols = {}          # {column_name: set of row positions}
+
         if INPUT['profile'] == False and 'Depth (m)' in raw_data.columns:
-            raw_data = data.trim_by_depth(raw_data, tk_root=window)
-    
+            manual_dismiss_rows |= data.trim_by_depth(raw_data, tk_root=window)
+
         # number of lines and cells
         n_cel = 1
         n_samples = len(raw_data)
 
         if INPUT['check_variables'] == True:
-            check_variables = ['O2 level (uM)', 'Temperature (degC)','Conductivity (mS/cm)', 'Salinity (PSU)', 'Density (kg/m3)',
-                                'PAR (umol/m2/s)', 'Turbidity (FTU)', 'Chlorophyll (ug/L)', 'pH', 'Dissolved organic matter (ppb)']
-            for name in check_variables:
-                if name in raw_data.columns:
-                    raw_data = data.trim_selected_variable(raw_data, name, tk_root=window)
+            candidates = [name for name, _key in MANUAL_CUT_COLUMNS if name in raw_data.columns]
+            for name in choose_variables_to_check(candidates, window):
+                rows = data.trim_selected_variable(raw_data, name, tk_root=window)
+                if rows:
+                    manual_dismiss_cols[name] = rows
         #create list for flag codes
         flags = ['' for n in range(len(raw_data))]
 
@@ -1966,6 +2021,44 @@ def build_qualification_tab(container, root, shared_log=None):
         end = time.time()
         log_line('Processing time: %.2f s' % (end - start))
 
+        # Apply the manual point-cut dismissals recorded during the interactive
+        # panels: mark the chosen points DISMISSED (flag 5) in the flag string and
+        # blank their value, keeping the row/timestamp for traceability instead of
+        # deleting it. Setting all of a variable's flag positions to '5' rolls up to
+        # Flag_<var> = 5 (worst_flag treats 5 as the lowest priority, so a stray 5
+        # on a shared position, e.g. density, never corrupts another variable).
+        if manual_dismiss_rows or manual_dismiss_cols:
+            col_key = dict(MANUAL_CUT_COLUMNS)
+
+            def _dismiss(row, positions):
+                s = flags[row]
+                for pos in positions:
+                    if pos < len(s):
+                        s = s[:pos] + '5' + s[pos + 1:]
+                flags[row] = s
+
+            all_positions = range(len(flag_layout))
+            n_val = 0
+            # whole-row dismissals (depth review): every position + every value column
+            value_cols = [c for c in raw_data.columns
+                          if c not in ('Datetime', 'Site', 'Sample number', 'Expedition')]
+            for row in manual_dismiss_rows:
+                _dismiss(row, all_positions)
+                for c in value_cols:
+                    raw_data.iat[row, raw_data.columns.get_loc(c)] = np.nan
+            # per-variable dismissals
+            for col, rows in manual_dismiss_cols.items():
+                key = col_key.get(col)
+                positions = [p for p in all_positions
+                             if key in data.FLAG_BUCKET_MAP.get(flag_layout[p], [])]
+                cidx = raw_data.columns.get_loc(col)
+                for row in rows:
+                    _dismiss(row, positions)
+                    raw_data.iat[row, cidx] = np.nan
+                    n_val += 1
+            log_line('Manual cut: %d whole-row and %d per-variable point(s) dismissed (flag 5).'
+                     % (len(manual_dismiss_rows), n_val))
+
         log_line('Stage 4/5: creating output table and reports...')
         qualified_data, raw_data, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = data.handle_output_file (raw_data, flags, flag_layout, remove_suspect=OUTPUT['remove_suspect'], remove_bad=OUTPUT['remove_bad'])
 
@@ -2023,7 +2116,8 @@ def build_qualification_tab(container, root, shared_log=None):
         legend_positions = pd.DataFrame([(pos, entry[1], entry[0]) for pos, entry in enumerate(test_sequence, start=1)],
                                         columns=['flag_position', 'test', 'variable'])
         legend_codes = pd.DataFrame([(1, 'good data'), (2, 'not evaluated'), (3, 'suspect'),
-                                     (4, 'bad data'), (5, 'test switched off'), (9, 'missing value')],
+                                     (4, 'bad data'), (5, 'dismissed (manual cut) / test switched off'),
+                                     (9, 'missing value')],
                                     columns=['flag_code', 'meaning'])
         data.save_excel_sheets({'flag_positions': legend_positions, 'flag_codes': legend_codes},
                                path + '/QCS_flag_legend.xlsx')

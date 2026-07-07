@@ -3,7 +3,7 @@ import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.widgets import RectangleSelector
+from matplotlib.widgets import Button, RectangleSelector
 
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
@@ -790,137 +790,116 @@ def _show_and_wait(fig, tk_root):
     tk_root.wait_variable(done)
 
 
-def trim_by_depth(data, tk_root=None):
-    # Create a copy of the dataframe
-    trimmed_data = data.copy()
+def manual_cut_panel(x, y, label, tk_root=None):
+    """Interactive panel to manually DISMISS points of a series. Drag a rectangle
+    over points to mark them dismissed; Undo/Reset/Skip/Done/Help buttons and a
+    live counter. Returns a SET of positional indices to dismiss (empty if none),
+    or None if the user pressed Skip. Never modifies data or deletes rows - the
+    caller records the dismissals as flag 5 (traceable)."""
+    x = np.asarray(x)
+    y = np.asarray(y, dtype=float)
+    dismissed = set()
+    history = []          # stack of per-box selections, for Undo
+    state = {'skipped': False}
 
-    # Define x and y
-    y = data['Depth (m)']
-    x = data['Depth (m)'].index
-
-    # Create the plot
     fig, ax = plt.subplots()
-    ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
-    ax.set_title('Select points within rectangle to remove - Depth (m)\nPress Enter when you are done')
-    ax.set_ylabel('Depth (m)')
-    ax.set_xlabel('Sample number')
+    plt.subplots_adjust(bottom=0.22)
 
-    # Stores removed indices
-    removed_indices = set()
-    selection_complete = False
-
-    # Function to remove selected data
-    def on_select(eclick, erelease):
-        nonlocal trimmed_data
-        x0, y0 = eclick.xdata, eclick.ydata
-        x1, y1 = erelease.xdata, erelease.ydata  
-
-        mask = (x > min(x0, x1)) & (x < max(x0, x1)) & \
-               (y > min(y0, y1)) & (y < max(y0, y1))
-
-        current_indices = np.arange(len(y))[mask]
-        removed_indices.update(current_indices)
-        # errors='ignore' prevents a crash when the same points are selected twice
-        trimmed_data.drop(index=current_indices, inplace=True, errors='ignore')
-
-        # Update the plot
-        remaining_mask = np.isin(np.arange(len(y)), list(removed_indices), invert=True)
-        new_x = x[remaining_mask]
-        new_y = y[remaining_mask]
-        
+    def redraw():
         ax.clear()
-        ax.plot(new_x, new_y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
-        ax.set_title('Select points within rectangle to remove - Depth (m)\nPress Enter when you are done')
-        ax.set_ylabel('Depth (m)')
+        keep = np.array([i not in dismissed for i in range(len(y))], dtype=bool)
+        ax.plot(x[keep], y[keep], linestyle='-', marker='x',
+                markeredgecolor='r', markerfacecolor='r', picker=5)
+        if dismissed:
+            idx = sorted(dismissed)
+            ax.scatter(x[idx], y[idx], marker='o', facecolors='none',
+                       edgecolors='0.55', s=45)
+        ax.set_title('%s - drag a box over points to DISMISS them (flag 5)\n'
+                     '%d point(s) dismissed    |    Enter = Done' % (label, len(dismissed)))
+        ax.set_ylabel(label)
         ax.set_xlabel('Sample number')
-        fig.canvas.draw()
+        fig.canvas.draw_idle()
 
-    def on_key_press(event):
-        nonlocal selection_complete
-        if event.key == 'enter':
-            selection_complete = True
-            plt.close(fig)
-
-    # Configure the selector
-    _selector = RectangleSelector(ax, on_select,  # keep the reference alive (the widget is collected by the GC if not stored)
-                               useblit=True,
-                               button=[1],
-                               minspanx=5, minspany=5,
-                               spancoords='pixels',
-                               interactive=True)
-
-    # Connect the events
-    fig.canvas.mpl_connect('key_press_event', on_key_press)
-
-    # Configure the limits
-    ax.set_xlim(np.nanmin(x) - 0.1, np.nanmax(x) + 0.1)
-    ax.set_ylim(np.nanmin(y) - 0.1, np.nanmax(y) + 0.1)
-
-    # Show the plot and wait without freezing the interface
-    _show_and_wait(fig, tk_root)
-
-    # Reindex before returning
-    trimmed_data.index = np.arange(len(trimmed_data))
-
-    return trimmed_data
-
-def trim_selected_variable(data, name, tk_root=None):
-    # Make an explicit copy of the column to avoid the SettingWithCopyWarning alert
-    y = data[name].copy()
-    x = data.index  # Use the index directly without copying
-
-    # Plot creation
-    fig, ax = plt.subplots()
-    ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
-    ax.set_title(f'Select points within rectangle to remove - {name}\nPress Enter when you are done')
-    ax.set_ylabel(name)
-    ax.set_xlabel('Sample number')
-
-    # Variable for loop control
-    selection_complete = False
-
-    # Function to remove selected points
     def on_select(eclick, erelease):
-        nonlocal y
         x0, y0 = eclick.xdata, eclick.ydata
         x1, y1 = erelease.xdata, erelease.ydata
-        mask = (x > min(x0, x1)) & (x < max(x0, x1)) & \
-               (y > min(y0, y1)) & (y < max(y0, y1))
-        y[mask] = np.nan  # Replace selected points with NaN
+        mask = (x > min(x0, x1)) & (x < max(x0, x1)) & (y > min(y0, y1)) & (y < max(y0, y1))
+        new_sel = set(int(i) for i in np.nonzero(mask)[0]) - dismissed
+        if new_sel:
+            history.append(new_sel)
+            dismissed.update(new_sel)
+            redraw()
 
-        ax.clear()
-        ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
-        ax.set_title(f'Select points within rectangle to remove - {name}\nPress Enter when you are done')
-        ax.set_ylabel(name)
-        ax.set_xlabel('Sample number')
-        fig.canvas.draw()
+    def do_undo(_=None):
+        if history:
+            dismissed.difference_update(history.pop())
+            redraw()
 
-    def on_key_press(event):
-        nonlocal selection_complete
-        if event.key == 'enter':
-            selection_complete = True
-            plt.close(fig)
+    def do_reset(_=None):
+        dismissed.clear()
+        history.clear()
+        redraw()
 
-    # Event configuration
-    _selector = RectangleSelector(ax, on_select,  # keep the reference alive (the widget is collected by the GC if not stored)
-                               useblit=True,
-                               button=[1],
-                               minspanx=5, minspany=5,
-                               spancoords='pixels',
-                               interactive=True)
+    def do_done(_=None):
+        plt.close(fig)
 
-    fig.canvas.mpl_connect('key_press_event', on_key_press)
+    def do_skip(_=None):
+        state['skipped'] = True
+        dismissed.clear()
+        plt.close(fig)
 
-    # Limit configuration
-    ax.set_xlim(np.nanmin(x)-0.1, np.nanmax(x)+0.1)
-    ax.set_ylim(np.nanmin(y)-0.1, np.nanmax(y)+0.1)
+    def do_help(_=None):
+        try:
+            from tkinter import messagebox
+            messagebox.showinfo(
+                'Manual point cut - help',
+                'Drag a rectangle over points to mark them DISMISSED (flag 5).\n\n'
+                'The points are NOT deleted: they stay in the sheet with flag 5 and\n'
+                'their value blanked, so the manual cut stays traceable.\n\n'
+                'Undo   - undo the last box\n'
+                'Reset  - clear every dismissal for this series\n'
+                'Skip   - leave this series untouched\n'
+                'Done   - confirm and continue (shortcut: Enter)')
+        except Exception:
+            pass
 
-    # Show the plot and wait without freezing the interface
+    _selector = RectangleSelector(ax, on_select, useblit=True, button=[1],  # noqa: F841 (kept alive vs GC)
+                                  minspanx=5, minspany=5, spancoords='pixels',
+                                  interactive=True)
+    fig.canvas.mpl_connect('key_press_event',
+                           lambda e: do_done() if e.key == 'enter' else None)
+
+    # buttons along the bottom (kept referenced so the GC does not collect them)
+    _buttons = []
+    for i, (txt, cb) in enumerate([('Undo', do_undo), ('Reset', do_reset),
+                                   ('Skip', do_skip), ('Help', do_help),
+                                   ('Done', do_done)]):
+        bax = fig.add_axes([0.09 + i * 0.165, 0.04, 0.145, 0.07])
+        b = Button(bax, txt)
+        b.on_clicked(cb)
+        _buttons.append(b)
+
+    redraw()
     _show_and_wait(fig, tk_root)
+    return None if state['skipped'] else dismissed
 
-    # Update the data after closing the window
-    data[name] = y
-    return data
+
+def trim_by_depth(data, tk_root=None):
+    """Manual review of a mooring depth series. Returns the SET of row positions
+    the operator dismissed (whole-row dismissal). Does not modify `data`; the
+    caller flags those rows DISMISSED (5) and blanks their values."""
+    got = manual_cut_panel(data['Depth (m)'].index.to_numpy(),
+                           data['Depth (m)'].to_numpy(), 'Depth (m)', tk_root)
+    return set() if got is None else set(got)
+
+
+def trim_selected_variable(data, name, tk_root=None):
+    """Manual review of a single variable. Returns the SET of row positions the
+    operator dismissed for that variable. Does not modify `data`; the caller
+    flags those points DISMISSED (5) for this variable and blanks the value."""
+    got = manual_cut_panel(np.arange(len(data)), data[name].to_numpy(), name, tk_root)
+    return set() if got is None else set(got)
+
 
 # QCS output subfolders where each instrument's qualified spreadsheets live
 # (the tscp name is the same since the pre-v4 versions)

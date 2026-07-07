@@ -263,8 +263,15 @@
             <td>Checkbox (enabled only for profiles) to select the downcast/upcast phase.</td>
         </tr>
         <tr>
-            <td>Check Variables</td>
-            <td>Checkbox to enable manual review of the variable limits.</td>
+            <td>Check Variables (manual point cut)</td>
+            <td>Opens interactive point-cut panels to manually remove spurious points.
+                Since v4.1 you first pick <strong>which</strong> variables to review
+                (with "All variables" / "None"), then a panel per variable lets you drag a
+                box over points to <strong>dismiss</strong> them (Undo / Reset / Skip / Done /
+                Help, live counter). Dismissed points are <strong>not deleted</strong>: they
+                get <strong>flag 5</strong> and their value is blanked, so the manual cut stays
+                traceable. Without this option, only the mooring <em>Depth</em> review opens
+                (which now also dismisses via flag 5 instead of deleting rows).</td>
         </tr>
         <tr>
             <td>Macroregion / Region</td>
@@ -554,7 +561,7 @@
         <tr>
             <td>5</td>
             <td>DISMISSED</td>
-            <td>Test was disabled by the user</td>
+            <td>Point dismissed by the operator (manual point cut), or the test was disabled</td>
         </tr>
         <tr>
             <td>9</td>

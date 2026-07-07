@@ -416,5 +416,21 @@ with _tempfile.TemporaryDirectory() as tmp:
     assert str(d['Datetime'].dtype).startswith('datetime64')
 ok.append('read_ctd (Seaguard comma-decimal export parsed as numbers)')
 
+# 14) manual point-cut -> flag DISMISSED (5): setting all of a variable's flag
+# positions to '5' must roll up to Flag_<var> = 5 WITHOUT corrupting another
+# variable that shares a position (e.g. density maps to both T and S; 5 is the
+# lowest priority in worst_flag, so a stray 5 there never overrides a real flag).
+flag_layout_14 = ['T', 'S', 'dens']   # dens contributes to both T and S
+inp = pd.DataFrame({'Temperature (degC)': [20.0, 21.0, 22.0],
+                    'Salinity (PSU)': [35.0, 35.1, 35.2]})
+# row 0: all good; row 1: T manually dismissed (T-pos and dens-pos -> '5'),
+# S keeps its real suspect '3'; row 2: whole row dismissed (every pos '5')
+flags_14 = ['111', '535', '555']
+out14 = data.handle_output_file(inp, flags_14, flag_layout_14,
+                                remove_suspect=False, remove_bad=False)[0]
+assert list(out14['Flag_T']) == [1, 5, 5], out14['Flag_T'].tolist()
+assert list(out14['Flag_S']) == [1, 3, 5], out14['Flag_S'].tolist()  # S row1 unharmed by the shared-dens 5
+ok.append('handle_output_file (manual-cut flag 5 rolls up per variable, no cross-contamination)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))
