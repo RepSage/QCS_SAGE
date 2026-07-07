@@ -800,19 +800,19 @@ def manual_cut_panel(x, y, label, tk_root=None):
     y = np.asarray(y, dtype=float)
     dismissed = set()
     history = []          # stack of per-box selections, for Undo
-    state = {'skipped': False}
+    state = {'skipped': False, 'drawn': False}
 
     fig, ax = plt.subplots()
     plt.subplots_adjust(bottom=0.22)
 
     def redraw(keep_view=True):
-        # preserve the current view (user zoom/pan) across redraws; the very
-        # first draw (and Reset) autoscales to fit the whole series
-        had_data = bool(ax.lines or ax.collections)
-        if had_data and keep_view:
+        # preserve the current view (user zoom/pan) across redraws; the first
+        # draw (and Reset) autoscales to fit the whole series. NB: detect "first
+        # draw" with an explicit flag, NOT ax.lines/collections - the interactive
+        # RectangleSelector adds handle artists, which would falsely read as data.
+        restore = keep_view and state['drawn']
+        if restore:
             xlim, ylim = ax.get_xlim(), ax.get_ylim()
-        else:
-            had_data = False
         ax.clear()
         keep = np.array([i not in dismissed for i in range(len(y))], dtype=bool)
         ax.plot(x[keep], y[keep], linestyle='-', marker='x',
@@ -825,9 +825,15 @@ def manual_cut_panel(x, y, label, tk_root=None):
                      '%d point(s) dismissed    |    Enter = Done' % (label, len(dismissed)))
         ax.set_ylabel(label)
         ax.set_xlabel('Sample number')
-        if had_data:
+        if restore:
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
+        else:
+            # compute the limits from the data NOW: draw_idle may not autoscale
+            # before the window is shown, leaving the default (0,1) empty view
+            ax.relim()
+            ax.autoscale()
+        state['drawn'] = True
         fig.canvas.draw_idle()
 
     def on_scroll(event):
