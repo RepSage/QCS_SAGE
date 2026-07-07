@@ -877,6 +877,27 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
         ax.set_ylim(yd - (yd - ylim[0]) * scale, yd + (ylim[1] - yd) * scale)
         fig.canvas.draw_idle()
 
+    # middle-mouse-button drag = pan the view (left button is the box-select)
+    pan = {'x': None, 'y': None}
+
+    def on_pan_press(event):
+        if event.button == 2 and event.inaxes is ax:   # 2 = middle button
+            pan['x'], pan['y'] = event.xdata, event.ydata
+
+    def on_pan_move(event):
+        if pan['x'] is None or event.inaxes is not ax:
+            return
+        dx = event.xdata - pan['x']
+        dy = event.ydata - pan['y']
+        xlim, ylim = ax.get_xlim(), ax.get_ylim()
+        ax.set_xlim(xlim[0] - dx, xlim[1] - dx)
+        ax.set_ylim(ylim[0] - dy, ylim[1] - dy)
+        fig.canvas.draw_idle()
+
+    def on_pan_release(event):
+        if event.button == 2:
+            pan['x'] = pan['y'] = None
+
     def on_select(eclick, erelease):
         x0, y0 = eclick.xdata, eclick.ydata
         x1, y1 = erelease.xdata, erelease.ydata
@@ -913,8 +934,8 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
             parent = getattr(getattr(fig.canvas, 'manager', None), 'window', None)
             messagebox.showinfo(
                 'Manual point cut - help',
-                'Drag a rectangle over points to mark them DISMISSED (flag 5).\n'
-                'Mouse wheel zooms in/out around the cursor.\n\n'
+                'Drag a rectangle (left button) over points to DISMISS them (flag 5).\n'
+                'Mouse wheel zooms around the cursor; middle-button drag pans.\n\n'
                 'The points are NOT deleted: they stay in the sheet with flag 5 and\n'
                 'their value blanked, so the manual cut stays traceable. Points already\n'
                 'cut in the Depth review appear greyed and are kept dismissed.\n\n'
@@ -932,6 +953,9 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     fig.canvas.mpl_connect('key_press_event',
                            lambda e: do_done() if e.key == 'enter' else None)
     fig.canvas.mpl_connect('scroll_event', on_scroll)
+    fig.canvas.mpl_connect('button_press_event', on_pan_press)
+    fig.canvas.mpl_connect('motion_notify_event', on_pan_move)
+    fig.canvas.mpl_connect('button_release_event', on_pan_release)
 
     # buttons along the bottom (kept referenced so the GC does not collect them)
     _buttons = []

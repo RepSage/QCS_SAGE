@@ -695,7 +695,7 @@ def start_qualification():
                 log_line(m)
             OUTPUT['last_output_root'] = write_combined_replicates(combined, light_plots)
             log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
-        log_line('SUCCESS: qualification finished - results saved to: %s'
+        log_line('Done: qualification finished. Results saved to: %s'
                  % OUTPUT.get('last_output_root', ''))
         # hand the just-qualified file to the Visualization tab so it can
         # pre-select it (Database File + Output Path) on the next switch there.
@@ -1807,9 +1807,10 @@ def build_qualification_tab(container, root, shared_log=None):
         manual_dismiss_rows = set()       # whole-row dismissals (Depth review)
         manual_dismiss_cols = {}          # {column_name: set of row positions}
 
-        # Depth review ALWAYS runs for moorings (quick removal of spurious depths
-        # from equipment handling), independent of Check Variables.
-        if INPUT['profile'] == False and 'Depth (m)' in raw_data.columns:
+        # Depth review ALWAYS runs when a Depth column is present (both moorings
+        # and Seaguard profiles), for quick removal of spurious depths from
+        # equipment handling - independent of Check Variables.
+        if 'Depth (m)' in raw_data.columns:
             manual_dismiss_rows |= data.trim_by_depth(raw_data, tk_root=window)
 
         # number of lines and cells
@@ -2220,7 +2221,8 @@ def build_qualification_tab(container, root, shared_log=None):
         OUTPUT['last_qualified_df'] = qualified_data.copy()  # kept for replicate combination
         plt.close('all')
         os.chdir(rootPath)
-        log_line('Done: qualification finished.')
+        # (the single "Done: qualification finished" line is logged once by
+        # start_qualification after all files/replicates are written)
 
     # restore last user choices and start the interface
     restore_user_prefs()

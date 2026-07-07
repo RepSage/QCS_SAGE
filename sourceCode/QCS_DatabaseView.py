@@ -151,6 +151,9 @@ def toggle_all_controls(enabled=False):
 
 def toggle_input_mode():
     if join.get():  # If 'Build database from a folder' is checked
+        # folder-scan mode: Database File(s) does not apply -> stash and clear it
+        _input_mode_cache['files'] = fileNames_entry.get()
+        fileNames_entry.delete(0, END)
         set_disabled_style(fileNames_entry)
         set_disabled_style(browse_file_btn)
         set_enabled_style(inputPath_entry)
@@ -163,6 +166,9 @@ def toggle_input_mode():
     else:  # unchecked: pick files one by one (multi-select already joins them)
         set_enabled_style(fileNames_entry)
         set_enabled_style(browse_file_btn)
+        # restore the file selection stashed when folder mode was turned on
+        if _input_mode_cache.get('files') and not fileNames_entry.get().strip():
+            fileNames_entry.insert(0, _input_mode_cache['files'])
         set_disabled_style(inputPath_entry)
         set_disabled_style(browse_input_btn)
         # single-file mode does not use an output name: leave it blank + disabled
@@ -1210,6 +1216,7 @@ _shared_log = None        # app-wide Execution log (owned by the QCS_App shell)
 _db_msgs_logged = False   # True once db_build_messages went to the log (no dupes)
 _recent_combobox = None   # Step 1 'Recent' picker (created in build_step1)
 _preview_var = None       # Step 1 preview summary text (created in build_step1)
+_input_mode_cache = {}    # stashes Database File(s) while folder-scan mode is on
 
 # database built by 'Preview' on Step 1, reused by Next if the settings match
 _preview_cache = {'key': None, 'database': None}
