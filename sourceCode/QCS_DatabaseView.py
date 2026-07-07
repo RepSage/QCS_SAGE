@@ -280,7 +280,12 @@ def selectFiles():
         out_root = _default_output_root(filenames[0])
         outputPath_entry.delete(0, END)
         outputPath_entry.insert(0, out_root)
+        # auto-fill Output Name from the first file's base name (restore_entry
+        # bypasses the field's disabled state in single-file mode)
+        out_name = os.path.splitext(os.path.basename(filenames[0]))[0]
+        restore_entry(outputName_entry, out_name)
         USER_PREFS['dbv_output_path'] = out_root
+        USER_PREFS['dbv_output_name'] = out_name
         USER_PREFS['dbv_last_output_dir'] = out_root
         save_user_prefs()
         autodetect_instrument(filenames[0])
