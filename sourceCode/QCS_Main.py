@@ -1417,7 +1417,7 @@ def build_qualification_tab(container, root, shared_log=None):
     action_frame = ttk.Frame(main_frame)
     action_frame.grid(row=2, column=0, columnspan=2, pady=(14, 4))
 
-    # (the Help button moved to the app's Help menu in v4.1)
+    # (the Help button moved to the app's Help menu in v5.0)
     settings_btn = ttk.Button(action_frame, text="Settings", command=open_settings_window, width=12)
     settings_btn.pack(side='left', padx=5)
     ToolTip(settings_btn, TOOLTIPS['settings_button'])

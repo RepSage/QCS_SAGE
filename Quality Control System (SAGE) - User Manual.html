@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v4.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v5.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -206,13 +206,13 @@
             <pre><code>python -m pip install -r sourceCode/requirements.txt</code></pre></li>
         <li>Open <strong>QCS.bat</strong></li>
     </ol>
-    <p>Since v4.1, both tools live in a <strong>single window</strong> (open with
+    <p>Since v5.0, both tools live in a <strong>single window</strong> (open with
     <strong>QCS.bat</strong>): a menu bar (File / Edit / View / Tools / Help) plus two tabs,
     <strong>Data Qualification</strong> and <strong>Data Visualization</strong>. Dark mode is
     under the View menu.</p>
     <p>Since v4.0, the app runs with <strong>no terminal window</strong> (launched via
     <code>pythonw</code>): all progress, warnings and errors appear in the <strong>Execution log</strong>.
-    Since v4.1 this is <strong>one single panel, fixed at the bottom of the window</strong> — the same
+    Since v5.0 this is <strong>one single panel, fixed at the bottom of the window</strong> — the same
     log, in the same place and with the same message styling, for every pipeline stage (qualification,
     database building/preview and panel generation). If a fatal error happens before the window can
     open, a message box appears and a <code>sourceCode/QCS_crash.log</code> file is written with the
@@ -265,7 +265,7 @@
         <tr>
             <td>Check Variables (manual point cut)</td>
             <td>Opens interactive point-cut panels to manually remove spurious points.
-                Since v4.1 you first pick <strong>which</strong> variables to review
+                Since v5.0 you first pick <strong>which</strong> variables to review
                 (with "All variables" / "None"), then a panel per variable lets you drag a
                 box over points to <strong>dismiss</strong> them (Undo / Reset / Skip / Done /
                 Help, live counter). Dismissed points are <strong>not deleted</strong>: they
@@ -392,19 +392,19 @@
         <tr>
             <td>Instrument</td>
             <td>Selects the instrument that produced the qualified files (Seaguard or HOBO).
-            Since v4.1 it is <strong>auto-detected</strong> from the selected files (and stays
+            Since v5.0 it is <strong>auto-detected</strong> from the selected files (and stays
             editable). Seaguard and HOBO spreadsheets have different layouts and are
             <strong>never combined with each other</strong> — build a separate database for
             each instrument. Both .csv and .xlsx files are read automatically (the old format
             selector was removed in v4.0).</td>
         </tr>
         <tr>
-            <td>Recent (v4.1)</td>
+            <td>Recent (v5.0)</td>
             <td>Dropdown with the last file selections — pick one to refill the fields
                 with a single click.</td>
         </tr>
         <tr>
-            <td>Database preview (v4.1)</td>
+            <td>Database preview (v5.0)</td>
             <td>The <strong>Preview</strong> button builds the database right away and shows a
                 summary (rows, sites, period, source files, warnings) without leaving Step 1 —
                 confirm the selection before moving on. "Next &gt;" reuses this build, so

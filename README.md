@@ -6,7 +6,7 @@ Tool for qualification and visualization of oceanographic physico-chemical data
 ## How to run
 
 The program runs directly from the Python scripts, using Anaconda's Python.
-Since v4.1 both tools live in a single window; double-click one shortcut in the
+Since v5.0 both tools live in a single window; double-click one shortcut in the
 main folder:
 
 - **`QCS.bat`** — the unified app (`sourceCode/QCS_App.py`): a menu bar plus two
