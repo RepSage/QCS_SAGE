@@ -72,7 +72,6 @@ def main(run=True):
     # grid cell; switching only calls tkraise(), which is instant.
     notebook = ttk.Notebook(root)
     notebook.pack(fill='x', padx=8, pady=(4, 0))
-    theme.suppress_notebook_focus_ring(notebook)
     notebook.add(ttk.Frame(notebook, height=0), text='   Data Qualification   ')
     notebook.add(ttk.Frame(notebook, height=0), text='   Data Visualization   ')
 
@@ -95,11 +94,21 @@ def main(run=True):
     qual.build_qualification_tab(qual_tab, root, shared_log=app_log)
     viz.build_visualization_tab(viz_tab, root, shared_log=app_log)
 
-    # raise the selected tab's content (the log at the bottom never moves)
+    # Raise the selected tab's content (the log at the bottom never moves).
+    # NOTE: this must be the ONLY <<NotebookTabChanged>> binding - a second
+    # bind() replaces the first, which is how the dashed focus ring once came
+    # back (it clobbered suppress_notebook_focus_ring's binding). The ring fix
+    # is folded in here: moving focus onto the raised frame (frames draw no
+    # focus ring) takes it off the notebook's tab label.
     def on_tab_changed(event=None):
         idx = notebook.index(notebook.select())
-        (qual_tab if idx == 0 else viz_tab).tkraise()
+        frame = qual_tab if idx == 0 else viz_tab
+        frame.tkraise()
+        frame.focus_set()
     notebook.bind('<<NotebookTabChanged>>', on_tab_changed)
+    # clicking the ALREADY selected tab fires no <<NotebookTabChanged>>, so also
+    # defocus on plain clicks (separate event: does not clobber the bind above)
+    notebook.bind('<ButtonRelease-1>', lambda e: on_tab_changed(), add='+')
     on_tab_changed()  # start on the qualification tab
 
     def switch_to(idx):
