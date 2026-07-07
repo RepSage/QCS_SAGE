@@ -343,13 +343,30 @@ def selectFiles():
         fileNames_entry.insert(0, first)
     USER_PREFS['last_data_dir'] = os.path.dirname(first)
     save_user_prefs()
-    # auto-fills the output from the first file (the user can edit it afterwards):
-    # same folder and base name + '_QLF'
-    base = os.path.splitext(os.path.basename(first))[0]
+    # auto-fill the output folder from the first file; the name follows the
+    # replicate count (single vs combined)
     outputPath_entry.delete(0, END)
     outputPath_entry.insert(0, os.path.dirname(first))
+    apply_output_name()
+
+def apply_output_name():
+    """Auto-fills 'Output File Name' from the selected file(s) and the replicate
+    count (the user can still edit it): a single file -> '<file>_QLF'; N>1 HOBO
+    replicates -> the COMBINED name (leading device token like 'HOBO1_' dropped)
+    + '_combined_QLF'. The individual replicate files keep their own '<file>_QLF'
+    names regardless."""
+    paths = [p.strip() for p in fileNames_entry.get().split(';') if p.strip()]
+    if not paths:
+        return
+    base = os.path.splitext(os.path.basename(paths[0]))[0]
+    n_rep = int(replicate_combobox.get()) if inputType_combobox.get() == 'HOBO' else 1
+    if n_rep > 1:
+        stripped = re.sub(r'(?i)^hobo\s*\d+[ _-]*', '', base)   # drop 'HOBO1_' device token
+        name = (stripped or base) + '_combined_QLF'
+    else:
+        name = base + '_QLF'
     outputName_entry.delete(0, END)
-    outputName_entry.insert(0, base + '_QLF')
+    outputName_entry.insert(0, name)
 
 def selectOutputFolder():
     folderPath = filedialog.askdirectory(
@@ -475,6 +492,7 @@ def collect_input_settings():
             messagebox.showwarning("Warning", "Unsupported file format (use .csv or .xlsx):\n%s" % f)
             return False
     INPUT['replicate_files'] = replicate_files
+    INPUT['n_replicates'] = n_rep
     data_path = replicate_files[0]   # drives file_name/raw_data_path below
     if inputType_combobox.get() not in ('Seaguard', 'HOBO'):
         messagebox.showwarning("Warning", "Select the instrument type\n('Input Type' field).")
@@ -579,10 +597,15 @@ def write_combined_replicates(combined, light_plots=()):
     combined.insert(0, 'Sample number', range(1, len(combined) + 1))
     combined['QCS version'] = data.QCS_VERSION
     ordered = data.order_var(combined, 1, data_type='hobo')
-    site = str(INPUT.get('site') or 'HOBO') or 'HOBO'
-    t0 = pd.Timestamp(ordered['Datetime'].iloc[0])
-    t1 = pd.Timestamp(ordered['Datetime'].iloc[-1])
-    base = '%s_%s_%s_combined_QLF' % (site, t0.strftime('%d%m%y'), t1.strftime('%d%m%y'))
+    # the combined name comes from the 'Output File Name' field (auto-filled to
+    # '<...>_combined_QLF' and editable); falls back to '<site>_<start>_<end>_
+    # combined_QLF' from the data if the field is empty
+    base = re.sub(r'\.(csv|xlsx)$', '', OUTPUT.get('output_file_name', ''), flags=re.IGNORECASE).strip()
+    if not base:
+        site = str(INPUT.get('site') or 'HOBO') or 'HOBO'
+        t0 = pd.Timestamp(ordered['Datetime'].iloc[0])
+        t1 = pd.Timestamp(ordered['Datetime'].iloc[-1])
+        base = '%s_%s_%s_combined_QLF' % (site, t0.strftime('%d%m%y'), t1.strftime('%d%m%y'))
     root = os.path.join(OUTPUT['output_file_path'], base)
     folder = os.path.join(root, 'QCS qualified hobo data')
     os.makedirs(folder, exist_ok=True)
@@ -1126,6 +1149,8 @@ replicate_combobox.grid(row=3, column=2, sticky='w', padx=(12, 0), pady=(0, 5))
 ToolTip(replicate_combobox,
         "HOBO only: number of redundant HOBO files (2-4) to qualify together and\n"
         "combine into one series. Select all N files at once with 'Browse'.")
+# re-derive the Output File Name when the replicate count changes (single vs combined)
+replicate_combobox.bind("<<ComboboxSelected>>", lambda e: apply_output_name())
 
 # update profile checkbox
 def update_profile_checkbox_state(event=None):
@@ -1929,11 +1954,16 @@ def run_full_qualification():
     os.makedirs(dataview_path, exist_ok=True)
     os.makedirs(dataview_path2, exist_ok=True)
 
-    # the qualified file uses the name typed in 'Output File Name';
-    # falls back to '<input name>_QLF' when the field resolves empty
-    output_base = re.sub(r'\.(csv|xlsx)$', '', OUTPUT['output_file_name'], flags=re.IGNORECASE).strip()
-    if not output_base:
-        output_base = re.search(r'^[^\.]+', INPUT['file_name']).group() + '_QLF'
+    # each per-file qualified sheet is named '<input name>_QLF'. With replicates
+    # (N>1) this is ALWAYS used (the 'Output File Name' field holds the combined
+    # name, not the individual ones); for a single file the typed field wins,
+    # falling back to '<input name>_QLF' when it resolves empty.
+    input_qlf = re.search(r'^[^\.]+', INPUT['file_name']).group() + '_QLF'
+    if INPUT.get('n_replicates', 1) > 1:
+        output_base = input_qlf
+    else:
+        output_base = re.sub(r'\.(csv|xlsx)$', '', OUTPUT['output_file_name'],
+                             flags=re.IGNORECASE).strip() or input_qlf
     if re.search('xlsx', OUTPUT['output_data_format'], re.IGNORECASE):
         qualified_data.to_excel(os.path.join(path, output_base + '.xlsx'), index=False) ##create excel
     if re.search('csv', OUTPUT['output_data_format'], re.IGNORECASE):
