@@ -4,6 +4,7 @@ import re
 import sys
 import time
 import json
+import shutil
 import traceback
 import numpy as np
 import pandas as pd
@@ -567,22 +568,37 @@ def collect_input_settings():
     save_user_prefs()
     return True
 
-def write_combined_replicates(combined):
-    """Writes the combined HOBO replicates sheet to a '<site>_combined_QLF'
-    folder next to the per-replicate outputs. Returns the folder path."""
+def write_combined_replicates(combined, light_plots=()):
+    """Writes the combined HOBO replicates sheet to a
+    '<site>_<ddmmyy start>_<ddmmyy end>_combined_QLF' folder (reference dates
+    taken from the combined data, matching the user's file naming convention,
+    e.g. A2_070924_200325_combined_QLF). Each replicate's light-window plot is
+    copied in, renamed by replicate - the documentation of WHY the combined
+    usable window ends where it ends. Returns the folder path."""
     combined = combined.copy()
     combined.insert(0, 'Sample number', range(1, len(combined) + 1))
     combined['QCS version'] = data.QCS_VERSION
     ordered = data.order_var(combined, 1, data_type='hobo')
     site = str(INPUT.get('site') or 'HOBO') or 'HOBO'
-    root = os.path.join(OUTPUT['output_file_path'], '%s_combined_QLF' % site)
+    t0 = pd.Timestamp(ordered['Datetime'].iloc[0])
+    t1 = pd.Timestamp(ordered['Datetime'].iloc[-1])
+    base = '%s_%s_%s_combined_QLF' % (site, t0.strftime('%d%m%y'), t1.strftime('%d%m%y'))
+    root = os.path.join(OUTPUT['output_file_path'], base)
     folder = os.path.join(root, 'QCS qualified hobo data')
     os.makedirs(folder, exist_ok=True)
-    base = '%s_combined_QLF' % site
     if 'xlsx' in OUTPUT.get('output_data_format', '.xlsx').lower():
         ordered.to_excel(os.path.join(folder, base + '.xlsx'), index=False)
     else:
         ordered.to_csv(os.path.join(folder, base + '.csv'), index=False)
+    # copy each replicate's light-window plot (kept with the 'QCS_' prefix so
+    # build_database keeps ignoring them when scanning folders)
+    for plot in light_plots:
+        rep_folder = os.path.basename(os.path.dirname(os.path.dirname(plot)))  # '<replicate>_QLF'
+        rep_base = re.sub(r'_QLF$', '', rep_folder)
+        try:
+            shutil.copy(plot, os.path.join(folder, 'QCS_light_window_%s.svg' % rep_base))
+        except Exception as e:
+            log_line('WARNING: could not copy the light window plot of %s: %s' % (rep_base, e))
     return root
 
 def start_qualification():
@@ -597,6 +613,7 @@ def start_qualification():
     n = len(files)
     try:
         qualified_dfs = []
+        light_plots = []
         for idx, fpath in enumerate(files, start=1):
             INPUT['file_name'] = os.path.basename(fpath)
             INPUT['raw_data_path'] = os.path.dirname(fpath)
@@ -609,13 +626,15 @@ def start_qualification():
             window.update_idletasks()
             run_full_qualification()
             qualified_dfs.append(OUTPUT['last_qualified_df'])
+            if OUTPUT.get('last_light_plot'):
+                light_plots.append(OUTPUT['last_light_plot'])
         if n > 1:
             status_var.set("Combining %d replicates..." % n)
             window.update_idletasks()
             combined, cmsgs = data.combine_hobo_replicates(qualified_dfs)
             for m in cmsgs:
                 log_line(m)
-            OUTPUT['last_output_root'] = write_combined_replicates(combined)
+            OUTPUT['last_output_root'] = write_combined_replicates(combined, light_plots)
             log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
         status_var.set("Done - results saved to %s" % OUTPUT.get('last_output_root', ''))
         messagebox.showinfo("Done",
@@ -1858,7 +1877,11 @@ def run_full_qualification():
                             lux_result['threshold'], 100 * lux_result['params']['cutoff_frac'],
                             lux_result['params']['sustain_days'],
                             lux_result['proposed_cutoff'].date() if lux_result['proposed_cutoff'] is not None else 'none'))
-                final_cutoff = review_light_window(lux_result, INPUT['site'])
+                # label carries the FILE NAME so the user knows which device
+                # (replicate) is being reviewed
+                plot_label = ('%s (%s)' % (INPUT['site'], INPUT['file_name'])
+                              if INPUT.get('site') else INPUT['file_name'])
+                final_cutoff = review_light_window(lux_result, plot_label)
                 lux_result['final_cutoff'] = final_cutoff
                 log_line('Light fouling: cutoff APPLIED: %s'
                          % (pd.Timestamp(final_cutoff).date() if final_cutoff is not None else 'none (light kept good)'))
@@ -1964,12 +1987,17 @@ def run_full_qualification():
 
     # HOBO: saves the light usage window plot with the applied cutoff and parameters
     # - the permanent documentation of WHERE and WHY the light was cut
+    OUTPUT['last_light_plot'] = None
     if lux_result is not None and lux_result['evaluable']:
-        fig_lux, ax_lux = view.plot_light_window(lux_result, INPUT['site'])
+        plot_label = ('%s (%s)' % (INPUT['site'], INPUT['file_name'])
+                      if INPUT.get('site') else INPUT['file_name'])
+        fig_lux, ax_lux = view.plot_light_window(lux_result, plot_label)
         view.mark_light_cutoff(ax_lux, lux_result['final_cutoff'], lux_result)
-        fig_lux.savefig(os.path.join(path, 'QCS_light_window.svg'), bbox_inches='tight')
+        light_plot_path = os.path.join(path, 'QCS_light_window.svg')
+        fig_lux.savefig(light_plot_path, bbox_inches='tight')
         plt.close(fig_lux)
-        log_line('Light window plot saved to: %s' % os.path.join(path, 'QCS_light_window.svg'))
+        OUTPUT['last_light_plot'] = light_plot_path  # copied into the combined folder for replicates
+        log_line('Light window plot saved to: %s' % light_plot_path)
 
     log_line('Stage 5/5: generating DataView plots...')
     # flag columns and administrative columns are never plotted as variables
