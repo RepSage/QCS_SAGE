@@ -9,7 +9,7 @@ from QCS_Theme import ToolTip
 
 # Run with no console window (launched via pythonw): route everything that would
 # have gone to the terminal into the in-app Execution log, and never let a crash
-# be silent. The log panel is attached later in show_view_window.
+# be silent. The log panel is attached later in build_step2.
 _out = theme.install_output_redirect()
 theme.install_crash_handler('QCS Data Visualization', _out)
 from tkinter import *
@@ -325,7 +325,7 @@ def saveInputSettings():
         'dbv_instrument': instrument_combobox.get(),
     })
     save_user_prefs()
-    input_window.destroy()
+    return True  # validation passed and settings stored -> Step 2 may proceed
 
 def saveDataViewSettings():
     try:
@@ -601,40 +601,16 @@ rootPath = os.getcwd()
 inputSettings = {}
 dataViewSettings = {}
 
-def show_input_window():
-    """Database selection window; fills inputSettings on save."""
-    global input_window, fileNames_entry, inputPath_entry, browse_file_btn, browse_input_btn
+def build_step1(parent):
+    """Builds Step 1 (choose or build the database) inside `parent`, a frame in
+    the unified app's Visualization tab. The root window, header and dark-mode
+    switch are owned by the QCS_App shell."""
+    global fileNames_entry, inputPath_entry, browse_file_btn, browse_input_btn
     global join, sort, instrument_combobox, outputName_entry, outputPath_entry
-    theme.enable_high_dpi()
-    input_window = Tk()
-    input_window.title("Database Input Settings - QCS %s" % data.QCS_VERSION)
-
-    theme.set_scaled_geometry(input_window, 720, 520, min_width=680, min_height=480)
-    input_window.resizable(True, True)
-
-    # Configure styles (Sun Valley theme; falls back to the old clam look)
-    theme.apply_theme(input_window, USER_PREFS.get('ui_theme', 'light'))
-    theme.set_window_icon(input_window)  # custom taskbar/window icon (if sourceCode/qcs_icon.ico exists)
-
-    dark_mode = BooleanVar(value=USER_PREFS.get('ui_theme', 'light') == 'dark')
-
-    def on_theme_toggle():
-        new_theme = 'dark' if dark_mode.get() else 'light'
-        theme.apply_theme(input_window, new_theme)
-        USER_PREFS['ui_theme'] = new_theme
-        save_user_prefs()
 
     # Main container
-    main_frame = ttk.Frame(input_window, padding="16")
+    main_frame = ttk.Frame(parent, padding="16")
     main_frame.pack(fill='both', expand=True)
-
-    # Header: title, version, dark-mode switch and help button
-    header = theme.build_header(main_frame,
-                                "Database View",
-                                "Step 1 of 2 - choose or build the database  ·  QCS %s" % data.QCS_VERSION,
-                                dark_var=dark_mode, on_toggle=on_theme_toggle,
-                                help_command=show_help)
-    header.grid(row=0, column=0, columnspan=2, sticky='ew', padx=5, pady=(0, 12))
 
     # Input settings frame
     input_frame = ttk.LabelFrame(main_frame, text=" Input settings ", padding=12)
@@ -711,8 +687,8 @@ def show_input_window():
     browse_output_btn.grid(row=3, column=1, padx=5)
     ToolTip(browse_output_btn, TOOLTIPS['output_path'])
 
-    # Save button
-    ttk.Button(main_frame, text="Save Input Settings", command=saveInputSettings, style='Accent.TButton').grid(row=2, column=0, columnspan=2, pady=12, ipadx=12)
+    # Next button: validate + store, then advance to Step 2 in the same tab
+    ttk.Button(main_frame, text="Next  >", command=_go_step2, style='Accent.TButton').grid(row=2, column=0, columnspan=2, pady=12, ipadx=12)
 
     # restore the user's latest choices
     restore_entry(fileNames_entry, USER_PREFS.get('dbv_database_file', ''))
@@ -722,8 +698,6 @@ def show_input_window():
     if USER_PREFS.get('dbv_instrument') in ('Seaguard', 'HOBO'):
         instrument_combobox.set(USER_PREFS['dbv_instrument'])
     sort.set(USER_PREFS.get('dbv_sort_by_time', False))
-
-    input_window.mainloop()
 
 
 db_build_messages = []  # unification messages, shown in the visualization log
@@ -752,7 +726,7 @@ def load_database():
     except Exception as e:
         messagebox.showerror("Error", "Could not build the database:\n%s" % e)
         return None
-    # db_build_messages are shown in the Execution log by show_view_window (below),
+    # db_build_messages are shown in the Execution log by build_step2 (below),
     # so they are not printed here (that would duplicate them via the log redirect)
 
     if inputSettings.get('sortByTime', False) == True:
@@ -777,28 +751,19 @@ def load_database():
             print(f"ERROR saving database: {str(e)}")
     return database
 
-def show_view_window():
-    """Visualization window; returns True if the user asked to change files."""
-    global view_window, dType_combobox, panel1, panel2, panel3, panel1_cb, panel2_cb, panel3_cb
+def build_step2(parent):
+    """Builds Step 2 (visualization settings) inside `parent`, a frame in the
+    unified app's Visualization tab. Rebuilt fresh each time the user advances
+    from Step 1. The root window and header are owned by the QCS_App shell."""
+    global dType_combobox, panel1, panel2, panel3, panel1_cb, panel2_cb, panel3_cb
     global tsDiagram, ts_cb, latitude_entry, longitude_entry, tsParam_combobox
     global tendency, tendency_cb, tendency_entry, dataPoints, points_cb, fixedScale, fixed_scale_cb
     global year_vars, year_widgets, time_start_entry, time_end_entry, depth_min_entry, depth_max_entry
     global site_names, site_vars, site_widgets, parameter_names, parameter_vars, parameter_widgets
-    global min_scale_entries, max_scale_entries, error_logger, back_requested
-    back_requested = False
-    # Create data view settings window
-    view_window = Tk()
-    view_window.title("Data View Settings - QCS %s" % data.QCS_VERSION)
-
-    theme.set_scaled_geometry(view_window, 1380, 800, min_width=1150, min_height=650)
-    view_window.resizable(True, True)
-
-    # Configure styles (Sun Valley theme; falls back to the old clam look)
-    theme.apply_theme(view_window, USER_PREFS.get('ui_theme', 'light'))
-    theme.set_window_icon(view_window)  # custom taskbar/window icon (if sourceCode/qcs_icon.ico exists)
+    global min_scale_entries, max_scale_entries, error_logger
 
     # Create main container with scrollbar
-    container = ttk.Frame(view_window)
+    container = ttk.Frame(parent)
     canvas = tk.Canvas(container, bg=theme.surface_color(), highlightthickness=0)
     scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
     scrollable_frame = ttk.Frame(canvas)
@@ -820,13 +785,6 @@ def show_view_window():
     # Main frame inside scrollable area
     main_content_frame = ttk.Frame(scrollable_frame, padding=(12, 8))
     main_content_frame.pack(fill='both', expand=True)
-
-    # Header: title, version and help button
-    header = theme.build_header(main_content_frame,
-                                "Database View",
-                                "Step 2 of 2 - visualization settings  ·  QCS %s" % data.QCS_VERSION,
-                                help_command=show_help)
-    header.grid(row=0, column=0, columnspan=3, sticky='ew', padx=5, pady=(0, 10))
 
     # Data settings frame
     data_frame = ttk.LabelFrame(main_content_frame, text=" Data settings ", padding=12)
@@ -1086,7 +1044,7 @@ def show_view_window():
     action_frame = ttk.Frame(scrollable_frame)
     action_frame.pack(pady=10)
 
-    ttk.Button(action_frame, text="< Change Database", command=go_back_to_input).pack(side='left', padx=5)
+    ttk.Button(action_frame, text="<  Back", command=_go_step1).pack(side='left', padx=5)
     ttk.Button(action_frame, text="Save View Settings", command=saveDataViewSettings).pack(side='left', padx=5)
     ttk.Button(action_frame, text="Generate Panels", command=generatePanels, style='Accent.TButton').pack(side='left', padx=5)
 
@@ -1151,30 +1109,57 @@ def show_view_window():
 
     canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
-    view_window.mainloop()
 
-    return back_requested
+# --- Two-step wizard inside a single tab (Step 1 <-> Step 2 swap) ---
+_viz_root = None
+_step1_frame = None
+_step2_frame = None
 
-back_requested = False
-
-def go_back_to_input():
-    """Closes the visualization and returns to the file selection window."""
-    global back_requested
-    back_requested = True
-    view_window.destroy()
-
-# Main flow: input window -> load data -> view window; the view window
-# can send the user back to the input window to pick another database.
-while True:
+def _go_step2():
+    """Next: validate Step 1, build the database, then show Step 2 in place."""
     inputSettings.clear()
-    show_input_window()
-    if not inputSettings:
-        break  # window closed without saving: exit
+    if not saveInputSettings():
+        return  # validation failed (a warning was already shown)
+    global database
     database = load_database()
     if database is None:
-        continue  # error already shown: back to file selection
+        return  # error already shown; stay on Step 1
     dataViewSettings.clear()
-    if not show_view_window():
-        break  # visualization window closed: exit
+    for child in _step2_frame.winfo_children():
+        child.destroy()  # rebuild Step 2 fresh for the new database
+    build_step2(_step2_frame)
+    _step1_frame.pack_forget()
+    _step2_frame.pack(fill='both', expand=True)
 
-os.chdir(rootPath)
+def _go_step1():
+    """Back: return to Step 1 to pick another database."""
+    for child in _step2_frame.winfo_children():
+        child.destroy()
+    _step2_frame.pack_forget()
+    _step1_frame.pack(fill='both', expand=True)
+
+def build_visualization_tab(container, root):
+    """Builds the Data Visualization UI inside `container` (a frame in the
+    unified app's notebook). Hosts the Step 1 <-> Step 2 wizard as two stacked
+    frames swapped by the Next/Back buttons. `root` is the shared Tk root."""
+    global _viz_root, _step1_frame, _step2_frame
+    _viz_root = root
+    _step1_frame = ttk.Frame(container)
+    _step2_frame = ttk.Frame(container)
+    _step1_frame.pack(fill='both', expand=True)  # start on Step 1
+    build_step1(_step1_frame)
+
+
+if __name__ == '__main__':
+    # Standalone dev launch (the shipped entry point is QCS_App.py).
+    theme.enable_high_dpi()
+    _root = Tk()
+    _root.title("QCS - Data Visualization %s" % data.QCS_VERSION)
+    theme.set_scaled_geometry(_root, 1380, 800, min_width=1150, min_height=650)
+    theme.apply_theme(_root, USER_PREFS.get('ui_theme', 'light'))
+    theme.set_window_icon(_root)
+    _frame = ttk.Frame(_root)
+    _frame.pack(fill='both', expand=True)
+    build_visualization_tab(_frame, _root)
+    _root.mainloop()
+    os.chdir(rootPath)
