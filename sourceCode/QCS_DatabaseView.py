@@ -21,7 +21,7 @@ from tkinter import messagebox
 # Tooltips dictionary
 TOOLTIPS = {
     'database_files': "Select database or qualified file(s) to visualize\nMultiple files can be selected (they are combined,\nvalidated and deduplicated automatically)",
-    'join_files': "Build a database from a parent folder: scans the\n'QCS qualified ... data' subfolders of the QCS outputs,\nskips report files and combines everything",
+    'join_files': "Instead of picking files one by one: scan a parent folder,\nfind every 'QCS qualified ... data' subfolder of the QCS outputs,\nskip report files and combine everything found into one database.\n(Selecting multiple files above already joins them - this mode is\nfor sweeping a whole folder tree.)",
     'sort_time': "Sort data chronologically by datetime",
     'instrument': "Which instrument produced the qualified files\nSeaguard (TSCP) and HOBO spreadsheets are never\nstackable - build separate databases",
     'output_name': "Name for processed database file",
@@ -150,13 +150,13 @@ def toggle_all_controls(enabled=False):
     toggle_scale_controls()
 
 def toggle_input_mode():
-    if join.get():  # If Join Files is checked
+    if join.get():  # If 'Build database from a folder' is checked
         set_disabled_style(fileNames_entry)
         set_disabled_style(browse_file_btn)
         set_enabled_style(inputPath_entry)
         set_enabled_style(browse_input_btn)
         set_enabled_style(outputName_entry)
-    else:  # If Join Files is unchecked
+    else:  # unchecked: pick files one by one (multi-select already joins them)
         set_enabled_style(fileNames_entry)
         set_enabled_style(browse_file_btn)
         set_disabled_style(inputPath_entry)
@@ -289,7 +289,7 @@ def saveInputSettings():
         return
     if join.get():
         if not inputPath_entry.get().strip() or not os.path.isdir(inputPath_entry.get().strip()):
-            messagebox.showwarning("Warning", "To join files, select a valid input folder\n('Input Path' field).")
+            messagebox.showwarning("Warning", "To build the database from a folder, select a valid\ninput folder ('Input Path' field).")
             return
         if not outputName_entry.get().strip():
             messagebox.showwarning("Warning", "Define a name for the generated database\n('Output Name' field).")
@@ -297,7 +297,7 @@ def saveInputSettings():
     else:
         db_file = fileNames_entry.get().strip()
         if not db_file:
-            messagebox.showwarning("Warning", "Select the database file (.xlsx)\nor check 'Join Data Files' to create a new one.")
+            messagebox.showwarning("Warning", "Select the database file (.xlsx) or check\n'Build database from a folder' to create a new one.")
             return
         first_file = db_file.split(';')[0]
         if not os.path.isfile(first_file):
@@ -574,7 +574,7 @@ def show_help():
        - Select either:
          * Database file (xlsx) - for existing database
          OR
-         * Input folder + Join Files option - to create new database
+         * Input folder + 'Build database from a folder' - to create a new database
        - Choose output location
        - Configure processing options
     
@@ -652,7 +652,7 @@ def build_step1(parent):
 
     # Options
     join = BooleanVar(value=False)
-    join_cb = ttk.Checkbutton(input_frame, text="Join Data Files", variable=join, command=toggle_input_mode)
+    join_cb = ttk.Checkbutton(input_frame, text="Build database from a folder", variable=join, command=toggle_input_mode)
     join_cb.grid(row=4, column=0, sticky='w', pady=2)
     ToolTip(join_cb, TOOLTIPS['join_files'])
 
@@ -1103,11 +1103,10 @@ def build_step2(parent):
     for message in db_build_messages:
         error_logger.log(message)
 
-    # Configure canvas scrolling
-    def _on_mousewheel(event):
-        canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-
-    canvas.bind_all("<MouseWheel>", _on_mousewheel)
+    # Configure canvas scrolling: only while the cursor is over this canvas
+    # (a raw bind_all would also capture the wheel on the Qualification tab,
+    # since in the unified app both tabs stay mapped)
+    theme.enable_mousewheel(canvas)
 
 
 # --- Two-step wizard inside a single tab (Step 1 <-> Step 2 swap) ---

@@ -1117,7 +1117,7 @@ def build_qualification_tab(container, root):
     global profile_check, check_variables, var_check, outputPath_entry, browse_output_btn, outputName_entry
     global outputFilesFormat_combobox, filter_frame, remove_bad, bad_check, remove_suspect, suspect_check
     global siteSelect_entry, macroregion_label, macroregion_combobox, region_label, region_combobox, update_regions
-    global _last_seaguard, update_inputtype_state, action_frame, help_btn, settings_btn, run_button
+    global _last_seaguard, update_inputtype_state, action_frame, settings_btn, run_button
     global log_console, log_line, status_var, status_label, _error_location, review_light_window
     global run_full_qualification
     window = root
@@ -1154,24 +1154,28 @@ def build_qualification_tab(container, root):
     browse_file_btn.grid(row=1, column=2, padx=(5,0))
     ToolTip(browse_file_btn, TOOLTIPS['data_file'])
 
-    # Data type selection
-    ttk.Label(input_frame, text="Input Type:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(0,2))
-    inputType_combobox = ttk.Combobox(input_frame, values=["Seaguard", "HOBO"], width=15, state='readonly')
-    inputType_combobox.grid(row=3, column=0, sticky='w', pady=(0,5))
+    # Data type selection: Input Type -> Data Type -> Replicates side by side,
+    # left-aligned in a compact sub-row (independent of the stretchy columns above)
+    type_row = ttk.Frame(input_frame)
+    type_row.grid(row=2, column=0, columnspan=3, sticky='w', pady=(0, 5))
+
+    ttk.Label(type_row, text="Input Type:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
+    inputType_combobox = ttk.Combobox(type_row, values=["Seaguard", "HOBO"], width=15, state='readonly')
+    inputType_combobox.grid(row=1, column=0, sticky='w')
     ToolTip(inputType_combobox, TOOLTIPS['input_type'])
 
-    ttk.Label(input_frame, text="Data Type:", style='Header.TLabel').grid(row=2, column=1, sticky='w', pady=(0,2))
-    dType_combobox = ttk.Combobox(input_frame, values=["TSCP Profile", "TSCP Mooring"], width=15, state='readonly')
-    dType_combobox.grid(row=3, column=1, sticky='w', pady=(0,5))
+    ttk.Label(type_row, text="Data Type:", style='Header.TLabel').grid(row=0, column=1, sticky='w', padx=(12, 0), pady=(0,2))
+    dType_combobox = ttk.Combobox(type_row, values=["TSCP Profile", "TSCP Mooring"], width=15, state='readonly')
+    dType_combobox.grid(row=1, column=1, sticky='w', padx=(12, 0))
     ToolTip(dType_combobox, TOOLTIPS['data_type'])
 
     # Replicates (HOBO only): how many redundant HOBO spreadsheets to qualify and
     # combine into one series (temperature mean + spread, light max-of-clean).
-    replicate_label = ttk.Label(input_frame, text="Replicates:", style='Header.TLabel')
-    replicate_label.grid(row=2, column=2, sticky='w', padx=(12, 2), pady=(0, 2))
-    replicate_combobox = ttk.Combobox(input_frame, values=["1", "2", "3", "4"], width=4, state='disabled')
+    replicate_label = ttk.Label(type_row, text="Replicates:", style='Header.TLabel')
+    replicate_label.grid(row=0, column=2, sticky='w', padx=(12, 0), pady=(0, 2))
+    replicate_combobox = ttk.Combobox(type_row, values=["1", "2", "3", "4"], width=4, state='disabled')
     replicate_combobox.set("1")
-    replicate_combobox.grid(row=3, column=2, sticky='w', padx=(12, 0), pady=(0, 5))
+    replicate_combobox.grid(row=1, column=2, sticky='w', padx=(12, 0))
     ToolTip(replicate_combobox,
             "HOBO only: number of redundant HOBO files (2-4) to qualify together and\n"
             "combine into one series. Select all N files at once with 'Browse'.")
@@ -1360,9 +1364,7 @@ def build_qualification_tab(container, root):
     action_frame = ttk.Frame(main_frame)
     action_frame.grid(row=2, column=0, columnspan=2, pady=(14, 4))
 
-    help_btn = ttk.Button(action_frame, text="Help", command=show_help, width=10)
-    help_btn.pack(side='left', padx=5)
-
+    # (the Help button moved to the app's Help menu in v4.1)
     settings_btn = ttk.Button(action_frame, text="Settings", command=open_settings_window, width=12)
     settings_btn.pack(side='left', padx=5)
     ToolTip(settings_btn, TOOLTIPS['settings_button'])

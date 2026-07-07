@@ -64,28 +64,42 @@ def main(run=True):
         viz.USER_PREFS['ui_theme'] = new_theme   # shared dict -> qual sees it too
         viz.save_user_prefs()
 
-    # --- notebook with the two tabs ---
+    # --- notebook tabs + stacked content frames ---
+    # Performance: a plain ttk.Notebook unmaps/remaps the WHOLE widget tree of a
+    # tab on every switch, which is slow with sv-ttk on large tabs. Instead the
+    # notebook holds two empty zero-height frames (just for the native tab look)
+    # and the real content lives in two ALWAYS-MAPPED frames stacked in the same
+    # grid cell; switching only calls tkraise(), which is instant.
     notebook = ttk.Notebook(root)
-    notebook.pack(fill='both', expand=True, padx=8, pady=(4, 8))
+    notebook.pack(fill='x', padx=8, pady=(4, 0))
     theme.suppress_notebook_focus_ring(notebook)
+    notebook.add(ttk.Frame(notebook, height=0), text='   Data Qualification   ')
+    notebook.add(ttk.Frame(notebook, height=0), text='   Data Visualization   ')
 
-    qual_tab = ttk.Frame(notebook)
-    viz_tab = ttk.Frame(notebook)
-    notebook.add(qual_tab, text='   Data Qualification   ')
-    notebook.add(viz_tab, text='   Data Visualization   ')
+    content = ttk.Frame(root)
+    content.pack(fill='both', expand=True, padx=8, pady=(0, 8))
+    content.rowconfigure(0, weight=1)
+    content.columnconfigure(0, weight=1)
+    qual_tab = ttk.Frame(content)
+    viz_tab = ttk.Frame(content)
+    qual_tab.grid(row=0, column=0, sticky='nsew')
+    viz_tab.grid(row=0, column=0, sticky='nsew')
 
     qual.build_qualification_tab(qual_tab, root)
     viz.build_visualization_tab(viz_tab, root)
 
-    # route stdout/stderr to the Execution log of the active tab
+    # raise the selected tab's content and route stdout/stderr to its log
     def on_tab_changed(event=None):
         idx = notebook.index(notebook.select())
         if idx == 0:
+            qual_tab.tkraise()
             _out.set_sink(qual.log_console.log)
-        elif getattr(viz, 'error_logger', None) is not None:
-            _out.set_sink(viz.error_logger.log)
+        else:
+            viz_tab.tkraise()
+            if getattr(viz, 'error_logger', None) is not None:
+                _out.set_sink(viz.error_logger.log)
     notebook.bind('<<NotebookTabChanged>>', on_tab_changed)
-    on_tab_changed()  # start pointed at the qualification log
+    on_tab_changed()  # start on the qualification tab
 
     def switch_to(idx):
         notebook.select(idx)

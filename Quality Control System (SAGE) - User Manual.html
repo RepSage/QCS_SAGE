@@ -369,8 +369,11 @@
             <td>Opens the explorer to select a folder.</td>
         </tr>
         <tr>
-            <td>Join Data Files</td>
-            <td>Checkbox to enable file-combining mode.</td>
+            <td>Build database from a folder</td>
+            <td>Checkbox: instead of picking files one by one, scan a parent folder
+                (every 'QCS qualified ... data' subfolder) and combine everything found.
+                Selecting multiple files in "Database File(s)" already joins them —
+                this mode is for sweeping a whole folder tree.</td>
         </tr>
         <tr>
             <td>Sort by Time</td>
@@ -778,8 +781,8 @@
         <li><strong>Manual selection:</strong> in "Database File(s)", select one or several
             qualified files (.csv or .xlsx, in any combination) — they are combined, validated
             and deduplicated automatically; <em>or</em></li>
-        <li><strong>Join Data Files (parent folder):</strong> check the option and point
-            "Input Path" to the folder that contains the QCS outputs. The scan is
+        <li><strong>Build database from a folder (parent folder):</strong> check the option and
+            point "Input Path" to the folder that contains the QCS outputs. The scan is
             <strong>recursive</strong>: any subfolder named exactly
             <code>QCS qualified tscp data</code> (Seaguard) or
             <code>QCS qualified hobo data</code> (HOBO) is found, at any level.</li>
@@ -815,7 +818,7 @@
     </ul>
 
     <div class="note">
-        <p>If "Join Data Files" is checked, the unified database is also saved as
+        <p>If "Build database from a folder" is checked, the unified database is also saved as
         <code>.xlsx</code> (with the name from the "Output Name" field) in the
         <code>DatabaseView</code> folder inside the Output Path, for reuse.</p>
     </div>
