@@ -519,7 +519,7 @@ def collect_input_settings():
     INPUT['file_name'] = file_name_match.group() if file_name_match else ""
     INPUT['raw_data_path'] = os.path.dirname(data_path)
 
-    INPUT['pressure_unit'] = pressure_unit_combobox.get() or 'decibar'
+    INPUT['pressure_unit'] = pressure_unit_combobox.get() or 'kPa'
     INPUT['conductivity_unit'] = conductivity_unit_combobox.get() or 'mS/cm'
     INPUT['correct_gmt3h'] = correct_gmt3h.get()
     INPUT['select_profile_data'] = select_profile_data.get()
@@ -1203,6 +1203,7 @@ units_frame.grid(row=4, column=0, columnspan=2, sticky='ew', pady=5)
 
 ttk.Label(units_frame, text="Pressure:").grid(row=0, column=0, sticky='w')
 pressure_unit_combobox = ttk.Combobox(units_frame, values=["decibar", "bar", "kPa"], width=10, state='readonly')
+pressure_unit_combobox.set('kPa')  # default input unit (auto-converted to decibar internally)
 pressure_unit_combobox.grid(row=0, column=1, padx=5, pady=2)
 ToolTip(pressure_unit_combobox, TOOLTIPS['pressure_unit'])
 
