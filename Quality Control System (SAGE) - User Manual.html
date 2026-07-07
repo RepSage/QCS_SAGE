@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v4.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v4.1</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -204,9 +204,12 @@
         <li>Obtain the project folder (containing the <strong>sourceCode</strong> subfolder and the <code>.bat</code> shortcuts)</li>
         <li>Install the dependencies by running in the terminal:
             <pre><code>python -m pip install -r sourceCode/requirements.txt</code></pre></li>
-        <li>To qualify data, open <strong>QCS - Data Qualification.bat</strong></li>
-        <li>To visualize data, open <strong>QCS - Data Visualization.bat</strong></li>
+        <li>Open <strong>QCS.bat</strong></li>
     </ol>
+    <p>Since v4.1, both tools live in a <strong>single window</strong> (open with
+    <strong>QCS.bat</strong>): a menu bar (File / Edit / View / Tools / Help) plus two tabs,
+    <strong>Data Qualification</strong> and <strong>Data Visualization</strong>. Dark mode is
+    under the View menu.</p>
     <p>Since v4.0, the app runs with <strong>no terminal window</strong> (launched via
     <code>pythonw</code>): all progress, warnings and errors appear in the <strong>Execution log</strong>
     panel at the bottom of each window. If a fatal error happens before the window can open, a message
@@ -1197,14 +1200,15 @@
     </ul>
 
     <h3>How to run</h3>
-    <p>The recommended way is via the <code>.bat</code> shortcuts in the main folder, which already
-    call the correct Python. Alternatively, in the <strong>sourceCode</strong> folder, you can run
-    the scripts directly:</p>
+    <p>The recommended way is via the <code>QCS.bat</code> shortcut in the main folder, which already
+    calls the correct Python and opens the unified app. Alternatively, in the
+    <strong>sourceCode</strong> folder, you can run the scripts directly:</p>
     <div class="code-container">
         <button class="copy-btn" onclick="copyToClipboard('qcs-run-code')">Copy</button>
         <div class="code-block" id="qcs-run-code">
-        <pre><code class="language-bash">python QCS_Main.py          # qualification tool
-python QCS_DatabaseView.py  # visualization tool</code></pre>
+        <pre><code class="language-bash">python QCS_App.py           # unified app (both tabs) - the normal entry point
+python QCS_Main.py          # qualification tool only (development)
+python QCS_DatabaseView.py  # visualization tool only (development)</code></pre>
         </div>
     </div>
 

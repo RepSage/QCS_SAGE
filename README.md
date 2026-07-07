@@ -5,14 +5,16 @@ Tool for qualification and visualization of oceanographic physico-chemical data
 
 ## How to run
 
-The program runs directly from the Python scripts, using Anaconda's Python. Two
-ready-made shortcuts sit in the main folder (double-click to open):
+The program runs directly from the Python scripts, using Anaconda's Python.
+Since v4.1 both tools live in a single window; double-click one shortcut in the
+main folder:
 
-- **`QCS - Data Qualification.bat`** — qualification tool (`sourceCode/QCS_Main.py`).
-- **`QCS - Data Visualization.bat`** — visualization tool (`sourceCode/QCS_DatabaseView.py`).
+- **`QCS.bat`** — the unified app (`sourceCode/QCS_App.py`): a menu bar plus two
+  tabs, **Data Qualification** and **Data Visualization**.
 
 The app runs with no terminal window; progress and any errors are shown in the
-in-app Execution log.
+in-app Execution log. (The two tool modules `QCS_Main.py` and
+`QCS_DatabaseView.py` can still be launched on their own for development.)
 
 ## Dependencies
 
@@ -26,6 +28,7 @@ python -m pip install -r sourceCode/requirements.txt
 ## Structure
 
 - `sourceCode/` — source code:
+  - `QCS_App.py` — unified app shell (menu bar + Qualification/Visualization tabs); the entry point.
   - `QCS_Main.py` — qualification tool (interface + QC test pipeline).
   - `QCS_DatabaseView.py` — database visualization tool.
   - `QCS_DataHandler.py` — data reading, conversion and formatting; the `QCS_VERSION` constant.
