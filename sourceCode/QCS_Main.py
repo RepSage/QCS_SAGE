@@ -1322,6 +1322,7 @@ def update_inputtype_state(event=None):
         replicate_combobox.set('1')                    # replicates are HOBO-only
         replicate_combobox.config(state='disabled')
         update_profile_checkbox_state()
+    apply_output_name()  # keep the Output File Name in sync (single vs combined)
 
 inputType_combobox.bind("<<ComboboxSelected>>", update_inputtype_state)
 update_inputtype_state()
