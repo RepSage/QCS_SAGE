@@ -182,7 +182,7 @@ TOOLTIPS = {
     'variable_check': "Activates manual limit verification\nfor each variable before processing",
     'output_folder': "Folder where qualification results\nwill be saved",
     'output_name': "Base name for output files\n(without extension)",
-    'output_format': "Output file format\n.csv: Delimited text\n.xlsx: Excel",
+    'output_format': "Output file format\n.xlsx: Excel spreadsheet",
     'remove_bad': "Automatically removes data flagged\nas BAD (flag 4) in output",
     'remove_suspect': "Automatically removes data flagged\nas SUSPECT (flag 3) in output",
     'site_code': "Identification code for the\ncollection site (max 5 characters)",
@@ -511,8 +511,8 @@ def collect_input_settings():
     if not outputName_entry.get().strip():
         messagebox.showwarning("Warning", "Define a name for the output files\n('Output File Name' field).")
         return False
-    if outputFilesFormat_combobox.get() not in ('.csv', '.xlsx'):
-        messagebox.showwarning("Warning", "Select the output format\n(.csv or .xlsx).")
+    if outputFilesFormat_combobox.get() != '.xlsx':
+        messagebox.showwarning("Warning", "Select the output format (.xlsx).")
         return False
 
     file_name_match = re.search(r'[^\\/]+$', data_path, re.IGNORECASE)
@@ -640,10 +640,7 @@ def write_combined_replicates(combined, light_plots=()):
     root = os.path.join(OUTPUT['output_file_path'], base)
     folder = os.path.join(root, 'QCS qualified hobo data')
     os.makedirs(folder, exist_ok=True)
-    if 'xlsx' in OUTPUT.get('output_data_format', '.xlsx').lower():
-        data.save_excel_autofit(ordered, os.path.join(folder, base + '.xlsx'))
-    else:
-        ordered.to_csv(os.path.join(folder, base + '.csv'), index=False)
+    data.save_excel_autofit(ordered, os.path.join(folder, base + '.xlsx'))
     # copy each replicate's light-window plot (kept with the 'QCS_' prefix so
     # build_database keeps ignoring them when scanning folders)
     for plot in light_plots:
@@ -1250,7 +1247,7 @@ ToolTip(outputName_entry, TOOLTIPS['output_name'])
 
 # Output format
 ttk.Label(output_frame, text="Output Format:", style='Header.TLabel').grid(row=4, column=0, sticky='w', pady=(0,2))
-outputFilesFormat_combobox = ttk.Combobox(output_frame, values=[".csv", ".xlsx"], width=8, state='readonly')
+outputFilesFormat_combobox = ttk.Combobox(output_frame, values=[".xlsx"], width=8, state='readonly')
 outputFilesFormat_combobox.grid(row=5, column=0, sticky='w', pady=(0,5))
 ToolTip(outputFilesFormat_combobox, TOOLTIPS['output_format'])
 
@@ -1800,7 +1797,7 @@ def run_full_qualification():
         return QC.vertical_gradient_test(raw_data[column], raw_data['Depth (m)'], flags,
                                          grad_fail=f['fail'], grad_susp=f['susp'])
 
-    qc_report_rows = []  # one row per executed test -> QCS_test_report.csv
+    qc_report_rows = []  # one row per executed test -> QCS_test_report.xlsx
 
     def count_last_flags(flags):
         last = [fl[-1] for fl in flags]
@@ -1975,7 +1972,7 @@ def run_full_qualification():
     layout_type = 'hobo' if INPUT['input_type'] == 'HOBO' else 'tscp'
     qualified_data = data.order_var (qualified_data, n_cel, data_type=layout_type)
 
-    # Export qualified data to .csv/.xlsx file
+    # Export qualified data to .xlsx file
     os.chdir(OUTPUT['output_file_path'])
     # the qualification output folder is named after the input file + '_QLF'
     # (same for every workflow: Seaguard profile/mooring and HOBO)
@@ -1999,28 +1996,25 @@ def run_full_qualification():
     else:
         output_base = re.sub(r'\.(csv|xlsx)$', '', OUTPUT['output_file_name'],
                              flags=re.IGNORECASE).strip() or input_qlf
-    if re.search('xlsx', OUTPUT['output_data_format'], re.IGNORECASE):
-        data.save_excel_autofit(qualified_data, os.path.join(path, output_base + '.xlsx'))  ##create excel
-    if re.search('csv', OUTPUT['output_data_format'], re.IGNORECASE):
-        qualified_data.to_csv(os.path.join(path, output_base + '.csv'), index=False) ##create csv
+    data.save_excel_autofit(qualified_data, os.path.join(path, output_base + '.xlsx'))  ##create excel
     log_line('Exported data to: %s' % path)
 
     log_line('Exporting statistics table, reports and flag legend to: %s' % path)
     stat_table = data.tscp_stats_table (qualified_data)
-    stat_table.to_csv(path + '/QCS_tscp_stat.csv', index=False)
+    data.save_excel_autofit(stat_table, path + '/QCS_tscp_stat.xlsx')
 
     # per-test summary (the numbers previously printed only to the console)
-    pd.DataFrame(qc_report_rows).to_csv(path + '/QCS_test_report.csv', index=False)
+    data.save_excel_autofit(pd.DataFrame(qc_report_rows), path + '/QCS_test_report.xlsx')
 
     # flag legend: which test/variable sits at each position of the flag string,
     # plus the meaning of each flag code (mapping used to live only in the code)
-    with open(path + '/QCS_flag_legend.csv', 'w', encoding='utf-8') as f:
-        f.write('flag_position,test,variable\n')
-        for pos, entry in enumerate(test_sequence, start=1):
-            f.write('%d,%s,%s\n' % (pos, entry[1], entry[0]))
-        f.write('\nflag_code,meaning\n')
-        f.write('1,good data\n2,not evaluated\n3,suspect\n4,bad data\n'
-                '5,test switched off\n9,missing value\n')
+    legend_positions = pd.DataFrame([(pos, entry[1], entry[0]) for pos, entry in enumerate(test_sequence, start=1)],
+                                    columns=['flag_position', 'test', 'variable'])
+    legend_codes = pd.DataFrame([(1, 'good data'), (2, 'not evaluated'), (3, 'suspect'),
+                                 (4, 'bad data'), (5, 'test switched off'), (9, 'missing value')],
+                                columns=['flag_code', 'meaning'])
+    data.save_excel_sheets({'flag_positions': legend_positions, 'flag_codes': legend_codes},
+                           path + '/QCS_flag_legend.xlsx')
 
     # overall report: totals + per-variable bad/suspect/missing counts,
     # 'Valid' discounts rows with bad data in ANY of the nine variables
@@ -2048,7 +2042,7 @@ def run_full_qualification():
         report_cols['lux_suspect'] = int((qualified_data['Flag_lux'] == 3).sum())
         report_cols['lux_missing'] = int((qualified_data['Flag_lux'] == 9).sum())
     QCS_report = pd.DataFrame(report_cols, index=[0])
-    QCS_report.to_csv(path + '/QCS_report.csv')
+    data.save_excel_autofit(QCS_report, path + '/QCS_report.xlsx')
 
     # HOBO: saves the light usage window plot with the applied cutoff and parameters
     # - the permanent documentation of WHERE and WHY the light was cut

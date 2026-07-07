@@ -686,19 +686,29 @@ def order_var (qualified_data, n_cel, data_type):
                     qualified_data = qualified_data.drop(columns=[var])
     return qualified_data
 
+def _autofit_worksheet(ws, dataframe, index=False):
+    """Widens each column of an openpyxl worksheet to fit its content."""
+    from openpyxl.utils import get_column_letter
+    offset = 1 if index else 0  # column A is the index when index=True
+    for i, col in enumerate(dataframe.columns):
+        value_len = int(dataframe[col].astype(str).map(len).max()) if len(dataframe) else 0
+        width = min(max(len(str(col)), value_len) + 2, 60)  # +padding, capped so it stays sane
+        ws.column_dimensions[get_column_letter(i + 1 + offset)].width = width
+
 def save_excel_autofit(dataframe, path, index=False):
     """Writes a DataFrame to an .xlsx with each column widened to fit its content
     (header and values), so the sheet is readable without resizing by hand.
-    Used for every qualified spreadsheet the app writes."""
-    from openpyxl.utils import get_column_letter
+    Used for every spreadsheet the app writes."""
     with pd.ExcelWriter(path, engine='openpyxl') as writer:
         dataframe.to_excel(writer, index=index)
-        ws = writer.sheets[next(iter(writer.sheets))]
-        offset = 1 if index else 0  # column A is the index when index=True
-        for i, col in enumerate(dataframe.columns):
-            value_len = int(dataframe[col].astype(str).map(len).max()) if len(dataframe) else 0
-            width = min(max(len(str(col)), value_len) + 2, 60)  # +padding, capped so it stays sane
-            ws.column_dimensions[get_column_letter(i + 1 + offset)].width = width
+        _autofit_worksheet(writer.sheets[next(iter(writer.sheets))], dataframe, index)
+
+def save_excel_sheets(sheets, path, index=False):
+    """Writes {sheet_name: DataFrame} to a single .xlsx, each column auto-fitted."""
+    with pd.ExcelWriter(path, engine='openpyxl') as writer:
+        for name, df in sheets.items():
+            df.to_excel(writer, sheet_name=name, index=index)
+            _autofit_worksheet(writer.sheets[name], df, index)
 
 def tscp_stats_table (qualified_data):
     # builds the statistics table with whichever of the main variables
