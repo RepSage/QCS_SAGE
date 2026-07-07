@@ -1107,10 +1107,13 @@ REGION_COORDS = {macro: {label: (lat, lon) for label, lat, lon in regions}
 DEFAULT_MACROREGION = 'Brazil'
 DEFAULT_REGION = 'East / Abrolhos (BA-ES)'
 
-def build_qualification_tab(container, root):
+def build_qualification_tab(container, root, shared_log=None):
     """Builds the Data Qualification UI inside `container` (a frame in the
     unified app's notebook). `root` is the shared Tk root used for dialogs,
-    the watch cursor and modal reviews. All pipeline logic is unchanged."""
+    the watch cursor and modal reviews. `shared_log` is the app-wide Execution
+    log owned by the QCS_App shell (one log, fixed at the bottom, for every
+    pipeline stage); without it (standalone dev launch) the tab creates its
+    own. All pipeline logic is unchanged."""
     global window, main_frame, input_frame, output_frame, fileNames_entry, browse_file_btn
     global inputType_combobox, dType_combobox, replicate_label, replicate_combobox, update_profile_checkbox_state, units_frame
     global pressure_unit_combobox, conductivity_unit_combobox, options_frame, correct_gmt3h, gmt_check, select_profile_data
@@ -1373,12 +1376,18 @@ def build_qualification_tab(container, root):
     run_button.pack(side='left', padx=5, ipadx=20, ipady=2)
     ToolTip(run_button, TOOLTIPS['run_button'])
 
-    # Execution log: progress, warnings and the per-test summary during RUN
-    log_console = theme.LogConsole(main_frame, title=" Execution log ", height=6)
-    log_console.frame.grid(row=3, column=0, columnspan=2, sticky='nsew', padx=5, pady=(4, 0))
-    # from here on, everything printed (including buffered startup messages) shows
-    # in this panel instead of a terminal
-    _out.set_sink(log_console.log)
+    # Execution log: progress, warnings and the per-test summary during RUN.
+    # In the unified app the log is ONE shell-owned panel fixed at the bottom of
+    # the window (consistent position/styling across all pipeline stages);
+    # standalone dev launches create their own.
+    if shared_log is not None:
+        log_console = shared_log
+    else:
+        log_console = theme.LogConsole(main_frame, title=" Execution log ", height=6)
+        log_console.frame.grid(row=3, column=0, columnspan=2, sticky='nsew', padx=5, pady=(4, 0))
+        # from here on, everything printed (including buffered startup messages)
+        # shows in this panel instead of a terminal
+        _out.set_sink(log_console.log)
 
     def log_line(message):
         """Prints the message (redirected to the log panel) and redraws, so progress

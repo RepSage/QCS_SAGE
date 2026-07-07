@@ -211,9 +211,12 @@
     <strong>Data Qualification</strong> and <strong>Data Visualization</strong>. Dark mode is
     under the View menu.</p>
     <p>Since v4.0, the app runs with <strong>no terminal window</strong> (launched via
-    <code>pythonw</code>): all progress, warnings and errors appear in the <strong>Execution log</strong>
-    panel at the bottom of each window. If a fatal error happens before the window can open, a message
-    box appears and a <code>sourceCode/QCS_crash.log</code> file is written with the details.</p>
+    <code>pythonw</code>): all progress, warnings and errors appear in the <strong>Execution log</strong>.
+    Since v4.1 this is <strong>one single panel, fixed at the bottom of the window</strong> — the same
+    log, in the same place and with the same message styling, for every pipeline stage (qualification,
+    database building/preview and panel generation). If a fatal error happens before the window can
+    open, a message box appears and a <code>sourceCode/QCS_crash.log</code> file is written with the
+    details.</p>
 
     <h2 id="interface_qcs_main">3. QCS_Main Interface</h2>
     <h3>INPUT SETTINGS Section</h3>
@@ -382,9 +385,23 @@
         <tr>
             <td>Instrument</td>
             <td>Selects the instrument that produced the qualified files (Seaguard or HOBO).
-            Seaguard and HOBO spreadsheets have different layouts and are <strong>never combined
-            with each other</strong> — build a separate database for each instrument. Both .csv
-            and .xlsx files are read automatically (the old format selector was removed in v4.0).</td>
+            Since v4.1 it is <strong>auto-detected</strong> from the selected files (and stays
+            editable). Seaguard and HOBO spreadsheets have different layouts and are
+            <strong>never combined with each other</strong> — build a separate database for
+            each instrument. Both .csv and .xlsx files are read automatically (the old format
+            selector was removed in v4.0).</td>
+        </tr>
+        <tr>
+            <td>Recent (v4.1)</td>
+            <td>Dropdown with the last file selections — pick one to refill the fields
+                with a single click.</td>
+        </tr>
+        <tr>
+            <td>Database preview (v4.1)</td>
+            <td>The <strong>Preview</strong> button builds the database right away and shows a
+                summary (rows, sites, period, source files, warnings) without leaving Step 1 —
+                confirm the selection before moving on. "Next &gt;" reuses this build, so
+                nothing is read twice.</td>
         </tr>
         <tr>
             <td>Output Name</td>

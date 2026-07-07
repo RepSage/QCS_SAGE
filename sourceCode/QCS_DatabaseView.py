@@ -265,6 +265,25 @@ def selectFiles():
         toggle_input_mode()
         USER_PREFS['dbv_last_db_dir'] = os.path.dirname(filenames[0])
         save_user_prefs()
+        autodetect_instrument(filenames[0])
+
+def autodetect_instrument(path):
+    """Sets the Instrument combobox from the first selected file's columns
+    (detect_qualified_layout). Just a convenience: the combobox stays editable,
+    and any failure only leaves the current selection with a log warning."""
+    try:
+        if path.lower().endswith('.csv'):
+            head = pd.read_csv(path, nrows=1)
+        else:
+            head = pd.read_excel(path, nrows=1)
+        layout = data.detect_qualified_layout(head)
+        detected = 'HOBO' if layout == 'hobo' else 'Seaguard'
+        instrument_combobox.set(detected)
+        print('MESSAGE: instrument auto-detected as %s (from %s).'
+              % (detected, os.path.basename(path)))
+    except Exception as e:
+        print('WARNING: could not auto-detect the instrument from %s: %s'
+              % (os.path.basename(path), e))
 
 def selectOutputFolder():
     folderPath = filedialog.askdirectory(initialdir=USER_PREFS.get('dbv_last_output_dir', '/'), title="Select output folder")
@@ -662,12 +681,22 @@ def build_step1(parent):
     ToolTip(sort_cb, TOOLTIPS['sort_time'])
 
     # Instrument (Seaguard/TSCP or HOBO): the two are never stackable, so the
-    # database is built for one instrument at a time (.csv and .xlsx both read)
+    # database is built for one instrument at a time (.csv and .xlsx both read).
+    # Auto-set from the selected files (detect_qualified_layout); still editable.
     ttk.Label(input_frame, text="Instrument:", style='Header.TLabel').grid(row=6, column=0, sticky='w', pady=(5,2))
     instrument_combobox = ttk.Combobox(input_frame, values=["Seaguard", "HOBO"], width=15, state='readonly')
     instrument_combobox.set("Seaguard")
     instrument_combobox.grid(row=7, column=0, sticky='w', pady=(0,5))
     ToolTip(instrument_combobox, TOOLTIPS['instrument'])
+
+    # Recent selections: one click reopens the last database file choices
+    global _recent_combobox
+    ttk.Label(input_frame, text="Recent:", style='Header.TLabel').grid(row=8, column=0, sticky='w', pady=(5,2))
+    _recent_combobox = ttk.Combobox(input_frame, state='readonly', width=45)
+    _recent_combobox.grid(row=9, column=0, columnspan=2, sticky='ew', pady=(0,5))
+    _recent_combobox.bind('<<ComboboxSelected>>', _apply_recent)
+    ToolTip(_recent_combobox, "Recently used database file selections\n(pick one to fill the fields above)")
+    _refresh_recent_combobox()
 
     # --- Output Section ---
     # Output naming
@@ -687,8 +716,23 @@ def build_step1(parent):
     browse_output_btn.grid(row=3, column=1, padx=5)
     ToolTip(browse_output_btn, TOOLTIPS['output_path'])
 
+    # Database preview: build now and summarize (sites, period, rows) so the
+    # user can confirm the selection BEFORE moving on; Next reuses the result
+    global _preview_var
+    preview_frame = ttk.LabelFrame(main_frame, text=" Database preview ", padding=12)
+    preview_frame.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky='ew')
+    preview_frame.columnconfigure(1, weight=1)
+    preview_btn = ttk.Button(preview_frame, text="Preview", command=preview_database, width=12)
+    preview_btn.grid(row=0, column=0, sticky='nw', padx=(0, 12))
+    ToolTip(preview_btn, "Builds the database now and shows a summary below\n"
+                         "(sites, period, rows). 'Next >' reuses this build -\n"
+                         "nothing is read twice.")
+    _preview_var = StringVar(value="No preview yet - choose the files (or folder) and click Preview.")
+    ttk.Label(preview_frame, textvariable=_preview_var, justify='left',
+              style='Small.TLabel').grid(row=0, column=1, sticky='w')
+
     # Next button: validate + store, then advance to Step 2 in the same tab
-    ttk.Button(main_frame, text="Next  >", command=_go_step2, style='Accent.TButton').grid(row=2, column=0, columnspan=2, pady=12, ipadx=12)
+    ttk.Button(main_frame, text="Next  >", command=_go_step2, style='Accent.TButton').grid(row=3, column=0, columnspan=2, pady=12, ipadx=12)
 
     # restore the user's latest choices
     restore_entry(fileNames_entry, USER_PREFS.get('dbv_database_file', ''))
@@ -1095,13 +1139,21 @@ def build_step2(parent):
         dType_combobox.set(USER_PREFS['dbv_data_type'])
         toggle_data_type()
 
-    # Create error logger (starts with the database unification summary)
-    error_logger = ErrorLogger(scrollable_frame)
-    # route printed output into this window's log (flushes any buffered startup
-    # messages); re-pointed each time a new view window is opened
-    _out.set_sink(error_logger.log)
-    for message in db_build_messages:
-        error_logger.log(message)
+    # Execution log: in the unified app this is the ONE shell-owned panel at the
+    # bottom of the window (same position/styling in every pipeline stage);
+    # standalone dev launches create their own inside the scroll area.
+    global _db_msgs_logged
+    if _shared_log is not None:
+        error_logger = _shared_log
+    else:
+        error_logger = ErrorLogger(scrollable_frame)
+        # route printed output into this window's log (flushes any buffered
+        # startup messages)
+        _out.set_sink(error_logger.log)
+    if not _db_msgs_logged:  # skip if the Step 1 preview already logged them
+        for message in db_build_messages:
+            error_logger.log(message)
+        _db_msgs_logged = True
 
     # Configure canvas scrolling: only while the cursor is over this canvas
     # (a raw bind_all would also capture the wheel on the Qualification tab,
@@ -1113,16 +1165,107 @@ def build_step2(parent):
 _viz_root = None
 _step1_frame = None
 _step2_frame = None
+_shared_log = None        # app-wide Execution log (owned by the QCS_App shell)
+_db_msgs_logged = False   # True once db_build_messages went to the log (no dupes)
+_recent_combobox = None   # Step 1 'Recent' picker (created in build_step1)
+_preview_var = None       # Step 1 preview summary text (created in build_step1)
 
-def _go_step2():
-    """Next: validate Step 1, build the database, then show Step 2 in place."""
+# database built by 'Preview' on Step 1, reused by Next if the settings match
+_preview_cache = {'key': None, 'database': None}
+
+def _settings_key():
+    """Snapshot of the Step 1 settings that define the database content."""
+    return (inputSettings.get('databaseFileName', ''),
+            inputSettings.get('joinFiles', False),
+            inputSettings.get('inputPath', ''),
+            inputSettings.get('sortByTime', False),
+            inputSettings.get('instrument', ''))
+
+def _summarize_database(db):
+    """One-paragraph summary shown in the Step 1 preview panel."""
+    sites = sorted(set(db['Site'].dropna().astype(str))) if 'Site' in db.columns else []
+    shown = ', '.join(sites[:8]) + ('…' if len(sites) > 8 else '')
+    t0, t1 = db['Datetime'].min(), db['Datetime'].max()
+    n_src = db['Source file'].nunique() if 'Source file' in db.columns else '-'
+    return ("Rows: %s    Sites: %d (%s)\n"
+            "Period: %s  to  %s    Source files: %s    Messages: %d (Execution log)"
+            % ('{:,}'.format(len(db)), len(sites), shown,
+               t0.strftime('%d/%m/%Y %H:%M'), t1.strftime('%d/%m/%Y %H:%M'),
+               n_src, len(db_build_messages)))
+
+def preview_database():
+    """Builds the database now and shows its summary WITHOUT leaving Step 1, so
+    the user can confirm the right files were picked. The result is cached and
+    reused by Next (no double build) while the settings stay the same."""
+    global _db_msgs_logged
     inputSettings.clear()
     if not saveInputSettings():
         return  # validation failed (a warning was already shown)
-    global database
-    database = load_database()
+    db = load_database()
+    if db is None:
+        _preview_var.set("Preview failed - see the message.")
+        return
+    _preview_cache['key'] = _settings_key()
+    _preview_cache['database'] = db
+    for message in db_build_messages:
+        print(message)  # goes to the shared Execution log
+    _db_msgs_logged = True
+    _preview_var.set(_summarize_database(db))
+
+def _update_recents():
+    """Keeps the last file selections in USER_PREFS for one-click reopening."""
+    if inputSettings.get('joinFiles', False):
+        return  # folder-scan mode: nothing file-based to remember
+    files = inputSettings.get('databaseFileName', '').strip()
+    if not files:
+        return
+    entry = {'files': files, 'instrument': inputSettings.get('instrument', 'Seaguard')}
+    recents = [r for r in USER_PREFS.get('dbv_recent', []) if r.get('files') != files]
+    recents.insert(0, entry)
+    USER_PREFS['dbv_recent'] = recents[:8]
+    save_user_prefs()
+    _refresh_recent_combobox()
+
+def _recent_display(entry):
+    names = ', '.join(os.path.basename(f) for f in entry['files'].split(';') if f)
+    if len(names) > 70:
+        names = names[:67] + '…'
+    return '%s   [%s]' % (names, entry.get('instrument', '?'))
+
+def _refresh_recent_combobox():
+    if _recent_combobox is None:
+        return
+    _recent_combobox['values'] = [_recent_display(r) for r in USER_PREFS.get('dbv_recent', [])]
+
+def _apply_recent(event=None):
+    """Fills Step 1 from the picked recent selection."""
+    idx = _recent_combobox.current()
+    recents = USER_PREFS.get('dbv_recent', [])
+    if idx < 0 or idx >= len(recents):
+        return
+    entry = recents[idx]
+    join.set(False)
+    toggle_input_mode()
+    restore_entry(fileNames_entry, entry['files'])
+    if entry.get('instrument') in ('Seaguard', 'HOBO'):
+        instrument_combobox.set(entry['instrument'])
+
+def _go_step2():
+    """Next: validate Step 1, build the database (or reuse the previewed one),
+    then show Step 2 in place."""
+    global database, _db_msgs_logged
+    inputSettings.clear()
+    if not saveInputSettings():
+        return  # validation failed (a warning was already shown)
+    if (_preview_cache['database'] is not None
+            and _preview_cache['key'] == _settings_key()):
+        database = _preview_cache['database']  # already built by Preview
+    else:
+        _db_msgs_logged = False
+        database = load_database()
     if database is None:
         return  # error already shown; stay on Step 1
+    _update_recents()
     dataViewSettings.clear()
     for child in _step2_frame.winfo_children():
         child.destroy()  # rebuild Step 2 fresh for the new database
@@ -1137,12 +1280,14 @@ def _go_step1():
     _step2_frame.pack_forget()
     _step1_frame.pack(fill='both', expand=True)
 
-def build_visualization_tab(container, root):
+def build_visualization_tab(container, root, shared_log=None):
     """Builds the Data Visualization UI inside `container` (a frame in the
     unified app's notebook). Hosts the Step 1 <-> Step 2 wizard as two stacked
-    frames swapped by the Next/Back buttons. `root` is the shared Tk root."""
-    global _viz_root, _step1_frame, _step2_frame
+    frames swapped by the Next/Back buttons. `root` is the shared Tk root;
+    `shared_log` is the app-wide Execution log owned by the QCS_App shell."""
+    global _viz_root, _step1_frame, _step2_frame, _shared_log
     _viz_root = root
+    _shared_log = shared_log
     _step1_frame = ttk.Frame(container)
     _step2_frame = ttk.Frame(container)
     _step1_frame.pack(fill='both', expand=True)  # start on Step 1

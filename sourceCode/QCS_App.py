@@ -76,6 +76,13 @@ def main(run=True):
     notebook.add(ttk.Frame(notebook, height=0), text='   Data Qualification   ')
     notebook.add(ttk.Frame(notebook, height=0), text='   Data Visualization   ')
 
+    # ONE Execution log for the whole app, fixed at the bottom of the window:
+    # every pipeline stage (qualification, Step 1 preview/build, Step 2 panels)
+    # writes to the same panel - consistent position and message styling.
+    app_log = theme.LogConsole(root, title=' Execution log ', height=7)
+    app_log.frame.pack(side='bottom', fill='x', padx=8, pady=(0, 8))
+    _out.set_sink(app_log.log)
+
     content = ttk.Frame(root)
     content.pack(fill='both', expand=True, padx=8, pady=(0, 8))
     content.rowconfigure(0, weight=1)
@@ -85,19 +92,13 @@ def main(run=True):
     qual_tab.grid(row=0, column=0, sticky='nsew')
     viz_tab.grid(row=0, column=0, sticky='nsew')
 
-    qual.build_qualification_tab(qual_tab, root)
-    viz.build_visualization_tab(viz_tab, root)
+    qual.build_qualification_tab(qual_tab, root, shared_log=app_log)
+    viz.build_visualization_tab(viz_tab, root, shared_log=app_log)
 
-    # raise the selected tab's content and route stdout/stderr to its log
+    # raise the selected tab's content (the log at the bottom never moves)
     def on_tab_changed(event=None):
         idx = notebook.index(notebook.select())
-        if idx == 0:
-            qual_tab.tkraise()
-            _out.set_sink(qual.log_console.log)
-        else:
-            viz_tab.tkraise()
-            if getattr(viz, 'error_logger', None) is not None:
-                _out.set_sink(viz.error_logger.log)
+        (qual_tab if idx == 0 else viz_tab).tkraise()
     notebook.bind('<<NotebookTabChanged>>', on_tab_changed)
     on_tab_changed()  # start on the qualification tab
 
