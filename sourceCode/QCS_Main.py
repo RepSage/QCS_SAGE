@@ -586,6 +586,37 @@ def collect_input_settings():
     save_user_prefs()
     return True
 
+# permanent documentation of the replicate-combination method, written into the
+# combined folder (parallel to the light-window plot documenting the cutoff)
+COMBINE_METHOD_TEXT = """QCS - HOBO redundant replicates: combination method
+====================================================
+
+%d HOBO replicates of the same deployment were qualified INDEPENDENTLY (each with
+its own light-window review) and then combined into this single series.
+
+TEMPERATURE
+  Combined value = the MEAN of the replicates that are acceptable (Flag_T <= 2) at
+  each timestamp. Replicates are aligned to the FIRST replicate's timestamps by
+  NEAREST match within half the sampling interval (redundant HOBOs are never
+  started at the exact same second, but that offset is tiny compared with the
+  sampling step, so paired readings are effectively simultaneous - it is a nearest
+  match, not interpolation). The between-replicate spread (max - min) is kept in
+  the 'Temperature spread (degC)' column; when it exceeds 0.5 degC the combined
+  Flag_T is set to SUSPECT (3) - the replicates disagree, which is itself a QC
+  signal. The combined series has the same timestamps (and row count) as the first
+  replicate.
+
+LIGHT
+  Combined value = the per-timestamp MAX of the NON-fouled readings (Flag_lux != 4).
+  Fouling only attenuates light, so the brightest unfouled sensor is the most
+  reliable. The combined light stays good (Flag_lux 1) while AT LEAST ONE replicate
+  is unfouled, and becomes BAD (4) only once EVERY replicate is fouled - so the
+  usable window is extended to the last replicate to foul. Light is NOT averaged
+  (that would mix clean and fouled sensors). Each replicate's own light-window plot
+  (QCS_light_window_<replicate>.svg) is included here so you can see WHERE the
+  combined window ends and WHY.
+"""
+
 def write_combined_replicates(combined, light_plots=()):
     """Writes the combined HOBO replicates sheet to a
     '<site>_<ddmmyy start>_<ddmmyy end>_combined_QLF' folder (reference dates
@@ -622,6 +653,9 @@ def write_combined_replicates(combined, light_plots=()):
             shutil.copy(plot, os.path.join(folder, 'QCS_light_window_%s.svg' % rep_base))
         except Exception as e:
             log_line('WARNING: could not copy the light window plot of %s: %s' % (rep_base, e))
+    # method note: permanent documentation of HOW the replicates were combined
+    with open(os.path.join(folder, 'QCS_combine_method.txt'), 'w', encoding='utf-8') as f:
+        f.write(COMBINE_METHOD_TEXT % INPUT.get('n_replicates', len(light_plots) or 2))
     return root
 
 def start_qualification():

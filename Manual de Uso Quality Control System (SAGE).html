@@ -883,6 +883,32 @@
     <p>To visualize HOBO databases (dedicated temperature and light panels with the fouling window
     shaded), see section 11.</p>
 
+    <h3>Redundant replicates (2-4 HOBOs)</h3>
+    <p>When two or more HOBOs are deployed together for redundancy, set
+    <strong>Replicates</strong> (2-4) in the main window and select all N files at once with Browse.
+    Each replicate is qualified <strong>independently</strong> (its own light-window review) and then
+    combined into a single series, saved to a <code>&lt;site&gt;_&lt;start&gt;_&lt;end&gt;_combined_QLF</code>
+    folder (the individual per-file <code>_QLF</code> outputs are also kept). The method is written to
+    <code>QCS_combine_method.txt</code> in the combined folder, and each replicate's
+    <code>QCS_light_window_&lt;replicate&gt;.svg</code> is copied there.</p>
+    <ul>
+        <li><strong>Temperature:</strong> the <strong>mean</strong> of the replicates that are
+        acceptable (<code>Flag_T &le; 2</code>) at each timestamp. Replicates are aligned to the first
+        replicate's timestamps by <strong>nearest match within half the sampling interval</strong>
+        (redundant HOBOs are never started at the exact same second, but that offset is tiny versus the
+        sampling step, so paired readings are effectively simultaneous — it is a nearest match, not
+        interpolation). The between-replicate <strong>spread</strong> (max − min) is kept in the
+        <code>Temperature spread (degC)</code> column; when it exceeds 0.5 °C the combined
+        <code>Flag_T</code> is set to <strong>SUSPECT (3)</strong> — the replicates disagree, which is
+        itself a QC signal.</li>
+        <li><strong>Light:</strong> the per-timestamp <strong>maximum of the non-fouled</strong>
+        readings (<code>Flag_lux &ne; 4</code>). Fouling only attenuates light, so the brightest
+        unfouled sensor is the most reliable. The combined light stays good while <strong>at least
+        one</strong> replicate is unfouled and becomes BAD (4) only once <strong>every</strong>
+        replicate is fouled — the usable window is <strong>extended to the last replicate to
+        foul</strong>. Light is not averaged (that would mix clean and fouled sensors).</li>
+    </ul>
+
     <h2 id="generated_outputs">10. Generated Outputs</h2>
     <h3>Folder Structure</h3>
     <pre>Root/
