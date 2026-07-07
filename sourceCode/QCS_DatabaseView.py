@@ -244,25 +244,34 @@ def toggle_data_type():
 
     toggle_all_controls(enabled=True)  # Enable everything
 
-    # Specific logic for each data type
+    def _clear_disable(entry):
+        entry.config(state='normal')
+        entry.delete(0, END)
+        set_disabled_style(entry)
+
+    # Specific logic for each data type. Fields that do not apply are cleared and
+    # disabled (blank + not selectable), following the app-wide convention.
     if is_hobo_input():
         # HOBO: the three checkboxes become their own panels (temperature/light);
         # no T-S (there is no salinity) and no profile (there is no depth)
         set_disabled_style(ts_cb)
-        set_disabled_style(depth_min_entry)
-        set_disabled_style(depth_max_entry)
+        _clear_disable(depth_min_entry)
+        _clear_disable(depth_max_entry)
     elif data_type == 'mooring':
+        panel3.set(False)
         set_disabled_style(panel3_cb)
         set_disabled_style(ts_cb)
         # the depth range only applies to profile plots
-        set_disabled_style(depth_min_entry)
-        set_disabled_style(depth_max_entry)
+        _clear_disable(depth_min_entry)
+        _clear_disable(depth_max_entry)
     elif data_type == 'tscp profile':
+        panel1.set(False)
+        panel2.set(False)
         set_disabled_style(panel1_cb)
         set_disabled_style(panel2_cb)
         # the X-axis time window only applies to mooring plots
-        set_disabled_style(time_start_entry)
-        set_disabled_style(time_end_entry)
+        _clear_disable(time_start_entry)
+        _clear_disable(time_end_entry)
     
     toggle_panel_dependent_controls()
     toggle_parameter_checkboxes()
@@ -918,7 +927,9 @@ def build_step2(parent):
                         "HOBO Light multi-site")
         panel_tips = (TOOLTIPS['hobo_temp'], TOOLTIPS['hobo_light'], TOOLTIPS['hobo_light_multi'])
     else:
-        panel_labels = ("Panel 1 (mooring)", "Panel 2 (mooring)", "Panel 3 (profile)")
+        panel_labels = ("Parameters at a site (mooring)",
+                        "A parameter across sites (mooring)",
+                        "Vertical profile at a site")
         panel_tips = (TOOLTIPS['panel1'], TOOLTIPS['panel2'], TOOLTIPS['panel3'])
 
     ttk.Label(vis_frame, text="Select panels:").grid(row=0, column=0, sticky='w', pady=5)
@@ -992,7 +1003,7 @@ def build_step2(parent):
     ToolTip(fixed_scale_cb, TOOLTIPS['fixed_scale'])
 
     # X-axis time window (mooring plots)
-    ttk.Label(vis_frame, text="X-axis start (mooring):").grid(row=6, column=1, sticky='w', pady=(10,2))
+    ttk.Label(vis_frame, text="X-axis start (mooring):").grid(row=6, column=1, sticky='w', pady=(8,2))
     time_start_entry = ttk.Entry(vis_frame, width=28)
     time_start_entry.grid(row=7, column=1, sticky='w', pady=2)
     ToolTip(time_start_entry, TOOLTIPS['time_start'])
@@ -1007,12 +1018,12 @@ def build_step2(parent):
     data_start = database['Datetime'].min()
     data_end = database['Datetime'].max()
     if pd.notna(data_start) and pd.notna(data_end):
-        coverage_text = "Data available:\n%s  to  %s" % (data_start.strftime('%d/%m/%Y %H:%M'),
-                                                         data_end.strftime('%d/%m/%Y %H:%M'))
+        coverage_text = "Data available: %s to %s" % (data_start.strftime('%d/%m/%Y %H:%M'),
+                                                      data_end.strftime('%d/%m/%Y %H:%M'))
     else:
         coverage_text = "Data available: unknown (invalid dates)"
     ttk.Label(vis_frame, text=coverage_text, style='Small.TLabel').grid(
-        row=10, column=1, sticky='w', pady=(2,5))
+        row=10, column=1, sticky='w', pady=(0,2))
 
     # Depth-axis range (profile plots) - analogous to the time window above
     ttk.Label(vis_frame, text="Depth-axis min (profile):").grid(row=11, column=1, sticky='w', pady=(10,2))
@@ -1177,14 +1188,46 @@ def build_step2(parent):
     restore_entry(tendency_entry, USER_PREFS.get('dbv_degree', ''))
     if USER_PREFS.get('dbv_ts_param'):
         tsParam_combobox.set(USER_PREFS['dbv_ts_param'])
-    # re-apply enable/disable rules with the restored values
+    # Data type: if a qualification handed it over, use it and LOCK the field
+    # (the qualified file already IS a profile / mooring / HOBO, so choosing the
+    # wrong one would only cause errors); otherwise restore the last choice.
+    global _pending_step2
+    handoff_type = _pending_step2.get('data_type')
     if is_hobo_input():
-        # the only valid option for HOBO: select it and enable the controls
         dType_combobox.set('mooring')
+        dType_combobox.config(state='disabled')  # HOBO has only one option
+        toggle_data_type()
+    elif handoff_type in dType_values:
+        dType_combobox.set(handoff_type)
+        dType_combobox.config(state='disabled')  # locked: comes from the file
         toggle_data_type()
     elif USER_PREFS.get('dbv_data_type') in dType_values:
         dType_combobox.set(USER_PREFS['dbv_data_type'])
         toggle_data_type()
+
+    # coordinates from the qualification region (the file does not store them)
+    if _pending_step2.get('latitude') is not None:
+        restore_entry(latitude_entry, str(_pending_step2['latitude']))
+    if _pending_step2.get('longitude') is not None:
+        restore_entry(longitude_entry, str(_pending_step2['longitude']))
+
+    # X-axis start defaults to the first available date (mooring plots). A saved
+    # value is kept only if it falls inside this database's range (a value left
+    # over from another database would plot an empty window).
+    if pd.notna(data_start) and str(time_start_entry.cget('state')) != 'disabled':
+        cur = time_start_entry.get().strip()
+        keep = False
+        if cur:
+            try:
+                cv = pd.to_datetime(cur, dayfirst=True)
+                keep = pd.notna(cv) and data_start <= cv <= data_end
+            except Exception:
+                keep = False
+        if not keep:
+            time_start_entry.delete(0, END)
+            time_start_entry.insert(0, data_start.strftime('%d/%m/%Y %H:%M'))
+
+    _pending_step2 = {}  # consumed
 
     # Execution log: in the unified app this is the ONE shell-owned panel at the
     # bottom of the window (same position/styling in every pipeline stage);
@@ -1217,6 +1260,10 @@ _db_msgs_logged = False   # True once db_build_messages went to the log (no dupe
 _recent_combobox = None   # Step 1 'Recent' picker (created in build_step1)
 _preview_var = None       # Step 1 preview summary text (created in build_step1)
 _input_mode_cache = {}    # stashes Database File(s) while folder-scan mode is on
+# handed over from a qualification run (via apply_pending_prefill) and consumed
+# by build_step2: the data type (profile/mooring/hobo) and the region coordinates,
+# which the qualified file does not store. Locks Data type and fills lat/long.
+_pending_step2 = {}
 
 # database built by 'Preview' on Step 1, reused by Next if the settings match
 _preview_cache = {'key': None, 'database': None}
@@ -1316,6 +1363,11 @@ def apply_pending_prefill(info):
     USER_PREFS['dbv_output_name'] = os.path.splitext(os.path.basename(info.get('file', '')))[0]
     if info.get('instrument') in ('Seaguard', 'HOBO'):
         instrument_combobox.set(info['instrument'])
+    # stash the data type + coordinates for build_step2 (the file lacks them)
+    global _pending_step2
+    _pending_step2 = {'data_type': info.get('data_type'),
+                      'latitude': info.get('latitude'),
+                      'longitude': info.get('longitude')}
     join.set(False)
     toggle_input_mode()
     _preview_cache['key'] = None   # force a rebuild for the new selection

@@ -706,7 +706,13 @@ def start_qualification():
             PENDING_VIZ_PREFILL = {
                 'file': OUTPUT['last_qualified_file'],
                 'out_root': OUTPUT.get('last_output_root', ''),
-                'instrument': 'HOBO' if INPUT.get('input_type') == 'HOBO' else 'Seaguard'}
+                'instrument': 'HOBO' if INPUT.get('input_type') == 'HOBO' else 'Seaguard',
+                # the qualified file does not store profile/mooring or the
+                # coordinates, so pass them along for the Visualization tab
+                'data_type': ('hobo' if INPUT.get('input_type') == 'HOBO'
+                              else ('tscp profile' if INPUT.get('profile') else 'mooring')),
+                'latitude': INPUT.get('latitude'),
+                'longitude': INPUT.get('longitude')}
         messagebox.showinfo("Done",
                             "Qualification completed successfully!\n\n"
                             "Results saved to:\n%s\n\n"
