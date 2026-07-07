@@ -302,7 +302,8 @@
         </tr>
         <tr>
             <td>Output Format</td>
-            <td>Dropdown to select the format (CSV or XLSX).</td>
+            <td>Output format. Since v4.0 every spreadsheet the app writes is <strong>.xlsx</strong>
+                (Excel), with columns auto-fitted to their content.</td>
         </tr>
         <tr>
             <td>Remove Bad Data</td>
@@ -547,7 +548,7 @@
             only → light usable window, HOBO only)</li>
         <li>Flags are cumulative - a data point can have multiple codes</li>
         <li>The exact position → test → variable mapping is written to the
-            <code>QCS_flag_legend.csv</code> file, generated with each qualification (v4.0)</li>
+            <code>QCS_flag_legend.xlsx</code> file, generated with each qualification (v4.0)</li>
     </ul>
 
     <h4>Example</h4>
@@ -655,7 +656,7 @@
             the threshold to confirm the cutoff</li>
     </ul>
     <p>The values used are written on the <code>QCS_light_window.svg</code> plot itself, in the log
-    and in <code>QCS_test_report.csv</code> — the cutoff is always traceable.</p>
+    and in <code>QCS_test_report.xlsx</code> — the cutoff is always traceable.</p>
 
     <h3>How to Access Help</h3>
     <ul>
@@ -913,11 +914,11 @@
     <h3>Folder Structure</h3>
     <pre>Root/
 ├── QCS qualified tscp data/   (or QCS qualified hobo data/, depending on the instrument)
-│   ├── Qualified data (CSV/XLSX)
-│   ├── QCS_report.csv
-│   ├── QCS_test_report.csv
-│   ├── QCS_flag_legend.csv
-│   ├── QCS_tscp_stat.csv
+│   ├── Qualified data (.xlsx)
+│   ├── QCS_report.xlsx
+│   ├── QCS_test_report.xlsx
+│   ├── QCS_flag_legend.xlsx
+│   ├── QCS_tscp_stat.xlsx
 │   └── QCS_light_window.svg   (HOBO only)
 ├── QCS DataView (fixed scale)/
 │   └── Fixed-scale plots
@@ -935,25 +936,26 @@
                     (identical column layout across spreadsheets)</li>
             </ul>
         </li>
-        <li><strong>Report (QCS_report.csv):</strong>
+        <li><strong>Report (QCS_report.xlsx):</strong>
             <ul>
                 <li>Bad/suspect/missing counts for the 9 variables</li>
                 <li>Timestamp checks (backward steps, duplicates, large gaps)</li>
                 <li>"Valid" discounts rows with bad data in any variable</li>
             </ul>
         </li>
-        <li><strong>Per-test report (QCS_test_report.csv — v4.0):</strong>
+        <li><strong>Per-test report (QCS_test_report.xlsx — v4.0):</strong>
             <ul>
                 <li>One row per executed test: good/suspect/bad/missing counts,
                     test off, and execution time</li>
             </ul>
         </li>
-        <li><strong>Flag legend (QCS_flag_legend.csv — v4.0):</strong>
+        <li><strong>Flag legend (QCS_flag_legend.xlsx — v4.0):</strong>
             <ul>
-                <li>Flag-string position → test → variable, and the meaning of the codes</li>
+                <li>Two sheets: <em>flag_positions</em> (flag-string position → test → variable)
+                    and <em>flag_codes</em> (the meaning of each code)</li>
             </ul>
         </li>
-        <li><strong>Statistics (QCS_tscp_stat.csv):</strong>
+        <li><strong>Statistics (QCS_tscp_stat.xlsx):</strong>
             <ul>
                 <li>Mean, median, standard deviation</li>
                 <li>Minimum and maximum values</li>
