@@ -587,6 +587,10 @@ def saveDataViewSettings():
 
 def generatePanels():
     error_logger.clear()  # Clear the log before generating new panels
+    # close panels from a previous run so the new ones (with the new settings,
+    # e.g. an edited X-axis window) replace them instead of opening behind and
+    # looking like nothing changed
+    view.plt.close('all')
 
     # implicitly saves the current interface choices: generating panels with
     # stale settings was a pitfall of the 2-click save->generate flow
@@ -603,8 +607,8 @@ def generatePanels():
     selected_years = [y for y in dataViewSettings.get('filterByYears', []) if y in available_years]
     if not selected_years:
         messagebox.showwarning("No year selected",
-                               "Check at least one year in 'Filter by Year' and click "
-                               "'Save View Settings' again.\n\n"
+                               "Check at least one year in 'Filter by year' and click "
+                               "'Generate panels' again.\n\n"
                                "Years available in this database:\n%s" % years_str)
         error_logger.log("ERROR: no year selected (available: %s)" % years_str)
         return

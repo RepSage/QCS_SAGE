@@ -7,8 +7,13 @@ from matplotlib.lines import Line2D # type: ignore
 ####################################################################
 
 def enable_scroll_zoom(fig):
-    """Mouse-wheel zoom (around the cursor) on every axes of a shown figure, so
-    the generated panels can be inspected closely without the toolbar lens."""
+    """Interaction for a shown panel: mouse-wheel zoom around the cursor,
+    middle-button drag to pan, a 'Reset view' toolbar button that restores the
+    original plotted limits, and removal of the redundant Zoom lens. Call it
+    right before plt.show() (after all axes have their final limits)."""
+    # snapshot the original plotted view for Reset
+    original = [(ax, ax.get_xlim(), ax.get_ylim()) for ax in fig.axes]
+
     def on_scroll(event):
         ax = event.inaxes
         if ax is None:
@@ -19,7 +24,51 @@ def enable_scroll_zoom(fig):
         ax.set_xlim(xd - (xd - xlim[0]) * scale, xd + (xlim[1] - xd) * scale)
         ax.set_ylim(yd - (yd - ylim[0]) * scale, yd + (ylim[1] - yd) * scale)
         fig.canvas.draw_idle()
+
+    pan = {'x': None, 'y': None, 'ax': None}
+
+    def on_press(event):
+        if event.button == 2 and event.inaxes is not None:   # 2 = middle button
+            pan.update(x=event.xdata, y=event.ydata, ax=event.inaxes)
+
+    def on_move(event):
+        if pan['ax'] is None or event.inaxes is not pan['ax'] or event.xdata is None:
+            return
+        ax = pan['ax']
+        dx, dy = event.xdata - pan['x'], event.ydata - pan['y']
+        xlim, ylim = ax.get_xlim(), ax.get_ylim()
+        ax.set_xlim(xlim[0] - dx, xlim[1] - dx)
+        ax.set_ylim(ylim[0] - dy, ylim[1] - dy)
+        fig.canvas.draw_idle()
+
+    def on_release(event):
+        if event.button == 2:
+            pan['ax'] = None
+
+    def reset_view(*_):
+        for ax, xl, yl in original:
+            ax.set_xlim(xl)
+            ax.set_ylim(yl)
+        fig.canvas.draw_idle()
+
     fig.canvas.mpl_connect('scroll_event', on_scroll)
+    fig.canvas.mpl_connect('button_press_event', on_press)
+    fig.canvas.mpl_connect('motion_notify_event', on_move)
+    fig.canvas.mpl_connect('button_release_event', on_release)
+
+    # toolbar: drop the Zoom lens and add a 'Reset view' button (best-effort,
+    # backend-dependent - the interactions above work regardless)
+    try:
+        import tkinter as tk
+        tb = fig.canvas.manager.toolbar
+        zoom = getattr(tb, '_buttons', {}).get('Zoom')
+        if zoom is not None:
+            zoom.pack_forget()
+        if not getattr(tb, '_qcs_reset_added', False):
+            tk.Button(tb, text='Reset view', command=reset_view).pack(side='left', padx=4)
+            tb._qcs_reset_added = True
+    except Exception:
+        pass
 
 def renameParameters (parameter_names):
     rParam = []
