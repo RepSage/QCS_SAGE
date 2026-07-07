@@ -805,7 +805,7 @@ def show_help():
 
 def open_settings_window():
     settings_win = Toplevel()
-    settings_win.title(" Quality Control Settings")
+    settings_win.title(" Quality control settings")
     theme.set_scaled_geometry(settings_win, 900, 700, min_width=720, min_height=520)
     settings_win.configure(bg=theme.surface_color())
 
@@ -814,7 +814,7 @@ def open_settings_window():
     
     # Tests Tab
     tests_frame = ttk.Frame(notebook)
-    notebook.add(tests_frame, text="Quality Control Tests")
+    notebook.add(tests_frame, text="Quality control tests")
     create_tests_tab(tests_frame)
     
     # Parameters Tab
@@ -824,7 +824,7 @@ def open_settings_window():
 
     # Per-variable factors Tab
     factors_frame = ttk.Frame(notebook)
-    notebook.add(factors_frame, text="Factors per Variable")
+    notebook.add(factors_frame, text="Factors per variable")
     create_factors_tab(factors_frame)
 
     # remove the dashed focus ring from the selected tab's label
@@ -837,10 +837,10 @@ def open_settings_window():
     # 'Export Settings' and the 'Config File' field (import) were removed from the
     # interface at the user's request (they duplicated the Settings tab). The functions
     # export_config / selectConfigFile remain defined for easy reactivation.
-    ttk.Button(button_frame, text="Reset to Defaults",
+    ttk.Button(button_frame, text="Reset to defaults",
               command=reset_settings_to_defaults, width=20).pack(side='left', padx=5)
 
-    ttk.Button(button_frame, text="Save Settings",
+    ttk.Button(button_frame, text="Save settings",
               command=lambda: save_settings(settings_win),
               style='Accent.TButton').pack(side='right', padx=5)
 
@@ -859,7 +859,7 @@ def create_tests_tab(parent):
 
     # Organize tests into categories
     test_categories = {
-        "Sensor Range Tests": [
+        "Sensor range tests": [
             'temperature sensor range',
             'salinity sensor range',
             'conductivity sensor range',
@@ -869,7 +869,7 @@ def create_tests_tab(parent):
             'chlorophyll sensor range',
             'turbidity sensor range'
         ],
-        "Environmental Range Tests": [
+        "Environmental range tests": [
             'temperature environmental range',
             'salinity environmental range',
             'conductivity environmental range',
@@ -880,7 +880,7 @@ def create_tests_tab(parent):
             'dissolved organic matter environmental range',
             'turbidity environmental range'
         ],
-        "Spike Tests": [
+        "Spike tests": [
             'temperature spikes',
             'salinity spikes',
             'conductivity spikes',
@@ -891,25 +891,25 @@ def create_tests_tab(parent):
             'dissolved organic matter spikes',
             'turbidity spikes'
         ],
-        "Rate of Change Tests": [
+        "Rate of change tests": [
             'temperature rate of change',
             'salinity rate of change',
             'conductivity rate of change',
             'pressure rate of change'
         ],
-        "Flat Line Tests": [
+        "Flat line tests": [
             'temperature flat line',
             'salinity flat line',
             'conductivity flat line',
             'pressure flat line'
         ],
-        "Vertical Gradient & Density Inversion Tests (profiles)": [
+        "Vertical gradient & density inversion tests (profiles)": [
             'temperature vertical gradient',
             'salinity vertical gradient',
             'conductivity vertical gradient',
             'density inversion'
         ],
-        "Light Tests (HOBO)": [
+        "Light tests (HOBO)": [
             'light fouling window'
         ]
     }
@@ -995,7 +995,7 @@ def create_params_tab(parent):
             row += 1
 
     # Other parameters: a single value each
-    ttk.Label(scrollable_frame, text='Other Parameters', font=theme.FONT_BOLD).grid(
+    ttk.Label(scrollable_frame, text='Other parameters', font=theme.FONT_BOLD).grid(
         row=row, column=0, sticky='w', pady=(10, 3), columnspan=4)
     row += 1
     for key in CONFIG['tsSettings']:
@@ -1022,7 +1022,7 @@ def create_factors_tab(parent):
     scrollbar.pack(side="right", fill="y")
     theme.enable_mousewheel(canvas)
 
-    ttk.Label(scrollable_frame, text="Spike / Rate of change / Vertical gradient thresholds",
+    ttk.Label(scrollable_frame, text="Spike / rate of change / vertical gradient thresholds",
               font=theme.FONT_BOLD).grid(row=0, column=0, columnspan=4, sticky='w', pady=(10, 5), padx=5)
 
     # header row
@@ -1116,7 +1116,7 @@ def choose_variables_to_check(candidates, root):
     panels (instead of stepping through all of them). Returns the chosen column
     names, or [] if the user cancels. 'All'/'None' toggle every checkbox."""
     win = Toplevel(root)
-    win.title("Check Variables - choose which to review")
+    win.title("Check variables - choose which to review")
     win.transient(root)
     theme.set_scaled_geometry(win, 440, 580, min_width=360, min_height=420)
     frame = ttk.Frame(win, padding=14)
@@ -1215,7 +1215,7 @@ def build_qualification_tab(container, root, shared_log=None):
 
     # --- Input Section ---
     # File selection
-    ttk.Label(input_frame, text="Data File:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
+    ttk.Label(input_frame, text="Data file:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
     fileNames_entry = ttk.Entry(input_frame, width=24)
     fileNames_entry.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(0,5))
     ToolTip(fileNames_entry, TOOLTIPS['data_file'])
@@ -1229,12 +1229,12 @@ def build_qualification_tab(container, root, shared_log=None):
     type_row = ttk.Frame(input_frame)
     type_row.grid(row=2, column=0, columnspan=3, sticky='w', pady=(0, 5))
 
-    ttk.Label(type_row, text="Input Type:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
+    ttk.Label(type_row, text="Input type:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
     inputType_combobox = ttk.Combobox(type_row, values=["Seaguard", "HOBO"], width=15, state='readonly')
     inputType_combobox.grid(row=1, column=0, sticky='w')
     ToolTip(inputType_combobox, TOOLTIPS['input_type'])
 
-    ttk.Label(type_row, text="Data Type:", style='Header.TLabel').grid(row=0, column=1, sticky='w', padx=(12, 0), pady=(0,2))
+    ttk.Label(type_row, text="Data type:", style='Header.TLabel').grid(row=0, column=1, sticky='w', padx=(12, 0), pady=(0,2))
     dType_combobox = ttk.Combobox(type_row, values=["TSCP Profile", "TSCP Mooring"], width=15, state='readonly')
     dType_combobox.grid(row=1, column=1, sticky='w', padx=(12, 0))
     ToolTip(dType_combobox, TOOLTIPS['data_type'])
@@ -1288,19 +1288,19 @@ def build_qualification_tab(container, root, shared_log=None):
     ToolTip(gmt_check, TOOLTIPS['gmt_correction'])
 
     select_profile_data = BooleanVar(value=False)
-    profile_check = ttk.Checkbutton(options_frame, text="Select Profile Data", variable=select_profile_data)
+    profile_check = ttk.Checkbutton(options_frame, text="Select profile data", variable=select_profile_data)
     profile_check.pack(anchor='w', pady=2)
     profile_check.config(state="disabled")  # Starts disabled
     ToolTip(profile_check, TOOLTIPS['profile_selection'])
 
     check_variables = BooleanVar(value=False)
-    var_check = ttk.Checkbutton(options_frame, text="Check Variables", variable=check_variables)
+    var_check = ttk.Checkbutton(options_frame, text="Check variables", variable=check_variables)
     var_check.pack(anchor='w', pady=2)
     ToolTip(var_check, TOOLTIPS['variable_check'])
 
     # --- Output Section ---
     # Output folder
-    ttk.Label(output_frame, text="Output Folder:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
+    ttk.Label(output_frame, text="Output folder:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
     outputPath_entry = ttk.Entry(output_frame, width=24)
     outputPath_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
     ToolTip(outputPath_entry, TOOLTIPS['output_folder'])
@@ -1310,33 +1310,33 @@ def build_qualification_tab(container, root, shared_log=None):
     ToolTip(browse_output_btn, TOOLTIPS['output_folder'])
 
     # File naming
-    ttk.Label(output_frame, text="Output File Name:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(0,2))
+    ttk.Label(output_frame, text="Output file name:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(0,2))
     outputName_entry = ttk.Entry(output_frame, width=24)
     outputName_entry.grid(row=3, column=0, columnspan=2, sticky='ew', pady=(0,5))
     ToolTip(outputName_entry, TOOLTIPS['output_name'])
 
     # Output format
-    ttk.Label(output_frame, text="Output Format:", style='Header.TLabel').grid(row=4, column=0, sticky='w', pady=(0,2))
+    ttk.Label(output_frame, text="Output format:", style='Header.TLabel').grid(row=4, column=0, sticky='w', pady=(0,2))
     outputFilesFormat_combobox = ttk.Combobox(output_frame, values=[".csv", ".xlsx"], width=8, state='readonly')
     outputFilesFormat_combobox.grid(row=5, column=0, sticky='w', pady=(0,5))
     ToolTip(outputFilesFormat_combobox, TOOLTIPS['output_format'])
 
     # Data filtering
-    filter_frame = ttk.LabelFrame(output_frame, text=" Data Filtering ", padding=5)
+    filter_frame = ttk.LabelFrame(output_frame, text=" Data filtering ", padding=5)
     filter_frame.grid(row=6, column=0, columnspan=2, sticky='ew', pady=5)
 
     remove_bad = BooleanVar(value=False)
-    bad_check = ttk.Checkbutton(filter_frame, text="Remove Bad Data", variable=remove_bad)
+    bad_check = ttk.Checkbutton(filter_frame, text="Remove bad data", variable=remove_bad)
     bad_check.pack(anchor='w', pady=2)
     ToolTip(bad_check, TOOLTIPS['remove_bad'])
 
     remove_suspect = BooleanVar(value=False)
-    suspect_check = ttk.Checkbutton(filter_frame, text="Remove Suspect Data", variable=remove_suspect)
+    suspect_check = ttk.Checkbutton(filter_frame, text="Remove suspect data", variable=remove_suspect)
     suspect_check.pack(anchor='w', pady=2)
     ToolTip(suspect_check, TOOLTIPS['remove_suspect'])
 
     # Site selection
-    ttk.Label(output_frame, text="Site Code:", style='Header.TLabel').grid(row=7, column=0, sticky='w', pady=(5,2))
+    ttk.Label(output_frame, text="Site code:", style='Header.TLabel').grid(row=7, column=0, sticky='w', pady=(5,2))
     siteSelect_entry = ttk.Entry(output_frame, width=12)
     siteSelect_entry.grid(row=8, column=0, sticky='w', pady=(0,5))
     ToolTip(siteSelect_entry, TOOLTIPS['site_code'])
@@ -1439,7 +1439,7 @@ def build_qualification_tab(container, root, shared_log=None):
     settings_btn.pack(side='left', padx=5)
     ToolTip(settings_btn, TOOLTIPS['settings_button'])
 
-    run_button = ttk.Button(action_frame, text="Run Qualification", command=start_qualification, style='Accent.TButton')
+    run_button = ttk.Button(action_frame, text="Run qualification", command=start_qualification, style='Accent.TButton')
     run_button.pack(side='left', padx=5, ipadx=20, ipady=2)
     ToolTip(run_button, TOOLTIPS['run_button'])
 
@@ -1731,7 +1731,7 @@ def build_qualification_tab(container, root, shared_log=None):
                             plt.close(fig1)
                             peak_window.destroy()
 
-                        peak_window.title("Peak Validation")
+                        peak_window.title("Peak validation")
                         theme.set_scaled_geometry(peak_window, 280, 110)
                         peak_window.resizable(False, False)
                         peak_window.configure(bg=theme.surface_color())

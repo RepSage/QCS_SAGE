@@ -72,8 +72,8 @@ def main(run=True):
     # grid cell; switching only calls tkraise(), which is instant.
     notebook = ttk.Notebook(root)
     notebook.pack(fill='x', padx=8, pady=(4, 0))
-    notebook.add(ttk.Frame(notebook, height=0), text='   Data Qualification   ')
-    notebook.add(ttk.Frame(notebook, height=0), text='   Data Visualization   ')
+    notebook.add(ttk.Frame(notebook, height=0), text='   Data qualification   ')
+    notebook.add(ttk.Frame(notebook, height=0), text='   Data visualization   ')
 
     # ONE Execution log for the whole app, fixed at the bottom of the window:
     # every pipeline stage (qualification, Step 1 preview/build, Step 2 panels)
@@ -124,7 +124,7 @@ def main(run=True):
         if viz._step2_frame is not None and viz._step2_frame.winfo_ismapped():
             viz.generatePanels()
         else:
-            messagebox.showinfo('Generate Panels',
+            messagebox.showinfo('Generate panels',
                                 "Load a database first: on the Data Visualization "
                                 "tab, choose the files and click 'Next'.")
 
@@ -132,37 +132,37 @@ def main(run=True):
     menubar = Menu(root)
 
     m_file = Menu(menubar, tearoff=0)
-    m_file.add_command(label='Open Data File…  (Qualification)',
+    m_file.add_command(label='Open data file…  (qualification)',
                        command=lambda: (switch_to(0), qual.selectFiles()))
-    m_file.add_command(label='Open Database File(s)…  (Visualization)',
+    m_file.add_command(label='Open database file(s)…  (visualization)',
                        command=lambda: (switch_to(1), viz.selectFiles()))
-    m_file.add_command(label='Set Output Folder…  (Qualification)',
+    m_file.add_command(label='Set output folder…  (qualification)',
                        command=lambda: (switch_to(0), qual.selectOutputFolder()))
     m_file.add_separator()
     m_file.add_command(label='Exit', command=root.destroy)
     menubar.add_cascade(label='File', menu=m_file)
 
     m_edit = Menu(menubar, tearoff=0)
-    m_edit.add_command(label='Qualification Settings…', command=qual.open_settings_window)
+    m_edit.add_command(label='Qualification settings…', command=qual.open_settings_window)
     menubar.add_cascade(label='Edit', menu=m_edit)
 
     m_view = Menu(menubar, tearoff=0)
     m_view.add_checkbutton(label='Dark mode', variable=dark_mode, command=toggle_theme)
     m_view.add_separator()
-    m_view.add_command(label='Go to Data Qualification', command=lambda: switch_to(0))
-    m_view.add_command(label='Go to Data Visualization', command=lambda: switch_to(1))
+    m_view.add_command(label='Go to data qualification', command=lambda: switch_to(0))
+    m_view.add_command(label='Go to data visualization', command=lambda: switch_to(1))
     menubar.add_cascade(label='View', menu=m_view)
 
     m_tools = Menu(menubar, tearoff=0)
-    m_tools.add_command(label='Run Qualification',
+    m_tools.add_command(label='Run qualification',
                         command=lambda: (switch_to(0), qual.start_qualification()))
-    m_tools.add_command(label='Generate Panels', command=run_generate_panels)
+    m_tools.add_command(label='Generate panels', command=run_generate_panels)
     menubar.add_cascade(label='Tools', menu=m_tools)
 
     m_help = Menu(menubar, tearoff=0)
-    m_help.add_command(label='User Manual', command=open_manual)
-    m_help.add_command(label='Qualification Help', command=qual.show_help)
-    m_help.add_command(label='Visualization Help', command=viz.show_help)
+    m_help.add_command(label='User manual', command=open_manual)
+    m_help.add_command(label='Qualification help', command=qual.show_help)
+    m_help.add_command(label='Visualization help', command=viz.show_help)
     m_help.add_separator()
     m_help.add_command(label='About', command=show_about)
     menubar.add_cascade(label='Help', menu=m_help)

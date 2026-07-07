@@ -688,7 +688,7 @@ def build_step1(parent):
 
     # --- Input Section ---
     # File selection
-    ttk.Label(input_frame, text="Database File(s):", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
+    ttk.Label(input_frame, text="Database file(s):", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
     fileNames_entry = ttk.Entry(input_frame, width=24)
     fileNames_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
     ToolTip(fileNames_entry, TOOLTIPS['database_files'])
@@ -698,7 +698,7 @@ def build_step1(parent):
     ToolTip(browse_file_btn, TOOLTIPS['database_files'])
 
     # Input path
-    ttk.Label(input_frame, text="Input Path:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(5,2))
+    ttk.Label(input_frame, text="Input path:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(5,2))
     inputPath_entry = ttk.Entry(input_frame, width=24)
     inputPath_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
     set_disabled_style(inputPath_entry)
@@ -716,7 +716,7 @@ def build_step1(parent):
     ToolTip(join_cb, TOOLTIPS['join_files'])
 
     sort = BooleanVar(value=False)
-    sort_cb = ttk.Checkbutton(input_frame, text="Sort by Time", variable=sort)
+    sort_cb = ttk.Checkbutton(input_frame, text="Sort by time", variable=sort)
     sort_cb.grid(row=5, column=0, sticky='w', pady=2)
     ToolTip(sort_cb, TOOLTIPS['sort_time'])
 
@@ -740,14 +740,14 @@ def build_step1(parent):
 
     # --- Output Section ---
     # Output naming
-    ttk.Label(output_frame, text="Output Name:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
+    ttk.Label(output_frame, text="Output name:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
     outputName_entry = ttk.Entry(output_frame, width=24)
     outputName_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
     set_disabled_style(outputName_entry)
     ToolTip(outputName_entry, TOOLTIPS['output_name'])
 
     # Output path
-    ttk.Label(output_frame, text="Output Path:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(5,2))
+    ttk.Label(output_frame, text="Output path:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(5,2))
     outputPath_entry = ttk.Entry(output_frame, width=24)
     outputPath_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
     ToolTip(outputPath_entry, TOOLTIPS['output_path'])
@@ -896,7 +896,7 @@ def build_step2(parent):
 
     # --- Data Settings ---
     # Data type (HOBO only has a time series: profile does not apply)
-    ttk.Label(data_frame, text="Data Type:").grid(row=0, column=0, sticky='w', pady=2)
+    ttk.Label(data_frame, text="Data type:").grid(row=0, column=0, sticky='w', pady=2)
     dType_values = ["mooring"] if is_hobo_input() else ["tscp profile", "mooring"]
     dType_combobox = ttk.Combobox(data_frame, values=dType_values, width=25, state='readonly')
     dType_combobox.grid(row=1, column=0, sticky='w', pady=2)
@@ -915,7 +915,7 @@ def build_step2(parent):
         panel_labels = ("Panel 1 (mooring)", "Panel 2 (mooring)", "Panel 3 (profile)")
         panel_tips = (TOOLTIPS['panel1'], TOOLTIPS['panel2'], TOOLTIPS['panel3'])
 
-    ttk.Label(vis_frame, text="Select Panels:").grid(row=0, column=0, sticky='w', pady=5)
+    ttk.Label(vis_frame, text="Select panels:").grid(row=0, column=0, sticky='w', pady=5)
     panel1 = BooleanVar(value=False)
     panel1_cb = ttk.Checkbutton(vis_frame, text=panel_labels[0], variable=panel1,
                                command=lambda: [toggle_panel_dependent_controls(), toggle_parameter_checkboxes()])
@@ -936,7 +936,7 @@ def build_step2(parent):
 
     # TS Diagram
     tsDiagram = BooleanVar(value=False)
-    ts_cb = ttk.Checkbutton(vis_frame, text="T-S Diagram", variable=tsDiagram, command=toggle_ts_controls)
+    ts_cb = ttk.Checkbutton(vis_frame, text="T-S diagram", variable=tsDiagram, command=toggle_ts_controls)
     ts_cb.grid(row=4, column=0, sticky='w', pady=5)
     ToolTip(ts_cb, TOOLTIPS['ts_diagram'])
 
@@ -954,17 +954,17 @@ def build_step2(parent):
     ToolTip(longitude_entry, TOOLTIPS['longitude'])
 
     # TS Parameters
-    ttk.Label(vis_frame, text="T-S Parameters:").grid(row=9, column=0, sticky='w', pady=2)
+    ttk.Label(vis_frame, text="T-S parameters:").grid(row=9, column=0, sticky='w', pady=2)
     tsParam_combobox = ttk.Combobox(vis_frame, values=["Conservative T & Absolute S", "Potential T & Pratical S"], width=28)
     tsParam_combobox.grid(row=10, column=0, sticky='w', pady=2)
     set_disabled_style(tsParam_combobox)
     ToolTip(tsParam_combobox, TOOLTIPS['ts_params'])
 
     # Display options
-    ttk.Label(vis_frame, text="Display Options:").grid(row=0, column=1, sticky='w', pady=5)
+    ttk.Label(vis_frame, text="Display options:").grid(row=0, column=1, sticky='w', pady=5)
 
     tendency = BooleanVar(value=False)
-    tendency_cb = ttk.Checkbutton(vis_frame, text="Trend Lines", variable=tendency, 
+    tendency_cb = ttk.Checkbutton(vis_frame, text="Trend lines", variable=tendency, 
                                  command=lambda: [set_enabled_style(tendency_entry) if tendency.get() else set_disabled_style(tendency_entry)])
     tendency_cb.grid(row=1, column=1, sticky='w', pady=2)
     ToolTip(tendency_cb, TOOLTIPS['tendency'])
@@ -976,22 +976,22 @@ def build_step2(parent):
     ToolTip(tendency_entry, TOOLTIPS['tendency_degree'])
 
     dataPoints = BooleanVar(value=False)
-    points_cb = ttk.Checkbutton(vis_frame, text="Show Data Points", variable=dataPoints)
+    points_cb = ttk.Checkbutton(vis_frame, text="Show data points", variable=dataPoints)
     points_cb.grid(row=4, column=1, sticky='w', pady=5)
     ToolTip(points_cb, TOOLTIPS['data_points'])
 
     fixedScale = BooleanVar(value=False)
-    fixed_scale_cb = ttk.Checkbutton(vis_frame, text="Fixed Scale", variable=fixedScale, command=toggle_scale_controls)
+    fixed_scale_cb = ttk.Checkbutton(vis_frame, text="Fixed scale", variable=fixedScale, command=toggle_scale_controls)
     fixed_scale_cb.grid(row=5, column=1, sticky='w', pady=5)
     ToolTip(fixed_scale_cb, TOOLTIPS['fixed_scale'])
 
     # X-axis time window (mooring plots)
-    ttk.Label(vis_frame, text="X-Axis Start (mooring):").grid(row=6, column=1, sticky='w', pady=(10,2))
+    ttk.Label(vis_frame, text="X-axis start (mooring):").grid(row=6, column=1, sticky='w', pady=(10,2))
     time_start_entry = ttk.Entry(vis_frame, width=28)
     time_start_entry.grid(row=7, column=1, sticky='w', pady=2)
     ToolTip(time_start_entry, TOOLTIPS['time_start'])
 
-    ttk.Label(vis_frame, text="X-Axis End (mooring):").grid(row=8, column=1, sticky='w', pady=2)
+    ttk.Label(vis_frame, text="X-axis end (mooring):").grid(row=8, column=1, sticky='w', pady=2)
     time_end_entry = ttk.Entry(vis_frame, width=28)
     time_end_entry.grid(row=9, column=1, sticky='w', pady=2)
     ToolTip(time_end_entry, TOOLTIPS['time_end'])
@@ -1009,12 +1009,12 @@ def build_step2(parent):
         row=10, column=1, sticky='w', pady=(2,5))
 
     # Depth-axis range (profile plots) - analogous to the time window above
-    ttk.Label(vis_frame, text="Depth-Axis Min (profile):").grid(row=11, column=1, sticky='w', pady=(10,2))
+    ttk.Label(vis_frame, text="Depth-axis min (profile):").grid(row=11, column=1, sticky='w', pady=(10,2))
     depth_min_entry = ttk.Entry(vis_frame, width=28)
     depth_min_entry.grid(row=12, column=1, sticky='w', pady=2)
     ToolTip(depth_min_entry, TOOLTIPS['depth_min'])
 
-    ttk.Label(vis_frame, text="Depth-Axis Max (profile):").grid(row=13, column=1, sticky='w', pady=2)
+    ttk.Label(vis_frame, text="Depth-axis max (profile):").grid(row=13, column=1, sticky='w', pady=2)
     depth_max_entry = ttk.Entry(vis_frame, width=28)
     depth_max_entry.grid(row=14, column=1, sticky='w', pady=2)
     ToolTip(depth_max_entry, TOOLTIPS['depth_max'])
@@ -1030,7 +1030,7 @@ def build_step2(parent):
 
     # --- Filter Settings ---
     # Year filter: one checkbox per year actually present in the database
-    ttk.Label(filter_frame, text="Filter by Year:").grid(row=0, column=0, sticky='w', pady=(5,2))
+    ttk.Label(filter_frame, text="Filter by year:").grid(row=0, column=0, sticky='w', pady=(5,2))
     available_years = sorted(set(int(y) for y in database['Datetime'].dt.year.dropna().unique()))
     year_vars = {}    # BooleanVar for each year
     year_widgets = {} # Checkbutton for each year
@@ -1045,7 +1045,7 @@ def build_step2(parent):
         row_n += 1
 
     # Site selection
-    site_lbl = ttk.Label(filter_frame, text="Filter by Site:")
+    site_lbl = ttk.Label(filter_frame, text="Filter by site:")
     site_lbl.grid(row=row_n, column=0, sticky='w', pady=(10,2))
     ToolTip(site_lbl, TOOLTIPS['site_filter'])
     row_n += 1
@@ -1063,7 +1063,7 @@ def build_step2(parent):
         row_n += 1
 
     # Parameter selection
-    param_lbl = ttk.Label(filter_frame, text="Select Parameters:")
+    param_lbl = ttk.Label(filter_frame, text="Select parameters:")
     param_lbl.grid(row=0, column=1, sticky='w', pady=(5,2), padx=10)
     ToolTip(param_lbl, TOOLTIPS['param_filter'])
 
@@ -1130,8 +1130,8 @@ def build_step2(parent):
     action_frame.pack(pady=10)
 
     ttk.Button(action_frame, text="<  Back", command=_go_step1).pack(side='left', padx=5)
-    ttk.Button(action_frame, text="Save View Settings", command=saveDataViewSettings).pack(side='left', padx=5)
-    ttk.Button(action_frame, text="Generate Panels", command=generatePanels, style='Accent.TButton').pack(side='left', padx=5)
+    ttk.Button(action_frame, text="Save view settings", command=saveDataViewSettings).pack(side='left', padx=5)
+    ttk.Button(action_frame, text="Generate panels", command=generatePanels, style='Accent.TButton').pack(side='left', padx=5)
 
     # Initialize UI state
     toggle_all_controls(enabled=False)  # Everything disabled initially

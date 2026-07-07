@@ -202,7 +202,7 @@ class LogConsole:
         self.text.tag_configure('warning', foreground='#dcdcaa')
         self.text.tag_configure('success', foreground='#89d185')
 
-        self.clear_button = ttk.Button(self.frame, text='Clear Log', command=self.clear)
+        self.clear_button = ttk.Button(self.frame, text='Clear log', command=self.clear)
         self.clear_button.pack(side='right', padx=5, pady=(6, 0))
 
     def _tag_for(self, message):
