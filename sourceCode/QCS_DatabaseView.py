@@ -255,15 +255,33 @@ def toggle_data_type():
     toggle_parameter_checkboxes()
     toggle_ts_controls()
 
+def _default_output_root(file_path):
+    """Where DataView outputs should go by default for a selected qualified file:
+    the qualification output root (the '..._QLF' folder that holds the
+    'QCS qualified ... data' subfolder), or the file's own folder otherwise."""
+    folder = os.path.dirname(file_path)
+    parent, name = os.path.split(folder)
+    if name in ('QCS qualified tscp data', 'QCS qualified hobo data'):
+        return parent
+    return folder
+
 def selectFiles():
-    filenames = filedialog.askopenfilenames(initialdir=USER_PREFS.get('dbv_last_db_dir', USER_PREFS.get('last_output_dir', '/')),
-                                            title="Select files")
+    start = USER_PREFS.get('dbv_last_db_dir') or USER_PREFS.get('last_output_dir', '')
+    if not os.path.isdir(start):
+        start = ''
+    filenames = filedialog.askopenfilenames(initialdir=start, title="Select files")
     if filenames:
         fileNames_entry.delete(0, END)
         fileNames_entry.insert(0, ";".join(filenames))
         join.set(False)
         toggle_input_mode()
         USER_PREFS['dbv_last_db_dir'] = os.path.dirname(filenames[0])
+        # auto-fill Output Path with the qualification output root of the file
+        out_root = _default_output_root(filenames[0])
+        outputPath_entry.delete(0, END)
+        outputPath_entry.insert(0, out_root)
+        USER_PREFS['dbv_output_path'] = out_root
+        USER_PREFS['dbv_last_output_dir'] = out_root
         save_user_prefs()
         autodetect_instrument(filenames[0])
 
@@ -286,7 +304,14 @@ def autodetect_instrument(path):
               % (os.path.basename(path), e))
 
 def selectOutputFolder():
-    folderPath = filedialog.askdirectory(initialdir=USER_PREFS.get('dbv_last_output_dir', '/'), title="Select output folder")
+    # start at the current field value (or last used) to avoid the drive-root
+    # scan that makes the native folder picker hang for a few seconds
+    start = (outputPath_entry.get().strip()
+             or USER_PREFS.get('dbv_last_output_dir')
+             or USER_PREFS.get('dbv_last_db_dir', ''))
+    if not os.path.isdir(start):
+        start = ''
+    folderPath = filedialog.askdirectory(initialdir=start, title="Select output folder")
     if folderPath:
         outputPath_entry.delete(0, END)
         outputPath_entry.insert(0, folderPath)
@@ -294,7 +319,10 @@ def selectOutputFolder():
         save_user_prefs()
 
 def selectInputFolder():
-    folderPath = filedialog.askdirectory(initialdir=USER_PREFS.get('dbv_last_input_dir', '/'), title="Select input folder")
+    start = inputPath_entry.get().strip() or USER_PREFS.get('dbv_last_input_dir', '')
+    if not os.path.isdir(start):
+        start = ''
+    folderPath = filedialog.askdirectory(initialdir=start, title="Select input folder")
     if folderPath:
         inputPath_entry.delete(0, END)
         inputPath_entry.insert(0, folderPath)
