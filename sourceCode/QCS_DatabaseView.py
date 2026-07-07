@@ -231,26 +231,57 @@ def toggle_scale_controls():
     for param, min_e in min_scale_entries.items():
         max_e = max_scale_entries[param]
         on = active and param in parameter_vars and parameter_vars[param].get()
-        for entry, kind in ((min_e, 'min'), (max_e, 'max')):
-            if on:
-                if not entry.get().strip():
-                    dv = _param_data_extreme(param, kind)
-                    if dv:
-                        entry.config(state='normal')
-                        entry.delete(0, END)
-                        entry.insert(0, dv)
-                set_enabled_style(entry)
-            else:
+        if on:
+            if not (min_e.get().strip() or max_e.get().strip()):
+                _fill_scale(param)   # first activation -> auto default from data
+            set_enabled_style(min_e)
+            set_enabled_style(max_e)
+        else:
+            for entry in (min_e, max_e):
                 entry.config(state='normal')
                 entry.delete(0, END)
                 set_disabled_style(entry)
+            _auto_scale.discard(param)
+
+def _fill_scale(param):
+    """Fill a parameter's Min/Max with the data default and mark it auto-filled."""
+    for entry, kind in ((min_scale_entries[param], 'min'), (max_scale_entries[param], 'max')):
+        val = _param_data_extreme(param, kind)
+        entry.config(state='normal')
+        entry.delete(0, END)
+        if val:
+            entry.insert(0, val)
+    _auto_scale.add(param)
+
+def _refresh_scale_defaults():
+    """Re-fill the still-auto scale fields from the current Site/Year selection
+    (called when those filters change); user-edited fields are left untouched."""
+    for param in list(_auto_scale):
+        if param in parameter_vars and parameter_vars[param].get():
+            _fill_scale(param)
 
 def _param_data_extreme(param, kind):
-    """Formatted min/max of a parameter in the loaded database ('' if unavailable)."""
-    if database is None or param not in database.columns or not database[param].notna().any():
+    """Formatted Min/Max of a parameter over the SELECTED sites/years, with 20%
+    breathing room added to each side so the plot is not cramped ('' if
+    unavailable). With several sites/years selected this spans them all."""
+    if database is None or param not in database.columns:
         return ''
-    value = database[param].min() if kind == 'min' else database[param].max()
-    return '' if pd.isna(value) else ('%.4g' % value)
+    df = database
+    sites = [s for s, v in site_vars.items() if v.get()] if site_vars else []
+    years = [y for y, v in year_vars.items() if v.get()] if year_vars else []
+    if sites:
+        df = df[df['Site'].isin(sites)]
+    if years and 'Datetime' in df.columns:
+        df = df[df['Datetime'].dt.year.isin(years)]
+    col = df[param].dropna()
+    if col.empty:
+        return ''
+    lo, hi = float(col.min()), float(col.max())
+    pad = 0.2 * (hi - lo)
+    if pad == 0:                      # constant series: pad by 20% of |value| (or 1)
+        pad = 0.2 * abs(hi) if hi != 0 else 1.0
+    value = (lo - pad) if kind == 'min' else (hi + pad)
+    return '%.4g' % value
 
 def toggle_data_type():
     data_type = dType_combobox.get()
@@ -562,7 +593,7 @@ def generatePanels():
     saveDataViewSettings()
 
     if not dataViewSettings.get('dataType'):
-        error_logger.log("ERROR: No settings saved yet - configure the options and click 'Save View Settings' first")
+        error_logger.log("ERROR: nothing to plot - configure the options and click 'Generate panels'")
         return
 
     # the year checkboxes only list years present in the database,
@@ -989,7 +1020,9 @@ def build_step2(parent):
 
     # TS Parameters
     ttk.Label(vis_frame, text="T-S parameters:").grid(row=9, column=0, sticky='w', pady=2)
-    tsParam_combobox = ttk.Combobox(vis_frame, values=["Conservative T & Absolute S", "Potential T & Pratical S"], width=28)
+    # width 26 (not 28): a combobox adds the dropdown arrow, so it needs ~2 fewer
+    # characters to end up the same total width as the width-28 lat/long entries
+    tsParam_combobox = ttk.Combobox(vis_frame, values=["Conservative T & Absolute S", "Potential T & Pratical S"], width=26, state='readonly')
     tsParam_combobox.grid(row=10, column=0, sticky='w', pady=2)
     set_disabled_style(tsParam_combobox)
     ToolTip(tsParam_combobox, TOOLTIPS['ts_params'])
@@ -1071,7 +1104,10 @@ def build_step2(parent):
     row_n = 1
     for db_year in available_years:
         var = BooleanVar(value=False)
-        cb = ttk.Checkbutton(filter_frame, text=str(db_year), variable=var)
+        # changing the Year filter re-computes the auto scale defaults (their
+        # range spans the selected years)
+        cb = ttk.Checkbutton(filter_frame, text=str(db_year), variable=var,
+                             command=_refresh_scale_defaults)
         cb.grid(row=row_n, column=0, sticky='w', pady=2)
         ToolTip(cb, TOOLTIPS['filter_year'])
         year_vars[db_year] = var
@@ -1090,7 +1126,9 @@ def build_step2(parent):
 
     for site in site_names:
         var = BooleanVar(value=False)
-        cb = ttk.Checkbutton(filter_frame, text=site, variable=var)
+        # changing the Site filter re-computes the auto scale defaults
+        cb = ttk.Checkbutton(filter_frame, text=site, variable=var,
+                             command=_refresh_scale_defaults)
         cb.grid(row=row_n, column=0, sticky='w', pady=2)
         site_vars[site] = var
         site_widgets[site] = cb
@@ -1143,9 +1181,14 @@ def build_step2(parent):
         # Parameter label
         ttk.Label(scale_frame, text=param).grid(row=i+1, column=0, sticky='w', pady=2, padx=5)
 
+        # editing a scale field marks it user-owned, so a later Site/Year change
+        # does not overwrite it with a recomputed default
+        _untrack = (lambda p: (lambda e: _auto_scale.discard(p)))(param)
+
         # Entry for minimum value
         min_entry = ttk.Entry(scale_frame, width=10)
         min_entry.grid(row=i+1, column=1, sticky='w', pady=2, padx=5)
+        min_entry.bind('<KeyRelease>', _untrack)
         min_scale_entries[param] = min_entry
         set_disabled_style(min_entry)
         ToolTip(min_entry, TOOLTIPS['min_scale'])
@@ -1153,6 +1196,7 @@ def build_step2(parent):
         # Entry for maximum value
         max_entry = ttk.Entry(scale_frame, width=10)
         max_entry.grid(row=i+1, column=2, sticky='w', pady=2, padx=5)
+        max_entry.bind('<KeyRelease>', _untrack)
         max_scale_entries[param] = max_entry
         set_disabled_style(max_entry)
         ToolTip(max_entry, TOOLTIPS['max_scale'])
@@ -1171,7 +1215,7 @@ def build_step2(parent):
     action_frame.pack(pady=10)
 
     ttk.Button(action_frame, text="<  Back", command=_go_step1).pack(side='left', padx=5)
-    ttk.Button(action_frame, text="Save view settings", command=saveDataViewSettings).pack(side='left', padx=5)
+    # 'Generate panels' already saves the current choices, so no separate Save button
     ttk.Button(action_frame, text="Generate panels", command=generatePanels, style='Accent.TButton').pack(side='left', padx=5)
 
     # Initialize UI state
@@ -1293,6 +1337,7 @@ _db_msgs_logged = False   # True once db_build_messages went to the log (no dupe
 _recent_combobox = None   # Step 1 'Recent' picker (created in build_step1)
 _preview_var = None       # Step 1 preview summary text (created in build_step1)
 _input_mode_cache = {}    # stashes Database File(s) while folder-scan mode is on
+_auto_scale = set()       # params whose Min/Max still hold auto-computed defaults
 # handed over from a qualification run (via apply_pending_prefill) and consumed
 # by build_step2: the data type (profile/mooring/hobo) and the region coordinates,
 # which the qualified file does not store. Locks Data type and fills lat/long.

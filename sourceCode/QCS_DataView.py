@@ -5,6 +5,22 @@ import pandas as pd # type: ignore
 import matplotlib.pyplot as plt # type: ignore
 from matplotlib.lines import Line2D # type: ignore
 ####################################################################
+
+def enable_scroll_zoom(fig):
+    """Mouse-wheel zoom (around the cursor) on every axes of a shown figure, so
+    the generated panels can be inspected closely without the toolbar lens."""
+    def on_scroll(event):
+        ax = event.inaxes
+        if ax is None:
+            return
+        scale = 1 / 1.2 if event.button == 'up' else 1.2   # wheel up = zoom in
+        xlim, ylim = ax.get_xlim(), ax.get_ylim()
+        xd, yd = event.xdata, event.ydata
+        ax.set_xlim(xd - (xd - xlim[0]) * scale, xd + (xlim[1] - xd) * scale)
+        ax.set_ylim(yd - (yd - ylim[0]) * scale, yd + (ylim[1] - yd) * scale)
+        fig.canvas.draw_idle()
+    fig.canvas.mpl_connect('scroll_event', on_scroll)
+
 def renameParameters (parameter_names):
     rParam = []
     for param in parameter_names:
@@ -449,6 +465,7 @@ def plot_database_panel1 (database, dataViewSettings):
                 #defining data format
                 plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m %H:%M'))
                 plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year), bbox_inches='tight')
+                enable_scroll_zoom(fig)
                 plt.show()
 
 def plot_database_panel2(database, dataViewSettings):
@@ -573,6 +590,7 @@ def plot_database_panel2(database, dataViewSettings):
             # Strip parentheses from the file name
             parameter_r = re.sub(r'\([^()]*\)', '', parameter).strip()
             plt.savefig(f'panel2_{parameter_r}_{semester}_{year}.svg')
+            enable_scroll_zoom(fig)
             plt.show()
 
 def plot_database_panel3(database, dataViewSettings):
@@ -720,6 +738,7 @@ def plot_database_panel3(database, dataViewSettings):
                           ncol=1, fontsize=7)
                 
                 plt.savefig('panel3_%s_%s_%d.svg'%(site, semester, year))
+                enable_scroll_zoom(fig)
                 plt.show()
 
 def plot_light_window(lux_info, site=''):
@@ -847,6 +866,7 @@ def plot_hobo_temperature (database, dataViewSettings, site):
     _apply_hobo_common_settings(ax, dataViewSettings)
     ax.legend(fontsize=8)
     plt.savefig('hobo_temperature_%s_%d.svg' % (site, year), bbox_inches='tight')
+    enable_scroll_zoom(fig)
     plt.show()
 
 
@@ -892,6 +912,7 @@ def plot_hobo_light (database, dataViewSettings, site):
 
     ax.legend(fontsize=8, loc='lower left')
     plt.savefig('hobo_light_%s_%d.svg' % (site, year), bbox_inches='tight')
+    enable_scroll_zoom(fig)
     plt.show()
 
 
@@ -937,6 +958,7 @@ def plot_hobo_light_multisite (database, dataViewSettings):
     _apply_hobo_common_settings(ax, dataViewSettings)
     ax.legend(fontsize=8, loc='lower left')
     plt.savefig('hobo_light_multisite_%d.svg' % year, bbox_inches='tight')
+    enable_scroll_zoom(fig)
     plt.show()
 
 def plot_TS_diagram (database, dataViewSettings):
@@ -1061,6 +1083,7 @@ def plot_TS_diagram (database, dataViewSettings):
                 custom_handles.append(Line2D([0], [0], linestyle='None', marker=markerList[a], label=site_names[a], markeredgecolor='black', markerfacecolor='black', markersize=6))
             plt.legend(handles=custom_handles)  # Draw legend
             plt.savefig('TS_Diagram_%s_%s_%d.svg'%(sites_label, semester, year))
+            enable_scroll_zoom(fig)
             plt.show()
 
 
