@@ -613,12 +613,18 @@ def plot_database_panel1 (database, dataViewSettings):
                 y, gap_ids = fill_NaT_gap(y)
                 #defining x
                 x = y.index
-                if fit_lin_regression == True:
+                # Pressure is NEVER fitted: a mooring's pressure is dominated by the
+                # tide, so a low-degree polynomial through it is meaningless. Its
+                # raw series is drawn as a dashed line instead (same rule as the
+                # twin axes below).
+                if fit_lin_regression == True and y_list[0].name != 'Pressure (dbar)':
                     xp, yp = linear_regression (y, degree=deg)
                     if points == True:
                         ax1.plot(x, y, color=cParam[y_list[0].name], linestyle='none', marker='.', markersize=3, label=rParam[0])
                     ax1.plot(xp, yp, color=bcParam[y_list[0].name], linestyle='-', label=rParam[0])
                     ax1.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
+                elif y_list[0].name == 'Pressure (dbar)':
+                    ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='--', marker='None', label=rParam[0])
                 else:
                     ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='None', marker='.', label=rParam[0])
                 # set y label
@@ -768,21 +774,26 @@ def plot_database_panel2(database, dataViewSettings):
                 time_origin = pd.Timestamp(x_start) if x_start is not None else y.index.min()
                 x_hours = (y.index - time_origin).total_seconds() / 3600  # Convert to hours
 
-                # Plotting the data
-                if fit_lin_regression:
+                # Plotting the data. Pressure is NEVER fitted (tidal signal: a
+                # polynomial through it is meaningless) - its raw series is drawn
+                # as a dashed line instead, the same rule used in Panel 1.
+                if fit_lin_regression and parameter == 'Pressure (dbar)':
+                    ax1.plot(x_hours, y, linestyle='--', marker='None',
+                            color=colors[site], label=f'{site} data')
+                elif fit_lin_regression:
                     xp, yp = linear_regression(y, degree=deg)
                     xp_hours = (xp - time_origin).total_seconds() / 3600
-                    
+
                     if points:
-                        ax1.plot(x_hours, y, linestyle='none', marker='.', 
+                        ax1.plot(x_hours, y, linestyle='none', marker='.',
                                 color=colors[site], markersize=3, label=f'{site} data')
-                        ax1.plot(xp_hours, yp, linestyle='-', 
+                        ax1.plot(xp_hours, yp, linestyle='-',
                                 color=colors[site], label=f'{site} tendency')
                     else:
-                        ax1.plot(xp_hours, yp, linestyle='-', 
+                        ax1.plot(xp_hours, yp, linestyle='-',
                                 color=colors[site], label=f'{site} tendency')
                 else:
-                        ax1.plot(x_hours, y, linestyle='none', marker='.', 
+                        ax1.plot(x_hours, y, linestyle='none', marker='.',
                                 color=colors[site], markersize=3, label=f'{site} data')
             
             # Plot settings

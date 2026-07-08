@@ -48,6 +48,7 @@ TOOLTIPS = {
     'data_points': "Show individual data points on plots",
     'site_filter': "Select sites to include in visualization",
     'param_filter': "Select parameters to include in visualization",
+    'param_secondary': "Rarely-used variables: always start unchecked\n(check manually when needed)",
     'fixed_scale': "Use fixed scales for all plots to allow direct comparison",
     'min_scale': "Minimum value for parameter scale",
     'max_scale': "Maximum value for parameter scale"
@@ -1272,41 +1273,65 @@ def build_step2(parent):
         site_widgets[site] = cb
         row_n += 1
 
-    # Parameter selection
-    param_lbl = ttk.Label(filter_frame, text="Select parameters:")
-    param_lbl.grid(row=0, column=1, sticky='w', pady=(5,2), padx=10)
+    # Parameter selection lives in its OWN sub-frame, so its rows are independent
+    # of the Year/Site rows in column 0 (whose section labels have their own
+    # spacing) and can be height-matched 1:1 with the Scale-settings rows.
+    param_col = ttk.Frame(filter_frame)
+    param_col.grid(row=0, column=1, rowspan=99, sticky='nw')
+    param_lbl = ttk.Label(param_col, text="Select parameters:")
+    param_lbl.grid(row=0, column=0, sticky='w', pady=(5,2), padx=10)
     ToolTip(param_lbl, TOOLTIPS['param_filter'])
 
+    # Parameters come in TWO groups: the MAIN group (checked by default on every
+    # new import, whenever the data carries them) and a SECONDARY group of
+    # rarely-used variables that ALWAYS start unchecked (still available manually).
     if inputSettings.get('instrument', 'Seaguard') == 'HOBO':
         # HOBO only measures temperature and light
-        parameter_names = ['Temperature (degC)', 'Luminosity (lux)']
+        main_params = ['Temperature (degC)', 'Luminosity (lux)']
+        secondary_params = []
     else:
-        parameter_names = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)',
-                          'Density (kg/m3)', 'CO2 level (ppm)', 'O2 level (uM)',
-                          'PAR (umol/m2/s)', 'Turbidity (FTU)', 'Chlorophyll (ug/L)',
-                          'pH', 'Dissolved organic matter (ppb)', 'Soundspeed (m/s)',
-                          'Pressure (dbar)']
+        main_params = ['Temperature (degC)', 'Salinity (PSU)', 'CO2 level (ppm)',
+                       'O2 level (uM)', 'PAR (umol/m2/s)', 'Turbidity (FTU)',
+                       'Chlorophyll (ug/L)', 'pH', 'Dissolved organic matter (ppb)']
+        secondary_params = ['Conductivity (mS/cm)', 'Density (kg/m3)',
+                            'Soundspeed (m/s)', 'Pressure (dbar)']
+    parameter_names = main_params + secondary_params
     parameter_vars = {}  # Stores the BooleanVar
     parameter_widgets = {}  # Stores the Checkbutton widgets
+
+    def _param_display(param):
+        # GUI label only - the data column keeps its original name
+        return param.replace(' level', '')
 
     # parameters this database actually carries data for (a column present with at
     # least one non-null value) - used as the default selection and for defaults
     params_with_data = [p for p in parameter_names
                         if p in database.columns and database[p].notna().any()]
 
-    for i, param in enumerate(parameter_names):
+    # the checkboxes and the Scale-settings rows are built with the SAME row
+    # numbering (including the group separator), so each Min/Max line can sit
+    # exactly beside its parameter
+    prow = 1
+    for param in parameter_names:
+        if secondary_params and param == secondary_params[0]:
+            sep_lbl = ttk.Label(param_col, text="Rarely used:", style='Small.TLabel')
+            sep_lbl.grid(row=prow, column=0, sticky='w', pady=(8, 2), padx=10)
+            ToolTip(sep_lbl, TOOLTIPS['param_secondary'])
+            prow += 1
         var = BooleanVar(value=False)
         # toggling a parameter updates its per-parameter scale row (enable/fill/clear)
-        cb = ttk.Checkbutton(filter_frame, text=param, variable=var,
+        cb = ttk.Checkbutton(param_col, text=_param_display(param), variable=var,
                              command=toggle_scale_controls)
-        cb.grid(row=i+1, column=1, sticky='w', pady=2, padx=10)
+        cb.grid(row=prow, column=0, sticky='w', pady=2, padx=10)
         parameter_vars[param] = var
         parameter_widgets[param] = cb
         set_disabled_style(cb)  # Initially disabled
+        prow += 1
 
     # --- Scale Settings ---
     # Headers for the scale columns
-    ttk.Label(scale_frame, text="Parameter").grid(row=0, column=0, sticky='w', padx=5)
+    scale_hdr = ttk.Label(scale_frame, text="Parameter")
+    scale_hdr.grid(row=0, column=0, sticky='w', padx=5)
     ttk.Label(scale_frame, text="Min").grid(row=0, column=1, sticky='w', padx=5)
     ttk.Label(scale_frame, text="Max").grid(row=0, column=2, sticky='w', padx=5)
 
@@ -1314,10 +1339,17 @@ def build_step2(parent):
     min_scale_entries = {}
     max_scale_entries = {}
 
-    # Create entries for each parameter
-    for i, param in enumerate(parameter_names):
+    # Create entries for each parameter - SAME row numbering as the parameter
+    # checkboxes (including the "Rarely used:" separator), so the two frames can
+    # be aligned line by line
+    srow = 1
+    for param in parameter_names:
+        if secondary_params and param == secondary_params[0]:
+            ttk.Label(scale_frame, text="Rarely used:", style='Small.TLabel').grid(
+                row=srow, column=0, sticky='w', pady=(8, 2), padx=5)
+            srow += 1
         # Parameter label
-        ttk.Label(scale_frame, text=param).grid(row=i+1, column=0, sticky='w', pady=2, padx=5)
+        ttk.Label(scale_frame, text=_param_display(param)).grid(row=srow, column=0, sticky='w', pady=2, padx=5)
 
         # editing a scale field marks it user-owned, so a later Site/Year change
         # does not overwrite it with a recomputed default
@@ -1325,7 +1357,7 @@ def build_step2(parent):
 
         # Entry for minimum value
         min_entry = ttk.Entry(scale_frame, width=10)
-        min_entry.grid(row=i+1, column=1, sticky='w', pady=2, padx=5)
+        min_entry.grid(row=srow, column=1, sticky='w', pady=2, padx=5)
         min_entry.bind('<KeyRelease>', _untrack)
         min_scale_entries[param] = min_entry
         set_disabled_style(min_entry)
@@ -1333,11 +1365,28 @@ def build_step2(parent):
 
         # Entry for maximum value
         max_entry = ttk.Entry(scale_frame, width=10)
-        max_entry.grid(row=i+1, column=2, sticky='w', pady=2, padx=5)
+        max_entry.grid(row=srow, column=2, sticky='w', pady=2, padx=5)
         max_entry.bind('<KeyRelease>', _untrack)
         max_scale_entries[param] = max_entry
         set_disabled_style(max_entry)
         ToolTip(max_entry, TOOLTIPS['max_scale'])
+        srow += 1
+
+    # Align the two frames line by line: a Checkbutton and an Entry have different
+    # natural heights, which otherwise accumulates a visible offset down the list.
+    # Force every parameter row (and the header row) to the SAME height in the
+    # checkbox column and in the Scale frame, so each Min/Max sits beside its
+    # parameter checkbox.
+    param_col.update_idletasks()
+    row_h = max(next(iter(parameter_widgets.values())).winfo_reqheight(),
+                next(iter(min_scale_entries.values())).winfo_reqheight()) + 4  # + 2*pady
+    hdr_h = max(param_lbl.winfo_reqheight() + 7,   # pady=(5,2)
+                scale_hdr.winfo_reqheight())
+    param_col.grid_rowconfigure(0, minsize=hdr_h)
+    scale_frame.grid_rowconfigure(0, minsize=hdr_h)
+    for r in range(1, srow):
+        param_col.grid_rowconfigure(r, minsize=row_h)
+        scale_frame.grid_rowconfigure(r, minsize=row_h)
 
     # Configure grid weights for filter frame
     filter_frame.columnconfigure(0, weight=1)
@@ -1384,10 +1433,11 @@ def build_step2(parent):
         year_vars[available_years[0]].set(True)
     if not any(v.get() for v in site_vars.values()) and site_names:
         site_vars[site_names[0]].set(True)
-    # Parameters: default to the ones that actually HAVE data in this database
-    # (recomputed per imported sheet; NOT persisted between sessions).
+    # Parameters: default to the MAIN-group ones that actually HAVE data in this
+    # database (recomputed per imported sheet; NOT persisted between sessions).
+    # SECONDARY parameters (rarely used) always start unchecked.
     for param, var in parameter_vars.items():
-        var.set(param in params_with_data)
+        var.set(param in params_with_data and param not in secondary_params)
     # Scale settings are per-sheet too: not restored from preferences.
     restore_entry(time_start_entry, USER_PREFS.get('dbv_time_start', ''))
     restore_entry(time_end_entry, USER_PREFS.get('dbv_time_end', ''))
