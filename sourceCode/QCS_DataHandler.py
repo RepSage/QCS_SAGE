@@ -492,6 +492,25 @@ FLAG_BUCKET_MAP = {
     'lux': ['lux'],  # HOBO light (fouling test)
 }
 
+# Maps a data column to its per-variable rollup flag column, for consumers that
+# need to select rows by qualification result (e.g. the DataView scale defaults).
+# Derived/untested variables (Density, Soundspeed, CO2, PAR, Depth) have no flag
+# column and are intentionally absent.
+PARAM_FLAG_COLUMN = {
+    'Temperature (degC)': 'Flag_T',
+    'Salinity (PSU)': 'Flag_S',
+    'Conductivity (mS/cm)': 'Flag_C',
+    'Pressure (dbar)': 'Flag_P',
+    'pH': 'Flag_pH',
+    'Chlorophyll (ug/L)': 'Flag_chl',
+    'O2 level (uM)': 'Flag_O2',
+    'O2 content (mg/L)': 'Flag_O2',
+    'Dissolved organic matter (ppb)': 'Flag_org',
+    'Turbidity (FTU)': 'Flag_tur',
+    'TSS (mg/L)': 'Flag_tur',
+    'Luminosity (lux)': 'Flag_lux',
+}
+
 def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad):
     # standardize data frame to output file format and
     # classify bad, suspect and missing data for temperature,

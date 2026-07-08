@@ -622,7 +622,11 @@ def plot_database_panel1 (database, dataViewSettings):
                     if points == True:
                         ax1.plot(x, y, color=cParam[y_list[0].name], linestyle='none', marker='.', markersize=3, label=rParam[0])
                     ax1.plot(xp, yp, color=bcParam[y_list[0].name], linestyle='-', label=rParam[0])
-                    ax1.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
+                    if points != True:
+                        # only the tendency curve is drawn: hug its range. With the
+                        # data points visible the axis must NOT be clamped to the
+                        # fit, or genuine (approved) data gets clipped out of view.
+                        ax1.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
                 elif y_list[0].name == 'Pressure (dbar)':
                     ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='--', marker='None', label=rParam[0])
                 else:
@@ -657,7 +661,10 @@ def plot_database_panel1 (database, dataViewSettings):
                         if points == True:
                             ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=cParam[y_list[i-1].name], label=rParam[i-1])
                         ax.plot(xp, yp, linestyle='-', c=bcParam[y_list[i-1].name], label=rParam[i-1])
-                        ax.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
+                        if points != True:
+                            # same rule as the first axis: clamp to the fit range
+                            # only when the data points are hidden
+                            ax.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
 
                     else:
                         if y_list[i-1].name == 'Pressure (dbar)':

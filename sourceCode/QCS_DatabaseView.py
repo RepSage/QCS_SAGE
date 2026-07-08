@@ -272,7 +272,13 @@ def _refresh_scale_defaults():
 def _param_data_extreme(param, kind):
     """Formatted Min/Max of a parameter over the SELECTED sites/years, with 20%
     breathing room added to each side so the plot is not cramped ('' if
-    unavailable). With several sites/years selected this spans them all."""
+    unavailable). With several sites/years selected this spans them all.
+
+    Only APPROVED data (flag 1 good / 2 not evaluated) drives the default: the
+    qualified sheet may retain the values of suspect/bad/dismissed rows (the
+    operator's choice at qualification), and letting those extremes set the
+    scale would produce absurd defaults (e.g. a suspect DOM spike of 550 ppb
+    against a good range of 0-6)."""
     if database is None or param not in database.columns:
         return ''
     df = database
@@ -282,7 +288,12 @@ def _param_data_extreme(param, kind):
         df = df[df['Site'].isin(sites)]
     if years and 'Datetime' in df.columns:
         df = df[df['Datetime'].dt.year.isin(years)]
-    col = df[param].dropna()
+    col = df[param]
+    flag_col = data.PARAM_FLAG_COLUMN.get(param)
+    if flag_col and flag_col in df.columns:
+        flags = pd.to_numeric(df[flag_col], errors='coerce')
+        col = col[flags.isin([1, 2])]
+    col = col.dropna()
     if col.empty:
         return ''
     lo, hi = float(col.min()), float(col.max())
