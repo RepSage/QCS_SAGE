@@ -827,12 +827,14 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     fig, ax = plt.subplots(figsize=(10, 6.5))
     plt.subplots_adjust(bottom=0.20, top=0.88)
     # keep the useful navigation toolbar but drop the Zoom lens (wheel zoom
-    # replaces it); best-effort and backend-dependent
+    # replaces it), the Home button (the 'Reset' button resets the view) and
+    # Configure subplots (its wspace/hspace do nothing here); best-effort
     try:
         tb = fig.canvas.manager.toolbar
-        zoom_btn = getattr(tb, '_buttons', {}).get('Zoom')
-        if zoom_btn is not None:
-            zoom_btn.pack_forget()
+        for _name in ('Zoom', 'Home', 'Subplots'):
+            btn = getattr(tb, '_buttons', {}).get(_name)
+            if btn is not None:
+                btn.pack_forget()
     except Exception:
         pass
 

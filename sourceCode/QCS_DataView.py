@@ -2,9 +2,32 @@ import re
 import math
 import numpy as np # type: ignore
 import pandas as pd # type: ignore
+import datetime as _dt # type: ignore
 import matplotlib.pyplot as plt # type: ignore
+import matplotlib.dates as _mdates # type: ignore
 from matplotlib.lines import Line2D # type: ignore
 ####################################################################
+
+# Safe bounds for a matplotlib DATE axis (well inside the hard year 1..9999
+# limit). Zoom/pan is clamped to these so panning a time axis far out does not
+# produce an out-of-range date ordinal that crashes the tick formatter.
+_DATE_MIN = _mdates.date2num(_dt.datetime(100, 1, 1))
+_DATE_MAX = _mdates.date2num(_dt.datetime(9000, 1, 1))
+
+def _clamp_x(ax, lo, hi):
+    """Keep x-limits inside the valid date range when `ax` is a date axis,
+    preserving the span (shift the window back in) so a big pan cannot invert or
+    collapse it or crash the date-tick formatter."""
+    try:
+        if isinstance(ax.xaxis.get_major_locator(), _mdates.DateLocator):
+            span = hi - lo
+            if lo < _DATE_MIN:
+                lo, hi = _DATE_MIN, _DATE_MIN + span
+            if hi > _DATE_MAX:
+                lo, hi = _DATE_MAX - span, _DATE_MAX
+    except Exception:
+        pass
+    return lo, hi
 
 def enable_scroll_zoom(fig):
     """Interaction for a shown panel: mouse-wheel zoom around the cursor,
@@ -33,7 +56,7 @@ def enable_scroll_zoom(fig):
             # data value per axis because each y-scale differs)
             xd, yd = ax.transData.inverted().transform((event.x, event.y))
             xlim, ylim = ax.get_xlim(), ax.get_ylim()
-            ax.set_xlim(xd - (xd - xlim[0]) * scale, xd + (xlim[1] - xd) * scale)
+            ax.set_xlim(*_clamp_x(ax, xd - (xd - xlim[0]) * scale, xd + (xlim[1] - xd) * scale))
             ax.set_ylim(yd - (yd - ylim[0]) * scale, yd + (ylim[1] - yd) * scale)
         fig.canvas.draw_idle()
 
@@ -52,7 +75,7 @@ def enable_scroll_zoom(fig):
             x1, y1 = inv.transform((event.x, event.y))       # current pixel  -> data
             dx, dy = x1 - x0, y1 - y0
             xlim, ylim = ax.get_xlim(), ax.get_ylim()
-            ax.set_xlim(xlim[0] - dx, xlim[1] - dx)
+            ax.set_xlim(*_clamp_x(ax, xlim[0] - dx, xlim[1] - dx))
             ax.set_ylim(ylim[0] - dy, ylim[1] - dy)
         pan['x'], pan['y'] = event.x, event.y                # incremental
         fig.canvas.draw_idle()
@@ -81,9 +104,13 @@ def enable_scroll_zoom(fig):
         from tkinter import ttk as _ttk
         tb = fig.canvas.manager.toolbar
         tb.set_message = lambda *a, **k: None   # no live coord text -> no resize
-        zoom = getattr(tb, '_buttons', {}).get('Zoom')
-        if zoom is not None:
-            zoom.pack_forget()
+        # drop the Zoom lens (wheel zoom replaces it), the Home button (our
+        # 'Reset view' replaces it) and Configure subplots (its wspace/hspace do
+        # nothing on these single-subplot figures)
+        for _name in ('Zoom', 'Home', 'Subplots'):
+            btn = getattr(tb, '_buttons', {}).get(_name)
+            if btn is not None:
+                btn.pack_forget()
         if not getattr(tb, '_qcs_reset_added', False):
             _ttk.Button(tb, text='Reset view', command=reset_view,
                         width=10).pack(side='left', padx=4)
@@ -454,9 +481,11 @@ def plot_database_panel1 (database, dataViewSettings):
             y_list, cParam, bcParam, parameter_names = setParam (dataViewSettings, db, semester, site)
             rParam = renameParameters(parameter_names)
             if len(y_list) > 0:
-                fig, ax1 = plt.subplots(figsize=(980 / 100, 500 / 100))
+                fig, ax1 = plt.subplots(figsize=(980 / 100, 520 / 100))
                 plt.xticks(rotation=35)
-                plt.subplots_adjust(left=0.050, right=0.620)
+                # bottom margin reserves room for the rotated date labels so they
+                # are not clipped at the window's lower edge
+                plt.subplots_adjust(left=0.050, right=0.620, bottom=0.18)
                 plt.grid(True, linestyle='dotted', linewidth=0.5)
                 #define x and y
                 # defining y while removing datetime duplicates
@@ -921,8 +950,9 @@ def plot_hobo_temperature (database, dataViewSettings, site):
     temp = pd.to_numeric(db['Temperature (degC)'], errors='coerce')
     flag_t = pd.to_numeric(db['Flag_T'], errors='coerce')
 
-    fig, ax = plt.subplots(figsize=(980 / 100, 500 / 100))
+    fig, ax = plt.subplots(figsize=(980 / 100, 520 / 100))
     plt.xticks(rotation=35)
+    plt.subplots_adjust(bottom=0.18)  # room for the rotated date labels
     ax.grid(True, linestyle='dotted', linewidth=0.5)
     ax.plot(db['Datetime'], temp, linestyle='None', marker='.', markersize=3,
             color=bcParam['Temperature (degC)'], label='Temperature')
@@ -956,8 +986,9 @@ def plot_hobo_light (database, dataViewSettings, site):
         return
     lux = _mask_nonpositive_lux(pd.to_numeric(db['Luminosity (lux)'], errors='coerce'), site)
 
-    fig, ax = plt.subplots(figsize=(980 / 100, 500 / 100))
+    fig, ax = plt.subplots(figsize=(980 / 100, 520 / 100))
     plt.xticks(rotation=35)
+    plt.subplots_adjust(bottom=0.18)  # room for the rotated date labels
     ax.grid(True, linestyle='dotted', linewidth=0.5)
     ax.plot(db['Datetime'], lux, linestyle='None', marker='.', markersize=3,
             color=bcParam['Luminosity (lux)'], label='Luminosity')
@@ -999,8 +1030,9 @@ def plot_hobo_light_multisite (database, dataViewSettings):
     site_names = dataViewSettings['siteList']
     colors = getSiteColors(site_names)
 
-    fig, ax = plt.subplots(figsize=(980 / 100, 500 / 100))
+    fig, ax = plt.subplots(figsize=(980 / 100, 520 / 100))
     plt.xticks(rotation=35)
+    plt.subplots_adjust(bottom=0.18)  # room for the rotated date labels
     ax.grid(True, linestyle='dotted', linewidth=0.5)
     plotted_sites = 0
     for site in site_names:

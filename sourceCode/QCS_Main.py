@@ -1577,6 +1577,16 @@ def build_qualification_tab(container, root, shared_log=None):
         fig.canvas.mpl_connect('button_press_event', on_click)
         fig.canvas.mpl_connect('key_press_event', on_key)
         redraw()
+        # drop the Home / Zoom / Configure-subplots toolbar buttons (consistent
+        # with the other plot windows; this review has its own controls)
+        try:
+            _tb = fig.canvas.manager.toolbar
+            for _name in ('Zoom', 'Home', 'Subplots'):
+                _b = getattr(_tb, '_buttons', {}).get(_name)
+                if _b is not None:
+                    _b.pack_forget()
+        except Exception:
+            pass
         # waits on the Tk loop (never plt.show(block=True) inside the RUN callback)
         done = BooleanVar(window, value=False)
         fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
