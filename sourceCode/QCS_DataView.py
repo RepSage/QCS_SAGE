@@ -502,21 +502,22 @@ def plot_database_panel1 (database, dataViewSettings):
             y_list, cParam, bcParam, parameter_names = setParam (dataViewSettings, db, semester, site)
             rParam = renameParameters(parameter_names)
             if len(y_list) > 0:
-                # Size the figure and margins to the CONTENT so nothing is clipped
-                # and the user never has to resize: a fixed left margin for the
-                # temperature y label, a fixed plot area, and a right zone that
-                # grows with the number of stacked parameter axes (each offset
-                # 60 px + room for its ticks/label).
+                # FIXED window size so it never grows past the screen. The stacked
+                # parameter axes always fit its right zone: the spine SPACING is
+                # computed to fit, and the y-axis FONTS shrink only when there are
+                # so many axes that normal spacing/labels would not fit (few
+                # parameters keep the normal 60 px spacing and font).
                 n_right = max(0, len(y_list) - 1)
-                left_px, plot_px = 78, 600
-                right_px = max(70, (n_right - 1) * 60 + 115) if n_right else 40
-                total_px = left_px + plot_px + right_px
-                fig, ax1 = plt.subplots(figsize=(total_px / 100, 520 / 100))
+                TOTAL_PX, H_PX, LEFT_PX = 1050, 540, 78
+                MAX_ZONE = TOTAL_PX - LEFT_PX - 560          # keep the plot >= 560 px
+                spacing = min(60.0, max(22.0, (MAX_ZONE - 95) / (n_right - 1))) if n_right > 1 else 60.0
+                actual_zone = min(MAX_ZONE, ((n_right - 1) * spacing + 95) if n_right >= 1 else 40)
+                plot_px = TOTAL_PX - LEFT_PX - actual_zone   # plot gets the rest
+                fscale = min(1.0, max(0.62, spacing / 48.0)) # shrink y fonts when tight
+                fig, ax1 = plt.subplots(figsize=(TOTAL_PX / 100, H_PX / 100))
                 plt.xticks(rotation=35)
-                # left margin -> temperature label; right -> stacked axes; bottom
-                # -> rotated date labels; none clipped at the window edges
-                plt.subplots_adjust(left=left_px / total_px,
-                                    right=(left_px + plot_px) / total_px, bottom=0.18)
+                plt.subplots_adjust(left=LEFT_PX / TOTAL_PX,
+                                    right=(LEFT_PX + plot_px) / TOTAL_PX, bottom=0.18)
                 plt.grid(True, linestyle='dotted', linewidth=0.5)
                 #define x and y
                 # defining y while removing datetime duplicates
@@ -534,14 +535,14 @@ def plot_database_panel1 (database, dataViewSettings):
                 else:
                     ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='None', marker='.', label=rParam[0])
                 # set y label
-                ax1.set_ylabel(rParam[0], color=bcParam[y_list[0].name])
+                ax1.set_ylabel(rParam[0], color=bcParam[y_list[0].name], fontsize=10 * fscale)
                 # set title
                 ax1.set_title('Parameters for %s over %s during %s'%(site, semester, year))
                 # set y axis color and position
                 ax1.spines['left'].set_color(bcParam[y_list[0].name])
                 ax1.spines['left'].set_position(('outward', 1))
                 ax1.spines['left'].set_linewidth(2.0)
-                ax1.tick_params(axis='y', which='both', colors=bcParam[y_list[0].name])
+                ax1.tick_params(axis='y', which='both', colors=bcParam[y_list[0].name], labelsize=10 * fscale)
                 # axis list
                 axes = {'y1': ax1}
                 offset = 0
@@ -570,20 +571,20 @@ def plot_database_panel1 (database, dataViewSettings):
                         else:
                             ax.plot(x, y, linestyle='None', marker='.', c=bcParam[y_list[i-1].name], label=rParam[i-1])
                     # set axis label
-                    ax.set_ylabel(rParam[i-1], c=bcParam[y_list[i-1].name])
+                    ax.set_ylabel(rParam[i-1], c=bcParam[y_list[i-1].name], fontsize=10 * fscale)
                     # set y axis position
                     if i == 2:
                         pass
                     else:
                         ax.spines['right'].set_position(('outward', offset))
-                    offset += 60
+                    offset += spacing
                     # set y axis colors
                     ax.spines['right'].set_color(bcParam[y_list[i-1].name])
                     ax.spines['left'].set_color('none')
                     # set y axis width
                     ax.spines['right'].set_linewidth(1.5)
                     # change tick colors
-                    ax.tick_params(axis='y', colors=cParam[y_list[i-1].name])
+                    ax.tick_params(axis='y', colors=cParam[y_list[i-1].name], labelsize=10 * fscale)
                     # save axis name
                     axes[f'y{i}'] = ax
                     if dataViewSettings['fixedScale'] == True and parameter_names[i-1] in dataViewSettings['scaleSettings']:
