@@ -15,6 +15,17 @@ import QCS_Theme as _theme
 _DATE_MIN = _mdates.date2num(_dt.datetime(100, 1, 1))
 _DATE_MAX = _mdates.date2num(_dt.datetime(9000, 1, 1))
 
+def _apply_time_window(df, dataViewSettings):
+    """Keep only the rows inside the chosen X-axis time window (start/end), so the
+    mooring plots actually show ONLY those hours (and the y-axis / trend lines fit
+    that window) instead of merely zooming into the full series."""
+    xs = dataViewSettings.get('xAxisStart')
+    xe = dataViewSettings.get('xAxisEnd')
+    if xs is not None and xe is not None and 'Datetime' in df.columns:
+        return df[(df['Datetime'] >= pd.Timestamp(xs)) & (df['Datetime'] <= pd.Timestamp(xe))]
+    return df
+
+
 def _clamp_x(ax, lo, hi):
     """Keep x-limits inside the valid date range when `ax` is a date axis,
     preserving the span (shift the window back in) so a big pan cannot invert or
@@ -516,6 +527,7 @@ def plot_database_panel1 (database, dataViewSettings):
     db_raw = database.copy()
     # limit data to year
     db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
+    db_raw = _apply_time_window(db_raw, dataViewSettings)   # plot ONLY the chosen hours (no-op for profiles)
     db_raw.index = db_raw['Datetime']
     db_raw = db_raw.rename_axis('dt_index')
     db_raw = db_raw.sort_values(by='dt_index')
@@ -772,6 +784,7 @@ def plot_database_panel3(database, dataViewSettings):
     db_raw = database.copy()
     # limit data to year
     db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
+    db_raw = _apply_time_window(db_raw, dataViewSettings)   # plot ONLY the chosen hours (no-op for profiles)
     db_raw.index = db_raw['Datetime']
     db_raw = db_raw.rename_axis('dt_index')
     db_raw = db_raw.sort_values(by='dt_index')  
@@ -966,11 +979,14 @@ def mark_light_cutoff(ax, cutoff, lux_info):
     return artists
 
 
-def _hobo_site_slice (database, year, site):
+def _hobo_site_slice (database, year, site, dataViewSettings=None):
     """Slice by year and site used by the HOBO panels (same annual slicing
-    rule as the Seaguard panels), sorted in time."""
+    rule as the Seaguard panels), sorted in time. When a X-axis time window is
+    set, keep only those hours (plot only the chosen window, not just zoom)."""
     db = database.copy()
     db = db[(db['Datetime'].dt.year == year) & (db['Site'] == site)]
+    if dataViewSettings is not None:
+        db = _apply_time_window(db, dataViewSettings)
     return db.sort_values('Datetime')
 
 
@@ -1008,7 +1024,7 @@ def plot_hobo_temperature (database, dataViewSettings, site):
     suspect/bad points (Flag_T >= 3) highlighted, as in the Seaguard."""
     year = dataViewSettings['filterByYear']
     cParam, bcParam = getParamColors()
-    db = _hobo_site_slice(database, year, site)
+    db = _hobo_site_slice(database, year, site, dataViewSettings)
     if db.empty:
         print('\nNo HOBO data for %s during %d.' % (site, year))
         return
@@ -1045,7 +1061,7 @@ def plot_hobo_light (database, dataViewSettings, site):
     as the QCS_light_window.svg generated during qualification."""
     year = dataViewSettings['filterByYear']
     cParam, bcParam = getParamColors()
-    db = _hobo_site_slice(database, year, site)
+    db = _hobo_site_slice(database, year, site, dataViewSettings)
     if db.empty:
         print('\nNo HOBO data for %s during %d.' % (site, year))
         return
@@ -1101,7 +1117,7 @@ def plot_hobo_light_multisite (database, dataViewSettings):
     ax.grid(True, linestyle='dotted', linewidth=0.5)
     plotted_sites = 0
     for site in site_names:
-        db = _hobo_site_slice(database, year, site)
+        db = _hobo_site_slice(database, year, site, dataViewSettings)
         if db.empty:
             print('\nNo HOBO data for %s during %d.' % (site, year))
             continue
@@ -1147,6 +1163,7 @@ def plot_TS_diagram (database, dataViewSettings):
     db_raw = database.copy()
     # limit data to year
     db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
+    db_raw = _apply_time_window(db_raw, dataViewSettings)   # plot ONLY the chosen hours (no-op for profiles)
     db_raw.index = db_raw['Datetime']
     db_raw = db_raw.rename_axis('dt_index')
     db_raw = db_raw.sort_values(by='dt_index')

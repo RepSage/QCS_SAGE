@@ -300,35 +300,54 @@ def toggle_data_type():
 
     toggle_all_controls(enabled=True)  # Enable everything
 
-    def _clear_disable(entry):
+    def _stash_disable(entry, key):
+        # a field that does not apply in this mode: remember its value, blank it
+        # and grey it out (so it is not selectable)
+        val = entry.get().strip()
+        if val:
+            _field_cache[key] = val
         entry.config(state='normal')
         entry.delete(0, END)
         set_disabled_style(entry)
 
-    # Specific logic for each data type. Fields that do not apply are cleared and
-    # disabled (blank + not selectable), following the app-wide convention.
+    def _restore_enable(entry, key):
+        # a field that applies again: enable it and bring back the last value
+        set_enabled_style(entry)
+        if not entry.get().strip() and _field_cache.get(key):
+            entry.delete(0, END)
+            entry.insert(0, _field_cache[key])
+
+    # Specific logic for each data type. A control that does not apply is
+    # UNCHECKED/blanked and greyed out; one that applies again is re-enabled and
+    # its previous value restored.
     if is_hobo_input():
-        # HOBO: the three checkboxes become their own panels (temperature/light);
-        # no T-S (there is no salinity) and no profile (there is no depth)
+        # HOBO: no T-S (no salinity) and no profile (no depth); the X-axis time
+        # window still applies (time series)
+        tsDiagram.set(False)
         set_disabled_style(ts_cb)
-        _clear_disable(depth_min_entry)
-        _clear_disable(depth_max_entry)
+        _stash_disable(depth_min_entry, 'depth_min')
+        _stash_disable(depth_max_entry, 'depth_max')
+        _restore_enable(time_start_entry, 'time_start')
+        _restore_enable(time_end_entry, 'time_end')
     elif data_type == 'mooring':
         panel3.set(False)
         set_disabled_style(panel3_cb)
+        tsDiagram.set(False)            # T-S is profile-only -> uncheck it here
         set_disabled_style(ts_cb)
-        # the depth range only applies to profile plots
-        _clear_disable(depth_min_entry)
-        _clear_disable(depth_max_entry)
+        _stash_disable(depth_min_entry, 'depth_min')     # depth range = profile only
+        _stash_disable(depth_max_entry, 'depth_max')
+        _restore_enable(time_start_entry, 'time_start')  # X-axis window applies
+        _restore_enable(time_end_entry, 'time_end')
     elif data_type == 'tscp profile':
         panel1.set(False)
         panel2.set(False)
         set_disabled_style(panel1_cb)
         set_disabled_style(panel2_cb)
-        # the X-axis time window only applies to mooring plots
-        _clear_disable(time_start_entry)
-        _clear_disable(time_end_entry)
-    
+        _stash_disable(time_start_entry, 'time_start')   # X-axis window = mooring only
+        _stash_disable(time_end_entry, 'time_end')
+        _restore_enable(depth_min_entry, 'depth_min')    # depth range applies
+        _restore_enable(depth_max_entry, 'depth_max')
+
     toggle_panel_dependent_controls()
     toggle_parameter_checkboxes()
     toggle_ts_controls()
@@ -1369,6 +1388,8 @@ _recent_combobox = None   # Step 1 'Recent' picker (created in build_step1)
 _preview_var = None       # Step 1 preview summary text (created in build_step1)
 _input_mode_cache = {}    # stashes Database File(s) while folder-scan mode is on
 _auto_scale = set()       # params whose Min/Max still hold auto-computed defaults
+_field_cache = {}         # stashes X-axis / depth values while their mode is off,
+                          # so they come back when that data type is selected again
 _coords_from_handoff = False  # True when lat/long came from a qualification region
                               # (then they stay locked/read-only; editable otherwise)
 # handed over from a qualification run (via apply_pending_prefill) and consumed
