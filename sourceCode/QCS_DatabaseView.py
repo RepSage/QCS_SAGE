@@ -361,15 +361,21 @@ def toggle_data_type():
         set_disabled_style(panel3_cb)
         tsDiagram.set(False)            # T-S is profile-only -> uncheck it here
         set_disabled_style(ts_cb)
+        # default panel so the selection is never empty when switching here
+        if not (panel1.get() or panel2.get()):
+            panel1.set(True)
         _stash_disable(depth_min_entry, 'depth_min')     # depth range = profile only
         _stash_disable(depth_max_entry, 'depth_max')
         _reset_time_default(time_start_entry, 'start')   # X-axis window applies (default range)
         _reset_time_default(time_end_entry, 'end')
-    elif data_type == 'tscp profile':
+    elif data_type == 'profile':
         panel1.set(False)
         panel2.set(False)
         set_disabled_style(panel1_cb)
         set_disabled_style(panel2_cb)
+        # default panel so the selection is never empty when switching here
+        if not panel3.get():
+            panel3.set(True)
         _stash_disable(time_start_entry, 'time_start')   # X-axis window = mooring only
         _stash_disable(time_end_entry, 'time_end')
         _restore_or_default_depth(depth_min_entry, 'depth_min', 'min')   # depth range applies
@@ -733,7 +739,7 @@ def generatePanels():
                 if dataViewSettings.get('panel3', False):
                     error_logger.log("Warning: Panel 3 is not suited for mooring data")
 
-            elif dataViewSettings['dataType'] == 'tscp profile':
+            elif dataViewSettings['dataType'] == 'profile':
                 if dataViewSettings.get('panel3', False):
                     try:
                         view.plot_database_panel3(database, dataViewSettings)
@@ -1055,7 +1061,7 @@ def build_step2(parent):
     # --- Data Settings ---
     # Data type (HOBO only has a time series: profile does not apply)
     ttk.Label(data_frame, text="Data type:").grid(row=0, column=0, sticky='w', pady=2)
-    dType_values = ["mooring"] if is_hobo_input() else ["tscp profile", "mooring"]
+    dType_values = ["mooring"] if is_hobo_input() else ["mooring", "profile"]
     dType_combobox = ttk.Combobox(data_frame, values=dType_values, width=25, state='readonly')
     dType_combobox.grid(row=1, column=0, sticky='w', pady=2)
     dType_combobox.bind("<<ComboboxSelected>>", lambda e: toggle_data_type())
@@ -1077,7 +1083,7 @@ def build_step2(parent):
         panel_tips = (TOOLTIPS['hobo_temp'], TOOLTIPS['hobo_light'], TOOLTIPS['hobo_light_multi'])
     else:
         panel_labels = ("Parameters at a site",
-                        "A parameter across sites",
+                        "Parameter across sites",
                         "Vertical profile at a site")
         panel_tips = (TOOLTIPS['panel1'], TOOLTIPS['panel2'], TOOLTIPS['panel3'])
 

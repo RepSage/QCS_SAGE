@@ -710,7 +710,7 @@ def start_qualification():
                 # the qualified file does not store profile/mooring or the
                 # coordinates, so pass them along for the Visualization tab
                 'data_type': ('hobo' if INPUT.get('input_type') == 'HOBO'
-                              else ('tscp profile' if INPUT.get('profile') else 'mooring')),
+                              else ('profile' if INPUT.get('profile') else 'mooring')),
                 'latitude': INPUT.get('latitude'),
                 'longitude': INPUT.get('longitude')}
         messagebox.showinfo("Done",

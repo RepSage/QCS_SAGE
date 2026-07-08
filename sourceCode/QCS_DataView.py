@@ -73,31 +73,42 @@ def _fit_margins(fig, pad=6):
         pass
 
 
-def _fit_stacked_yticks(fig, spacing, pad=7):
-    """When many parameter axes are stacked on the right, their y tick labels sit
-    only `spacing` px apart. Shrink the y tick-label font just enough that even the
-    WIDEST label (e.g. a 6-char density value like 1019.5) fits within that gap, so
-    the labels of adjacent axes never overlap. Only the stacked right axes drive the
-    measurement (the first axis keeps its labels on the roomy left side); the shrink
-    is then applied to every y axis for a consistent look. No-op when there is
-    already room."""
-    if not spacing or spacing <= 0 or len(fig.axes) < 2:
+def _fit_stacked_yticks(fig, spacing=None, pad=4.0, min_pt=4.0):
+    """When many parameter axes are stacked on the right, their number labels and
+    rotated axis titles can collide with the next axis. Shrink the y fonts (tick
+    numbers AND axis titles together) until every adjacent pair of label columns
+    has at least `pad` px of clear gap - measured on the SAME renderer that draws
+    the figure, so it reflects the real widths (e.g. a 6-char density value like
+    1019.5) rather than a guess. No-op once there is already room."""
+    if len(fig.axes) < 2:
         return
     try:
-        fig.canvas.draw()
-        r = fig.canvas.get_renderer()
-        widest = 0.0
-        for ax in fig.axes[1:]:                         # stacked twins only
-            for t in ax.get_yticklabels():
-                if t.get_text():
-                    widest = max(widest, t.get_window_extent(r).width)
-        target = spacing - pad
-        if widest > target > 0:
-            ratio = target / widest
-            for ax in fig.axes:
-                for t in ax.get_yticklabels():
-                    t.set_fontsize(t.get_fontsize() * ratio)
+        for _ in range(8):
             fig.canvas.draw()
+            r = fig.canvas.get_renderer()
+            # each axis' label "column" = union of its y number labels + its title
+            cols = []
+            for ax in fig.axes:
+                boxes = [t.get_window_extent(r) for t in ax.get_yticklabels() if t.get_text()]
+                lab = ax.yaxis.get_label()
+                if lab.get_text():
+                    boxes.append(lab.get_window_extent(r))
+                if boxes:
+                    cols.append((min(b.x0 for b in boxes), max(b.x1 for b in boxes)))
+            cols.sort()
+            # worst horizontal encroachment between neighbouring columns
+            worst = max((a[1] - b[0] for a, b in zip(cols, cols[1:], strict=False)), default=-1e9)
+            if worst <= -pad:                      # clear gap everywhere -> done
+                return
+            cur = min((t.get_fontsize() for ax in fig.axes
+                       for t in ax.get_yticklabels() if t.get_text()), default=10.0)
+            if cur <= min_pt:                      # already as small as we allow
+                return
+            for ax in fig.axes:                    # shrink numbers + title, redraw, re-check
+                for t in ax.get_yticklabels():
+                    t.set_fontsize(max(min_pt, t.get_fontsize() * 0.88))
+                lab = ax.yaxis.get_label()
+                lab.set_fontsize(max(min_pt, lab.get_fontsize() * 0.88))
     except Exception:
         pass
 
