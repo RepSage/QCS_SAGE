@@ -502,11 +502,21 @@ def plot_database_panel1 (database, dataViewSettings):
             y_list, cParam, bcParam, parameter_names = setParam (dataViewSettings, db, semester, site)
             rParam = renameParameters(parameter_names)
             if len(y_list) > 0:
-                fig, ax1 = plt.subplots(figsize=(980 / 100, 520 / 100))
+                # Size the figure and margins to the CONTENT so nothing is clipped
+                # and the user never has to resize: a fixed left margin for the
+                # temperature y label, a fixed plot area, and a right zone that
+                # grows with the number of stacked parameter axes (each offset
+                # 60 px + room for its ticks/label).
+                n_right = max(0, len(y_list) - 1)
+                left_px, plot_px = 78, 600
+                right_px = max(70, (n_right - 1) * 60 + 115) if n_right else 40
+                total_px = left_px + plot_px + right_px
+                fig, ax1 = plt.subplots(figsize=(total_px / 100, 520 / 100))
                 plt.xticks(rotation=35)
-                # bottom margin reserves room for the rotated date labels so they
-                # are not clipped at the window's lower edge
-                plt.subplots_adjust(left=0.050, right=0.620, bottom=0.18)
+                # left margin -> temperature label; right -> stacked axes; bottom
+                # -> rotated date labels; none clipped at the window edges
+                plt.subplots_adjust(left=left_px / total_px,
+                                    right=(left_px + plot_px) / total_px, bottom=0.18)
                 plt.grid(True, linestyle='dotted', linewidth=0.5)
                 #define x and y
                 # defining y while removing datetime duplicates
@@ -704,7 +714,7 @@ def plot_database_panel2(database, dataViewSettings):
 
             # Legend and layout
             ax1.legend(loc='upper left', bbox_to_anchor=(1, 1.01), fontsize=7)
-            plt.subplots_adjust(left=0.06, right=0.80, top=0.88, bottom=0.11)
+            plt.subplots_adjust(left=0.10, right=0.80, top=0.88, bottom=0.14)  # room for the y label + x labels
 
             # Fixed scale if needed
             if dataViewSettings['fixedScale'] and parameter in dataViewSettings['scaleSettings']:

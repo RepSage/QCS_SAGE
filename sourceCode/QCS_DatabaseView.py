@@ -1049,6 +1049,10 @@ def build_step2(parent):
         if tsParam_combobox.winfo_reqwidth() <= _target:
             break
         _w -= 1
+    # close the last few pixels (char widths are discrete) so it matches exactly
+    _gap = _target - tsParam_combobox.winfo_reqwidth()
+    if _gap > 0:
+        tsParam_combobox.grid_configure(ipadx=_gap // 2)
 
     # Display options
     ttk.Label(vis_frame, text="Display options:").grid(row=0, column=1, sticky='w', pady=5)
