@@ -39,10 +39,10 @@ TOOLTIPS = {
     'hobo_temp': "HOBO panel: temperature over time, one plot per selected site\nSuspect/bad points (Flag_T >= 3) are highlighted",
     'hobo_light': "HOBO panel: light over time (log scale), one plot per selected site\nThe fouling window (Flag_lux == 4) is shaded from the cutoff on",
     'hobo_light_multi': "HOBO panel: light (log scale) with all selected sites together\nEach site's fouling cutoff is marked to compare fouling onset",
-    'ts_diagram': "Generate Temperature-Salinity diagram",
-    'latitude': "Latitude for TS diagram reference",
-    'longitude': "Longitude for TS diagram reference",
-    'ts_params': "Parameters to use for TS diagram",
+    'ts_diagram': "Generate a Temperature-Salinity (T-S) diagram: temperature vs\nsalinity with depth as the colour, to identify water masses.",
+    'latitude': "Latitude used by the T-S diagram (gsw). Pre-filled from the\nqualification region and locked; editable only for a\nstandalone file (which stores no coordinates).",
+    'longitude': "Longitude used by the T-S diagram (gsw). Pre-filled from the\nqualification region and locked; editable only for a\nstandalone file (which stores no coordinates).",
+    'ts_params': "Which temperature & salinity to plot on the T-S diagram:\n- Conservative T & Absolute S (TEOS-10, uses lat/long)\n- Potential T & Practical S (classic EOS-80)",
     'tendency': "Add linear regression lines to plots",
     'tendency_degree': "Degree of polynomial for linear regression lines",
     'data_points': "Show individual data points on plots",
@@ -214,8 +214,16 @@ def toggle_parameter_checkboxes():
 
 def toggle_ts_controls():
     if tsDiagram.get():
-        set_enabled_style(latitude_entry)
-        set_enabled_style(longitude_entry)
+        # coordinates from the qualification region stay LOCKED (read-only): the
+        # value is still used for the diagram but cannot be edited. When the
+        # database was opened as a standalone file (no region handoff), the file
+        # has no coordinates, so the fields must be editable for the user to type.
+        if _coords_from_handoff:
+            set_disabled_style(latitude_entry)
+            set_disabled_style(longitude_entry)
+        else:
+            set_enabled_style(latitude_entry)
+            set_enabled_style(longitude_entry)
         set_enabled_style(tsParam_combobox)
     else:
         set_disabled_style(latitude_entry)
@@ -1024,9 +1032,9 @@ def build_step2(parent):
 
     # TS Parameters
     ttk.Label(vis_frame, text="T-S parameters:").grid(row=9, column=0, sticky='w', pady=2)
-    # width 26 (not 28): a combobox adds the dropdown arrow, so it needs ~2 fewer
-    # characters to end up the same total width as the width-28 lat/long entries
-    tsParam_combobox = ttk.Combobox(vis_frame, values=["Conservative T & Absolute S", "Potential T & Pratical S"], width=26, state='readonly')
+    # width 27 measured to match the width-28 lat/long entries above (sv-ttk:
+    # entry=244px, combobox width-27=239px; the arrow is already included)
+    tsParam_combobox = ttk.Combobox(vis_frame, values=["Conservative T & Absolute S", "Potential T & Practical S"], width=27, state='readonly')
     tsParam_combobox.grid(row=10, column=0, sticky='w', pady=2)
     set_disabled_style(tsParam_combobox)
     ToolTip(tsParam_combobox, TOOLTIPS['ts_params'])
@@ -1281,7 +1289,11 @@ def build_step2(parent):
         dType_combobox.set(USER_PREFS['dbv_data_type'])
         toggle_data_type()
 
-    # coordinates from the qualification region (the file does not store them)
+    # coordinates from the qualification region (the file does not store them);
+    # when present they LOCK the lat/long fields (read-only) - see toggle_ts_controls
+    global _coords_from_handoff
+    _coords_from_handoff = (_pending_step2.get('latitude') is not None
+                            or _pending_step2.get('longitude') is not None)
     if _pending_step2.get('latitude') is not None:
         restore_entry(latitude_entry, str(_pending_step2['latitude']))
     if _pending_step2.get('longitude') is not None:
@@ -1342,6 +1354,8 @@ _recent_combobox = None   # Step 1 'Recent' picker (created in build_step1)
 _preview_var = None       # Step 1 preview summary text (created in build_step1)
 _input_mode_cache = {}    # stashes Database File(s) while folder-scan mode is on
 _auto_scale = set()       # params whose Min/Max still hold auto-computed defaults
+_coords_from_handoff = False  # True when lat/long came from a qualification region
+                              # (then they stay locked/read-only; editable otherwise)
 # handed over from a qualification run (via apply_pending_prefill) and consumed
 # by build_step2: the data type (profile/mooring/hobo) and the region coordinates,
 # which the qualified file does not store. Locks Data type and fills lat/long.
