@@ -214,9 +214,12 @@ def setParam (dataViewSettings, db, semester, site):
     while i < len(parameter_names):
         slice = db[semester].loc[:, parameter_names[i]].copy()
         if slice.isna().all():
-            print('\nNo %s data for %s during %d %s.'%(parameter_names[i], site, year, semester))
+            # Only report when the semester HAS data but this parameter is
+            # missing. An entirely empty semester (e.g. viewing only March, so the
+            # 2nd semester is empty) is expected and would just spam the log.
+            if not db[semester].empty:
+                print('\nNo %s data for %s during %d %s.'%(parameter_names[i], site, year, semester))
             parameter_names.pop(i)
-            pass
         else:
             dataAxis_list.append(slice)
             i += 1
@@ -583,7 +586,8 @@ def plot_database_panel2(database, dataViewSettings):
                 y = y.loc[~(y.index.duplicated(keep=False) & y.isna())]
                 
                 if y.empty:
-                    print(f'\nNo {parameter} data for {site} during {year} {semester}.')
+                    if not db[semester].empty:   # skip the noise for an empty semester
+                        print(f'\nNo {parameter} data for {site} during {year} {semester}.')
                     continue
                 
                 control += 1
@@ -1114,8 +1118,8 @@ def plot_TS_diagram (database, dataViewSettings):
                 tspData = tspSemesterData[tspSemesterData.loc[:,'Site'] == site]
                 # check if there is data for semester and ignore semester if true
                 if tspData.isna().all().any():
-                    print('\nNo data for %s during %d %s.'%( site, year, semester))
-                    pass
+                    if not tspSemesterData.empty:   # skip the noise for an empty semester
+                        print('\nNo data for %s during %d %s.'%( site, year, semester))
                 else:
                     # plot x and y depending on selected parameters
                     if re.search('conservative', tsParam, re.IGNORECASE):
