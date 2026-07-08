@@ -42,6 +42,44 @@ def _clamp_x(ax, lo, hi):
         pass
     return lo, hi
 
+def _window_day_hours(dataViewSettings, window_anchor):
+    """The X-axis time window converted to midnight-anchored hours (h0, h1),
+    or None when no window is set.
+
+    `window_anchor` is the midnight of the FIRST day of the selected data; the
+    window keeps its day offset from that anchor plus its clock time. Applied to
+    each site's OWN midnight-anchored hours, this standardizes the TIME OF DAY:
+    'day 2, 06:00-18:00' selects day 2 of every site even when the sites were
+    sampled on different dates. With a single site it reduces exactly to the
+    absolute window."""
+    xs = dataViewSettings.get('xAxisStart')
+    xe = dataViewSettings.get('xAxisEnd')
+    if xs is None or xe is None or window_anchor is None or pd.isna(window_anchor):
+        return None
+    anchor = pd.Timestamp(window_anchor).normalize()
+    h0 = (pd.Timestamp(xs) - anchor).total_seconds() / 3600.0
+    h1 = (pd.Timestamp(xe) - anchor).total_seconds() / 3600.0
+    return (h0, h1)
+
+
+def _time_of_day_axis(ax, h0, h1):
+    """Configure a midnight-anchored 'time of day' X axis: ticks labeled with the
+    clock hour (00:00, 06:00, ...) and a light dashed line at each day boundary
+    (multiples of 24 h). h0/h1 are hours since the first day's midnight."""
+    span = max(h1 - h0, 1.0)
+    # clock-aligned steps only, so the labels repeat identically day after day
+    step = next(s for s in (1, 2, 3, 6, 12, 24, 48, 96) if span / s <= 10)
+    ticks = np.arange(np.floor(h0 / step) * step, h1 + step * 0.5, step)
+    ticks = ticks[ticks >= h0 - 1e-9]
+    ax.set_xlim(h0, h1)
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(['%02d:00' % (int(round(t)) % 24) for t in ticks])
+    for d in np.arange(24.0, h1, 24.0):
+        if d > h0:
+            ax.axvline(d, color='0.75', lw=0.8, linestyle='--', zorder=0)
+    ax.set_xlabel("Time of day (00:00 = midnight of each site's first day; dashed lines = day boundaries)")
+
+
 def _fit_margins(fig, pad=6):
     """Measure the actually-drawn content (tick labels + axis labels of every
     axis) and pull the plot's left/right margins in so NOTHING is clipped at the
@@ -753,6 +791,11 @@ def plot_database_panel2(database, dataViewSettings):
 
     # Main plotting loop
     for semester in db.keys():
+        # window anchor: midnight of the FIRST day of the selected sites' data in
+        # this semester (see _window_day_hours - keeps the window's day offset)
+        sem_sel = db[semester][db[semester]['Site'].isin(site_names)]
+        window_anchor = sem_sel['Datetime'].min().normalize() if not sem_sel.empty else None
+        win = _window_day_hours(dataViewSettings, window_anchor)
         for parameter in parameter_names:
             display_param = rParam[parameter_names.index(parameter)]
             fig, ax1 = plt.subplots(figsize=(980/100, 500/100))
@@ -760,26 +803,33 @@ def plot_database_panel2(database, dataViewSettings):
             plt.grid(True, linestyle='dotted', linewidth=0.5)
             ax1.set_ylabel(display_param)
             control = 0
-            
+            max_hour = 0.0
+
             for site in site_names:
                 # Extract data for the specific site
                 y = db[semester].copy()
                 y = y[parameter][(y.loc[:,'Site'] == site)]
                 y = y.loc[~(y.index.duplicated(keep=False) & y.isna())]
-                
+
+                # X axis standardized by TIME OF DAY (B6): hours since midnight of
+                # each site's OWN first sampled day, so x=15 is 15:00 of day 1 for
+                # every site and sites sampled on different dates overlay by clock
+                # time. The time window filters in the same day-offset+clock terms.
+                if not y.empty:
+                    site_origin = y.index.min().normalize()
+                    if win is not None:
+                        x_all = (y.index - site_origin).total_seconds() / 3600
+                        y = y[(x_all >= win[0]) & (x_all <= win[1])]
+
                 if y.empty:
                     if not db[semester].empty:   # skip the noise for an empty semester
                         print(f'\nNo {parameter} data for {site} during {year} {semester}.')
                     continue
-                
+
                 control += 1
                 y, gap_ids = fill_NaT_gap(y)  # Fill gaps
-
-                # Compute elapsed hours since the start of the deployment (or since
-                # the start of the fixed time window, when defined by the user)
-                x_start = dataViewSettings.get('xAxisStart')
-                time_origin = pd.Timestamp(x_start) if x_start is not None else y.index.min()
-                x_hours = (y.index - time_origin).total_seconds() / 3600  # Convert to hours
+                x_hours = (y.index - site_origin).total_seconds() / 3600
+                max_hour = max(max_hour, float(np.nanmax(x_hours)))
 
                 # Plotting the data. Pressure is NEVER fitted (tidal signal: a
                 # polynomial through it is meaningless) - its raw series is drawn
@@ -789,7 +839,7 @@ def plot_database_panel2(database, dataViewSettings):
                             color=colors[site], label=f'{site} data')
                 elif fit_lin_regression:
                     xp, yp = linear_regression(y, degree=deg)
-                    xp_hours = (xp - time_origin).total_seconds() / 3600
+                    xp_hours = (xp - site_origin).total_seconds() / 3600
 
                     if points:
                         ax1.plot(x_hours, y, linestyle='none', marker='.',
@@ -802,26 +852,18 @@ def plot_database_panel2(database, dataViewSettings):
                 else:
                         ax1.plot(x_hours, y, linestyle='none', marker='.',
                                 color=colors[site], markersize=3, label=f'{site} data')
-            
+
             # Plot settings
             if control == 0:
                 plt.close(fig)
                 continue
-                
-            x_start = dataViewSettings.get('xAxisStart')
-            x_end = dataViewSettings.get('xAxisEnd')
-            if x_start is not None and x_end is not None:
-                # user-defined window: same X axis in every plot, even where
-                # there is no data, so different sites/files can be compared
-                total_hours = (pd.Timestamp(x_end) - pd.Timestamp(x_start)).total_seconds() / 3600
-                tick_step = max(1, int(round(total_hours / 8)))
-                ax1.set_xlabel('Elapsed Time (hours) since %s' % pd.Timestamp(x_start).strftime('%d/%m/%Y %H:%M'))
-                ax1.set_xlim(0, total_hours)
-                ax1.set_xticks(np.arange(0, total_hours + tick_step * 0.5, tick_step))
+
+            # midnight-anchored clock axis; the window (when set) fixes the same
+            # day-offset + clock range in every plot so sites/files compare 1:1
+            if win is not None:
+                _time_of_day_axis(ax1, win[0], win[1])
             else:
-                ax1.set_xlabel('Elapsed Time (hours)')
-                ax1.set_xlim(0, 48)  # default: 48 hours
-                ax1.set_xticks(np.arange(0, 49, 6))  # Ticks every 6 hours
+                _time_of_day_axis(ax1, 0.0, max(np.ceil(max_hour / 6.0) * 6.0, 24.0))
 
             # Legend and layout
             ax1.legend(loc='upper left', bbox_to_anchor=(1, 1.01), fontsize=7)
@@ -1100,6 +1142,16 @@ def plot_hobo_temperature (database, dataViewSettings, site):
     plt.xticks(rotation=35)
     plt.subplots_adjust(bottom=0.18)  # room for the rotated date labels
     ax.grid(True, linestyle='dotted', linewidth=0.5)
+    # combined-replicates file: shade the between-replicate disagreement as a
+    # band of total width = spread (max - min), centered on the plotted mean.
+    # (The file stores mean and spread only, so the true replicate envelope is
+    # not exactly recoverable; the centered band has the correct width.)
+    if 'Temperature spread (degC)' in db.columns:
+        spread = pd.to_numeric(db['Temperature spread (degC)'], errors='coerce')
+        if spread.notna().any():
+            ax.fill_between(db['Datetime'], temp - spread / 2, temp + spread / 2,
+                            color=cParam['Temperature (degC)'], alpha=0.35,
+                            linewidth=0, label='Replicate spread (max - min)')
     ax.plot(db['Datetime'], temp, linestyle='None', marker='.', markersize=3,
             color=bcParam['Temperature (degC)'], label='Temperature')
     # highlight: flags 3 (suspect) and 4 (bad); 9 = missing, not highlighted
@@ -1177,27 +1229,49 @@ def plot_hobo_light_multisite (database, dataViewSettings):
     colors = getSiteColors(site_names)
 
     fig, ax = plt.subplots(figsize=(980 / 100, 520 / 100))
-    plt.xticks(rotation=35)
-    plt.subplots_adjust(bottom=0.18)  # room for the rotated date labels
+    plt.subplots_adjust(bottom=0.14)
     ax.grid(True, linestyle='dotted', linewidth=0.5)
     plotted_sites = 0
+    max_hour = 0.0
+    # window anchor: midnight of the first day over the SELECTED sites (see
+    # _window_day_hours - keeps the window's day offset + clock time per site)
+    sel = database[(database['Datetime'].dt.year == year) & (database['Site'].isin(site_names))]
+    window_anchor = sel['Datetime'].min().normalize() if not sel.empty else None
+    win = _window_day_hours(dataViewSettings, window_anchor)
     for site in site_names:
-        db = _hobo_site_slice(database, year, site, dataViewSettings)
+        # X axis standardized by TIME OF DAY (B6): hours since midnight of each
+        # site's OWN first sampled day, so sites sampled on different dates
+        # overlay by clock time (the absolute-date axis kept them side by side).
+        db = _hobo_site_slice(database, year, site)   # window applied below, in day-hours
         if db.empty:
             print('\nNo HOBO data for %s during %d.' % (site, year))
             continue
+        site_origin = db['Datetime'].min().normalize()
+        x_hours = (pd.DatetimeIndex(db['Datetime']) - site_origin).total_seconds() / 3600
+        if win is not None:
+            keep = (x_hours >= win[0]) & (x_hours <= win[1])
+            db, x_hours = db[keep.values], x_hours[keep]
+            if db.empty:
+                print('\nNo HOBO data for %s inside the X-axis window during %d.' % (site, year))
+                continue
+        max_hour = max(max_hour, float(x_hours.max()))
         lux = _mask_nonpositive_lux(pd.to_numeric(db['Luminosity (lux)'], errors='coerce'), site)
-        ax.plot(db['Datetime'], lux, linestyle='None', marker='.', markersize=3,
+        ax.plot(x_hours, lux, linestyle='None', marker='.', markersize=3,
                 color=colors[site], label=site)
         cutoff = _hobo_light_cutoff_start(db)
         if cutoff is not None:
-            ax.axvline(cutoff, color=colors[site], lw=1.4, linestyle='--',
+            cutoff_h = (pd.Timestamp(cutoff) - site_origin).total_seconds() / 3600
+            ax.axvline(cutoff_h, color=colors[site], lw=1.4, linestyle='--',
                        label='%s cutoff (%s)' % (site, pd.Timestamp(cutoff).date()))
         plotted_sites += 1
     if plotted_sites == 0:
         plt.close(fig)
         print('\nNo HOBO data for any selected site during %d.' % year)
         return
+    if win is not None:
+        _time_of_day_axis(ax, win[0], win[1])
+    else:
+        _time_of_day_axis(ax, 0.0, max(np.ceil(max_hour / 6.0) * 6.0, 24.0))
     ax.set_yscale('log')
     ax.set_ylabel('Luminosity (lux, log scale)')
     ax.set_title('HOBO light comparison between sites during %d' % year)
@@ -1207,7 +1281,8 @@ def plot_hobo_light_multisite (database, dataViewSettings):
             ax.set_ylim(lim['min'], lim['max'])
         else:
             print('Warning: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
-    _apply_hobo_common_settings(ax, dataViewSettings)
+    # NOTE: no _apply_hobo_common_settings here - this panel uses the
+    # midnight-anchored hour axis, not absolute dates
     ax.legend(fontsize=8, loc='lower left')
     plt.savefig('hobo_light_multisite_%d.svg' % year, bbox_inches='tight')
     enable_scroll_zoom(fig)
