@@ -3,12 +3,13 @@ import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.widgets import RectangleSelector
+from matplotlib.widgets import Button, RectangleSelector
+import QCS_Theme as _theme
 
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v4.0'
+QCS_VERSION = 'v5.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -167,11 +168,31 @@ def read_ctd(INPUT):
     # set datetime column
     dataframe['Datetime'] = pd.to_datetime(dataframe['Datetime'], dayfirst=True)
 
+    # Numeric columns: Seaguard exports use either '.' or ',' as the decimal
+    # separator (locale-dependent). pandas parses '.'-decimals as floats, but a
+    # ','-decimal column (e.g. '131,7655') is read as TEXT, which breaks every
+    # numeric test downstream. Coerce every value column to float, accepting the
+    # comma decimal, and report any value that could not be parsed (never dropped
+    # silently). Columns already numeric ('.'-decimal files) are left untouched.
+    for col in dataframe.columns:
+        if col == 'Datetime' or dataframe[col].dtype != object:
+            continue
+        raw = dataframe[col]
+        cleaned = raw.where(raw.isna(),
+                            raw.astype(str).str.strip().str.replace(',', '.', regex=False))
+        converted = pd.to_numeric(cleaned, errors='coerce')
+        was_value = raw.notna() & (raw.astype(str).str.strip() != '')
+        lost = int((converted.isna() & was_value).sum())
+        if lost > 0:
+            print("Warning: %d unparseable value(s) in column '%s' set to NaN (%s)"
+                  % (lost, col, INPUT['file_name']))
+        dataframe[col] = converted
+
     # discard records without a valid timestamp (e.g. truncated trailing rows
     # left by interrupted sensor exports) — they cannot be qualified
     n_invalid = int(dataframe['Datetime'].isna().sum())
     if n_invalid > 0:
-        print('WARNING: %d record(s) without valid timestamp discarded from %s'
+        print('Warning: %d record(s) without valid timestamp discarded from %s'
               % (n_invalid, INPUT['file_name']))
         dataframe = dataframe[dataframe['Datetime'].notna()]
         dataframe.index = np.arange(len(dataframe))
@@ -244,7 +265,7 @@ def read_hobo(INPUT, tsSettings):
         delimiter = ';' if raw_lines[header_row].count(';') > raw_lines[header_row].count(',') else ','
         df = pd.read_csv(file_path, skiprows=header_row, header=0,
                          sep=delimiter, encoding=used_encoding, engine='python')
-        say('MESSAGE: csv read with encoding %s and delimiter %r' % (used_encoding, delimiter))
+        say('Info: csv read with encoding %s and delimiter %r' % (used_encoding, delimiter))
     else:
         raise _hobo_error(file_name, 'unsupported format (use the .xlsx or .csv HOBOware export).')
 
@@ -273,7 +294,7 @@ def read_hobo(INPUT, tsSettings):
     light_label = str(light_col).lower()
     if re.search(r'lum/?\s*ft|lumen', light_label):
         light_factor = LUMEN_FT2_TO_LUX
-        say('MESSAGE: light channel is in lum/ft2; converted to lux (x%.4f).' % LUMEN_FT2_TO_LUX)
+        say('Info: light channel is in lum/ft2; converted to lux (x%.4f).' % LUMEN_FT2_TO_LUX)
     elif re.search(r'lux', light_label):
         light_factor = 1.0
     else:
@@ -282,14 +303,14 @@ def read_hobo(INPUT, tsSettings):
 
     gmt = re.search(r'GMT\s*([+-]\d{1,2}):?(\d{2})?', str(time_col))
     if gmt:
-        say('MESSAGE: timestamps exported as GMT%s (from the header). The "Correct GMT-3" '
+        say('Info: timestamps exported as GMT%s (from the header). The "Correct GMT-3" '
             'option would subtract 3 MORE hours - only use it if the export is in GMT+00.' % gmt.group(1))
 
     # ---------- types ----------
     df[time_col] = pd.to_datetime(df[time_col], errors='coerce', dayfirst=True)
     n_bad_ts = int(df[time_col].isna().sum())
     if n_bad_ts:
-        say('WARNING: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
+        say('Warning: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
         df = df[df[time_col].notna()]
     if df.empty:
         raise _hobo_error(file_name, 'no rows with valid timestamps after reading.')
@@ -315,16 +336,16 @@ def read_hobo(INPUT, tsSettings):
             df = df[df[time_col] < end_t]
         n_window = before - len(df)
         if n_window:
-            say('MESSAGE: %d sample(s) outside the logger deployment window '
+            say('Info: %d sample(s) outside the logger deployment window '
                 '(%s to %s) discarded.' % (n_window, start_t, end_t))
         # event-only rows (no measurement) are removed
         ev_mask = df[event_cols].notna().any(axis=1) & df[temp_col].isna()
         n_ev = int(ev_mask.sum())
         if n_ev:
-            say('MESSAGE: %d logger-event row(s) (no measurement) discarded.' % n_ev)
+            say('Info: %d logger-event row(s) (no measurement) discarded.' % n_ev)
         df = df[~ev_mask]
     else:
-        say('WARNING: no logger event columns found - deployment window not applied; '
+        say('Warning: no logger event columns found - deployment window not applied; '
             'check the file edges for out-of-water readings.')
 
     if df.empty:
@@ -334,7 +355,7 @@ def read_hobo(INPUT, tsSettings):
     df = df[[time_col, temp_col, light_col]]
     df.columns = ['Datetime', 'Temperature (degC)', 'Luminosity (lux)']
     if not df['Datetime'].is_monotonic_increasing:
-        say('WARNING: timestamps were not in chronological order; sorted by time.')
+        say('Warning: timestamps were not in chronological order; sorted by time.')
         df = df.sort_values('Datetime')
     df.index = np.arange(len(df))
 
@@ -356,20 +377,20 @@ def read_hobo(INPUT, tsSettings):
     n_head = edge_trim_count(temp.iloc[:n_day], temp.iloc[:5 * n_day].median())
     n_tail = edge_trim_count(temp.iloc[::-1].iloc[:n_day], temp.iloc[-5 * n_day:].median())
     if n_head + n_tail > 0.1 * len(df):
-        say('WARNING: edge trim would remove >10%% of the series (%d+%d samples) - '
+        say('Warning: edge trim would remove >10%% of the series (%d+%d samples) - '
             'NOT applied; review the temperature plot manually.' % (n_head, n_tail))
     else:
         if n_head:
-            say('MESSAGE: %d leading sample(s) trimmed - temperature deviates more than '
+            say('Info: %d leading sample(s) trimmed - temperature deviates more than '
                 '%.1f degC from the deployment start (out-of-water reading).' % (n_head, tol))
         if n_tail:
-            say('MESSAGE: %d trailing sample(s) trimmed - temperature deviates more than '
+            say('Info: %d trailing sample(s) trimmed - temperature deviates more than '
                 '%.1f degC from the deployment end (out-of-water reading).' % (n_tail, tol))
         if n_head or n_tail:
             df = df.iloc[n_head: len(df) - n_tail]
             df.index = np.arange(len(df))
 
-    say('MESSAGE: HOBO file read: %d samples, %s to %s, median interval %s.'
+    say('Info: HOBO file read: %d samples, %s to %s, median interval %s.'
         % (len(df), df['Datetime'].iloc[0], df['Datetime'].iloc[-1], interval))
     return df, info
 # Conversion functions
@@ -469,6 +490,25 @@ FLAG_BUCKET_MAP = {
     'chl': ['chl'], 'O2': ['O2'], 'org': ['org'], 'tur': ['tur'],
     'dens': ['T', 'S'],
     'lux': ['lux'],  # HOBO light (fouling test)
+}
+
+# Maps a data column to its per-variable rollup flag column, for consumers that
+# need to select rows by qualification result (e.g. the DataView scale defaults).
+# Derived/untested variables (Density, Soundspeed, CO2, PAR, Depth) have no flag
+# column and are intentionally absent.
+PARAM_FLAG_COLUMN = {
+    'Temperature (degC)': 'Flag_T',
+    'Salinity (PSU)': 'Flag_S',
+    'Conductivity (mS/cm)': 'Flag_C',
+    'Pressure (dbar)': 'Flag_P',
+    'pH': 'Flag_pH',
+    'Chlorophyll (ug/L)': 'Flag_chl',
+    'O2 level (uM)': 'Flag_O2',
+    'O2 content (mg/L)': 'Flag_O2',
+    'Dissolved organic matter (ppb)': 'Flag_org',
+    'Turbidity (FTU)': 'Flag_tur',
+    'TSS (mg/L)': 'Flag_tur',
+    'Luminosity (lux)': 'Flag_lux',
 }
 
 def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad):
@@ -767,140 +807,235 @@ def _show_and_wait(fig, tk_root):
     done = tk.BooleanVar(tk_root, value=False)
     fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
     fig.show()
+    # bring the plot window to the FRONT (it otherwise opens behind the main app
+    # window and has to be fished out from the taskbar); topmost briefly, then off
+    try:
+        win = fig.canvas.manager.window
+        win.lift()
+        win.attributes('-topmost', True)
+        win.after(300, lambda: win.attributes('-topmost', False))
+        # focus the CANVAS widget (not just the window) so key events - Enter =
+        # Done, Esc = Cancel - fire without the user clicking the plot first
+        fig.canvas.get_tk_widget().focus_force()
+    except Exception:
+        pass
     tk_root.wait_variable(done)
 
 
-def trim_by_depth(data, tk_root=None):
-    # Create a copy of the dataframe
-    trimmed_data = data.copy()
+class ManualCutCancelled(Exception):
+    """Raised when the operator presses Cancel/Esc in a manual point-cut panel
+    (or the variable chooser): the caller aborts the whole qualification run and
+    returns to the input form instead of proceeding."""
 
-    # Define x and y
-    y = data['Depth (m)']
-    x = data['Depth (m)'].index
 
-    # Create the plot
-    fig, ax = plt.subplots()
-    ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
-    ax.set_title('Select points within rectangle to remove - Depth (m)\nPress Enter when you are done')
-    ax.set_ylabel('Depth (m)')
-    ax.set_xlabel('Sample number')
+def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
+    """Interactive panel to manually DISMISS points of a series. Drag a rectangle
+    over points to mark them dismissed; mouse wheel zooms; Undo/Reset/Skip/Done/
+    Help buttons and a live counter. Returns a SET of positional indices to
+    dismiss (empty if none), or None if the user pressed Skip. Never modifies data.
 
-    # Stores removed indices
-    removed_indices = set()
-    selection_complete = False
+    locked:   indices already dismissed upstream (e.g. the Depth whole-row cut) -
+              shown greyed and not selectable, and excluded from the returned set.
+    progress: (i, total) shown in the title, e.g. '[2 of 5]'."""
+    x = np.asarray(x)
+    y = np.asarray(y, dtype=float)
+    locked = set() if locked is None else set(int(i) for i in locked)
+    dismissed = set()
+    history = []          # stack of per-box selections, for Undo
+    state = {'skipped': False, 'drawn': False, 'cancelled': False}
 
-    # Function to remove selected data
-    def on_select(eclick, erelease):
-        nonlocal trimmed_data
-        x0, y0 = eclick.xdata, eclick.ydata
-        x1, y1 = erelease.xdata, erelease.ydata  
+    fig, ax = plt.subplots(figsize=(10, 6.5))
+    plt.subplots_adjust(bottom=0.20, top=0.88)
+    # keep the useful navigation toolbar but drop the Zoom lens (wheel zoom
+    # replaces it), the Home button (the 'Reset' button resets the view) and
+    # Configure subplots (its wspace/hspace do nothing here); best-effort
+    try:
+        tb = fig.canvas.manager.toolbar
+        for _name in ('Zoom', 'Home', 'Subplots'):
+            btn = getattr(tb, '_buttons', {}).get(_name)
+            if btn is not None:
+                btn.pack_forget()
+    except Exception:
+        pass
 
-        mask = (x > min(x0, x1)) & (x < max(x0, x1)) & \
-               (y > min(y0, y1)) & (y < max(y0, y1))
-
-        current_indices = np.arange(len(y))[mask]
-        removed_indices.update(current_indices)
-        # errors='ignore' prevents a crash when the same points are selected twice
-        trimmed_data.drop(index=current_indices, inplace=True, errors='ignore')
-
-        # Update the plot
-        remaining_mask = np.isin(np.arange(len(y)), list(removed_indices), invert=True)
-        new_x = x[remaining_mask]
-        new_y = y[remaining_mask]
-        
+    def redraw(keep_view=True):
+        # preserve the current view (zoom/pan) across redraws; the first draw
+        # (and Reset) autoscales. Track "first draw" with an explicit flag, NOT
+        # ax.lines/collections - the RectangleSelector adds handle artists.
+        restore = keep_view and state['drawn']
+        if restore:
+            xlim, ylim = ax.get_xlim(), ax.get_ylim()
         ax.clear()
-        ax.plot(new_x, new_y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
-        ax.set_title('Select points within rectangle to remove - Depth (m)\nPress Enter when you are done')
-        ax.set_ylabel('Depth (m)')
+        gone = dismissed | locked
+        keep = np.array([i not in gone for i in range(len(y))], dtype=bool)
+        ax.plot(x[keep], y[keep], linestyle='-', marker='x',
+                markeredgecolor='r', markerfacecolor='r', picker=5)
+        if locked:
+            li = sorted(locked)
+            ax.scatter(x[li], y[li], marker='o', facecolors='none',
+                       edgecolors='0.75', s=40)   # already cut upstream (lighter)
+        if dismissed:
+            di = sorted(dismissed)
+            ax.scatter(x[di], y[di], marker='o', facecolors='none',
+                       edgecolors='0.45', s=45)
+        prog = (' [%d of %d]' % progress) if progress else ''
+        extra = ('    (+%d already cut via Depth)' % len(locked)) if locked else ''
+        ax.set_title('%s%s - drag a box to DISMISS points (flag 5)   |   wheel = zoom\n'
+                     '%d dismissed here%s    |    Enter = Done'
+                     % (label, prog, len(dismissed), extra))
+        ax.set_ylabel(label)
         ax.set_xlabel('Sample number')
-        fig.canvas.draw()
+        if restore:
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+        else:
+            # compute the limits from the data NOW: draw_idle may not autoscale
+            # before the window is shown, leaving the default (0,1) empty view
+            ax.relim()
+            ax.autoscale()
+        state['drawn'] = True
+        fig.canvas.draw_idle()
 
-    def on_key_press(event):
-        nonlocal selection_complete
-        if event.key == 'enter':
-            selection_complete = True
-            plt.close(fig)
+    def on_scroll(event):
+        # mouse-wheel zoom centred on the cursor (no need for the toolbar lens)
+        if event.inaxes is not ax:
+            return
+        scale = 1 / 1.2 if event.button == 'up' else 1.2   # wheel up = zoom in
+        xlim, ylim = ax.get_xlim(), ax.get_ylim()
+        xd, yd = event.xdata, event.ydata
+        ax.set_xlim(xd - (xd - xlim[0]) * scale, xd + (xlim[1] - xd) * scale)
+        ax.set_ylim(yd - (yd - ylim[0]) * scale, yd + (ylim[1] - yd) * scale)
+        fig.canvas.draw_idle()
 
-    # Configure the selector
-    _selector = RectangleSelector(ax, on_select,  # keep the reference alive (the widget is collected by the GC if not stored)
-                               useblit=True,
-                               button=[1],
-                               minspanx=5, minspany=5,
-                               spancoords='pixels',
-                               interactive=True)
+    # middle-mouse-button drag = pan the view (left button is the box-select)
+    pan = {'x': None, 'y': None}
 
-    # Connect the events
-    fig.canvas.mpl_connect('key_press_event', on_key_press)
+    def on_pan_press(event):
+        if event.button == 2 and event.inaxes is ax:   # 2 = middle button
+            pan['x'], pan['y'] = event.xdata, event.ydata
 
-    # Configure the limits
-    ax.set_xlim(np.nanmin(x) - 0.1, np.nanmax(x) + 0.1)
-    ax.set_ylim(np.nanmin(y) - 0.1, np.nanmax(y) + 0.1)
+    def on_pan_move(event):
+        if pan['x'] is None or event.inaxes is not ax:
+            return
+        dx = event.xdata - pan['x']
+        dy = event.ydata - pan['y']
+        xlim, ylim = ax.get_xlim(), ax.get_ylim()
+        ax.set_xlim(xlim[0] - dx, xlim[1] - dx)
+        ax.set_ylim(ylim[0] - dy, ylim[1] - dy)
+        fig.canvas.draw_idle()
 
-    # Show the plot and wait without freezing the interface
-    _show_and_wait(fig, tk_root)
+    def on_pan_release(event):
+        if event.button == 2:
+            pan['x'] = pan['y'] = None
 
-    # Reindex before returning
-    trimmed_data.index = np.arange(len(trimmed_data))
-
-    return trimmed_data
-
-def trim_selected_variable(data, name, tk_root=None):
-    # Make an explicit copy of the column to avoid the SettingWithCopyWarning alert
-    y = data[name].copy()
-    x = data.index  # Use the index directly without copying
-
-    # Plot creation
-    fig, ax = plt.subplots()
-    ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
-    ax.set_title(f'Select points within rectangle to remove - {name}\nPress Enter when you are done')
-    ax.set_ylabel(name)
-    ax.set_xlabel('Sample number')
-
-    # Variable for loop control
-    selection_complete = False
-
-    # Function to remove selected points
     def on_select(eclick, erelease):
-        nonlocal y
         x0, y0 = eclick.xdata, eclick.ydata
         x1, y1 = erelease.xdata, erelease.ydata
-        mask = (x > min(x0, x1)) & (x < max(x0, x1)) & \
-               (y > min(y0, y1)) & (y < max(y0, y1))
-        y[mask] = np.nan  # Replace selected points with NaN
+        mask = (x > min(x0, x1)) & (x < max(x0, x1)) & (y > min(y0, y1)) & (y < max(y0, y1))
+        new_sel = set(int(i) for i in np.nonzero(mask)[0]) - dismissed - locked
+        if new_sel:
+            history.append(new_sel)
+            dismissed.update(new_sel)
+            redraw()
 
-        ax.clear()
-        ax.plot(x, y, linestyle='-', marker='x', markeredgecolor='r', markerfacecolor='r', picker=5)
-        ax.set_title(f'Select points within rectangle to remove - {name}\nPress Enter when you are done')
-        ax.set_ylabel(name)
-        ax.set_xlabel('Sample number')
-        fig.canvas.draw()
+    def do_undo(_=None):
+        if history:
+            dismissed.difference_update(history.pop())
+            redraw()
 
-    def on_key_press(event):
-        nonlocal selection_complete
+    def do_reset(_=None):
+        dismissed.clear()
+        history.clear()
+        redraw(keep_view=False)   # also reset the zoom to fit the whole series
+
+    def do_done(_=None):
+        plt.close(fig)
+
+    def do_skip(_=None):
+        state['skipped'] = True
+        dismissed.clear()
+        plt.close(fig)
+
+    def do_cancel(_=None):
+        # abort the WHOLE qualification and go back to the form (not just this
+        # series); raised after the window closes
+        state['cancelled'] = True
+        plt.close(fig)
+
+    def do_help(_=None):
+        try:
+            from tkinter import messagebox
+            # parent the dialog to the PLOT window so it pops over the plot
+            # instead of raising the main program window behind it
+            parent = getattr(getattr(fig.canvas, 'manager', None), 'window', None)
+            messagebox.showinfo(
+                'Manual point cut - help',
+                'Drag a rectangle (left button) over points to DISMISS them (flag 5).\n'
+                'Mouse wheel zooms around the cursor; middle-button drag pans.\n\n'
+                'The points are NOT deleted: they stay in the sheet with flag 5 and\n'
+                'their value blanked, so the manual cut stays traceable. Points already\n'
+                'cut in the Depth review appear greyed and are kept dismissed.\n\n'
+                'Undo   - undo the last box\n'
+                'Reset  - clear the dismissals made here and reset the zoom\n'
+                'Skip   - leave this series untouched (continue)\n'
+                'Cancel - abort the whole qualification (shortcut: Esc)\n'
+                'Done   - confirm and continue (shortcut: Enter)',
+                parent=parent)
+        except Exception:
+            pass
+
+    def on_key(event):
         if event.key == 'enter':
-            selection_complete = True
-            plt.close(fig)
+            do_done()
+        elif event.key == 'escape':
+            do_cancel()
 
-    # Event configuration
-    _selector = RectangleSelector(ax, on_select,  # keep the reference alive (the widget is collected by the GC if not stored)
-                               useblit=True,
-                               button=[1],
-                               minspanx=5, minspany=5,
-                               spancoords='pixels',
-                               interactive=True)
+    _selector = RectangleSelector(ax, on_select, useblit=True, button=[1],  # noqa: F841 (kept alive vs GC)
+                                  minspanx=5, minspany=5, spancoords='pixels',
+                                  interactive=True)
+    fig.canvas.mpl_connect('key_press_event', on_key)
+    fig.canvas.mpl_connect('scroll_event', on_scroll)
+    fig.canvas.mpl_connect('button_press_event', on_pan_press)
+    fig.canvas.mpl_connect('motion_notify_event', on_pan_move)
+    fig.canvas.mpl_connect('button_release_event', on_pan_release)
 
-    fig.canvas.mpl_connect('key_press_event', on_key_press)
+    # buttons along the bottom (kept referenced so the GC does not collect them)
+    _buttons = []
+    for i, (txt, cb) in enumerate([('Undo', do_undo), ('Reset', do_reset),
+                                   ('Skip', do_skip), ('Help', do_help),
+                                   ('Done', do_done), ('Cancel', do_cancel)]):
+        bax = fig.add_axes([0.025 + i * 0.163, 0.04, 0.145, 0.07])
+        b = Button(bax, txt)
+        b.on_clicked(cb)
+        _buttons.append(b)
 
-    # Limit configuration
-    ax.set_xlim(np.nanmin(x)-0.1, np.nanmax(x)+0.1)
-    ax.set_ylim(np.nanmin(y)-0.1, np.nanmax(y)+0.1)
-
-    # Show the plot and wait without freezing the interface
+    redraw()
+    _theme.style_plot_window(fig, 'Manual point cut - %s' % label)  # app icon + title
     _show_and_wait(fig, tk_root)
+    if state['cancelled']:
+        raise ManualCutCancelled()
+    return None if state['skipped'] else dismissed
 
-    # Update the data after closing the window
-    data[name] = y
-    return data
+
+def trim_by_depth(data, tk_root=None, locked=None, progress=None):
+    """Manual review of a mooring depth series. Returns the SET of row positions
+    the operator dismissed (whole-row dismissal). Does not modify `data`; the
+    caller flags those rows DISMISSED (5) and blanks their values."""
+    got = manual_cut_panel(data['Depth (m)'].index.to_numpy(),
+                           data['Depth (m)'].to_numpy(), 'Depth (m)', tk_root,
+                           locked=locked, progress=progress)
+    return set() if got is None else set(got)
+
+
+def trim_selected_variable(data, name, tk_root=None, locked=None, progress=None):
+    """Manual review of a single variable. Returns the SET of row positions the
+    operator dismissed for that variable (excluding any `locked` rows already cut
+    upstream). Does not modify `data`; the caller flags those points DISMISSED (5)
+    for this variable and blanks the value."""
+    got = manual_cut_panel(np.arange(len(data)), data[name].to_numpy(), name, tk_root,
+                           locked=locked, progress=progress)
+    return set() if got is None else set(got)
+
 
 # QCS output subfolders where each instrument's qualified spreadsheets live
 # (the tscp name is the same since the pre-v4 versions)
@@ -963,7 +1098,7 @@ def build_database(instrument, file_list=None, input_path=None):
     for file_path in files:
         base = os.path.basename(file_path)
         if base.startswith('QCS_'):
-            messages.append('MESSAGE: report file skipped: %s' % base)
+            messages.append('Info: report file skipped: %s' % base)
             continue
         try:
             if file_path.lower().endswith('.xlsx'):
@@ -984,7 +1119,7 @@ def build_database(instrument, file_list=None, input_path=None):
                              "stackable - unify them into separate databases." % (base, layout.upper(), instrument))
         df['Source file'] = base
         frames.append(df)
-        messages.append('MESSAGE: %s: %d rows' % (base, len(df)))
+        messages.append('Info: %s: %d rows' % (base, len(df)))
 
     if not frames:
         raise ValueError('build_database: no readable qualified files in the selection.')
@@ -993,7 +1128,7 @@ def build_database(instrument, file_list=None, input_path=None):
     database['Datetime'] = pd.to_datetime(database['Datetime'], errors='coerce')
     n_bad_ts = int(database['Datetime'].isna().sum())
     if n_bad_ts:
-        messages.append('WARNING: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
+        messages.append('Warning: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
         database = database[database['Datetime'].notna()]
 
     database = database.sort_values(['Site', 'Datetime'], kind='stable')
@@ -1004,22 +1139,22 @@ def build_database(instrument, file_list=None, input_path=None):
     database = database.drop_duplicates(subset=value_cols, keep='first')
     n_exact = n_before - len(database)
     if n_exact:
-        messages.append('WARNING: %d exact duplicate row(s) (same Site+Datetime+values) '
+        messages.append('Warning: %d exact duplicate row(s) (same Site+Datetime+values) '
                         'discarded - kept the first occurrence.' % n_exact)
 
     # overlaps with DIFFERENT values: kept, but the operator needs to know
     overlap_mask = database.duplicated(subset=['Site', 'Datetime'], keep=False)
     if overlap_mask.any():
         offenders = sorted(database.loc[overlap_mask, 'Source file'].unique())
-        messages.append('WARNING: %d row(s) share the same Site+Datetime with DIFFERENT values '
+        messages.append('Warning: %d row(s) share the same Site+Datetime with DIFFERENT values '
                         '(overlapping qualifications?) - ALL kept; check the files: %s'
                         % (int(overlap_mask.sum()), ', '.join(offenders)))
 
     database.index = np.arange(len(database))
     for site, group in database.groupby('Site'):
-        messages.append('MESSAGE: site %s: %d rows, %s to %s'
+        messages.append('Info: site %s: %d rows, %s to %s'
                         % (site, len(group), group['Datetime'].min(), group['Datetime'].max()))
-    messages.append('MESSAGE: database built: %d file(s), %d rows, instrument %s.'
+    messages.append('Info: database built: %d file(s), %d rows, instrument %s.'
                     % (len(frames), len(database), instrument))
     return database, messages
 
@@ -1098,15 +1233,15 @@ def combine_hobo_replicates(replicates, temp_tol=0.5):
     if 'Site' in replicates[0].columns and len(replicates[0]):
         out.insert(1, 'Site', replicates[0]['Site'].iloc[0])
 
-    messages.append('MESSAGE: combined %d HOBO replicates over %d aligned timestamps.'
+    messages.append('Info: combined %d HOBO replicates over %d aligned timestamps.'
                     % (len(replicates), len(out)))
     n_disagree = int((flag_t == 3).sum())
     if n_disagree:
-        messages.append('WARNING: %d timestamp(s) where the replicate temperatures disagree by '
+        messages.append('Warning: %d timestamp(s) where the replicate temperatures disagree by '
                         'more than %.2f degC - combined Flag_T set to SUSPECT there.'
                         % (n_disagree, temp_tol))
     all_fouled = flag_lux[flag_lux == 4]
     if len(all_fouled):
-        messages.append('MESSAGE: combined light usable until %s (all replicates fouled after that).'
+        messages.append('Info: combined light usable until %s (all replicates fouled after that).'
                         % pd.Timestamp(all_fouled.index[0]))
     return out, messages

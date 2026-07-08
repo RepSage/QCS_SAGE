@@ -202,15 +202,20 @@ class LogConsole:
         self.text.tag_configure('warning', foreground='#dcdcaa')
         self.text.tag_configure('success', foreground='#89d185')
 
-        self.clear_button = ttk.Button(self.frame, text='Clear Log', command=self.clear)
+        self.clear_button = ttk.Button(self.frame, text='Clear log', command=self.clear)
         self.clear_button.pack(side='right', padx=5, pady=(6, 0))
 
     def _tag_for(self, message):
-        if message.startswith(('ERROR', 'CRITICAL')):
+        # Severity is read from the message's leading label (case-insensitive), so
+        # the whole app shares ONE colour scheme regardless of the caller. Standard
+        # prefixes: 'Info:' (default), 'Warning:' (yellow), 'Error:'/'Critical
+        # error:' (red), 'Done:' (green).
+        head = message.lstrip().lower()
+        if head.startswith(('error', 'critical')):
             return 'error'
-        if message.startswith('WARNING'):
+        if head.startswith('warning'):
             return 'warning'
-        if message.startswith(('SUCCESS', 'Done')):
+        if head.startswith(('done', 'success')):
             return 'success'
         return None
 
@@ -318,14 +323,22 @@ class StreamToLog:
         return False
 
 
+_redirect_stream = None
+
 def install_output_redirect():
     """Redirect stdout/stderr to an in-app Log stream (no console needed).
     Returns the StreamToLog; attach the panel with stream.set_sink(log.log)
-    once it exists. Early prints are buffered and flushed on attach."""
-    stream = StreamToLog()
-    sys.stdout = stream
-    sys.stderr = stream
-    return stream
+    once it exists. Early prints are buffered and flushed on attach.
+
+    Idempotent: repeated calls return the SAME stream, so the unified app
+    (which imports both tool modules) keeps a single redirect and one shared
+    log sink instead of two competing ones."""
+    global _redirect_stream
+    if _redirect_stream is None:
+        _redirect_stream = StreamToLog()
+        sys.stdout = _redirect_stream
+        sys.stderr = _redirect_stream
+    return _redirect_stream
 
 
 def install_crash_handler(app_name, out_stream=None, base_dir=None):
@@ -354,19 +367,53 @@ def install_crash_handler(app_name, out_stream=None, base_dir=None):
     sys.excepthook = _hook
 
 
+_icon_photo_ref = None  # keep the iconphoto PhotoImage alive (else the GC drops it)
+
 def set_window_icon(window, icon_name='qcs_icon.ico', app_id='sage.qcs.qualitycontrolsystem'):
     """Use a custom taskbar/window icon. Sets an explicit Windows AppUserModelID
     (so the app shows its OWN icon on the taskbar instead of the interpreter's,
-    e.g. Spyder's) and, if an .ico file named `icon_name` sits next to the
-    scripts, applies it. All best-effort: a no-op where unavailable or missing."""
+    e.g. Spyder's), then applies the icon. All best-effort: a no-op where
+    unavailable or missing.
+
+    Taskbar crispness: Tk's iconbitmap(.ico) often renders blurry on the taskbar
+    (it picks a small frame and upscales). Applying a high-res PNG via iconphoto
+    LAST gives Windows a 256px image to scale down cleanly."""
+    global _icon_photo_ref
     try:
         from ctypes import windll
         windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
     except Exception:
         pass
+    base = os.path.dirname(os.path.abspath(__file__))
+    # 1) .ico first (title-bar icon, has the small crisp frames)
     try:
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), icon_name)
-        if os.path.isfile(path):
-            window.iconbitmap(path)
+        ico = os.path.join(base, icon_name)
+        if os.path.isfile(ico):
+            window.iconbitmap(ico)
+    except Exception:
+        pass
+    # 2) high-res PNG via iconphoto LAST -> crisp taskbar icon (Tk 8.6 reads PNG)
+    try:
+        import tkinter as tk
+        png = os.path.join(base, os.path.splitext(icon_name)[0] + '.png')
+        if os.path.isfile(png):
+            if _icon_photo_ref is None:
+                _icon_photo_ref = tk.PhotoImage(master=window, file=png)
+            window.iconphoto(True, _icon_photo_ref)
+    except Exception:
+        pass
+
+
+def style_plot_window(fig, title=None):
+    """Give a matplotlib figure window the app icon and a meaningful title (so it
+    matches the rest of the software instead of showing the default matplotlib
+    icon and 'Figure N'). Best-effort and backend-dependent."""
+    try:
+        mgr = fig.canvas.manager
+        if title:
+            mgr.set_window_title(title)
+        win = getattr(mgr, 'window', None)
+        if win is not None:
+            set_window_icon(win)
     except Exception:
         pass

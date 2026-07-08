@@ -2,9 +2,228 @@ import re
 import math
 import numpy as np # type: ignore
 import pandas as pd # type: ignore
+import datetime as _dt # type: ignore
 import matplotlib.pyplot as plt # type: ignore
+import matplotlib.dates as _mdates # type: ignore
 from matplotlib.lines import Line2D # type: ignore
+from matplotlib.ticker import MaxNLocator # type: ignore
+import QCS_Theme as _theme
 ####################################################################
+
+# Safe bounds for a matplotlib DATE axis (well inside the hard year 1..9999
+# limit). Zoom/pan is clamped to these so panning a time axis far out does not
+# produce an out-of-range date ordinal that crashes the tick formatter.
+_DATE_MIN = _mdates.date2num(_dt.datetime(100, 1, 1))
+_DATE_MAX = _mdates.date2num(_dt.datetime(9000, 1, 1))
+
+def _apply_time_window(df, dataViewSettings):
+    """Keep only the rows inside the chosen X-axis time window (start/end), so the
+    mooring plots actually show ONLY those hours (and the y-axis / trend lines fit
+    that window) instead of merely zooming into the full series."""
+    xs = dataViewSettings.get('xAxisStart')
+    xe = dataViewSettings.get('xAxisEnd')
+    if xs is not None and xe is not None and 'Datetime' in df.columns:
+        return df[(df['Datetime'] >= pd.Timestamp(xs)) & (df['Datetime'] <= pd.Timestamp(xe))]
+    return df
+
+
+def _clamp_x(ax, lo, hi):
+    """Keep x-limits inside the valid date range when `ax` is a date axis,
+    preserving the span (shift the window back in) so a big pan cannot invert or
+    collapse it or crash the date-tick formatter."""
+    try:
+        if isinstance(ax.xaxis.get_major_locator(), _mdates.DateLocator):
+            span = hi - lo
+            if lo < _DATE_MIN:
+                lo, hi = _DATE_MIN, _DATE_MIN + span
+            if hi > _DATE_MAX:
+                lo, hi = _DATE_MAX - span, _DATE_MAX
+    except Exception:
+        pass
+    return lo, hi
+
+def _fit_margins(fig, pad=6):
+    """Measure the actually-drawn content (tick labels + axis labels of every
+    axis) and pull the plot's left/right margins in so NOTHING is clipped at the
+    window edges - regardless of how wide the tick numbers turn out to be or how
+    many stacked axes there are. The window size itself stays fixed; only the
+    plot area shrinks to make room. Runs a couple of passes to converge."""
+    try:
+        for _ in range(3):
+            fig.canvas.draw()
+            r = fig.canvas.get_renderer()
+            fw = fig.bbox.width
+            boxes = [a.get_tightbbox(r) for a in fig.axes if a.get_visible()]
+            if not boxes:
+                return
+            x0 = min(b.x0 for b in boxes)
+            x1 = max(b.x1 for b in boxes)
+            sp = fig.subplotpars
+            left, right = sp.left, sp.right
+            if x0 < pad:
+                left += (pad - x0) / fw
+            if x1 > fw - pad:
+                right -= (x1 - (fw - pad)) / fw
+            if abs(left - sp.left) < 1e-4 and abs(right - sp.right) < 1e-4:
+                break                      # converged: nothing clipped
+            if right - left < 0.2:
+                break                      # give up rather than collapse the plot
+            fig.subplots_adjust(left=max(0.02, left), right=min(0.995, right))
+    except Exception:
+        pass
+
+
+def _fit_stacked_yticks(fig, spacing=None, pad=4.0, min_pt=4.0):
+    """When many parameter axes are stacked on the right, their number labels and
+    rotated axis titles can collide with the next axis. Shrink the y fonts (tick
+    numbers AND axis titles together) until every adjacent pair of label columns
+    has at least `pad` px of clear gap - measured on the SAME renderer that draws
+    the figure, so it reflects the real widths (e.g. a 6-char density value like
+    1019.5) rather than a guess. No-op once there is already room."""
+    if len(fig.axes) < 2:
+        return
+    try:
+        for _ in range(8):
+            fig.canvas.draw()
+            r = fig.canvas.get_renderer()
+            # each axis' label "column" = union of its y number labels + its title
+            cols = []
+            for ax in fig.axes:
+                boxes = [t.get_window_extent(r) for t in ax.get_yticklabels() if t.get_text()]
+                lab = ax.yaxis.get_label()
+                if lab.get_text():
+                    boxes.append(lab.get_window_extent(r))
+                if boxes:
+                    cols.append((min(b.x0 for b in boxes), max(b.x1 for b in boxes)))
+            cols.sort()
+            # worst horizontal encroachment between neighbouring columns
+            worst = max((a[1] - b[0] for a, b in zip(cols, cols[1:], strict=False)), default=-1e9)
+            if worst <= -pad:                      # clear gap everywhere -> done
+                return
+            cur = min((t.get_fontsize() for ax in fig.axes
+                       for t in ax.get_yticklabels() if t.get_text()), default=10.0)
+            if cur <= min_pt:                      # already as small as we allow
+                return
+            for ax in fig.axes:                    # shrink numbers + title, redraw, re-check
+                for t in ax.get_yticklabels():
+                    t.set_fontsize(max(min_pt, t.get_fontsize() * 0.88))
+                lab = ax.yaxis.get_label()
+                lab.set_fontsize(max(min_pt, lab.get_fontsize() * 0.88))
+    except Exception:
+        pass
+
+
+def enable_scroll_zoom(fig):
+    """Interaction for a shown panel: mouse-wheel zoom around the cursor,
+    middle-button drag to pan, a 'Reset view' toolbar button that restores the
+    original plotted limits, and removal of the redundant Zoom lens. Call it
+    right before plt.show() (after all axes have their final limits)."""
+    # pull the margins in so no tick/axis label is clipped at the window edges
+    _fit_margins(fig)
+    # snapshot the original plotted view for Reset
+    original = [(ax, ax.get_xlim(), ax.get_ylim()) for ax in fig.axes]
+
+    def _overlaid_axes(ref_ax):
+        # These panels stack several parameter y-axes with twinx(): they overlap
+        # (same position) and SHARE the x-axis. Zoom/pan act on ALL of them in
+        # DISPLAY (pixel) coordinates so the independent y-scales stay aligned.
+        # Because the x-axis is shared, it is set ONCE (from the reference axis) -
+        # setting it per-axis would compound the change N times and feel coarse.
+        ref = ref_ax.get_position().bounds
+        return [a for a in fig.axes
+                if all(abs(p - q) < 1e-6 for p, q in zip(a.get_position().bounds, ref, strict=False))]
+
+    ZOOM = 1.1   # gentle per-notch factor (was 1.2, too aggressive)
+
+    def on_scroll(event):
+        if event.inaxes is None:
+            return
+        axes = _overlaid_axes(event.inaxes)
+        if not axes:
+            return
+        scale = 1 / ZOOM if event.button == 'up' else ZOOM   # wheel up = zoom in
+        ref = event.inaxes
+        xd, _ = ref.transData.inverted().transform((event.x, event.y))
+        xl = ref.get_xlim()
+        new_xlim = _clamp_x(ref, xd - (xd - xl[0]) * scale, xd + (xl[1] - xd) * scale)
+        for ax in axes:
+            ax.set_xlim(new_xlim)          # shared x: same absolute value, no compounding
+            _, yd = ax.transData.inverted().transform((event.x, event.y))
+            yl = ax.get_ylim()
+            ax.set_ylim(yd - (yd - yl[0]) * scale, yd + (yl[1] - yd) * scale)
+        fig.canvas.draw_idle()
+
+    pan = {'x': None, 'y': None, 'ref': None, 'axes': None}
+
+    def on_press(event):
+        if event.button == 2 and event.inaxes is not None:   # 2 = middle button
+            pan.update(x=event.x, y=event.y, ref=event.inaxes,
+                       axes=_overlaid_axes(event.inaxes))
+
+    def on_move(event):
+        if pan['axes'] is None or event.x is None:
+            return
+        ref = pan['ref']
+        inv = ref.transData.inverted()
+        rx0, _ = inv.transform((pan['x'], pan['y']))         # shared x delta (once)
+        rx1, _ = inv.transform((event.x, event.y))
+        dxr = rx1 - rx0
+        xl = ref.get_xlim()
+        new_xlim = _clamp_x(ref, xl[0] - dxr, xl[1] - dxr)
+        for ax in pan['axes']:
+            ax.set_xlim(new_xlim)          # shared x: set once (same value for all)
+            inv2 = ax.transData.inverted()
+            _, y0 = inv2.transform((pan['x'], pan['y']))     # per-axis y delta
+            _, y1 = inv2.transform((event.x, event.y))
+            dy = y1 - y0
+            yl = ax.get_ylim()
+            ax.set_ylim(yl[0] - dy, yl[1] - dy)
+        pan['x'], pan['y'] = event.x, event.y                # incremental
+        fig.canvas.draw_idle()
+
+    def on_release(event):
+        if event.button == 2:
+            pan['axes'] = None
+
+    def reset_view(*_):
+        for ax, xl, yl in original:
+            ax.set_xlim(xl)
+            ax.set_ylim(yl)
+        fig.canvas.draw_idle()
+
+    fig.canvas.mpl_connect('scroll_event', on_scroll)
+    fig.canvas.mpl_connect('button_press_event', on_press)
+    fig.canvas.mpl_connect('motion_notify_event', on_move)
+    fig.canvas.mpl_connect('button_release_event', on_release)
+
+    # toolbar: drop the Zoom lens, add a themed 'Reset view' button, and silence
+    # the coordinate readout. That readout changes width as the cursor crosses
+    # the several parameter axes, which makes the Tk window jitter/resize on its
+    # own - overriding set_message stops it. (Best-effort, backend-dependent;
+    # the mouse interactions above work regardless.)
+    try:
+        from tkinter import ttk as _ttk
+        tb = fig.canvas.manager.toolbar
+        tb.set_message = lambda *a, **k: None   # no live coord text -> no resize
+        # drop the Zoom lens (wheel zoom replaces it), the Home button (our
+        # 'Reset view' replaces it) and Configure subplots (its wspace/hspace do
+        # nothing on these single-subplot figures)
+        for _name in ('Zoom', 'Home', 'Subplots'):
+            btn = getattr(tb, '_buttons', {}).get(_name)
+            if btn is not None:
+                btn.pack_forget()
+        if not getattr(tb, '_qcs_reset_added', False):
+            _ttk.Button(tb, text='Reset view', command=reset_view,
+                        width=10).pack(side='left', padx=4)
+            tb._qcs_reset_added = True
+    except Exception:
+        pass
+
+    # app icon + a meaningful window title (the plot's own title, so the taskbar
+    # and window name say what is being shown instead of 'Figure 1')
+    _title = next((a.get_title() for a in fig.axes if a.get_title()), '')
+    _theme.style_plot_window(fig, _title)
+
 def renameParameters (parameter_names):
     rParam = []
     for param in parameter_names:
@@ -144,9 +363,12 @@ def setParam (dataViewSettings, db, semester, site):
     while i < len(parameter_names):
         slice = db[semester].loc[:, parameter_names[i]].copy()
         if slice.isna().all():
-            print('\nNo %s data for %s during %d %s.'%(parameter_names[i], site, year, semester))
+            # Only report when the semester HAS data but this parameter is
+            # missing. An entirely empty semester (e.g. viewing only March, so the
+            # 2nd semester is empty) is expected and would just spam the log.
+            if not db[semester].empty:
+                print('\nNo %s data for %s during %d %s.'%(parameter_names[i], site, year, semester))
             parameter_names.pop(i)
-            pass
         else:
             dataAxis_list.append(slice)
             i += 1
@@ -346,6 +568,7 @@ def plot_database_panel1 (database, dataViewSettings):
     db_raw = database.copy()
     # limit data to year
     db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
+    db_raw = _apply_time_window(db_raw, dataViewSettings)   # plot ONLY the chosen hours (no-op for profiles)
     db_raw.index = db_raw['Datetime']
     db_raw = db_raw.rename_axis('dt_index')
     db_raw = db_raw.sort_values(by='dt_index')
@@ -359,15 +582,29 @@ def plot_database_panel1 (database, dataViewSettings):
             if len(emptySemester) == len(db):
                 raise ValueError('Empty sequence for both semesters in current combination of selected sites and year. Double check inputs or select different sites/year.')
         except ValueError as e:
-            print('SelectionError:', e)
+            print('Error:', e)
         for semester in db.keys():
             # define list of dataframes for y axis parameters
             y_list, cParam, bcParam, parameter_names = setParam (dataViewSettings, db, semester, site)
             rParam = renameParameters(parameter_names)
             if len(y_list) > 0:
-                fig, ax1 = plt.subplots(figsize=(980 / 100, 500 / 100))
+                # FIXED window size so it never grows past the screen. The stacked
+                # parameter axes always fit its right zone: the spine SPACING is
+                # computed to fit, and the y-axis FONTS shrink only when there are
+                # so many axes that normal spacing/labels would not fit (few
+                # parameters keep the normal 60 px spacing and font).
+                n_right = max(0, len(y_list) - 1)
+                TOTAL_PX, H_PX, LEFT_PX = 1050, 540, 78
+                MAX_ZONE = TOTAL_PX - LEFT_PX - 560          # keep the plot >= 560 px
+                spacing = min(60.0, max(22.0, (MAX_ZONE - 95) / (n_right - 1))) if n_right > 1 else 60.0
+                actual_zone = min(MAX_ZONE, ((n_right - 1) * spacing + 95) if n_right >= 1 else 40)
+                plot_px = TOTAL_PX - LEFT_PX - actual_zone   # plot gets the rest
+                fscale = min(1.0, max(0.55, spacing / 58.0)) # shrink y fonts when tight
+                nbins = 6 if n_right >= 4 else 8              # fewer, rounder y ticks when crowded
+                fig, ax1 = plt.subplots(figsize=(TOTAL_PX / 100, H_PX / 100))
                 plt.xticks(rotation=35)
-                plt.subplots_adjust(left=0.050, right=0.620)
+                plt.subplots_adjust(left=LEFT_PX / TOTAL_PX,
+                                    right=(LEFT_PX + plot_px) / TOTAL_PX, bottom=0.18)
                 plt.grid(True, linestyle='dotted', linewidth=0.5)
                 #define x and y
                 # defining y while removing datetime duplicates
@@ -376,23 +613,34 @@ def plot_database_panel1 (database, dataViewSettings):
                 y, gap_ids = fill_NaT_gap(y)
                 #defining x
                 x = y.index
-                if fit_lin_regression == True:
+                # Pressure is NEVER fitted: a mooring's pressure is dominated by the
+                # tide, so a low-degree polynomial through it is meaningless. Its
+                # raw series is drawn as a dashed line instead (same rule as the
+                # twin axes below).
+                if fit_lin_regression == True and y_list[0].name != 'Pressure (dbar)':
                     xp, yp = linear_regression (y, degree=deg)
                     if points == True:
                         ax1.plot(x, y, color=cParam[y_list[0].name], linestyle='none', marker='.', markersize=3, label=rParam[0])
                     ax1.plot(xp, yp, color=bcParam[y_list[0].name], linestyle='-', label=rParam[0])
-                    ax1.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
+                    if points != True:
+                        # only the tendency curve is drawn: hug its range. With the
+                        # data points visible the axis must NOT be clamped to the
+                        # fit, or genuine (approved) data gets clipped out of view.
+                        ax1.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
+                elif y_list[0].name == 'Pressure (dbar)':
+                    ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='--', marker='None', label=rParam[0])
                 else:
                     ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='None', marker='.', label=rParam[0])
                 # set y label
-                ax1.set_ylabel(rParam[0], color=bcParam[y_list[0].name])
+                ax1.set_ylabel(rParam[0], color=bcParam[y_list[0].name], fontsize=10 * fscale)
                 # set title
                 ax1.set_title('Parameters for %s over %s during %s'%(site, semester, year))
                 # set y axis color and position
                 ax1.spines['left'].set_color(bcParam[y_list[0].name])
                 ax1.spines['left'].set_position(('outward', 1))
                 ax1.spines['left'].set_linewidth(2.0)
-                ax1.tick_params(axis='y', which='both', colors=bcParam[y_list[0].name])
+                ax1.tick_params(axis='y', which='both', colors=bcParam[y_list[0].name], labelsize=10 * fscale)
+                ax1.yaxis.set_major_locator(MaxNLocator(nbins=nbins, prune='both'))
                 # axis list
                 axes = {'y1': ax1}
                 offset = 0
@@ -413,7 +661,10 @@ def plot_database_panel1 (database, dataViewSettings):
                         if points == True:
                             ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=cParam[y_list[i-1].name], label=rParam[i-1])
                         ax.plot(xp, yp, linestyle='-', c=bcParam[y_list[i-1].name], label=rParam[i-1])
-                        ax.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
+                        if points != True:
+                            # same rule as the first axis: clamp to the fit range
+                            # only when the data points are hidden
+                            ax.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
 
                     else:
                         if y_list[i-1].name == 'Pressure (dbar)':
@@ -421,20 +672,21 @@ def plot_database_panel1 (database, dataViewSettings):
                         else:
                             ax.plot(x, y, linestyle='None', marker='.', c=bcParam[y_list[i-1].name], label=rParam[i-1])
                     # set axis label
-                    ax.set_ylabel(rParam[i-1], c=bcParam[y_list[i-1].name])
+                    ax.set_ylabel(rParam[i-1], c=bcParam[y_list[i-1].name], fontsize=10 * fscale)
                     # set y axis position
                     if i == 2:
                         pass
                     else:
                         ax.spines['right'].set_position(('outward', offset))
-                    offset += 60
+                    offset += spacing
                     # set y axis colors
                     ax.spines['right'].set_color(bcParam[y_list[i-1].name])
                     ax.spines['left'].set_color('none')
                     # set y axis width
                     ax.spines['right'].set_linewidth(1.5)
                     # change tick colors
-                    ax.tick_params(axis='y', colors=cParam[y_list[i-1].name])
+                    ax.tick_params(axis='y', colors=cParam[y_list[i-1].name], labelsize=10 * fscale)
+                    ax.yaxis.set_major_locator(MaxNLocator(nbins=nbins, prune='both'))
                     # save axis name
                     axes[f'y{i}'] = ax
                     if dataViewSettings['fixedScale'] == True and parameter_names[i-1] in dataViewSettings['scaleSettings']:
@@ -448,7 +700,11 @@ def plot_database_panel1 (database, dataViewSettings):
                                  pd.Timestamp(dataViewSettings['xAxisEnd']))
                 #defining data format
                 plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m %H:%M'))
+                # shrink y tick fonts if the widest label would not fit between the
+                # stacked spines, so adjacent axes' numbers never overlap
+                _fit_stacked_yticks(fig, spacing)
                 plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year), bbox_inches='tight')
+                enable_scroll_zoom(fig)
                 plt.show()
 
 def plot_database_panel2(database, dataViewSettings):
@@ -512,7 +768,8 @@ def plot_database_panel2(database, dataViewSettings):
                 y = y.loc[~(y.index.duplicated(keep=False) & y.isna())]
                 
                 if y.empty:
-                    print(f'\nNo {parameter} data for {site} during {year} {semester}.')
+                    if not db[semester].empty:   # skip the noise for an empty semester
+                        print(f'\nNo {parameter} data for {site} during {year} {semester}.')
                     continue
                 
                 control += 1
@@ -524,21 +781,26 @@ def plot_database_panel2(database, dataViewSettings):
                 time_origin = pd.Timestamp(x_start) if x_start is not None else y.index.min()
                 x_hours = (y.index - time_origin).total_seconds() / 3600  # Convert to hours
 
-                # Plotting the data
-                if fit_lin_regression:
+                # Plotting the data. Pressure is NEVER fitted (tidal signal: a
+                # polynomial through it is meaningless) - its raw series is drawn
+                # as a dashed line instead, the same rule used in Panel 1.
+                if fit_lin_regression and parameter == 'Pressure (dbar)':
+                    ax1.plot(x_hours, y, linestyle='--', marker='None',
+                            color=colors[site], label=f'{site} data')
+                elif fit_lin_regression:
                     xp, yp = linear_regression(y, degree=deg)
                     xp_hours = (xp - time_origin).total_seconds() / 3600
-                    
+
                     if points:
-                        ax1.plot(x_hours, y, linestyle='none', marker='.', 
+                        ax1.plot(x_hours, y, linestyle='none', marker='.',
                                 color=colors[site], markersize=3, label=f'{site} data')
-                        ax1.plot(xp_hours, yp, linestyle='-', 
+                        ax1.plot(xp_hours, yp, linestyle='-',
                                 color=colors[site], label=f'{site} tendency')
                     else:
-                        ax1.plot(xp_hours, yp, linestyle='-', 
+                        ax1.plot(xp_hours, yp, linestyle='-',
                                 color=colors[site], label=f'{site} tendency')
                 else:
-                        ax1.plot(x_hours, y, linestyle='none', marker='.', 
+                        ax1.plot(x_hours, y, linestyle='none', marker='.',
                                 color=colors[site], markersize=3, label=f'{site} data')
             
             # Plot settings
@@ -563,7 +825,7 @@ def plot_database_panel2(database, dataViewSettings):
 
             # Legend and layout
             ax1.legend(loc='upper left', bbox_to_anchor=(1, 1.01), fontsize=7)
-            plt.subplots_adjust(left=0.06, right=0.80, top=0.88, bottom=0.11)
+            plt.subplots_adjust(left=0.10, right=0.80, top=0.88, bottom=0.14)  # room for the y label + x labels
 
             # Fixed scale if needed
             if dataViewSettings['fixedScale'] and parameter in dataViewSettings['scaleSettings']:
@@ -573,6 +835,7 @@ def plot_database_panel2(database, dataViewSettings):
             # Strip parentheses from the file name
             parameter_r = re.sub(r'\([^()]*\)', '', parameter).strip()
             plt.savefig(f'panel2_{parameter_r}_{semester}_{year}.svg')
+            enable_scroll_zoom(fig)
             plt.show()
 
 def plot_database_panel3(database, dataViewSettings):
@@ -586,6 +849,7 @@ def plot_database_panel3(database, dataViewSettings):
     db_raw = database.copy()
     # limit data to year
     db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
+    db_raw = _apply_time_window(db_raw, dataViewSettings)   # plot ONLY the chosen hours (no-op for profiles)
     db_raw.index = db_raw['Datetime']
     db_raw = db_raw.rename_axis('dt_index')
     db_raw = db_raw.sort_values(by='dt_index')  
@@ -599,7 +863,7 @@ def plot_database_panel3(database, dataViewSettings):
             if len(emptySemester) == len(db):
                 raise ValueError('Empty sequence for both semesters in current combination of selected sites and year. Double check inputs or select different sites/year.')
         except ValueError as e:
-            print('SelectionError:', e)
+            print('Error:', e)
         for semester in db.keys():
             x_list, cParam, bcParam, parameter_names = setParam(dataViewSettings, db, semester, site)
             rParam = renameParameters(parameter_names)
@@ -720,6 +984,7 @@ def plot_database_panel3(database, dataViewSettings):
                           ncol=1, fontsize=7)
                 
                 plt.savefig('panel3_%s_%s_%d.svg'%(site, semester, year))
+                enable_scroll_zoom(fig)
                 plt.show()
 
 def plot_light_window(lux_info, site=''):
@@ -770,7 +1035,7 @@ def mark_light_cutoff(ax, cutoff, lux_info):
     if lux_info.get('recovers'):
         artists.append(ax.text(
             0.5, 0.94,
-            'WARNING: the light dips and recovers (%.0f%% of later days reach the threshold) -\n'
+            'Warning: the light dips and recovers (%.0f%% of later days reach the threshold) -\n'
             'not clean biofouling (possible cleaning / multiple deployments). Review!'
             % (100 * lux_info.get('recovery_day_frac_after', 0)),
             transform=ax.transAxes, ha='center', va='top', fontsize=8.5,
@@ -779,11 +1044,14 @@ def mark_light_cutoff(ax, cutoff, lux_info):
     return artists
 
 
-def _hobo_site_slice (database, year, site):
+def _hobo_site_slice (database, year, site, dataViewSettings=None):
     """Slice by year and site used by the HOBO panels (same annual slicing
-    rule as the Seaguard panels), sorted in time."""
+    rule as the Seaguard panels), sorted in time. When a X-axis time window is
+    set, keep only those hours (plot only the chosen window, not just zoom)."""
     db = database.copy()
     db = db[(db['Datetime'].dt.year == year) & (db['Site'] == site)]
+    if dataViewSettings is not None:
+        db = _apply_time_window(db, dataViewSettings)
     return db.sort_values('Datetime')
 
 
@@ -811,7 +1079,7 @@ def _mask_nonpositive_lux (lux, site):
     gaps in the plot. The total omitted is always reported to the console."""
     n_nonpositive = int((lux <= 0).sum())
     if n_nonpositive:
-        print('MESSAGE: %d light reading(s) <= 0 lux for %s omitted from the log-scale plot (night readings).'
+        print('Info: %d light reading(s) <= 0 lux for %s omitted from the log-scale plot (night readings).'
               % (n_nonpositive, site))
     return lux.where(lux > 0)
 
@@ -821,15 +1089,16 @@ def plot_hobo_temperature (database, dataViewSettings, site):
     suspect/bad points (Flag_T >= 3) highlighted, as in the Seaguard."""
     year = dataViewSettings['filterByYear']
     cParam, bcParam = getParamColors()
-    db = _hobo_site_slice(database, year, site)
+    db = _hobo_site_slice(database, year, site, dataViewSettings)
     if db.empty:
         print('\nNo HOBO data for %s during %d.' % (site, year))
         return
     temp = pd.to_numeric(db['Temperature (degC)'], errors='coerce')
     flag_t = pd.to_numeric(db['Flag_T'], errors='coerce')
 
-    fig, ax = plt.subplots(figsize=(980 / 100, 500 / 100))
+    fig, ax = plt.subplots(figsize=(980 / 100, 520 / 100))
     plt.xticks(rotation=35)
+    plt.subplots_adjust(bottom=0.18)  # room for the rotated date labels
     ax.grid(True, linestyle='dotted', linewidth=0.5)
     ax.plot(db['Datetime'], temp, linestyle='None', marker='.', markersize=3,
             color=bcParam['Temperature (degC)'], label='Temperature')
@@ -847,6 +1116,7 @@ def plot_hobo_temperature (database, dataViewSettings, site):
     _apply_hobo_common_settings(ax, dataViewSettings)
     ax.legend(fontsize=8)
     plt.savefig('hobo_temperature_%s_%d.svg' % (site, year), bbox_inches='tight')
+    enable_scroll_zoom(fig)
     plt.show()
 
 
@@ -856,14 +1126,15 @@ def plot_hobo_light (database, dataViewSettings, site):
     as the QCS_light_window.svg generated during qualification."""
     year = dataViewSettings['filterByYear']
     cParam, bcParam = getParamColors()
-    db = _hobo_site_slice(database, year, site)
+    db = _hobo_site_slice(database, year, site, dataViewSettings)
     if db.empty:
         print('\nNo HOBO data for %s during %d.' % (site, year))
         return
     lux = _mask_nonpositive_lux(pd.to_numeric(db['Luminosity (lux)'], errors='coerce'), site)
 
-    fig, ax = plt.subplots(figsize=(980 / 100, 500 / 100))
+    fig, ax = plt.subplots(figsize=(980 / 100, 520 / 100))
     plt.xticks(rotation=35)
+    plt.subplots_adjust(bottom=0.18)  # room for the rotated date labels
     ax.grid(True, linestyle='dotted', linewidth=0.5)
     ax.plot(db['Datetime'], lux, linestyle='None', marker='.', markersize=3,
             color=bcParam['Luminosity (lux)'], label='Luminosity')
@@ -875,7 +1146,7 @@ def plot_hobo_light (database, dataViewSettings, site):
         if lim['min'] > 0:
             ax.set_ylim(lim['min'], lim['max'])
         else:
-            print('WARNING: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
+            print('Warning: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
     _apply_hobo_common_settings(ax, dataViewSettings)
 
     # fouling window: same colors as mark_light_cutoff (qualification)
@@ -892,6 +1163,7 @@ def plot_hobo_light (database, dataViewSettings, site):
 
     ax.legend(fontsize=8, loc='lower left')
     plt.savefig('hobo_light_%s_%d.svg' % (site, year), bbox_inches='tight')
+    enable_scroll_zoom(fig)
     plt.show()
 
 
@@ -904,12 +1176,13 @@ def plot_hobo_light_multisite (database, dataViewSettings):
     site_names = dataViewSettings['siteList']
     colors = getSiteColors(site_names)
 
-    fig, ax = plt.subplots(figsize=(980 / 100, 500 / 100))
+    fig, ax = plt.subplots(figsize=(980 / 100, 520 / 100))
     plt.xticks(rotation=35)
+    plt.subplots_adjust(bottom=0.18)  # room for the rotated date labels
     ax.grid(True, linestyle='dotted', linewidth=0.5)
     plotted_sites = 0
     for site in site_names:
-        db = _hobo_site_slice(database, year, site)
+        db = _hobo_site_slice(database, year, site, dataViewSettings)
         if db.empty:
             print('\nNo HOBO data for %s during %d.' % (site, year))
             continue
@@ -933,10 +1206,11 @@ def plot_hobo_light_multisite (database, dataViewSettings):
         if lim['min'] > 0:
             ax.set_ylim(lim['min'], lim['max'])
         else:
-            print('WARNING: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
+            print('Warning: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
     _apply_hobo_common_settings(ax, dataViewSettings)
     ax.legend(fontsize=8, loc='lower left')
     plt.savefig('hobo_light_multisite_%d.svg' % year, bbox_inches='tight')
+    enable_scroll_zoom(fig)
     plt.show()
 
 def plot_TS_diagram (database, dataViewSettings):
@@ -954,6 +1228,7 @@ def plot_TS_diagram (database, dataViewSettings):
     db_raw = database.copy()
     # limit data to year
     db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
+    db_raw = _apply_time_window(db_raw, dataViewSettings)   # plot ONLY the chosen hours (no-op for profiles)
     db_raw.index = db_raw['Datetime']
     db_raw = db_raw.rename_axis('dt_index')
     db_raw = db_raw.sort_values(by='dt_index')
@@ -966,7 +1241,7 @@ def plot_TS_diagram (database, dataViewSettings):
         if len(emptySemester) == len(db):
             raise ValueError('Empty sequence for both semesters in current combination of selected sites and year. Double check inputs or select different sites/year.')
     except ValueError as e:
-        print('SelectionError:', e)
+        print('Error:', e)
     
     # working with one semester at a time
     for semester in db.keys():
@@ -1038,8 +1313,8 @@ def plot_TS_diagram (database, dataViewSettings):
                 tspData = tspSemesterData[tspSemesterData.loc[:,'Site'] == site]
                 # check if there is data for semester and ignore semester if true
                 if tspData.isna().all().any():
-                    print('\nNo data for %s during %d %s.'%( site, year, semester))
-                    pass
+                    if not tspSemesterData.empty:   # skip the noise for an empty semester
+                        print('\nNo data for %s during %d %s.'%( site, year, semester))
                 else:
                     # plot x and y depending on selected parameters
                     if re.search('conservative', tsParam, re.IGNORECASE):
@@ -1061,6 +1336,7 @@ def plot_TS_diagram (database, dataViewSettings):
                 custom_handles.append(Line2D([0], [0], linestyle='None', marker=markerList[a], label=site_names[a], markeredgecolor='black', markerfacecolor='black', markersize=6))
             plt.legend(handles=custom_handles)  # Draw legend
             plt.savefig('TS_Diagram_%s_%s_%d.svg'%(sites_label, semester, year))
+            enable_scroll_zoom(fig)
             plt.show()
 
 

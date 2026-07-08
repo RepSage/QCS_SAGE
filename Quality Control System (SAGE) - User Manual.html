@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v4.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v5.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -204,13 +204,19 @@
         <li>Obtain the project folder (containing the <strong>sourceCode</strong> subfolder and the <code>.bat</code> shortcuts)</li>
         <li>Install the dependencies by running in the terminal:
             <pre><code>python -m pip install -r sourceCode/requirements.txt</code></pre></li>
-        <li>To qualify data, open <strong>QCS - Data Qualification.bat</strong></li>
-        <li>To visualize data, open <strong>QCS - Data Visualization.bat</strong></li>
+        <li>Open <strong>QCS.bat</strong></li>
     </ol>
+    <p>Since v5.0, both tools live in a <strong>single window</strong> (open with
+    <strong>QCS.bat</strong>): a menu bar (File / Edit / View / Tools / Help) plus two tabs,
+    <strong>Data Qualification</strong> and <strong>Data Visualization</strong>. Dark mode is
+    under the View menu.</p>
     <p>Since v4.0, the app runs with <strong>no terminal window</strong> (launched via
-    <code>pythonw</code>): all progress, warnings and errors appear in the <strong>Execution log</strong>
-    panel at the bottom of each window. If a fatal error happens before the window can open, a message
-    box appears and a <code>sourceCode/QCS_crash.log</code> file is written with the details.</p>
+    <code>pythonw</code>): all progress, warnings and errors appear in the <strong>Execution log</strong>.
+    Since v5.0 this is <strong>one single panel, fixed at the bottom of the window</strong> — the same
+    log, in the same place and with the same message styling, for every pipeline stage (qualification,
+    database building/preview and panel generation). If a fatal error happens before the window can
+    open, a message box appears and a <code>sourceCode/QCS_crash.log</code> file is written with the
+    details.</p>
 
     <h2 id="interface_qcs_main">3. QCS_Main Interface</h2>
     <h3>INPUT SETTINGS Section</h3>
@@ -220,7 +226,7 @@
             <th>Description</th>
         </tr>
         <tr>
-            <td>Data File</td>
+            <td>Data file</td>
             <td>Selects the raw data file (CSV or XLSX). A tooltip explains the supported formats.</td>
         </tr>
         <tr>
@@ -228,7 +234,7 @@
             <td>Opens the file explorer for selection.</td>
         </tr>
         <tr>
-            <td>Input Type</td>
+            <td>Input type</td>
             <td>Dropdown to select the instrument type (Seaguard or HOBO). When you choose
             <strong>HOBO</strong>, the fields that do not apply to a temperature/light logger
             are disabled: Data Type, Pressure/Conductivity Unit, Correct GMT-3,
@@ -237,7 +243,7 @@
             restore it when Input Type is switched back to Seaguard.</td>
         </tr>
         <tr>
-            <td>Data Type</td>
+            <td>Data type</td>
             <td>Dropdown to select the data type (TSCP Profile or TSCP Mooring).</td>
         </tr>
         <tr>
@@ -253,12 +259,21 @@
             <td>Checkbox to apply the GMT-3 time-zone correction.</td>
         </tr>
         <tr>
-            <td>Select Profile Data</td>
+            <td>Select profile data</td>
             <td>Checkbox (enabled only for profiles) to select the downcast/upcast phase.</td>
         </tr>
         <tr>
-            <td>Check Variables</td>
-            <td>Checkbox to enable manual review of the variable limits.</td>
+            <td>Check variables</td>
+            <td>Opens a manual point-cut panel <strong>per variable</strong>; you first pick
+                <strong>which</strong> variables to review (with "All variables" / "None").
+                Each panel lets you drag a box to <strong>dismiss</strong> points (mouse-wheel
+                zoom; Undo / Reset / Skip / Done / Help; live counter and an "X of N"
+                progress). Dismissed points are <strong>not deleted</strong>: they get
+                <strong>flag 5</strong> and their value is blanked, so the manual cut stays
+                traceable. The mooring <strong>Depth</strong> review runs automatically
+                (independent of this option) to trim spurious depths from equipment handling;
+                its whole-row cuts carry over (greyed) into the per-variable panels so the same
+                points are never cut twice.</td>
         </tr>
         <tr>
             <td>Macroregion / Region</td>
@@ -289,7 +304,7 @@
             <th>Description</th>
         </tr>
         <tr>
-            <td>Output Folder</td>
+            <td>Output folder</td>
             <td>Sets the folder where results will be saved.</td>
         </tr>
         <tr>
@@ -297,26 +312,26 @@
             <td>Opens the explorer to select a folder.</td>
         </tr>
         <tr>
-            <td>Output File Name</td>
+            <td>Output file name</td>
             <td>Sets the base name for the output files.</td>
         </tr>
         <tr>
-            <td>Output Format</td>
+            <td>Output format</td>
             <td>Format of the <strong>qualified data</strong> file (CSV or XLSX). The automatic
                 report files are always written as <strong>.xlsx</strong> (since v4.0), with
                 columns auto-fitted to their content.</td>
         </tr>
         <tr>
-            <td>Remove Bad Data</td>
+            <td>Remove bad data</td>
             <td>Checkbox to automatically drop data with flag 4.</td>
         </tr>
         <tr>
-            <td>Remove Suspect Data</td>
+            <td>Remove suspect data</td>
             <td>Checkbox to automatically drop data with flag 3.</td>
         </tr>
         <tr>
-            <td>Site Code</td>
-            <td>Field to enter the site identification code (up to 5 characters).</td>
+            <td>Site code</td>
+            <td>Field to enter the site identification code (up to 10 characters).</td>
         </tr>
     </table>
 
@@ -350,7 +365,7 @@
             <th>Description</th>
         </tr>
         <tr>
-            <td>Database File(s)</td>
+            <td>Database file(s)</td>
             <td>Selects existing database files.</td>
         </tr>
         <tr>
@@ -358,7 +373,7 @@
             <td>Opens the explorer for multiple file selection.</td>
         </tr>
         <tr>
-            <td>Input Path</td>
+            <td>Input path</td>
             <td>Sets the folder containing files to combine.</td>
         </tr>
         <tr>
@@ -366,26 +381,43 @@
             <td>Opens the explorer to select a folder.</td>
         </tr>
         <tr>
-            <td>Join Data Files</td>
-            <td>Checkbox to enable file-combining mode.</td>
+            <td>Build database from a folder</td>
+            <td>Checkbox: instead of picking files one by one, scan a parent folder
+                (every 'QCS qualified ... data' subfolder) and combine everything found.
+                Selecting multiple files in "Database File(s)" already joins them —
+                this mode is for sweeping a whole folder tree.</td>
         </tr>
         <tr>
-            <td>Sort by Time</td>
+            <td>Sort by time</td>
             <td>Checkbox to sort the data chronologically.</td>
         </tr>
         <tr>
             <td>Instrument</td>
             <td>Selects the instrument that produced the qualified files (Seaguard or HOBO).
-            Seaguard and HOBO spreadsheets have different layouts and are <strong>never combined
-            with each other</strong> — build a separate database for each instrument. Both .csv
-            and .xlsx files are read automatically (the old format selector was removed in v4.0).</td>
+            Since v5.0 it is <strong>auto-detected</strong> from the selected files (and stays
+            editable). Seaguard and HOBO spreadsheets have different layouts and are
+            <strong>never combined with each other</strong> — build a separate database for
+            each instrument. Both .csv and .xlsx files are read automatically (the old format
+            selector was removed in v4.0).</td>
         </tr>
         <tr>
-            <td>Output Name</td>
+            <td>Recent (v5.0)</td>
+            <td>Dropdown with the last file selections — pick one to refill the fields
+                with a single click.</td>
+        </tr>
+        <tr>
+            <td>Database preview (v5.0)</td>
+            <td>The <strong>Preview</strong> button builds the database right away and shows a
+                summary (rows, sites, period, source files, warnings) without leaving Step 1 —
+                confirm the selection before moving on. "Next &gt;" reuses this build, so
+                nothing is read twice.</td>
+        </tr>
+        <tr>
+            <td>Output name</td>
             <td>Name for the processed database.</td>
         </tr>
         <tr>
-            <td>Output Path</td>
+            <td>Output path</td>
             <td>Output folder for the results.</td>
         </tr>
         <tr>
@@ -405,7 +437,7 @@
             <th>Description</th>
         </tr>
         <tr>
-            <td>Data Type</td>
+            <td>Data type</td>
             <td>Dropdown to select the data type (profile/mooring).</td>
         </tr>
         <tr>
@@ -481,21 +513,21 @@
             <td>List of checkboxes to select the sites to include.</td>
         </tr>
         <tr>
-            <td>Select Parameters</td>
-            <td>List of checkboxes to select the parameters to include.</td>
+            <td>Select parameters</td>
+            <td>List of checkboxes to select the parameters to include, in two groups: the main
+            group starts checked whenever the imported sheet carries data for it, and a
+            "Rarely used" group (Conductivity, Density, Soundspeed, Pressure) always starts
+            unchecked (still selectable manually).</td>
         </tr>
         <tr>
-            <td>&lt; Change Database</td>
-            <td>Returns to the selection window to load another database without closing the program.</td>
+            <td>&lt; Back</td>
+            <td>Returns to Step 1 to load another database without closing the program.</td>
         </tr>
         <tr>
-            <td>Save View Settings</td>
-            <td>Saves the visualization settings. The choices (panels, sites, variables, scales,
-            years and time window) are kept across runs and sessions.</td>
-        </tr>
-        <tr>
-            <td>Generate Panels</td>
-            <td>Generates the plots with the current settings.</td>
+            <td>Generate panels</td>
+            <td>Generates the plots with the current settings (the choices are saved
+            automatically before plotting; parameter selection and scale values are
+            recomputed for each imported sheet).</td>
         </tr>
     </table>
 
@@ -531,7 +563,7 @@
         <tr>
             <td>5</td>
             <td>DISMISSED</td>
-            <td>Test was disabled by the user</td>
+            <td>Point dismissed by the operator (manual point cut), or the test was disabled</td>
         </tr>
         <tr>
             <td>9</td>
@@ -775,8 +807,8 @@
         <li><strong>Manual selection:</strong> in "Database File(s)", select one or several
             qualified files (.csv or .xlsx, in any combination) — they are combined, validated
             and deduplicated automatically; <em>or</em></li>
-        <li><strong>Join Data Files (parent folder):</strong> check the option and point
-            "Input Path" to the folder that contains the QCS outputs. The scan is
+        <li><strong>Build database from a folder (parent folder):</strong> check the option and
+            point "Input Path" to the folder that contains the QCS outputs. The scan is
             <strong>recursive</strong>: any subfolder named exactly
             <code>QCS qualified tscp data</code> (Seaguard) or
             <code>QCS qualified hobo data</code> (HOBO) is found, at any level.</li>
@@ -812,7 +844,7 @@
     </ul>
 
     <div class="note">
-        <p>If "Join Data Files" is checked, the unified database is also saved as
+        <p>If "Build database from a folder" is checked, the unified database is also saved as
         <code>.xlsx</code> (with the name from the "Output Name" field) in the
         <code>DatabaseView</code> folder inside the Output Path, for reuse.</p>
     </div>
@@ -1197,14 +1229,15 @@
     </ul>
 
     <h3>How to run</h3>
-    <p>The recommended way is via the <code>.bat</code> shortcuts in the main folder, which already
-    call the correct Python. Alternatively, in the <strong>sourceCode</strong> folder, you can run
-    the scripts directly:</p>
+    <p>The recommended way is via the <code>QCS.bat</code> shortcut in the main folder, which already
+    calls the correct Python and opens the unified app. Alternatively, in the
+    <strong>sourceCode</strong> folder, you can run the scripts directly:</p>
     <div class="code-container">
         <button class="copy-btn" onclick="copyToClipboard('qcs-run-code')">Copy</button>
         <div class="code-block" id="qcs-run-code">
-        <pre><code class="language-bash">python QCS_Main.py          # qualification tool
-python QCS_DatabaseView.py  # visualization tool</code></pre>
+        <pre><code class="language-bash">python QCS_App.py           # unified app (both tabs) - the normal entry point
+python QCS_Main.py          # qualification tool only (development)
+python QCS_DatabaseView.py  # visualization tool only (development)</code></pre>
         </div>
     </div>
 
