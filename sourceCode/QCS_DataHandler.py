@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button, RectangleSelector
+import QCS_Theme as _theme
 
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
@@ -990,6 +991,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
         _buttons.append(b)
 
     redraw()
+    _theme.style_plot_window(fig, 'Manual point cut - %s' % label)  # app icon + title
     _show_and_wait(fig, tk_root)
     if state['cancelled']:
         raise ManualCutCancelled()

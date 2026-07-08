@@ -6,6 +6,7 @@ import datetime as _dt # type: ignore
 import matplotlib.pyplot as plt # type: ignore
 import matplotlib.dates as _mdates # type: ignore
 from matplotlib.lines import Line2D # type: ignore
+import QCS_Theme as _theme
 ####################################################################
 
 # Safe bounds for a matplotlib DATE axis (well inside the hard year 1..9999
@@ -29,48 +30,6 @@ def _clamp_x(ax, lo, hi):
         pass
     return lo, hi
 
-def _add_spine_spacing_slider(fig):
-    """Adds a bottom slider that moves the stacked parameter y-axis spines closer
-    together or further apart, live, on the shown panel. Only appears when the
-    panel has 2+ right-offset spines (i.e. 3+ parameters); a no-op otherwise."""
-    from matplotlib.widgets import Slider
-    # the stacked parameter axes are tagged by the plot function (twinx with an
-    # outward right spine); order them by their current offset
-    stacked = []
-    for ax in fig.axes:
-        if getattr(ax, '_qcs_param_axis', False):
-            try:
-                stacked.append((float(ax.spines['right'].get_position()[1]), ax))
-            except Exception:
-                pass
-    stacked.sort(key=lambda t: t[0])   # by offset only (Axes are not comparable)
-    if len(stacked) < 2:
-        return
-    ordered = [ax for _, ax in stacked]
-    step0 = (stacked[1][0] - stacked[0][0]) or 60.0   # current spacing (~60 px)
-
-    # slider in the bottom-right strip (clear of the plot's date labels, which
-    # sit under the plot area on the left); not part of the saved SVG (added
-    # after savefig, just before the window is shown)
-    try:
-        sax = fig.add_axes([0.64, 0.03, 0.32, 0.022])
-        sax._qcs_widget = True   # so zoom/pan ignore it
-        # cap the spacing so the furthest spine stays inside the reserved right
-        # margin (~340 px) even with several parameters
-        smax = max(30, min(110, 340.0 / max(1, len(ordered) - 1)))
-        slider = Slider(sax, 'Axis spacing', 15, smax, valinit=min(max(step0, 15), smax))
-
-        def on_change(val):
-            for i, ax in enumerate(ordered):
-                ax.spines['right'].set_position(('outward', i * val))
-            fig.canvas.draw_idle()
-
-        slider.on_changed(on_change)
-        fig._qcs_spine_slider = slider   # keep a reference alive
-    except Exception:
-        pass
-
-
 def enable_scroll_zoom(fig):
     """Interaction for a shown panel: mouse-wheel zoom around the cursor,
     middle-button drag to pan, a 'Reset view' toolbar button that restores the
@@ -81,47 +40,59 @@ def enable_scroll_zoom(fig):
 
     def _overlaid_axes(ref_ax):
         # These panels stack several parameter y-axes with twinx(): they overlap
-        # (same position) and SHARE the x-axis. Zoom/pan must act on ALL of them
-        # together, in DISPLAY (pixel) coordinates, or the independent y-scales
-        # drift apart (curves/trend lines slide relative to each other). Grouping
-        # by position also excludes colorbars/legends, which sit elsewhere.
-        if getattr(ref_ax, '_qcs_widget', False):
-            return []                      # the spacing slider's own axes
+        # (same position) and SHARE the x-axis. Zoom/pan act on ALL of them in
+        # DISPLAY (pixel) coordinates so the independent y-scales stay aligned.
+        # Because the x-axis is shared, it is set ONCE (from the reference axis) -
+        # setting it per-axis would compound the change N times and feel coarse.
         ref = ref_ax.get_position().bounds
         return [a for a in fig.axes
-                if not getattr(a, '_qcs_widget', False)
-                and all(abs(p - q) < 1e-6 for p, q in zip(a.get_position().bounds, ref, strict=False))]
+                if all(abs(p - q) < 1e-6 for p, q in zip(a.get_position().bounds, ref, strict=False))]
+
+    ZOOM = 1.1   # gentle per-notch factor (was 1.2, too aggressive)
 
     def on_scroll(event):
         if event.inaxes is None:
             return
-        scale = 1 / 1.2 if event.button == 'up' else 1.2   # wheel up = zoom in
-        for ax in _overlaid_axes(event.inaxes):
-            # cursor position in THIS axis' data coords (same pixel, different
-            # data value per axis because each y-scale differs)
-            xd, yd = ax.transData.inverted().transform((event.x, event.y))
-            xlim, ylim = ax.get_xlim(), ax.get_ylim()
-            ax.set_xlim(*_clamp_x(ax, xd - (xd - xlim[0]) * scale, xd + (xlim[1] - xd) * scale))
-            ax.set_ylim(yd - (yd - ylim[0]) * scale, yd + (ylim[1] - yd) * scale)
+        axes = _overlaid_axes(event.inaxes)
+        if not axes:
+            return
+        scale = 1 / ZOOM if event.button == 'up' else ZOOM   # wheel up = zoom in
+        ref = event.inaxes
+        xd, _ = ref.transData.inverted().transform((event.x, event.y))
+        xl = ref.get_xlim()
+        new_xlim = _clamp_x(ref, xd - (xd - xl[0]) * scale, xd + (xl[1] - xd) * scale)
+        for ax in axes:
+            ax.set_xlim(new_xlim)          # shared x: same absolute value, no compounding
+            _, yd = ax.transData.inverted().transform((event.x, event.y))
+            yl = ax.get_ylim()
+            ax.set_ylim(yd - (yd - yl[0]) * scale, yd + (yl[1] - yd) * scale)
         fig.canvas.draw_idle()
 
-    pan = {'x': None, 'y': None, 'axes': None}
+    pan = {'x': None, 'y': None, 'ref': None, 'axes': None}
 
     def on_press(event):
         if event.button == 2 and event.inaxes is not None:   # 2 = middle button
-            pan.update(x=event.x, y=event.y, axes=_overlaid_axes(event.inaxes))
+            pan.update(x=event.x, y=event.y, ref=event.inaxes,
+                       axes=_overlaid_axes(event.inaxes))
 
     def on_move(event):
         if pan['axes'] is None or event.x is None:
             return
+        ref = pan['ref']
+        inv = ref.transData.inverted()
+        rx0, _ = inv.transform((pan['x'], pan['y']))         # shared x delta (once)
+        rx1, _ = inv.transform((event.x, event.y))
+        dxr = rx1 - rx0
+        xl = ref.get_xlim()
+        new_xlim = _clamp_x(ref, xl[0] - dxr, xl[1] - dxr)
         for ax in pan['axes']:
-            inv = ax.transData.inverted()
-            x0, y0 = inv.transform((pan['x'], pan['y']))     # previous pixel -> data
-            x1, y1 = inv.transform((event.x, event.y))       # current pixel  -> data
-            dx, dy = x1 - x0, y1 - y0
-            xlim, ylim = ax.get_xlim(), ax.get_ylim()
-            ax.set_xlim(*_clamp_x(ax, xlim[0] - dx, xlim[1] - dx))
-            ax.set_ylim(ylim[0] - dy, ylim[1] - dy)
+            ax.set_xlim(new_xlim)          # shared x: set once (same value for all)
+            inv2 = ax.transData.inverted()
+            _, y0 = inv2.transform((pan['x'], pan['y']))     # per-axis y delta
+            _, y1 = inv2.transform((event.x, event.y))
+            dy = y1 - y0
+            yl = ax.get_ylim()
+            ax.set_ylim(yl[0] - dy, yl[1] - dy)
         pan['x'], pan['y'] = event.x, event.y                # incremental
         fig.canvas.draw_idle()
 
@@ -163,7 +134,10 @@ def enable_scroll_zoom(fig):
     except Exception:
         pass
 
-    _add_spine_spacing_slider(fig)
+    # app icon + a meaningful window title (the plot's own title, so the taskbar
+    # and window name say what is being shown instead of 'Figure 1')
+    _title = next((a.get_title() for a in fig.axes if a.get_title()), '')
+    _theme.style_plot_window(fig, _title)
 
 def renameParameters (parameter_names):
     rParam = []
@@ -587,10 +561,11 @@ def plot_database_panel1 (database, dataViewSettings):
                             ax.plot(x, y, linestyle='None', marker='.', c=bcParam[y_list[i-1].name], label=rParam[i-1])
                     # set axis label
                     ax.set_ylabel(rParam[i-1], c=bcParam[y_list[i-1].name])
-                    # set y axis position (first stacked axis at 0, then +60 each).
-                    # tagged so the 'Axis spacing' slider can move them together.
-                    ax.spines['right'].set_position(('outward', offset))
-                    ax._qcs_param_axis = True
+                    # set y axis position
+                    if i == 2:
+                        pass
+                    else:
+                        ax.spines['right'].set_position(('outward', offset))
                     offset += 60
                     # set y axis colors
                     ax.spines['right'].set_color(bcParam[y_list[i-1].name])

@@ -397,3 +397,18 @@ def set_window_icon(window, icon_name='qcs_icon.ico', app_id='sage.qcs.qualityco
             window.iconphoto(True, _icon_photo_ref)
     except Exception:
         pass
+
+
+def style_plot_window(fig, title=None):
+    """Give a matplotlib figure window the app icon and a meaningful title (so it
+    matches the rest of the software instead of showing the default matplotlib
+    icon and 'Figure N'). Best-effort and backend-dependent."""
+    try:
+        mgr = fig.canvas.manager
+        if title:
+            mgr.set_window_title(title)
+        win = getattr(mgr, 'window', None)
+        if win is not None:
+            set_window_icon(win)
+    except Exception:
+        pass

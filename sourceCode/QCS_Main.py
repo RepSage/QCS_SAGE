@@ -1587,6 +1587,7 @@ def build_qualification_tab(container, root, shared_log=None):
                     _b.pack_forget()
         except Exception:
             pass
+        theme.style_plot_window(fig, 'Light window review - %s' % site)  # app icon + title
         # waits on the Tk loop (never plt.show(block=True) inside the RUN callback)
         done = BooleanVar(window, value=False)
         fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
