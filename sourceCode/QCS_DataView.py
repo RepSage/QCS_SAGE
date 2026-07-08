@@ -56,16 +56,21 @@ def enable_scroll_zoom(fig):
     fig.canvas.mpl_connect('motion_notify_event', on_move)
     fig.canvas.mpl_connect('button_release_event', on_release)
 
-    # toolbar: drop the Zoom lens and add a 'Reset view' button (best-effort,
-    # backend-dependent - the interactions above work regardless)
+    # toolbar: drop the Zoom lens, add a themed 'Reset view' button, and silence
+    # the coordinate readout. That readout changes width as the cursor crosses
+    # the several parameter axes, which makes the Tk window jitter/resize on its
+    # own - overriding set_message stops it. (Best-effort, backend-dependent;
+    # the mouse interactions above work regardless.)
     try:
-        import tkinter as tk
+        from tkinter import ttk as _ttk
         tb = fig.canvas.manager.toolbar
+        tb.set_message = lambda *a, **k: None   # no live coord text -> no resize
         zoom = getattr(tb, '_buttons', {}).get('Zoom')
         if zoom is not None:
             zoom.pack_forget()
         if not getattr(tb, '_qcs_reset_added', False):
-            tk.Button(tb, text='Reset view', command=reset_view).pack(side='left', padx=4)
+            _ttk.Button(tb, text='Reset view', command=reset_view,
+                        width=10).pack(side='left', padx=4)
             tb._qcs_reset_added = True
     except Exception:
         pass
