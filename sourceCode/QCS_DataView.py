@@ -29,6 +29,48 @@ def _clamp_x(ax, lo, hi):
         pass
     return lo, hi
 
+def _add_spine_spacing_slider(fig):
+    """Adds a bottom slider that moves the stacked parameter y-axis spines closer
+    together or further apart, live, on the shown panel. Only appears when the
+    panel has 2+ right-offset spines (i.e. 3+ parameters); a no-op otherwise."""
+    from matplotlib.widgets import Slider
+    # the stacked parameter axes are tagged by the plot function (twinx with an
+    # outward right spine); order them by their current offset
+    stacked = []
+    for ax in fig.axes:
+        if getattr(ax, '_qcs_param_axis', False):
+            try:
+                stacked.append((float(ax.spines['right'].get_position()[1]), ax))
+            except Exception:
+                pass
+    stacked.sort(key=lambda t: t[0])   # by offset only (Axes are not comparable)
+    if len(stacked) < 2:
+        return
+    ordered = [ax for _, ax in stacked]
+    step0 = (stacked[1][0] - stacked[0][0]) or 60.0   # current spacing (~60 px)
+
+    # slider in the bottom-right strip (clear of the plot's date labels, which
+    # sit under the plot area on the left); not part of the saved SVG (added
+    # after savefig, just before the window is shown)
+    try:
+        sax = fig.add_axes([0.64, 0.03, 0.32, 0.022])
+        sax._qcs_widget = True   # so zoom/pan ignore it
+        # cap the spacing so the furthest spine stays inside the reserved right
+        # margin (~340 px) even with several parameters
+        smax = max(30, min(110, 340.0 / max(1, len(ordered) - 1)))
+        slider = Slider(sax, 'Axis spacing', 15, smax, valinit=min(max(step0, 15), smax))
+
+        def on_change(val):
+            for i, ax in enumerate(ordered):
+                ax.spines['right'].set_position(('outward', i * val))
+            fig.canvas.draw_idle()
+
+        slider.on_changed(on_change)
+        fig._qcs_spine_slider = slider   # keep a reference alive
+    except Exception:
+        pass
+
+
 def enable_scroll_zoom(fig):
     """Interaction for a shown panel: mouse-wheel zoom around the cursor,
     middle-button drag to pan, a 'Reset view' toolbar button that restores the
@@ -43,9 +85,12 @@ def enable_scroll_zoom(fig):
         # together, in DISPLAY (pixel) coordinates, or the independent y-scales
         # drift apart (curves/trend lines slide relative to each other). Grouping
         # by position also excludes colorbars/legends, which sit elsewhere.
+        if getattr(ref_ax, '_qcs_widget', False):
+            return []                      # the spacing slider's own axes
         ref = ref_ax.get_position().bounds
         return [a for a in fig.axes
-                if all(abs(p - q) < 1e-6 for p, q in zip(a.get_position().bounds, ref, strict=False))]
+                if not getattr(a, '_qcs_widget', False)
+                and all(abs(p - q) < 1e-6 for p, q in zip(a.get_position().bounds, ref, strict=False))]
 
     def on_scroll(event):
         if event.inaxes is None:
@@ -117,6 +162,8 @@ def enable_scroll_zoom(fig):
             tb._qcs_reset_added = True
     except Exception:
         pass
+
+    _add_spine_spacing_slider(fig)
 
 def renameParameters (parameter_names):
     rParam = []
@@ -540,11 +587,10 @@ def plot_database_panel1 (database, dataViewSettings):
                             ax.plot(x, y, linestyle='None', marker='.', c=bcParam[y_list[i-1].name], label=rParam[i-1])
                     # set axis label
                     ax.set_ylabel(rParam[i-1], c=bcParam[y_list[i-1].name])
-                    # set y axis position
-                    if i == 2:
-                        pass
-                    else:
-                        ax.spines['right'].set_position(('outward', offset))
+                    # set y axis position (first stacked axis at 0, then +60 each).
+                    # tagged so the 'Axis spacing' slider can move them together.
+                    ax.spines['right'].set_position(('outward', offset))
+                    ax._qcs_param_axis = True
                     offset += 60
                     # set y axis colors
                     ax.spines['right'].set_color(bcParam[y_list[i-1].name])
