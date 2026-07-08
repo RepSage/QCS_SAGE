@@ -14,36 +14,52 @@ def enable_scroll_zoom(fig):
     # snapshot the original plotted view for Reset
     original = [(ax, ax.get_xlim(), ax.get_ylim()) for ax in fig.axes]
 
+    def _overlaid_axes(ref_ax):
+        # These panels stack several parameter y-axes with twinx(): they overlap
+        # (same position) and SHARE the x-axis. Zoom/pan must act on ALL of them
+        # together, in DISPLAY (pixel) coordinates, or the independent y-scales
+        # drift apart (curves/trend lines slide relative to each other). Grouping
+        # by position also excludes colorbars/legends, which sit elsewhere.
+        ref = ref_ax.get_position().bounds
+        return [a for a in fig.axes
+                if all(abs(p - q) < 1e-6 for p, q in zip(a.get_position().bounds, ref, strict=False))]
+
     def on_scroll(event):
-        ax = event.inaxes
-        if ax is None:
+        if event.inaxes is None:
             return
         scale = 1 / 1.2 if event.button == 'up' else 1.2   # wheel up = zoom in
-        xlim, ylim = ax.get_xlim(), ax.get_ylim()
-        xd, yd = event.xdata, event.ydata
-        ax.set_xlim(xd - (xd - xlim[0]) * scale, xd + (xlim[1] - xd) * scale)
-        ax.set_ylim(yd - (yd - ylim[0]) * scale, yd + (ylim[1] - yd) * scale)
+        for ax in _overlaid_axes(event.inaxes):
+            # cursor position in THIS axis' data coords (same pixel, different
+            # data value per axis because each y-scale differs)
+            xd, yd = ax.transData.inverted().transform((event.x, event.y))
+            xlim, ylim = ax.get_xlim(), ax.get_ylim()
+            ax.set_xlim(xd - (xd - xlim[0]) * scale, xd + (xlim[1] - xd) * scale)
+            ax.set_ylim(yd - (yd - ylim[0]) * scale, yd + (ylim[1] - yd) * scale)
         fig.canvas.draw_idle()
 
-    pan = {'x': None, 'y': None, 'ax': None}
+    pan = {'x': None, 'y': None, 'axes': None}
 
     def on_press(event):
         if event.button == 2 and event.inaxes is not None:   # 2 = middle button
-            pan.update(x=event.xdata, y=event.ydata, ax=event.inaxes)
+            pan.update(x=event.x, y=event.y, axes=_overlaid_axes(event.inaxes))
 
     def on_move(event):
-        if pan['ax'] is None or event.inaxes is not pan['ax'] or event.xdata is None:
+        if pan['axes'] is None or event.x is None:
             return
-        ax = pan['ax']
-        dx, dy = event.xdata - pan['x'], event.ydata - pan['y']
-        xlim, ylim = ax.get_xlim(), ax.get_ylim()
-        ax.set_xlim(xlim[0] - dx, xlim[1] - dx)
-        ax.set_ylim(ylim[0] - dy, ylim[1] - dy)
+        for ax in pan['axes']:
+            inv = ax.transData.inverted()
+            x0, y0 = inv.transform((pan['x'], pan['y']))     # previous pixel -> data
+            x1, y1 = inv.transform((event.x, event.y))       # current pixel  -> data
+            dx, dy = x1 - x0, y1 - y0
+            xlim, ylim = ax.get_xlim(), ax.get_ylim()
+            ax.set_xlim(xlim[0] - dx, xlim[1] - dx)
+            ax.set_ylim(ylim[0] - dy, ylim[1] - dy)
+        pan['x'], pan['y'] = event.x, event.y                # incremental
         fig.canvas.draw_idle()
 
     def on_release(event):
         if event.button == 2:
-            pan['ax'] = None
+            pan['axes'] = None
 
     def reset_view(*_):
         for ax, xl, yl in original:
