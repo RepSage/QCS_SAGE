@@ -1018,28 +1018,36 @@ def build_step2(parent):
     ToolTip(ts_cb, TOOLTIPS['ts_diagram'])
 
     # Coordinates
-    # Latitude/Longitude and the T-S parameters dropdown share the same rendered
-    # width: they all use sticky='ew', so each fills the SAME grid cell (the width
-    # 28 entries drive the column, the combobox has a small min and stretches to
-    # match). The combobox arrow ends up inside that width - no DPI guessing.
     ttk.Label(vis_frame, text="Latitude:").grid(row=5, column=0, sticky='w', pady=2)
     latitude_entry = ttk.Entry(vis_frame, width=28)
-    latitude_entry.grid(row=6, column=0, sticky='ew', pady=2)
+    latitude_entry.grid(row=6, column=0, sticky='w', pady=2)
     set_disabled_style(latitude_entry)
     ToolTip(latitude_entry, TOOLTIPS['latitude'])
 
     ttk.Label(vis_frame, text="Longitude:").grid(row=7, column=0, sticky='w', pady=2)
     longitude_entry = ttk.Entry(vis_frame, width=28)
-    longitude_entry.grid(row=8, column=0, sticky='ew', pady=2)
+    longitude_entry.grid(row=8, column=0, sticky='w', pady=2)
     set_disabled_style(longitude_entry)
     ToolTip(longitude_entry, TOOLTIPS['longitude'])
 
     # TS Parameters
     ttk.Label(vis_frame, text="T-S parameters:").grid(row=9, column=0, sticky='w', pady=2)
-    tsParam_combobox = ttk.Combobox(vis_frame, values=["Conservative T & Absolute S", "Potential T & Practical S"], width=10, state='readonly')
-    tsParam_combobox.grid(row=10, column=0, sticky='ew', pady=2)
+    tsParam_combobox = ttk.Combobox(vis_frame, values=["Conservative T & Absolute S", "Potential T & Practical S"], width=28, state='readonly')
+    tsParam_combobox.grid(row=10, column=0, sticky='w', pady=2)
     set_disabled_style(tsParam_combobox)
     ToolTip(tsParam_combobox, TOOLTIPS['ts_params'])
+    # Match the combobox to the SMALLER lat/long boxes (the arrow otherwise makes
+    # it wider and it reaches the right column). Shrink its char width until its
+    # requested pixel width fits the entry's - DPI-independent, no guessing.
+    latitude_entry.update_idletasks()
+    _target = latitude_entry.winfo_reqwidth()
+    _w = 28
+    while _w > 6:
+        tsParam_combobox.configure(width=_w)
+        tsParam_combobox.update_idletasks()
+        if tsParam_combobox.winfo_reqwidth() <= _target:
+            break
+        _w -= 1
 
     # Display options
     ttk.Label(vis_frame, text="Display options:").grid(row=0, column=1, sticky='w', pady=5)
