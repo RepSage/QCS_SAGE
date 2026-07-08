@@ -184,7 +184,7 @@ def read_ctd(INPUT):
         was_value = raw.notna() & (raw.astype(str).str.strip() != '')
         lost = int((converted.isna() & was_value).sum())
         if lost > 0:
-            print("WARNING: %d unparseable value(s) in column '%s' set to NaN (%s)"
+            print("Warning: %d unparseable value(s) in column '%s' set to NaN (%s)"
                   % (lost, col, INPUT['file_name']))
         dataframe[col] = converted
 
@@ -192,7 +192,7 @@ def read_ctd(INPUT):
     # left by interrupted sensor exports) — they cannot be qualified
     n_invalid = int(dataframe['Datetime'].isna().sum())
     if n_invalid > 0:
-        print('WARNING: %d record(s) without valid timestamp discarded from %s'
+        print('Warning: %d record(s) without valid timestamp discarded from %s'
               % (n_invalid, INPUT['file_name']))
         dataframe = dataframe[dataframe['Datetime'].notna()]
         dataframe.index = np.arange(len(dataframe))
@@ -265,7 +265,7 @@ def read_hobo(INPUT, tsSettings):
         delimiter = ';' if raw_lines[header_row].count(';') > raw_lines[header_row].count(',') else ','
         df = pd.read_csv(file_path, skiprows=header_row, header=0,
                          sep=delimiter, encoding=used_encoding, engine='python')
-        say('MESSAGE: csv read with encoding %s and delimiter %r' % (used_encoding, delimiter))
+        say('Info: csv read with encoding %s and delimiter %r' % (used_encoding, delimiter))
     else:
         raise _hobo_error(file_name, 'unsupported format (use the .xlsx or .csv HOBOware export).')
 
@@ -294,7 +294,7 @@ def read_hobo(INPUT, tsSettings):
     light_label = str(light_col).lower()
     if re.search(r'lum/?\s*ft|lumen', light_label):
         light_factor = LUMEN_FT2_TO_LUX
-        say('MESSAGE: light channel is in lum/ft2; converted to lux (x%.4f).' % LUMEN_FT2_TO_LUX)
+        say('Info: light channel is in lum/ft2; converted to lux (x%.4f).' % LUMEN_FT2_TO_LUX)
     elif re.search(r'lux', light_label):
         light_factor = 1.0
     else:
@@ -303,14 +303,14 @@ def read_hobo(INPUT, tsSettings):
 
     gmt = re.search(r'GMT\s*([+-]\d{1,2}):?(\d{2})?', str(time_col))
     if gmt:
-        say('MESSAGE: timestamps exported as GMT%s (from the header). The "Correct GMT-3" '
+        say('Info: timestamps exported as GMT%s (from the header). The "Correct GMT-3" '
             'option would subtract 3 MORE hours - only use it if the export is in GMT+00.' % gmt.group(1))
 
     # ---------- types ----------
     df[time_col] = pd.to_datetime(df[time_col], errors='coerce', dayfirst=True)
     n_bad_ts = int(df[time_col].isna().sum())
     if n_bad_ts:
-        say('WARNING: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
+        say('Warning: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
         df = df[df[time_col].notna()]
     if df.empty:
         raise _hobo_error(file_name, 'no rows with valid timestamps after reading.')
@@ -336,16 +336,16 @@ def read_hobo(INPUT, tsSettings):
             df = df[df[time_col] < end_t]
         n_window = before - len(df)
         if n_window:
-            say('MESSAGE: %d sample(s) outside the logger deployment window '
+            say('Info: %d sample(s) outside the logger deployment window '
                 '(%s to %s) discarded.' % (n_window, start_t, end_t))
         # event-only rows (no measurement) are removed
         ev_mask = df[event_cols].notna().any(axis=1) & df[temp_col].isna()
         n_ev = int(ev_mask.sum())
         if n_ev:
-            say('MESSAGE: %d logger-event row(s) (no measurement) discarded.' % n_ev)
+            say('Info: %d logger-event row(s) (no measurement) discarded.' % n_ev)
         df = df[~ev_mask]
     else:
-        say('WARNING: no logger event columns found - deployment window not applied; '
+        say('Warning: no logger event columns found - deployment window not applied; '
             'check the file edges for out-of-water readings.')
 
     if df.empty:
@@ -355,7 +355,7 @@ def read_hobo(INPUT, tsSettings):
     df = df[[time_col, temp_col, light_col]]
     df.columns = ['Datetime', 'Temperature (degC)', 'Luminosity (lux)']
     if not df['Datetime'].is_monotonic_increasing:
-        say('WARNING: timestamps were not in chronological order; sorted by time.')
+        say('Warning: timestamps were not in chronological order; sorted by time.')
         df = df.sort_values('Datetime')
     df.index = np.arange(len(df))
 
@@ -377,20 +377,20 @@ def read_hobo(INPUT, tsSettings):
     n_head = edge_trim_count(temp.iloc[:n_day], temp.iloc[:5 * n_day].median())
     n_tail = edge_trim_count(temp.iloc[::-1].iloc[:n_day], temp.iloc[-5 * n_day:].median())
     if n_head + n_tail > 0.1 * len(df):
-        say('WARNING: edge trim would remove >10%% of the series (%d+%d samples) - '
+        say('Warning: edge trim would remove >10%% of the series (%d+%d samples) - '
             'NOT applied; review the temperature plot manually.' % (n_head, n_tail))
     else:
         if n_head:
-            say('MESSAGE: %d leading sample(s) trimmed - temperature deviates more than '
+            say('Info: %d leading sample(s) trimmed - temperature deviates more than '
                 '%.1f degC from the deployment start (out-of-water reading).' % (n_head, tol))
         if n_tail:
-            say('MESSAGE: %d trailing sample(s) trimmed - temperature deviates more than '
+            say('Info: %d trailing sample(s) trimmed - temperature deviates more than '
                 '%.1f degC from the deployment end (out-of-water reading).' % (n_tail, tol))
         if n_head or n_tail:
             df = df.iloc[n_head: len(df) - n_tail]
             df.index = np.arange(len(df))
 
-    say('MESSAGE: HOBO file read: %d samples, %s to %s, median interval %s.'
+    say('Info: HOBO file read: %d samples, %s to %s, median interval %s.'
         % (len(df), df['Datetime'].iloc[0], df['Datetime'].iloc[-1], interval))
     return df, info
 # Conversion functions
@@ -1079,7 +1079,7 @@ def build_database(instrument, file_list=None, input_path=None):
     for file_path in files:
         base = os.path.basename(file_path)
         if base.startswith('QCS_'):
-            messages.append('MESSAGE: report file skipped: %s' % base)
+            messages.append('Info: report file skipped: %s' % base)
             continue
         try:
             if file_path.lower().endswith('.xlsx'):
@@ -1100,7 +1100,7 @@ def build_database(instrument, file_list=None, input_path=None):
                              "stackable - unify them into separate databases." % (base, layout.upper(), instrument))
         df['Source file'] = base
         frames.append(df)
-        messages.append('MESSAGE: %s: %d rows' % (base, len(df)))
+        messages.append('Info: %s: %d rows' % (base, len(df)))
 
     if not frames:
         raise ValueError('build_database: no readable qualified files in the selection.')
@@ -1109,7 +1109,7 @@ def build_database(instrument, file_list=None, input_path=None):
     database['Datetime'] = pd.to_datetime(database['Datetime'], errors='coerce')
     n_bad_ts = int(database['Datetime'].isna().sum())
     if n_bad_ts:
-        messages.append('WARNING: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
+        messages.append('Warning: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
         database = database[database['Datetime'].notna()]
 
     database = database.sort_values(['Site', 'Datetime'], kind='stable')
@@ -1120,22 +1120,22 @@ def build_database(instrument, file_list=None, input_path=None):
     database = database.drop_duplicates(subset=value_cols, keep='first')
     n_exact = n_before - len(database)
     if n_exact:
-        messages.append('WARNING: %d exact duplicate row(s) (same Site+Datetime+values) '
+        messages.append('Warning: %d exact duplicate row(s) (same Site+Datetime+values) '
                         'discarded - kept the first occurrence.' % n_exact)
 
     # overlaps with DIFFERENT values: kept, but the operator needs to know
     overlap_mask = database.duplicated(subset=['Site', 'Datetime'], keep=False)
     if overlap_mask.any():
         offenders = sorted(database.loc[overlap_mask, 'Source file'].unique())
-        messages.append('WARNING: %d row(s) share the same Site+Datetime with DIFFERENT values '
+        messages.append('Warning: %d row(s) share the same Site+Datetime with DIFFERENT values '
                         '(overlapping qualifications?) - ALL kept; check the files: %s'
                         % (int(overlap_mask.sum()), ', '.join(offenders)))
 
     database.index = np.arange(len(database))
     for site, group in database.groupby('Site'):
-        messages.append('MESSAGE: site %s: %d rows, %s to %s'
+        messages.append('Info: site %s: %d rows, %s to %s'
                         % (site, len(group), group['Datetime'].min(), group['Datetime'].max()))
-    messages.append('MESSAGE: database built: %d file(s), %d rows, instrument %s.'
+    messages.append('Info: database built: %d file(s), %d rows, instrument %s.'
                     % (len(frames), len(database), instrument))
     return database, messages
 
@@ -1214,15 +1214,15 @@ def combine_hobo_replicates(replicates, temp_tol=0.5):
     if 'Site' in replicates[0].columns and len(replicates[0]):
         out.insert(1, 'Site', replicates[0]['Site'].iloc[0])
 
-    messages.append('MESSAGE: combined %d HOBO replicates over %d aligned timestamps.'
+    messages.append('Info: combined %d HOBO replicates over %d aligned timestamps.'
                     % (len(replicates), len(out)))
     n_disagree = int((flag_t == 3).sum())
     if n_disagree:
-        messages.append('WARNING: %d timestamp(s) where the replicate temperatures disagree by '
+        messages.append('Warning: %d timestamp(s) where the replicate temperatures disagree by '
                         'more than %.2f degC - combined Flag_T set to SUSPECT there.'
                         % (n_disagree, temp_tol))
     all_fouled = flag_lux[flag_lux == 4]
     if len(all_fouled):
-        messages.append('MESSAGE: combined light usable until %s (all replicates fouled after that).'
+        messages.append('Info: combined light usable until %s (all replicates fouled after that).'
                         % pd.Timestamp(all_fouled.index[0]))
     return out, messages

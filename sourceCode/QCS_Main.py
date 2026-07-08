@@ -655,7 +655,7 @@ def write_combined_replicates(combined, light_plots=()):
         try:
             shutil.copy(plot, os.path.join(folder, 'QCS_light_window_%s.svg' % rep_base))
         except Exception as e:
-            log_line('WARNING: could not copy the light window plot of %s: %s' % (rep_base, e))
+            log_line('Warning: could not copy the light window plot of %s: %s' % (rep_base, e))
     # method note: permanent documentation of HOW the replicates were combined
     with open(os.path.join(folder, 'QCS_combine_method.txt'), 'w', encoding='utf-8') as f:
         f.write(COMBINE_METHOD_TEXT % INPUT.get('n_replicates', len(light_plots) or 2))
@@ -727,7 +727,7 @@ def start_qualification():
     except Exception as e:
         # the full traceback goes to the log; the dialog points to file/line
         for line in traceback.format_exc().strip().splitlines():
-            log_line('ERROR: %s' % line)
+            log_line('Error: %s' % line)
         messagebox.showerror("Qualification error",
                              "The qualification was interrupted by an error:\n\n%s\n\n"
                              "Location: %s\n(full traceback in the Execution log)\n\n"
@@ -779,7 +779,7 @@ def restore_user_prefs():
     # version. On a version change, keep the new code defaults (so criteria
     # improvements take effect) instead of the user's old saved criteria.
     if p.get('qcs_version') != data.QCS_VERSION:
-        print("MESSAGE: saved settings are from a different version (%s != %s); "
+        print("Info: saved settings are from a different version (%s != %s); "
               "using the current default quality criteria." % (p.get('qcs_version'), data.QCS_VERSION))
         return
     if isinstance(p.get('tsQualityTests'), dict):
@@ -1606,7 +1606,7 @@ def build_qualification_tab(container, root, shared_log=None):
         os.chdir(INPUT['raw_data_path'])
         log_line('Stage 1/5: reading input file (%s)...' % INPUT['input_type'])
         for message in INPUT.get('coord_msgs', []):
-            log_line('MESSAGE: %s' % message)
+            log_line('Info: %s' % message)
 
         # opening raw files according to selected data type
         if INPUT['input_type'] == 'Seaguard':
@@ -1646,12 +1646,12 @@ def build_qualification_tab(container, root, shared_log=None):
         ts_gaps = int(gap_mask.sum())
         ts_max_gap = str(dt_diff.max()) if ts_gaps else ''
         if ts_backwards:
-            log_line("WARNING: %d timestamp(s) go BACKWARDS in time - check the raw file "
+            log_line("Warning: %d timestamp(s) go BACKWARDS in time - check the raw file "
                      "or use 'Sort by Time' before interpreting time-based tests." % ts_backwards)
         if ts_duplicates:
-            log_line("WARNING: %d duplicated timestamp(s) found in the raw file." % ts_duplicates)
+            log_line("Warning: %d duplicated timestamp(s) found in the raw file." % ts_duplicates)
         if ts_gaps:
-            log_line("MESSAGE: %d sampling gap(s) longer than 3x the median interval "
+            log_line("Info: %d sampling gap(s) longer than 3x the median interval "
                      "(largest: %s)." % (ts_gaps, ts_max_gap))
 
         log_line('Stage 2/5: preprocessing (units, depth, non-physical values)...')
@@ -1695,10 +1695,10 @@ def build_qualification_tab(container, root, shared_log=None):
         raw_data, zero_report = data.clean_below_zero(raw_data, tsSettings)
         for col, counts in zero_report.items():
             if counts['clamped']:
-                log_line("MESSAGE: %s: %d negative value(s) clamped to 0 (sensor noise around zero)"
+                log_line("Info: %s: %d negative value(s) clamped to 0 (sensor noise around zero)"
                          % (col, counts['clamped']))
             if counts['discarded']:
-                log_line("WARNING: %s: %d non-physical value(s) <= 0 discarded (set to missing)"
+                log_line("Warning: %s: %d non-physical value(s) <= 0 discarded (set to missing)"
                          % (col, counts['discarded']))
 
         #removing data where depth is under 0.5 for profile data
@@ -1751,13 +1751,13 @@ def build_qualification_tab(container, root, shared_log=None):
                         # defined inside a loop captures the variable by late binding
                         # (it would use the value of the LAST iteration, not this one)
                         def acceptPeak(ans=ans, fig1=fig1, peak_window=peak_window):
-                            print('MESSAGE: Peak accepted, proceding to profile selection')
+                            print('Info: Peak accepted, proceding to profile selection')
                             ans.append('y')
                             plt.close(fig1)
                             peak_window.destroy()
 
                         def doNotAcceptPeak(fig1=fig1, peak_window=peak_window):
-                            print('MESSAGE: Ignoring data peak, data qualification will continue with the whole dataset')
+                            print('Info: Ignoring data peak, data qualification will continue with the whole dataset')
                             plt.close(fig1)
                             peak_window.destroy()
 
@@ -1820,7 +1820,7 @@ def build_qualification_tab(container, root, shared_log=None):
                             window.wait_variable(pick_done)
 
                             if selected is None:
-                                print('MESSAGE: No dataset selected, keeping the whole dataset')
+                                print('Info: No dataset selected, keeping the whole dataset')
                             elif selected == 'descending data':
                                 raw_data = desc.copy()
                             elif selected == 'ascending data':

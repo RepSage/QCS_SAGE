@@ -317,6 +317,22 @@ def toggle_data_type():
             entry.delete(0, END)
             entry.insert(0, _field_cache[key])
 
+    def _restore_or_default_depth(entry, key, which):
+        # Depth range applies again: enable it, keep the user's previous value if
+        # there was one, otherwise pre-fill the depths available in the data (the
+        # "Depth available" range) - mirroring what the X-axis datetime does.
+        set_enabled_style(entry)
+        if entry.get().strip():
+            return
+        if _field_cache.get(key):
+            entry.insert(0, _field_cache[key])
+            return
+        if database is not None and 'Depth (m)' in database.columns:
+            col = database['Depth (m)'].dropna()
+            if not col.empty:
+                val = col.min() if which == 'min' else col.max()
+                entry.insert(0, '%.2f' % val)
+
     def _reset_time_default(entry, which):
         # The X-axis time window is NOT persisted across data-type switches: when it
         # applies again it returns to the DEFAULT (the full range shown in "Data
@@ -356,8 +372,8 @@ def toggle_data_type():
         set_disabled_style(panel2_cb)
         _stash_disable(time_start_entry, 'time_start')   # X-axis window = mooring only
         _stash_disable(time_end_entry, 'time_end')
-        _restore_enable(depth_min_entry, 'depth_min')    # depth range applies
-        _restore_enable(depth_max_entry, 'depth_max')
+        _restore_or_default_depth(depth_min_entry, 'depth_min', 'min')   # depth range applies
+        _restore_or_default_depth(depth_max_entry, 'depth_max', 'max')
 
     toggle_panel_dependent_controls()
     toggle_parameter_checkboxes()
@@ -410,10 +426,10 @@ def autodetect_instrument(path):
         layout = data.detect_qualified_layout(head)
         detected = 'HOBO' if layout == 'hobo' else 'Seaguard'
         instrument_combobox.set(detected)
-        print('MESSAGE: instrument auto-detected as %s (from %s).'
+        print('Info: instrument auto-detected as %s (from %s).'
               % (detected, os.path.basename(path)))
     except Exception as e:
-        print('WARNING: could not auto-detect the instrument from %s: %s'
+        print('Warning: could not auto-detect the instrument from %s: %s'
               % (os.path.basename(path), e))
 
 def selectOutputFolder():
@@ -515,7 +531,7 @@ def saveDataViewSettings():
                                        "The T-S Diagram needs a valid Latitude and Longitude.\n\n"
                                        "Fill both (decimal degrees, e.g. -17.5 and -40.0) or uncheck\n"
                                        "'T-S Diagram'. The diagram will be skipped this run.")
-                error_logger.log("WARNING: T-S Diagram skipped - missing/invalid Latitude/Longitude")
+                error_logger.log("Warning: T-S Diagram skipped - missing/invalid Latitude/Longitude")
                 dataViewSettings['tsDiagram'] = False
 
         dataViewSettings['tendencyLines'] = tendency.get()
@@ -544,7 +560,7 @@ def saveDataViewSettings():
                                        "Fill BOTH fields using DD/MM/YYYY HH:MM\n"
                                        "(end after start), e.g. 15/04/2019 09:00,\n"
                                        "or leave both empty to fit the data automatically.")
-                error_logger.log("WARNING: invalid X-axis time window - ignored")
+                error_logger.log("Warning: invalid X-axis time window - ignored")
 
         # optional fixed depth range for the depth axis of profile plots
         dataViewSettings['depthAxisMin'] = None
@@ -564,7 +580,7 @@ def saveDataViewSettings():
                                        "Invalid depth-axis range.\n\n"
                                        "Fill BOTH fields with numbers (max > min), e.g. 0 and 50,\n"
                                        "or leave both empty to fit the data automatically.")
-                error_logger.log("WARNING: invalid depth-axis range - ignored")
+                error_logger.log("Warning: invalid depth-axis range - ignored")
 
         selectedSites = []
         for site in site_vars.keys():
@@ -588,7 +604,7 @@ def saveDataViewSettings():
                         'max': float(max_val)
                     }
                 except ValueError:
-                    error_logger.log(f"WARNING: Invalid scale values for {param} - using defaults")
+                    error_logger.log(f"Warning: Invalid scale values for {param} - using defaults")
         
         dataViewSettings['scaleSettings'] = scale_settings
         dataViewSettings['siteList'] = selectedSites
@@ -619,9 +635,9 @@ def saveDataViewSettings():
         })
         save_user_prefs()
 
-        error_logger.log("Done: View settings saved successfully")
+        error_logger.log("Info: view settings saved.")
     except Exception as e:
-        error_logger.log(f"ERROR saving view settings: {str(e)}")
+        error_logger.log(f"Error saving view settings: {str(e)}")
 
 def generatePanels():
     error_logger.clear()  # Clear the log before generating new panels
@@ -635,7 +651,7 @@ def generatePanels():
     saveDataViewSettings()
 
     if not dataViewSettings.get('dataType'):
-        error_logger.log("ERROR: nothing to plot - configure the options and click 'Generate panels'")
+        error_logger.log("Error: nothing to plot - configure the options and click 'Generate panels'")
         return
 
     # the year checkboxes only list years present in the database,
@@ -648,10 +664,14 @@ def generatePanels():
                                "Check at least one year in 'Filter by year' and click "
                                "'Generate panels' again.\n\n"
                                "Years available in this database:\n%s" % years_str)
-        error_logger.log("ERROR: no year selected (available: %s)" % years_str)
+        error_logger.log("Error: no year selected (available: %s)" % years_str)
         return
 
     try:
+        # each plot logs one 'Info:' progress line; the ONE 'Done:' summary at the
+        # end reports how many panels were produced (no per-panel green lines, so
+        # the log is not a wall of redundant "generated successfully" messages)
+        n_ok = 0
         # panels are generated once for each selected year
         for year in selected_years:
             dataViewSettings['filterByYear'] = year
@@ -663,73 +683,85 @@ def generatePanels():
                                   or dataViewSettings.get('panel2', False)
                                   or dataViewSettings.get('panel3', False))
                 if any_hobo_panel and not selected_sites:
-                    error_logger.log("ERROR: no site selected - check at least one site in 'Filter by Site'")
+                    error_logger.log("Error: no site selected - check at least one site in 'Filter by Site'")
                     continue
 
                 if dataViewSettings.get('panel1', False):
                     for site in selected_sites:
                         try:
                             view.plot_hobo_temperature(database, dataViewSettings, site)
-                            error_logger.log("Done: HOBO temperature for %s (%d) generated successfully" % (site, year))
+                            error_logger.log("Info: HOBO temperature panel for %s (%d) generated." % (site, year))
+                            n_ok += 1
                         except Exception as e:
-                            error_logger.log("ERROR generating HOBO temperature for %s (%d): %s" % (site, year, e))
+                            error_logger.log("Error generating HOBO temperature for %s (%d): %s" % (site, year, e))
 
                 if dataViewSettings.get('panel2', False):
                     for site in selected_sites:
                         try:
                             view.plot_hobo_light(database, dataViewSettings, site)
-                            error_logger.log("Done: HOBO light for %s (%d) generated successfully" % (site, year))
+                            error_logger.log("Info: HOBO light panel for %s (%d) generated." % (site, year))
+                            n_ok += 1
                         except Exception as e:
-                            error_logger.log("ERROR generating HOBO light for %s (%d): %s" % (site, year, e))
+                            error_logger.log("Error generating HOBO light for %s (%d): %s" % (site, year, e))
 
                 if dataViewSettings.get('panel3', False):
                     try:
                         view.plot_hobo_light_multisite(database, dataViewSettings)
-                        error_logger.log("Done: HOBO light multi-site (%d) generated successfully" % year)
+                        error_logger.log("Info: HOBO light multi-site panel (%d) generated." % year)
+                        n_ok += 1
                     except Exception as e:
-                        error_logger.log("ERROR generating HOBO light multi-site (%d): %s" % (year, e))
+                        error_logger.log("Error generating HOBO light multi-site (%d): %s" % (year, e))
                 continue
 
             if dataViewSettings['dataType'] == 'mooring':
                 if dataViewSettings.get('panel1', False):
                     try:
                         view.plot_database_panel1(database, dataViewSettings)
-                        error_logger.log("Done: Panel 1 (%d) generated successfully" % year)
+                        error_logger.log("Info: Panel 1 (%d) generated." % year)
+                        n_ok += 1
                     except Exception as e:
-                        error_logger.log(f"ERROR generating Panel 1 ({year}): {str(e)}")
+                        error_logger.log(f"Error generating Panel 1 ({year}): {str(e)}")
 
                 if dataViewSettings.get('panel2', False):
                     try:
                         view.plot_database_panel2(database, dataViewSettings)
-                        error_logger.log("Done: Panel 2 (%d) generated successfully" % year)
+                        error_logger.log("Info: Panel 2 (%d) generated." % year)
+                        n_ok += 1
                     except Exception as e:
-                        error_logger.log(f"ERROR generating Panel 2 ({year}): {str(e)}")
+                        error_logger.log(f"Error generating Panel 2 ({year}): {str(e)}")
 
                 if dataViewSettings.get('panel3', False):
-                    error_logger.log("WARNING: Panel 3 is not suited for mooring data")
+                    error_logger.log("Warning: Panel 3 is not suited for mooring data")
 
             elif dataViewSettings['dataType'] == 'tscp profile':
                 if dataViewSettings.get('panel3', False):
                     try:
                         view.plot_database_panel3(database, dataViewSettings)
-                        error_logger.log("Done: Panel 3 (%d) generated successfully" % year)
+                        error_logger.log("Info: Panel 3 (%d) generated." % year)
+                        n_ok += 1
                     except Exception as e:
-                        error_logger.log(f"ERROR generating Panel 3 ({year}): {str(e)}")
+                        error_logger.log(f"Error generating Panel 3 ({year}): {str(e)}")
 
                 if dataViewSettings.get('panel1', False) or dataViewSettings.get('panel2', False):
-                    error_logger.log("WARNING: Panels 1/2 are not suited for profile data")
+                    error_logger.log("Warning: Panels 1/2 are not suited for profile data")
 
             if dataViewSettings.get('tsDiagram', False):
                 try:
                     view.plot_TS_diagram(database, dataViewSettings)
-                    error_logger.log("Done: TS Diagram (%d) generated successfully" % year)
+                    error_logger.log("Info: T-S diagram (%d) generated." % year)
+                    n_ok += 1
                 except Exception as e:
-                    error_logger.log(f"ERROR generating TS Diagram ({year}): {str(e)}")
+                    error_logger.log(f"Error generating TS Diagram ({year}): {str(e)}")
 
-        out_dir = os.path.join(inputSettings.get('outputPath', ''), 'DatabaseView')
-        error_logger.log("Done: panel(s) generated successfully in %s" % out_dir)
+        # single completion summary (green). If nothing was produced, say so
+        # instead of claiming success.
+        if n_ok:
+            out_dir = os.path.join(inputSettings.get('outputPath', ''), 'DatabaseView')
+            error_logger.log("Done: %d panel(s) generated in %s" % (n_ok, out_dir))
+        else:
+            error_logger.log("Warning: no panel was generated - check the selected options.")
     except Exception as e:
-        error_logger.log(f"CRITICAL ERROR: {str(e)}")
+        error_logger.log(f"Critical error: {str(e)}")
 
 def show_help():
     help_text = """
@@ -937,11 +969,30 @@ def load_database():
     if inputSettings.get('joinFiles', False) == True:
         try:
             data.save_excel_autofit(database, inputSettings['outputFileName'] + '.xlsx')
-            print('MESSAGE: unified database saved to %s.xlsx'
+            print('Info: unified database saved to %s.xlsx'
                   % os.path.join(databaseViewPath, inputSettings['outputFileName']))
         except Exception as e:
-            print(f"ERROR saving database: {str(e)}")
+            print(f"Error saving database: {str(e)}")
     return database
+
+def _current_source_label():
+    """Human-readable description of the spreadsheet(s) the current database was
+    read from, shown on the Generate-panels screen so the user knows exactly which
+    data is loaded."""
+    if inputSettings.get('joinFiles', False):
+        name = (inputSettings.get('outputFileName', '') or '').strip()
+        folder = os.path.basename(inputSettings.get('inputPath', '').rstrip('/\\'))
+        if name and folder:
+            return '%s.xlsx  (built from folder "%s")' % (name, folder)
+        if name:
+            return '%s.xlsx' % name
+        return 'built from folder "%s"' % folder if folder else '(built database)'
+    paths = [p.strip() for p in inputSettings.get('databaseFileName', '').split(';') if p.strip()]
+    if len(paths) == 1:
+        return os.path.basename(paths[0])
+    if len(paths) > 1:
+        return '%d files (%s, ...)' % (len(paths), os.path.basename(paths[0]))
+    return '(unknown)'
 
 def build_step2(parent):
     """Builds Step 2 (visualization settings) inside `parent`, a frame in the
@@ -1009,6 +1060,12 @@ def build_step2(parent):
     dType_combobox.grid(row=1, column=0, sticky='w', pady=2)
     dType_combobox.bind("<<ComboboxSelected>>", lambda e: toggle_data_type())
     ToolTip(dType_combobox, TOOLTIPS['data_type'])
+
+    # In the empty space to the right: which spreadsheet(s) this database was read
+    # from, so the loaded source is always visible on the Generate-panels screen.
+    ttk.Label(data_frame, text="Reading:").grid(row=0, column=1, sticky='w', padx=(28, 4), pady=2)
+    ttk.Label(data_frame, text=_current_source_label(), style='Small.TLabel',
+              wraplength=340, justify='left').grid(row=1, column=1, sticky='nw', padx=(28, 4), pady=2)
 
     # --- Visualization Settings ---
     # Panels: for HOBO the three checkboxes become the dedicated panels
@@ -1532,7 +1589,7 @@ def apply_pending_prefill(info):
     join.set(False)
     toggle_input_mode()
     _preview_cache['key'] = None   # force a rebuild for the new selection
-    print('MESSAGE: Visualization pre-selected the just-qualified file: %s'
+    print('Info: Visualization pre-selected the just-qualified file: %s'
           % os.path.basename(info.get('file', '')))
 
 def _go_step2():

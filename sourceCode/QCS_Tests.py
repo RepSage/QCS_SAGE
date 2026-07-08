@@ -84,7 +84,7 @@ def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interva
 
     win = parse_time_window_samples(time_window, sample_interval / np.timedelta64(1, 's'), n)
     if 0 < win < MIN_SIGMA_SAMPLES and win < n:
-        print("WARNING: spike-test window '%s' spans only %d sample(s) at this "
+        print("Warning: spike-test window '%s' spans only %d sample(s) at this "
               "sampling interval; using the whole-series sigma instead." % (time_window, win))
     std = robust_rolling_sigma(pop, win)
 
@@ -146,7 +146,7 @@ def sigma_rate_of_change_test(
     if n_samples < MIN_SIGMA_SAMPLES:
         # a window too small does not estimate a stable local sigma; before this
         # the test silently became a no-op (sigma NaN -> nothing rejected)
-        print("WARNING: rate-of-change window '%s' spans only %d sample(s) at this "
+        print("Warning: rate-of-change window '%s' spans only %d sample(s) at this "
               "sampling interval; using the whole-series sigma instead."
               % (time_window, n_samples))
         n_samples = n_lines
@@ -372,7 +372,7 @@ def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
         if frac > recovery_day_frac:
             out['recovers'] = True
             out['warnings'].append(
-                'WARNING: the daily light peak dips below the fouling threshold and then '
+                'Warning: the daily light peak dips below the fouling threshold and then '
                 'recovers above it on %.0f%% of the following days - not a clean, monotonic '
                 'biofouling decline. Likely sensor cleaning/redeployment, patchy fouling or '
                 'cloudy spells%s. Review the cutoff on the plot (drag it or press N for no '

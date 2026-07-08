@@ -206,11 +206,16 @@ class LogConsole:
         self.clear_button.pack(side='right', padx=5, pady=(6, 0))
 
     def _tag_for(self, message):
-        if message.startswith(('ERROR', 'CRITICAL')):
+        # Severity is read from the message's leading label (case-insensitive), so
+        # the whole app shares ONE colour scheme regardless of the caller. Standard
+        # prefixes: 'Info:' (default), 'Warning:' (yellow), 'Error:'/'Critical
+        # error:' (red), 'Done:' (green).
+        head = message.lstrip().lower()
+        if head.startswith(('error', 'critical')):
             return 'error'
-        if message.startswith('WARNING'):
+        if head.startswith('warning'):
             return 'warning'
-        if message.startswith(('SUCCESS', 'Done')):
+        if head.startswith(('done', 'success')):
             return 'success'
         return None
 

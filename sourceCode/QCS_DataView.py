@@ -73,6 +73,35 @@ def _fit_margins(fig, pad=6):
         pass
 
 
+def _fit_stacked_yticks(fig, spacing, pad=7):
+    """When many parameter axes are stacked on the right, their y tick labels sit
+    only `spacing` px apart. Shrink the y tick-label font just enough that even the
+    WIDEST label (e.g. a 6-char density value like 1019.5) fits within that gap, so
+    the labels of adjacent axes never overlap. Only the stacked right axes drive the
+    measurement (the first axis keeps its labels on the roomy left side); the shrink
+    is then applied to every y axis for a consistent look. No-op when there is
+    already room."""
+    if not spacing or spacing <= 0 or len(fig.axes) < 2:
+        return
+    try:
+        fig.canvas.draw()
+        r = fig.canvas.get_renderer()
+        widest = 0.0
+        for ax in fig.axes[1:]:                         # stacked twins only
+            for t in ax.get_yticklabels():
+                if t.get_text():
+                    widest = max(widest, t.get_window_extent(r).width)
+        target = spacing - pad
+        if widest > target > 0:
+            ratio = target / widest
+            for ax in fig.axes:
+                for t in ax.get_yticklabels():
+                    t.set_fontsize(t.get_fontsize() * ratio)
+            fig.canvas.draw()
+    except Exception:
+        pass
+
+
 def enable_scroll_zoom(fig):
     """Interaction for a shown panel: mouse-wheel zoom around the cursor,
     middle-button drag to pan, a 'Reset view' toolbar button that restores the
@@ -542,7 +571,7 @@ def plot_database_panel1 (database, dataViewSettings):
             if len(emptySemester) == len(db):
                 raise ValueError('Empty sequence for both semesters in current combination of selected sites and year. Double check inputs or select different sites/year.')
         except ValueError as e:
-            print('SelectionError:', e)
+            print('Error:', e)
         for semester in db.keys():
             # define list of dataframes for y axis parameters
             y_list, cParam, bcParam, parameter_names = setParam (dataViewSettings, db, semester, site)
@@ -647,6 +676,9 @@ def plot_database_panel1 (database, dataViewSettings):
                                  pd.Timestamp(dataViewSettings['xAxisEnd']))
                 #defining data format
                 plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m %H:%M'))
+                # shrink y tick fonts if the widest label would not fit between the
+                # stacked spines, so adjacent axes' numbers never overlap
+                _fit_stacked_yticks(fig, spacing)
                 plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year), bbox_inches='tight')
                 enable_scroll_zoom(fig)
                 plt.show()
@@ -802,7 +834,7 @@ def plot_database_panel3(database, dataViewSettings):
             if len(emptySemester) == len(db):
                 raise ValueError('Empty sequence for both semesters in current combination of selected sites and year. Double check inputs or select different sites/year.')
         except ValueError as e:
-            print('SelectionError:', e)
+            print('Error:', e)
         for semester in db.keys():
             x_list, cParam, bcParam, parameter_names = setParam(dataViewSettings, db, semester, site)
             rParam = renameParameters(parameter_names)
@@ -974,7 +1006,7 @@ def mark_light_cutoff(ax, cutoff, lux_info):
     if lux_info.get('recovers'):
         artists.append(ax.text(
             0.5, 0.94,
-            'WARNING: the light dips and recovers (%.0f%% of later days reach the threshold) -\n'
+            'Warning: the light dips and recovers (%.0f%% of later days reach the threshold) -\n'
             'not clean biofouling (possible cleaning / multiple deployments). Review!'
             % (100 * lux_info.get('recovery_day_frac_after', 0)),
             transform=ax.transAxes, ha='center', va='top', fontsize=8.5,
@@ -1018,7 +1050,7 @@ def _mask_nonpositive_lux (lux, site):
     gaps in the plot. The total omitted is always reported to the console."""
     n_nonpositive = int((lux <= 0).sum())
     if n_nonpositive:
-        print('MESSAGE: %d light reading(s) <= 0 lux for %s omitted from the log-scale plot (night readings).'
+        print('Info: %d light reading(s) <= 0 lux for %s omitted from the log-scale plot (night readings).'
               % (n_nonpositive, site))
     return lux.where(lux > 0)
 
@@ -1085,7 +1117,7 @@ def plot_hobo_light (database, dataViewSettings, site):
         if lim['min'] > 0:
             ax.set_ylim(lim['min'], lim['max'])
         else:
-            print('WARNING: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
+            print('Warning: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
     _apply_hobo_common_settings(ax, dataViewSettings)
 
     # fouling window: same colors as mark_light_cutoff (qualification)
@@ -1145,7 +1177,7 @@ def plot_hobo_light_multisite (database, dataViewSettings):
         if lim['min'] > 0:
             ax.set_ylim(lim['min'], lim['max'])
         else:
-            print('WARNING: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
+            print('Warning: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
     _apply_hobo_common_settings(ax, dataViewSettings)
     ax.legend(fontsize=8, loc='lower left')
     plt.savefig('hobo_light_multisite_%d.svg' % year, bbox_inches='tight')
@@ -1180,7 +1212,7 @@ def plot_TS_diagram (database, dataViewSettings):
         if len(emptySemester) == len(db):
             raise ValueError('Empty sequence for both semesters in current combination of selected sites and year. Double check inputs or select different sites/year.')
     except ValueError as e:
-        print('SelectionError:', e)
+        print('Error:', e)
     
     # working with one semester at a time
     for semester in db.keys():
