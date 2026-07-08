@@ -317,6 +317,17 @@ def toggle_data_type():
             entry.delete(0, END)
             entry.insert(0, _field_cache[key])
 
+    def _reset_time_default(entry, which):
+        # The X-axis time window is NOT persisted across data-type switches: when it
+        # applies again it returns to the DEFAULT (the full range shown in "Data
+        # available"), never the previously chosen value.
+        set_enabled_style(entry)
+        entry.delete(0, END)
+        if database is not None and 'Datetime' in database.columns:
+            dt = database['Datetime'].min() if which == 'start' else database['Datetime'].max()
+            if pd.notna(dt):
+                entry.insert(0, dt.strftime('%d/%m/%Y %H:%M'))
+
     # Specific logic for each data type. A control that does not apply is
     # UNCHECKED/blanked and greyed out; one that applies again is re-enabled and
     # its previous value restored.
@@ -327,8 +338,8 @@ def toggle_data_type():
         set_disabled_style(ts_cb)
         _stash_disable(depth_min_entry, 'depth_min')
         _stash_disable(depth_max_entry, 'depth_max')
-        _restore_enable(time_start_entry, 'time_start')
-        _restore_enable(time_end_entry, 'time_end')
+        _reset_time_default(time_start_entry, 'start')
+        _reset_time_default(time_end_entry, 'end')
     elif data_type == 'mooring':
         panel3.set(False)
         set_disabled_style(panel3_cb)
@@ -336,8 +347,8 @@ def toggle_data_type():
         set_disabled_style(ts_cb)
         _stash_disable(depth_min_entry, 'depth_min')     # depth range = profile only
         _stash_disable(depth_max_entry, 'depth_max')
-        _restore_enable(time_start_entry, 'time_start')  # X-axis window applies
-        _restore_enable(time_end_entry, 'time_end')
+        _reset_time_default(time_start_entry, 'start')   # X-axis window applies (default range)
+        _reset_time_default(time_end_entry, 'end')
     elif data_type == 'tscp profile':
         panel1.set(False)
         panel2.set(False)
@@ -608,7 +619,7 @@ def saveDataViewSettings():
         })
         save_user_prefs()
 
-        error_logger.log("SUCCESS: View settings saved successfully")
+        error_logger.log("Done: View settings saved successfully")
     except Exception as e:
         error_logger.log(f"ERROR saving view settings: {str(e)}")
 
@@ -659,7 +670,7 @@ def generatePanels():
                     for site in selected_sites:
                         try:
                             view.plot_hobo_temperature(database, dataViewSettings, site)
-                            error_logger.log("SUCCESS: HOBO temperature for %s (%d) generated successfully" % (site, year))
+                            error_logger.log("Done: HOBO temperature for %s (%d) generated successfully" % (site, year))
                         except Exception as e:
                             error_logger.log("ERROR generating HOBO temperature for %s (%d): %s" % (site, year, e))
 
@@ -667,14 +678,14 @@ def generatePanels():
                     for site in selected_sites:
                         try:
                             view.plot_hobo_light(database, dataViewSettings, site)
-                            error_logger.log("SUCCESS: HOBO light for %s (%d) generated successfully" % (site, year))
+                            error_logger.log("Done: HOBO light for %s (%d) generated successfully" % (site, year))
                         except Exception as e:
                             error_logger.log("ERROR generating HOBO light for %s (%d): %s" % (site, year, e))
 
                 if dataViewSettings.get('panel3', False):
                     try:
                         view.plot_hobo_light_multisite(database, dataViewSettings)
-                        error_logger.log("SUCCESS: HOBO light multi-site (%d) generated successfully" % year)
+                        error_logger.log("Done: HOBO light multi-site (%d) generated successfully" % year)
                     except Exception as e:
                         error_logger.log("ERROR generating HOBO light multi-site (%d): %s" % (year, e))
                 continue
@@ -683,14 +694,14 @@ def generatePanels():
                 if dataViewSettings.get('panel1', False):
                     try:
                         view.plot_database_panel1(database, dataViewSettings)
-                        error_logger.log("SUCCESS: Panel 1 (%d) generated successfully" % year)
+                        error_logger.log("Done: Panel 1 (%d) generated successfully" % year)
                     except Exception as e:
                         error_logger.log(f"ERROR generating Panel 1 ({year}): {str(e)}")
 
                 if dataViewSettings.get('panel2', False):
                     try:
                         view.plot_database_panel2(database, dataViewSettings)
-                        error_logger.log("SUCCESS: Panel 2 (%d) generated successfully" % year)
+                        error_logger.log("Done: Panel 2 (%d) generated successfully" % year)
                     except Exception as e:
                         error_logger.log(f"ERROR generating Panel 2 ({year}): {str(e)}")
 
@@ -701,7 +712,7 @@ def generatePanels():
                 if dataViewSettings.get('panel3', False):
                     try:
                         view.plot_database_panel3(database, dataViewSettings)
-                        error_logger.log("SUCCESS: Panel 3 (%d) generated successfully" % year)
+                        error_logger.log("Done: Panel 3 (%d) generated successfully" % year)
                     except Exception as e:
                         error_logger.log(f"ERROR generating Panel 3 ({year}): {str(e)}")
 
@@ -711,10 +722,12 @@ def generatePanels():
             if dataViewSettings.get('tsDiagram', False):
                 try:
                     view.plot_TS_diagram(database, dataViewSettings)
-                    error_logger.log("SUCCESS: TS Diagram (%d) generated successfully" % year)
+                    error_logger.log("Done: TS Diagram (%d) generated successfully" % year)
                 except Exception as e:
                     error_logger.log(f"ERROR generating TS Diagram ({year}): {str(e)}")
 
+        out_dir = os.path.join(inputSettings.get('outputPath', ''), 'DatabaseView')
+        error_logger.log("Done: panel(s) generated successfully in %s" % out_dir)
     except Exception as e:
         error_logger.log(f"CRITICAL ERROR: {str(e)}")
 
@@ -1072,6 +1085,22 @@ def build_step2(parent):
     _gap = _target - tsParam_combobox.winfo_reqwidth()
     if _gap > 0:
         tsParam_combobox.grid_configure(ipadx=_gap // 2)
+
+    # The box itself stays narrow (matched to lat/long above), but its narrow
+    # char width would also clip the DROP-DOWN list. Widen only the popdown
+    # listbox to fit the longest option so the choices are fully readable.
+    def _widen_ts_popup(_event=None):
+        try:
+            popdown = tsParam_combobox.tk.call(
+                'ttk::combobox::PopdownWindow', str(tsParam_combobox))
+            longest = max((len(v) for v in tsParam_combobox.cget('values')), default=20)
+            tsParam_combobox.tk.call('%s.f.l' % popdown, 'configure', '-width', longest + 2)
+        except Exception:
+            pass
+    # re-apply after ttk's own post handler runs (after_idle wins the ordering)
+    tsParam_combobox.bind('<Button-1>',
+                          lambda e: tsParam_combobox.after_idle(_widen_ts_popup), add='+')
+    _widen_ts_popup()
 
     # Display options
     ttk.Label(vis_frame, text="Display options:").grid(row=0, column=1, sticky='w', pady=5)

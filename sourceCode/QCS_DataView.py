@@ -6,6 +6,7 @@ import datetime as _dt # type: ignore
 import matplotlib.pyplot as plt # type: ignore
 import matplotlib.dates as _mdates # type: ignore
 from matplotlib.lines import Line2D # type: ignore
+from matplotlib.ticker import MaxNLocator # type: ignore
 import QCS_Theme as _theme
 ####################################################################
 
@@ -558,7 +559,8 @@ def plot_database_panel1 (database, dataViewSettings):
                 spacing = min(60.0, max(22.0, (MAX_ZONE - 95) / (n_right - 1))) if n_right > 1 else 60.0
                 actual_zone = min(MAX_ZONE, ((n_right - 1) * spacing + 95) if n_right >= 1 else 40)
                 plot_px = TOTAL_PX - LEFT_PX - actual_zone   # plot gets the rest
-                fscale = min(1.0, max(0.62, spacing / 48.0)) # shrink y fonts when tight
+                fscale = min(1.0, max(0.55, spacing / 58.0)) # shrink y fonts when tight
+                nbins = 6 if n_right >= 4 else 8              # fewer, rounder y ticks when crowded
                 fig, ax1 = plt.subplots(figsize=(TOTAL_PX / 100, H_PX / 100))
                 plt.xticks(rotation=35)
                 plt.subplots_adjust(left=LEFT_PX / TOTAL_PX,
@@ -588,6 +590,7 @@ def plot_database_panel1 (database, dataViewSettings):
                 ax1.spines['left'].set_position(('outward', 1))
                 ax1.spines['left'].set_linewidth(2.0)
                 ax1.tick_params(axis='y', which='both', colors=bcParam[y_list[0].name], labelsize=10 * fscale)
+                ax1.yaxis.set_major_locator(MaxNLocator(nbins=nbins, prune='both'))
                 # axis list
                 axes = {'y1': ax1}
                 offset = 0
@@ -630,6 +633,7 @@ def plot_database_panel1 (database, dataViewSettings):
                     ax.spines['right'].set_linewidth(1.5)
                     # change tick colors
                     ax.tick_params(axis='y', colors=cParam[y_list[i-1].name], labelsize=10 * fscale)
+                    ax.yaxis.set_major_locator(MaxNLocator(nbins=nbins, prune='both'))
                     # save axis name
                     axes[f'y{i}'] = ax
                     if dataViewSettings['fixedScale'] == True and parameter_names[i-1] in dataViewSettings['scaleSettings']:
