@@ -1236,10 +1236,11 @@ def build_step2(parent):
     depth_max_entry.grid(row=14, column=1, sticky='w', pady=2)
     ToolTip(depth_max_entry, TOOLTIPS['depth_max'])
 
-    # shows the depth range covered by the loaded database
+    # shows the depth range covered by the loaded database (same single-line
+    # format as the "Data available" label above)
     if 'Depth (m)' in database.columns and database['Depth (m)'].notna().any():
-        depth_text = "Depth available:\n%.2f  to  %.2f m" % (database['Depth (m)'].min(),
-                                                             database['Depth (m)'].max())
+        depth_text = "Depth available: %.2f to %.2f m" % (database['Depth (m)'].min(),
+                                                          database['Depth (m)'].max())
     else:
         depth_text = "Depth available: no depth column"
     ttk.Label(vis_frame, text=depth_text, style='Small.TLabel').grid(
