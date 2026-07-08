@@ -30,11 +30,44 @@ def _clamp_x(ax, lo, hi):
         pass
     return lo, hi
 
+def _fit_margins(fig, pad=6):
+    """Measure the actually-drawn content (tick labels + axis labels of every
+    axis) and pull the plot's left/right margins in so NOTHING is clipped at the
+    window edges - regardless of how wide the tick numbers turn out to be or how
+    many stacked axes there are. The window size itself stays fixed; only the
+    plot area shrinks to make room. Runs a couple of passes to converge."""
+    try:
+        for _ in range(3):
+            fig.canvas.draw()
+            r = fig.canvas.get_renderer()
+            fw = fig.bbox.width
+            boxes = [a.get_tightbbox(r) for a in fig.axes if a.get_visible()]
+            if not boxes:
+                return
+            x0 = min(b.x0 for b in boxes)
+            x1 = max(b.x1 for b in boxes)
+            sp = fig.subplotpars
+            left, right = sp.left, sp.right
+            if x0 < pad:
+                left += (pad - x0) / fw
+            if x1 > fw - pad:
+                right -= (x1 - (fw - pad)) / fw
+            if abs(left - sp.left) < 1e-4 and abs(right - sp.right) < 1e-4:
+                break                      # converged: nothing clipped
+            if right - left < 0.2:
+                break                      # give up rather than collapse the plot
+            fig.subplots_adjust(left=max(0.02, left), right=min(0.995, right))
+    except Exception:
+        pass
+
+
 def enable_scroll_zoom(fig):
     """Interaction for a shown panel: mouse-wheel zoom around the cursor,
     middle-button drag to pan, a 'Reset view' toolbar button that restores the
     original plotted limits, and removal of the redundant Zoom lens. Call it
     right before plt.show() (after all axes have their final limits)."""
+    # pull the margins in so no tick/axis label is clipped at the window edges
+    _fit_margins(fig)
     # snapshot the original plotted view for Reset
     original = [(ax, ax.get_xlim(), ax.get_ylim()) for ax in fig.axes]
 
