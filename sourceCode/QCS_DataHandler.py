@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v5.1'
+QCS_VERSION = 'v6.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -20,12 +20,256 @@ QCS_VERSION = 'v5.1'
 
 # Search functions
 
+# ---------------------------------------------------------------------------
+# AADI SeaGuard II raw binary sessions (Data000.bin, format 'AADIBXML1.0').
+# The file is SELF-DESCRIBING: a header points to (1) a plain-XML template of
+# one full record (sensor names, parameter names, units, types) and (2) a tag
+# dictionary assigning a numeric id to every XML element; the data section is a
+# sequence of records framed by a sync marker, each a list of (id, value)
+# pairs. Decoding was validated against the instrument's own CSV export of a
+# real deployment: 1550/1550 records, 12/12 compared columns identical within
+# the CSV's print precision.
+# ---------------------------------------------------------------------------
+
+_AADI_MAGIC = b'AADIBXML'
+_AADI_SYNC = b'\x11\x22\x33\x44\x55\x66\x77\x88'
+_AADI_TICK0 = pd.Timestamp('0001-01-01').to_pydatetime()
+
+
+def _decode_aadi_bin(file_path):
+    """Decodes ONE DataNNN.bin file into a DataFrame with the same column
+    names as the instrument's CSV export ('Record Time', 'Record Number',
+    'Pressure[kPa]', ...), so the standard column mapping applies unchanged.
+    Times are GMT, as in the export (the GMT-3 correction stays an option)."""
+    import struct
+    import datetime as _dt
+    with open(file_path, 'rb') as f:
+        blob = f.read()
+    if not blob.startswith(_AADI_MAGIC):
+        raise ValueError("'%s' is not an AADI binary session file (missing "
+                         "AADIBXML header)." % os.path.basename(file_path))
+    tpl_off, _, _, _, tpl_len, dict_off, dict_len = struct.unpack_from('<7I', blob, 0x1c)
+    template = blob[tpl_off:tpl_off + tpl_len].decode('utf-8', errors='replace')
+    dictionary = blob[dict_off:dict_off + dict_len]
+
+    # tag dictionary: 13 bytes (u16 id, u16 parent, 3B pad, u32 type, 2B pad)
+    # followed by the ASCII element name
+    entries = {}
+    value_ids = []
+    for m in re.finditer(rb'[A-Za-z][A-Za-z0-9_]{3,}', dictionary):
+        if m.start() < 13:
+            continue
+        ident, parent = struct.unpack_from('<HH', dictionary, m.start() - 13)
+        type_code = struct.unpack_from('<I', dictionary, m.start() - 6)[0]
+        name = m.group().decode()
+        entries[ident] = (name, parent, type_code)
+        if name == 'Value':
+            value_ids.append(ident)
+
+    # template: the k-th dictionary 'Value' id corresponds to the k-th Point
+    # (document order); column name = PointDescr[Unit], as in the CSV export
+    columns = []
+    for sensor in re.finditer(r'<SensorData [^>]*Descr="[^"]+"(.*?)</SensorData>', template, re.S):
+        for point in re.finditer(r'<Point ID="\d+" Descr="([^"]+)" Type="\w+" Unit="([^"]*)"',
+                                 sensor.group(1)):
+            columns.append('%s[%s]' % (point.group(1), point.group(2)))
+    if len(columns) != len(value_ids):
+        raise ValueError('AADI reader (%s): %d parameters in the template but %d value '
+                         'slots in the tag dictionary - unsupported layout variant.'
+                         % (os.path.basename(file_path), len(columns), len(value_ids)))
+    # duplicate parameter names (e.g. each sensor's own Temperature) get the
+    # same .1/.2 suffixes pandas produces when reading the CSV export
+    seen = {}
+    for i, name in enumerate(columns):
+        if name in seen:
+            seen[name] += 1
+            columns[i] = '%s.%d' % (name, seen[name])
+        else:
+            seen[name] = 0
+    vid2col = dict(zip(value_ids, columns, strict=True))
+
+    rows = []
+    pos = blob.find(_AADI_SYNC)
+    while pos != -1:
+        q = pos + len(_AADI_SYNC)
+        _rec_len, n_fields = struct.unpack_from('<II', blob, q)
+        q += 8
+        row = {}
+        try:
+            for _ in range(n_fields):
+                ident = struct.unpack_from('<H', blob, q)[0]
+                q += 2
+                name, parent, type_code = entries[ident]
+                if type_code == 0x28:                     # timestamp, .NET ticks
+                    ticks = struct.unpack_from('<q', blob, q)[0]
+                    q += 8
+                    if name == 'Time' and parent != 1:    # the record's own time
+                        row['Record Time'] = pd.Timestamp(
+                            _AADI_TICK0 + _dt.timedelta(microseconds=ticks // 10))
+                elif ident in vid2col:                    # float32 parameter value
+                    row[vid2col[ident]] = struct.unpack_from('<f', blob, q)[0]
+                    q += 4
+                else:                                     # StatusCode / RecordNumber
+                    value = struct.unpack_from('<i', blob, q)[0]
+                    q += 4
+                    if name == 'RecordNumber':
+                        row['Record Number'] = value
+        except (KeyError, struct.error) as e:
+            raise ValueError('AADI reader (%s): corrupted record at byte %d (%s).'
+                             % (os.path.basename(file_path), pos, e)) from e
+        rows.append(row)
+        pos = blob.find(_AADI_SYNC, pos + 1)
+    if not rows:
+        raise ValueError('AADI reader (%s): no data records found.'
+                         % os.path.basename(file_path))
+    return pd.DataFrame(rows, columns=['Record Time', 'Record Number'] + columns)
+
+
+def read_seaguard_bin(file_path):
+    """Reads a SeaGuard II raw binary session: the selected DataNNN.bin plus any
+    sibling DataNNN.bin files of the same session folder, concatenated in time
+    order. Returns the CSV-export-equivalent DataFrame."""
+    folder = os.path.dirname(file_path)
+    siblings = sorted(f for f in os.listdir(folder)
+                      if re.fullmatch(r'Data\d+\.bin', f, re.IGNORECASE))
+    if not siblings:
+        siblings = [os.path.basename(file_path)]
+    parts = [_decode_aadi_bin(os.path.join(folder, f)) for f in siblings]
+    if len(parts) > 1:
+        print('Info: %d binary files of the session read together (%s).'
+              % (len(parts), ', '.join(siblings)))
+    frame = pd.concat(parts, ignore_index=True)
+    frame = frame.sort_values('Record Time', kind='stable')
+    frame.index = np.arange(len(frame))
+    print('Info: AADI binary session decoded: %d records, %s to %s.'
+          % (len(frame), frame['Record Time'].min(), frame['Record Time'].max()))
+    return frame
+
+
+# ---------------------------------------------------------------------------
+# Dissolved-CO2 logger (separate instrument). Export: comma CSV with the header
+# line repeated on every logger restart; date split into Year..Second columns;
+# the value imported is 'Corrected disolved CO2 (PPM)' (the device's own
+# spelling). The logger samples at its own rate (~2 min), different from the
+# Seaguard's, so the merge interpolates in time.
+# ---------------------------------------------------------------------------
+
+def read_co2_file(file_path):
+    """Reads the dissolved-CO2 logger export. Returns (DataFrame with
+    ['Datetime', 'CO2 Level (ppm)'] sorted in time, messages)."""
+    msgs = []
+    header = None
+    rows = []
+    n_headers = 0
+    n_badrows = 0
+    with open(file_path, encoding='utf-8', errors='replace') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.lower().startswith('measurement type'):
+                n_headers += 1
+                if header is None:
+                    header = [h.strip() for h in line.split(',')]
+                continue
+            parts = [p.strip() for p in line.split(',')]
+            if header is None or len(parts) != len(header):
+                n_badrows += 1
+                continue
+            rows.append(parts)
+    base = os.path.basename(file_path)
+    if header is None:
+        raise ValueError("CO2 reader (%s): no 'Measurement type' header line found - "
+                         "not a dissolved-CO2 logger export." % base)
+    df = pd.DataFrame(rows, columns=header)
+    co2_col = next((c for c in df.columns
+                    if re.search(r'corrected\s+dis+olved\s+co2', c, re.IGNORECASE)), None)
+    if co2_col is None:   # fall back to the uncorrected reading
+        co2_col = next((c for c in df.columns if re.fullmatch(r'CO2 \(PPM\)', c, re.IGNORECASE)), None)
+        if co2_col is None:
+            raise ValueError('CO2 reader (%s): no CO2 column found in the header.' % base)
+        msgs.append("Warning: 'Corrected disolved CO2' column not found in %s - "
+                    "using the uncorrected 'CO2 (PPM)' column." % base)
+    for c in ('Year', 'Month', 'Day', 'Hour', 'Minute', 'Second'):
+        if c not in df.columns:
+            raise ValueError('CO2 reader (%s): date column %r missing.' % (base, c))
+    stamp = pd.to_datetime(dict(year=pd.to_numeric(df['Year'], errors='coerce'),
+                                month=pd.to_numeric(df['Month'], errors='coerce'),
+                                day=pd.to_numeric(df['Day'], errors='coerce'),
+                                hour=pd.to_numeric(df['Hour'], errors='coerce'),
+                                minute=pd.to_numeric(df['Minute'], errors='coerce'),
+                                second=pd.to_numeric(df['Second'], errors='coerce')),
+                           errors='coerce')
+    out = pd.DataFrame({'Datetime': stamp,
+                        'CO2 Level (ppm)': pd.to_numeric(df[co2_col], errors='coerce')})
+    n_invalid = int((out['Datetime'].isna() | out['CO2 Level (ppm)'].isna()).sum())
+    out = out.dropna().sort_values('Datetime')
+    out = out.drop_duplicates(subset='Datetime', keep='first')
+    out.index = np.arange(len(out))
+    if out.empty:
+        raise ValueError('CO2 reader (%s): no valid CO2 records.' % base)
+    if n_headers > 1:
+        msgs.append('Info: %d repeated header line(s) skipped in %s (logger restarts).'
+                    % (n_headers - 1, base))
+    if n_badrows or n_invalid:
+        msgs.append('Warning: %d malformed/invalid CO2 row(s) skipped in %s.'
+                    % (n_badrows + n_invalid, base))
+    interval = out['Datetime'].diff().median()
+    msgs.append('Info: CO2 file read: %d records, %s to %s, median interval %s.'
+                % (len(out), out['Datetime'].iloc[0], out['Datetime'].iloc[-1], interval))
+    return out, msgs
+
+
+def merge_co2_data(dataframe, co2_path, gap_factor=2.0):
+    """Imports the dissolved-CO2 series into a Seaguard frame whose 'Datetime'
+    is ALREADY in its final time base. The CO2 timestamps are used AS-IS: the
+    GMT-3 correction is NEVER applied to them (the CO2 logger clock is set to
+    local time, unlike the Seaguard's GMT clock) - the Seaguard side is
+    corrected BEFORE this merge, so both series meet in local time.
+
+    The two loggers sample at different rates, so the CO2 value at each
+    Seaguard timestamp is LINEARLY INTERPOLATED in time between the two
+    bracketing CO2 samples. A timestamp is filled only when those samples are
+    at most `gap_factor` x the CO2 logger's median interval apart (logger gaps
+    and off periods are never bridged) and never outside the CO2 coverage.
+    Fills the 'CO2 Level (ppm)' column. Returns (dataframe, messages)."""
+    co2, msgs = read_co2_file(co2_path)
+    t_src = co2['Datetime'].astype('int64').to_numpy() / 1e9        # epoch seconds
+    v_src = co2['CO2 Level (ppm)'].to_numpy(dtype=float)
+    t_tgt = pd.to_datetime(dataframe['Datetime']).astype('int64').to_numpy() / 1e9
+    interp = np.interp(t_tgt, t_src, v_src, left=np.nan, right=np.nan)
+    inside = (t_tgt >= t_src[0]) & (t_tgt <= t_src[-1])
+    tol = gap_factor * float(np.median(np.diff(t_src))) if len(t_src) > 1 else 0.0
+    # bracketing-gap check: the two CO2 samples around each target must be close
+    right = np.searchsorted(t_src, t_tgt, side='left').clip(1, len(t_src) - 1)
+    bracket_gap = t_src[right] - t_src[right - 1]
+    valid = inside & (bracket_gap <= tol)
+    dataframe = dataframe.copy()
+    dataframe['CO2 Level (ppm)'] = np.where(valid, interp, np.nan)
+    n_fill = int(valid.sum())
+    n_gap = int((inside & ~valid).sum())
+    n_out = int((~inside).sum())
+    msgs.append('Info: CO2 imported into %d of %d timestamps (linear interpolation '
+                'between the bracketing CO2 samples); %d inside logger gaps > %.0f s '
+                'and %d outside the CO2 coverage left empty.'
+                % (n_fill, len(t_tgt), n_gap, tol, n_out))
+    if n_fill == 0:
+        msgs.append('Warning: NO timestamps could be filled - the CO2 timestamps are '
+                    'used AS-IS (never GMT-corrected); check that the CO2 logger clock '
+                    'is in the same time base as the qualified data.')
+    return dataframe, msgs
+
+
 def read_ctd(INPUT):
     # define file path
     file_path = os.path.join(INPUT['raw_data_path'], INPUT['file_name'])
-    
+
     # First determine file type and handle accordingly
-    if INPUT['file_name'].lower().endswith('.xlsx'):
+    if INPUT['file_name'].lower().endswith('.bin'):
+        # SeaGuard II raw binary session: decoded into the same layout as the
+        # instrument's CSV export, so everything below applies unchanged
+        dataframe = read_seaguard_bin(file_path)
+    elif INPUT['file_name'].lower().endswith('.xlsx'):
         # For Excel files, we need a different approach to find the header
         # Read the file line by line to find the header row
         header_row = 0
@@ -50,7 +294,8 @@ def read_ctd(INPUT):
                 i += 1
         dataframe = pd.read_csv(file_path, skiprows=i, header=0, delimiter=';')
     else:
-        raise ValueError("Unsupported file format. Only .xlsx and .csv files are supported.")
+        raise ValueError("Unsupported file format. Only .bin (SeaGuard session), "
+                         ".xlsx and .csv files are supported.")
 
     # set flags for identified columns
     column_flags = {
@@ -447,6 +692,10 @@ def sniff_input_type(file_path):
     together with a light-intensity column (Lux / lum/ft2), in English or
     Portuguese."""
     try:
+        # AADI raw binary session: unambiguous magic at byte 0
+        with open(file_path, 'rb') as f:
+            if f.read(8) == _AADI_MAGIC:
+                return 'Seaguard'
         if str(file_path).lower().endswith(('.xlsx', '.xls')):
             head = pd.read_excel(file_path, header=None, nrows=40)
             lines = [' '.join(str(c) for c in row if pd.notna(c))
@@ -520,6 +769,7 @@ FLAG_BUCKET_MAP = {
     'chl': ['chl'], 'O2': ['O2'], 'org': ['org'], 'tur': ['tur'],
     'dens': ['T', 'S'],
     'lux': ['lux'],  # HOBO light (fouling test)
+    'CO2': ['CO2'],  # dissolved CO2 (imported from the separate logger, v6.0)
 }
 
 # Maps a data column to its per-variable rollup flag column, for consumers that
@@ -535,6 +785,7 @@ PARAM_FLAG_COLUMN = {
     'Chlorophyll (ug/L)': 'Flag_chl',
     'O2 level (uM)': 'Flag_O2',
     'O2 content (mg/L)': 'Flag_O2',
+    'CO2 Level (ppm)': 'Flag_CO2',
     'Dissolved organic matter (ppb)': 'Flag_org',
     'Turbidity (FTU)': 'Flag_tur',
     'TSS (mg/L)': 'Flag_tur',
@@ -652,8 +903,12 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 output_df.loc[pH_bdata, name] = np.nan
             if re.search('chlorophyll', name, re.IGNORECASE):
                 output_df.loc[chl_bdata, name] = np.nan
-            if re.search('o2', name, re.IGNORECASE):
+            # (?<!c)o2: dissolved oxygen only - 'CO2 Level (ppm)' must NOT be
+            # cleared by the O2 flags (it has its own CO2 bucket below)
+            if re.search(r'(?<!c)o2', name, re.IGNORECASE):
                 output_df.loc[O2_bdata, name] = np.nan
+            if re.search('co2', name, re.IGNORECASE) and 'CO2' in bdata:
+                output_df.loc[bdata['CO2'], name] = np.nan
             if re.search('organic matter', name, re.IGNORECASE):
                 output_df.loc[org_bdata, name] = np.nan
             if re.search('turbidity|tss', name, re.IGNORECASE):
@@ -676,8 +931,11 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 output_df.loc[pH_sdata, name] = np.nan
             if re.search('chlorophyll', name, re.IGNORECASE):
                 output_df.loc[chl_sdata, name] = np.nan
-            if re.search('o2', name, re.IGNORECASE):
+            # (?<!c)o2: dissolved oxygen only (see the remove_bad block)
+            if re.search(r'(?<!c)o2', name, re.IGNORECASE):
                 output_df.loc[O2_sdata, name] = np.nan
+            if re.search('co2', name, re.IGNORECASE) and 'CO2' in sdata:
+                output_df.loc[sdata['CO2'], name] = np.nan
             if re.search('organic matter', name, re.IGNORECASE):
                 output_df.loc[org_sdata, name] = np.nan
             if re.search('turbidity|tss', name, re.IGNORECASE):
@@ -698,8 +956,8 @@ def order_var (qualified_data, n_cel, data_type):
                         'Dissolved organic matter (ppb)': 17, 'Luminosity (lux)': 18, 'Soundspeed (m/s)': 19,
                         'Battery voltage (V)': 20, 'Flag': 21,
                         'Flag_T': 22, 'Flag_S': 23, 'Flag_C': 24, 'Flag_P': 25, 'Flag_pH': 26,
-                        'Flag_chl': 27, 'Flag_O2': 28, 'Flag_org': 29, 'Flag_tur': 30,
-                        'Flag_lux': 31, 'QCS version': 32}
+                        'Flag_chl': 27, 'Flag_CO2': 28, 'Flag_O2': 29, 'Flag_org': 30,
+                        'Flag_tur': 31, 'Flag_lux': 32, 'QCS version': 33}
     elif data_type == 'hobo':
         # HOBO Pendant: only the measured variables (temperature in Celsius and
         # light in lux), with the same metadata block as the TSCP standard. The
@@ -785,9 +1043,10 @@ def tscp_stats_table (qualified_data):
     # are present and hold at least one valid value
     expected = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)',
                 'Pressure (dbar)', 'Depth (m)', 'Density (kg/m3)', 'pH',
-                'O2 level (uM)', 'O2 content (mg/L)', 'Chlorophyll (ug/L)',
-                'Turbidity (FTU)', 'Dissolved organic matter (ppb)',
-                'PAR (umol/m2/s)', 'Soundspeed (m/s)', 'Luminosity (lux)']
+                'CO2 Level (ppm)', 'O2 level (uM)', 'O2 content (mg/L)',
+                'Chlorophyll (ug/L)', 'Turbidity (FTU)',
+                'Dissolved organic matter (ppb)', 'PAR (umol/m2/s)',
+                'Soundspeed (m/s)', 'Luminosity (lux)']
     present = [var for var in expected
                if var in qualified_data.columns and not qualified_data[var].isna().all()]
     stat = pd.DataFrame({'Variable': present,

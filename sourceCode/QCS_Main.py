@@ -40,6 +40,7 @@ CONFIG = {
         'pH sensor range': 'ON',
         'chlorophyll sensor range': 'ON',
         'turbidity sensor range': 'ON',
+        'dissolved CO2 sensor range': 'ON',
         'temperature environmental range': 'ON',
         'salinity environmental range': 'ON',
         'conductivity environmental range': 'ON',
@@ -49,6 +50,7 @@ CONFIG = {
         'dissolved oxygen environmental range': 'ON',
         'dissolved organic matter environmental range': 'ON',
         'turbidity environmental range': 'ON',
+        'dissolved CO2 environmental range': 'ON',
         'temperature spikes': 'ON',
         'salinity spikes': 'ON',
         'conductivity spikes': 'ON',
@@ -58,6 +60,7 @@ CONFIG = {
         'dissolved oxygen spikes': 'ON',
         'dissolved organic matter spikes': 'ON',
         'turbidity spikes': 'ON',
+        'dissolved CO2 spikes': 'ON',
         'temperature rate of change': 'ON',
         'salinity rate of change': 'ON',
         'conductivity rate of change': 'ON',
@@ -91,6 +94,8 @@ CONFIG = {
         'sensor_max_chl': 500,
         'sensor_min_tur': 0,
         'sensor_max_tur': 1500,
+        'sensor_min_CO2': 0,
+        'sensor_max_CO2': 10000,
         # Environmental ranges (broad climatological envelope - entire Brazilian coast, v3.0)
         'env_min_temp': 8,
         'env_max_temp': 35,
@@ -110,6 +115,9 @@ CONFIG = {
         'env_max_org': 50,
         'env_min_tur': 0,
         'env_max_tur': 50,
+        # dissolved CO2 (separate logger): broad coastal envelope, tune per site
+        'env_min_CO2': 100,
+        'env_max_CO2': 2000,
         # Light range: NOT a QC test (light uses the fouling window);
         # only sets the Y axis of the fixed-scale luminosity plot (HOBO).
         'env_min_lux': 0,
@@ -143,6 +151,7 @@ CONFIG = {
         'O2':  {'fail': 3, 'susp': 2.5, 'window': '30M'},
         'org': {'fail': 3, 'susp': 2.5, 'window': '30M'},
         'tur': {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'CO2': {'fail': 3, 'susp': 2.5, 'window': '30M'},
     },
     'tsQualityTests_vars': {},
     'tsSettings_entries': {},
@@ -167,7 +176,8 @@ FACTOR_VARS = [
 
 # Tooltips dictionary
 TOOLTIPS = {
-    'data_file': "Select the raw data file to be qualified\nSupported formats: .csv, .xlsx",
+    'co2_file': "OPTIONAL (Seaguard only): dissolved-CO2 file from the separate\nCO2 logger (.txt/.csv export with Year..Second columns). Its values are\ninterpolated in time onto the Seaguard timestamps (the two instruments\nsample at different rates), fill the 'CO2 Level (ppm)' column and go through\nthe CO2 quality tests (sensor/environmental range, spikes -> Flag_CO2).\nThe CO2 timestamps are used AS-IS: the GMT-3 correction is NEVER applied\nto them (the CO2 logger clock is local; the Seaguard side is corrected\nbefore the merge). Not available for a batch (one deployment at a time).",
+    'data_file': "Select the raw data file(s) to be qualified\nFormats: .csv, .xlsx or SeaGuard .bin session (Data000.bin)\nSeaguard: several files = a BATCH, qualified one after another\nHOBO: several files = redundant replicates (combined)",
     'latitude': "Latitude of the collection site (decimal degrees, -90 to 90)\nSouthern hemisphere is negative (e.g. -17.5)\nUsed to convert pressure to depth",
     'longitude': "Longitude of the collection site (decimal degrees, -180 to 180)\nWestern hemisphere is negative (e.g. -40.0)\nUsed by the density inversion test",
     'macroregion': "Broad region of the world (currently only Brazil).\nStructured to add other regions in the future.",
@@ -209,6 +219,8 @@ TS_SETTINGS_TOOLTIPS = {
     'sensor_max_chl': "Maximum valid chlorophyll for sensor range (μg/L)\nValues above will be flagged",
     'sensor_min_tur': "Minimum valid turbidity for sensor range (FTU)\nValues below will be flagged",
     'sensor_max_tur': "Maximum valid turbidity for sensor range (FTU)\nValues above will be flagged",
+    'sensor_min_CO2': "Minimum valid dissolved CO2 for sensor range (ppm)\nValues below will be flagged",
+    'sensor_max_CO2': "Maximum valid dissolved CO2 for sensor range (ppm)\nValues above will be flagged",
     'env_min_temp': "Minimum expected environmental temperature (°C)\nValues below will be flagged",
     'env_max_temp': "Maximum expected environmental temperature (°C)\nValues above will be flagged",
     'env_min_sal': "Minimum expected environmental salinity (PSU)\nValues below will be flagged",
@@ -227,6 +239,8 @@ TS_SETTINGS_TOOLTIPS = {
     'env_max_org': "Maximum expected organic matter (ppb)\nValues above will be flagged",
     'env_min_tur': "Minimum expected turbidity (FTU)\nValues below will be flagged",
     'env_max_tur': "Maximum expected turbidity (FTU)\nValues above will be flagged",
+    'env_min_CO2': "Minimum expected environmental dissolved CO2 (ppm)\nValues below will be flagged",
+    'env_max_CO2': "Maximum expected environmental dissolved CO2 (ppm)\nValues above will be flagged",
     'env_min_lux': "Minimum luminosity (lux) for the FIXED-SCALE light plot.\nNot a QC test - only sets the plot's y-axis (HOBO).",
     'env_max_lux': "Maximum luminosity (lux) for the FIXED-SCALE light plot.\nNot a QC test - only sets the plot's y-axis (HOBO).",
     'rep_cnt_fail': "Number of repeated values to flag as FAIL\nFor flat line test",
@@ -255,6 +269,7 @@ TS_QUALITY_TESTS_TOOLTIPS = {
     'pH sensor range': "Check if pH values are within sensor specifications",
     'chlorophyll sensor range': "Check if chlorophyll values are within sensor specifications",
     'turbidity sensor range': "Check if turbidity values are within sensor specifications",
+    'dissolved CO2 sensor range': "Check if dissolved CO2 values are within sensor specifications",
     'temperature environmental range': "Check if temperature values are environmentally plausible",
     'salinity environmental range': "Check if salinity values are environmentally plausible",
     'conductivity environmental range': "Check if conductivity values are environmentally plausible",
@@ -264,6 +279,7 @@ TS_QUALITY_TESTS_TOOLTIPS = {
     'dissolved oxygen environmental range': "Check if dissolved oxygen values are environmentally plausible",
     'dissolved organic matter environmental range': "Check if organic matter values are environmentally plausible",
     'turbidity environmental range': "Check if turbidity values are environmentally plausible",
+    'dissolved CO2 environmental range': "Check if dissolved CO2 values are environmentally plausible",
     'temperature spikes': "Detect abnormal spikes in temperature values",
     'salinity spikes': "Detect abnormal spikes in salinity values",
     'conductivity spikes': "Detect abnormal spikes in conductivity values",
@@ -273,6 +289,7 @@ TS_QUALITY_TESTS_TOOLTIPS = {
     'dissolved oxygen spikes': "Detect abnormal spikes in dissolved oxygen values",
     'dissolved organic matter spikes': "Detect abnormal spikes in organic matter values",
     'turbidity spikes': "Detect abnormal spikes in turbidity values",
+    'dissolved CO2 spikes': "Detect abnormal spikes in dissolved CO2 values",
     'temperature rate of change': "Check for unrealistic temperature changes over time",
     'salinity rate of change': "Check for unrealistic salinity changes over time",
     'conductivity rate of change': "Check for unrealistic conductivity changes over time",
@@ -317,35 +334,73 @@ def save_user_prefs():
 
 load_user_prefs()
 
-def selectFiles():
-    # HOBO: pick as many replicate files as wanted (multi-select) - the
-    # Replicates count follows the selection automatically. Seaguard: one file.
-    if inputType_combobox.get() == 'HOBO':
-        names = filedialog.askopenfilenames(
-            initialdir=USER_PREFS.get('last_data_dir', '/'),
-            title="Select the HOBO file(s) - one per replicate",
-            filetypes=(("Data files", "*.csv *.xlsx"), ("All files", "*.*")))
-        names = list(names)
-        if not names:
-            return
-        first = names[0]
-        fileNames_entry.delete(0, END)
-        fileNames_entry.insert(0, ';'.join(names))
+_co2_file = ''   # optional dissolved-CO2 file (Seaguard only), set by its button
+
+def _is_seaguard_batch():
+    files = [p for p in fileNames_entry.get().split(';') if p.strip()]
+    return inputType_combobox.get() != 'HOBO' and len(files) > 1
+
+def update_co2_controls():
+    """'Add CO2 data' applies to a SINGLE Seaguard qualification: disabled (and
+    cleared) for HOBO and for a batch; the label shows the loaded file."""
+    global _co2_file
+    allowed = inputType_combobox.get() == 'Seaguard' and not _is_seaguard_batch()
+    if not allowed and _co2_file:
+        print('Info: CO2 file cleared (CO2 import applies to a single Seaguard '
+              'qualification).')
+        _co2_file = ''
+    co2_btn.config(state='normal' if allowed else 'disabled')
+    if _co2_file:
+        co2_label.config(text=os.path.basename(_co2_file))
+        co2_clear_btn.pack(side='left')
     else:
-        names = None
-        first = filedialog.askopenfilename(
-            initialdir=USER_PREFS.get('last_data_dir', '/'),
-            title="Select data file",
-            filetypes=(("Data files", "*.csv *.xlsx"), ("All files", "*.*")))
-        if not first:
-            return
-        fileNames_entry.delete(0, END)
-        fileNames_entry.insert(0, first)
+        co2_label.config(text='')
+        co2_clear_btn.pack_forget()
+
+def select_co2_file():
+    global _co2_file
+    path = filedialog.askopenfilename(
+        initialdir=USER_PREFS.get('last_data_dir', '/'),
+        title='Select the dissolved-CO2 logger file',
+        filetypes=(('CO2 logger files', '*.txt *.csv'), ('All files', '*.*')))
+    if not path:
+        return
+    try:
+        _co2_probe, _co2_msgs = data.read_co2_file(path)
+        for m in _co2_msgs:
+            print(m)
+    except Exception as e:
+        messagebox.showerror('CO2 file', 'Could not read the CO2 file:\n%s' % e)
+        return
+    _co2_file = path
+    update_co2_controls()
+
+def clear_co2_file():
+    global _co2_file
+    _co2_file = ''
+    update_co2_controls()
+
+def selectFiles():
+    # Multi-select for BOTH families: for HOBO the files are the redundant
+    # replicates of one deployment (qualified and then COMBINED); for Seaguard
+    # they are a BATCH - each file is qualified independently, in sequence.
+    names = filedialog.askopenfilenames(
+        initialdir=USER_PREFS.get('last_data_dir', '/'),
+        title=("Select the HOBO file(s) - one per replicate"
+               if inputType_combobox.get() == 'HOBO'
+               else "Select data file(s) - each is qualified in sequence"),
+        filetypes=(("Data files", "*.csv *.xlsx *.bin"), ("All files", "*.*")))
+    names = list(names)
+    if not names:
+        return
+    first = names[0]
+    fileNames_entry.delete(0, END)
+    fileNames_entry.insert(0, ';'.join(names))
     USER_PREFS['last_data_dir'] = os.path.dirname(first)
     save_user_prefs()
-    # Input type auto-detected from the file's header (Seaguard device block vs
-    # HOBOware export); the combobox stays editable, an unrecognized header just
-    # keeps the current choice. The user then only picks TSCP Mooring/Profile.
+    # Input type auto-detected from the file's header (Seaguard device block /
+    # AADI binary magic vs HOBOware export); the combobox stays editable, an
+    # unrecognized header just keeps the current choice.
     detected = data.sniff_input_type(first)
     if detected and detected != inputType_combobox.get():
         inputType_combobox.set(detected)
@@ -356,39 +411,51 @@ def selectFiles():
               'kept "%s".' % inputType_combobox.get())
     if inputType_combobox.get() == 'HOBO':
         # replicates = number of selected files (program-determined, display-only)
-        n_sel = len([p for p in fileNames_entry.get().split(';') if p.strip()])
-        replicate_var.set(str(n_sel))
-    elif names and len(names) > 1:
-        # multiple files picked but the file turned out to be Seaguard: replicates
-        # only exist for HOBO, keep the first file and say so
-        fileNames_entry.delete(0, END)
-        fileNames_entry.insert(0, first)
-        print('Warning: %d files selected but the file is a Seaguard export; '
-              'replicates apply to HOBO only - kept the first file.' % len(names))
+        replicate_var.set(str(len(names)))
+    elif len(names) > 1:
+        print('Info: %d files selected - each will be qualified independently, '
+              'in sequence (one _QLF output per file).' % len(names))
     # auto-fill the output folder from the first file; the name follows the
-    # replicate count (single vs combined)
+    # selection (single / combined replicates / batch)
     outputPath_entry.delete(0, END)
     outputPath_entry.insert(0, os.path.dirname(first))
     apply_output_name()
+    update_co2_controls()   # a batch disables/clears the CO2 import
+
+def _output_base_for(path):
+    """Base name for a file's _QLF output: the file name without extension. For
+    a SeaGuard DataNNN.bin the SESSION FOLDER name is used instead ('Data000'
+    is meaningless on its own - every session calls its file that)."""
+    base = os.path.splitext(os.path.basename(path))[0]
+    if path.lower().endswith('.bin') and re.fullmatch(r'(?i)data\d+', base):
+        folder = os.path.basename(os.path.dirname(path))
+        if folder:
+            base = folder
+    return re.sub(r'[<>:"/\\|?*]', '-', base)
 
 def apply_output_name():
-    """Auto-fills 'Output File Name' from the selected file(s) and the replicate
-    count (the user can still edit it): a single file -> '<file>_QLF'; N>1 HOBO
-    replicates -> the COMBINED name (leading device token like 'HOBO1_' dropped)
-    + '_combined_QLF'. The individual replicate files keep their own '<file>_QLF'
-    names regardless."""
+    """Auto-fills 'Output File Name' from the selected file(s): a single file ->
+    '<file>_QLF' (editable); N>1 HOBO replicates -> the COMBINED name (leading
+    device token like 'HOBO1_' dropped) + '_combined_QLF'; a Seaguard BATCH ->
+    the names are automatic ('<file>_QLF' each), so the field just says so and
+    is locked."""
     paths = [p.strip() for p in fileNames_entry.get().split(';') if p.strip()]
     if not paths:
         return
-    base = os.path.splitext(os.path.basename(paths[0]))[0]
-    n_rep = int(replicate_combobox.get() or 1) if inputType_combobox.get() == 'HOBO' else 1
-    if n_rep > 1:
-        stripped = re.sub(r'(?i)^hobo\s*\d+[ _-]*', '', base)   # drop 'HOBO1_' device token
-        name = (stripped or base) + '_combined_QLF'
-    else:
-        name = base + '_QLF'
+    base = _output_base_for(paths[0])
+    is_hobo = inputType_combobox.get() == 'HOBO'
+    n_rep = int(replicate_var.get() or 1) if is_hobo else 1
+    outputName_entry.config(state='normal')
     outputName_entry.delete(0, END)
-    outputName_entry.insert(0, name)
+    if is_hobo and n_rep > 1:
+        stripped = re.sub(r'(?i)^hobo\s*\d+[ _-]*', '', base)   # drop 'HOBO1_' device token
+        outputName_entry.insert(0, (stripped or base) + '_combined_QLF')
+    elif not is_hobo and len(paths) > 1:
+        # batch: one output per file, named automatically
+        outputName_entry.insert(0, '(automatic: <file>_QLF for each file)')
+        outputName_entry.config(state='disabled')
+    else:
+        outputName_entry.insert(0, base + '_QLF')
 
 def selectOutputFolder():
     folderPath = filedialog.askdirectory(
@@ -507,8 +574,9 @@ def collect_input_settings():
         if not os.path.isfile(f):
             messagebox.showerror("Error", "Data file not found:\n%s" % f)
             return False
-        if not re.search(r'\.(csv|xlsx)$', f, re.IGNORECASE):
-            messagebox.showwarning("Warning", "Unsupported file format (use .csv or .xlsx):\n%s" % f)
+        if not re.search(r'\.(csv|xlsx|bin)$', f, re.IGNORECASE):
+            messagebox.showwarning("Warning", "Unsupported file format (use .csv, .xlsx or a "
+                                   "SeaGuard .bin session file):\n%s" % f)
             return False
     INPUT['replicate_files'] = replicate_files
     INPUT['n_replicates'] = n_rep
@@ -551,6 +619,12 @@ def collect_input_settings():
     OUTPUT['output_file_name'] = outputName_entry.get() + OUTPUT['output_data_format']
     OUTPUT['remove_bad'] = remove_bad.get()
     OUTPUT['remove_suspect'] = remove_suspect.get()
+
+    # optional dissolved-CO2 file (Seaguard only; cleared for HOBO/batch by the UI)
+    if _co2_file and not os.path.isfile(_co2_file):
+        messagebox.showerror("Error", "CO2 file not found:\n%s" % _co2_file)
+        return False
+    INPUT['co2_file'] = _co2_file or None
 
     INPUT['site'] = siteSelect_entry.get().strip().upper()
     if len(INPUT['site']) > 10:
@@ -683,30 +757,40 @@ def write_combined_replicates(combined, light_plots=()):
 def start_qualification():
     """Runs the qualification without closing the main window, allowing new runs.
     For HOBO with N>1 replicates, each file is qualified independently (its own
-    light-window review) and then combined into one series."""
+    light-window review) and then combined into one series. For Seaguard with
+    N>1 files, each file is a separate deployment: they are qualified one after
+    another (a BATCH), each with its own '<file>_QLF' output."""
     if not collect_input_settings():
         return
     run_button.config(state='disabled')
     window.config(cursor='watch')
     files = INPUT.get('replicate_files') or [None]
     n = len(files)
+    combine_hobo = n > 1 and INPUT.get('input_type') == 'HOBO'
+    batch = n > 1 and not combine_hobo
     try:
         qualified_dfs = []
         light_plots = []
         for idx, fpath in enumerate(files, start=1):
             INPUT['file_name'] = os.path.basename(fpath)
             INPUT['raw_data_path'] = os.path.dirname(fpath)
-            if n > 1:
+            if batch:
+                # each batch file names its own output automatically
+                OUTPUT['output_file_name'] = (_output_base_for(fpath) + '_QLF'
+                                              + OUTPUT['output_data_format'])
+                log_line('=== File %d/%d: %s ===' % (idx, n, INPUT['file_name']))
+            elif n > 1:
                 log_line('=== Replicate %d/%d: %s ===' % (idx, n, INPUT['file_name']))
             else:
                 log_line('=== Qualification started: %s (the window may not respond while processing) ==='
                          % INPUT['file_name'])
             window.update_idletasks()
             run_full_qualification()
-            qualified_dfs.append(OUTPUT['last_qualified_df'])
-            if OUTPUT.get('last_light_plot'):
-                light_plots.append(OUTPUT['last_light_plot'])
-        if n > 1:
+            if combine_hobo:
+                qualified_dfs.append(OUTPUT['last_qualified_df'])
+                if OUTPUT.get('last_light_plot'):
+                    light_plots.append(OUTPUT['last_light_plot'])
+        if combine_hobo:
             log_line('Combining %d replicates...' % n)
             window.update_idletasks()
             combined, cmsgs = data.combine_hobo_replicates(qualified_dfs)
@@ -714,8 +798,12 @@ def start_qualification():
                 log_line(m)
             OUTPUT['last_output_root'] = write_combined_replicates(combined, light_plots)
             log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
-        log_line('Done: qualification finished. Results saved to: %s'
-                 % OUTPUT.get('last_output_root', ''))
+        if batch:
+            log_line('Done: batch finished - %d files qualified in sequence '
+                     '(one _QLF output per file).' % n)
+        else:
+            log_line('Done: qualification finished. Results saved to: %s'
+                     % OUTPUT.get('last_output_root', ''))
         # hand the just-qualified file to the Visualization tab so it can
         # pre-select it (Database File + Output Path) on the next switch there.
         # A module-level handoff (read by the QCS_App shell on tab change) avoids
@@ -732,11 +820,19 @@ def start_qualification():
                               else ('TSCP Profile' if INPUT.get('profile') else 'TSCP Mooring')),
                 'latitude': INPUT.get('latitude'),
                 'longitude': INPUT.get('longitude')}
-        messagebox.showinfo("Done",
-                            "Qualification completed successfully!\n\n"
-                            "Results saved to:\n%s\n\n"
-                            "You can select another file and run a new qualification "
-                            "without closing the program." % OUTPUT.get('last_output_root', ''))
+        if batch:
+            messagebox.showinfo("Done",
+                                "Batch completed: %d files qualified in sequence!\n\n"
+                                "Each file has its own _QLF output in the output folder\n"
+                                "(last one: %s).\n\n"
+                                "You can select other files and run a new qualification "
+                                "without closing the program." % (n, OUTPUT.get('last_output_root', '')))
+        else:
+            messagebox.showinfo("Done",
+                                "Qualification completed successfully!\n\n"
+                                "Results saved to:\n%s\n\n"
+                                "You can select another file and run a new qualification "
+                                "without closing the program." % OUTPUT.get('last_output_root', ''))
     except data.ManualCutCancelled:
         # Cancel/Esc during a manual-cut panel or the variable chooser: abort
         # cleanly and return to the form (no error dialog, nothing written)
@@ -787,7 +883,7 @@ def restore_user_prefs():
         conductivity_unit_combobox.set(p['conductivity_unit'])
     if p.get('output_format'):
         outputFilesFormat_combobox.set(p['output_format'])
-    correct_gmt3h.set(p.get('correct_gmt3h', False))
+    correct_gmt3h.set(True)   # GMT-3 defaults ON for Seaguard (not restored from prefs)
     select_profile_data.set(p.get('select_profile_data', False))
     check_variables.set(p.get('check_variables', False))
     remove_bad.set(p.get('remove_bad', False))
@@ -898,7 +994,8 @@ def create_tests_tab(parent):
             'dissolved oxygen sensor range',
             'pH sensor range',
             'chlorophyll sensor range',
-            'turbidity sensor range'
+            'turbidity sensor range',
+            'dissolved CO2 sensor range'
         ],
         "Environmental range tests": [
             'temperature environmental range',
@@ -909,7 +1006,8 @@ def create_tests_tab(parent):
             'chlorophyll environmental range',
             'dissolved oxygen environmental range',
             'dissolved organic matter environmental range',
-            'turbidity environmental range'
+            'turbidity environmental range',
+            'dissolved CO2 environmental range'
         ],
         "Spike tests": [
             'temperature spikes',
@@ -920,7 +1018,8 @@ def create_tests_tab(parent):
             'chlorophyll spikes',
             'dissolved oxygen spikes',
             'dissolved organic matter spikes',
-            'turbidity spikes'
+            'turbidity spikes',
+            'dissolved CO2 spikes'
         ],
         "Rate of change tests": [
             'temperature rate of change',
@@ -968,9 +1067,10 @@ def create_tests_tab(parent):
 _PARAM_NAME = {'temp': 'Temperature', 'sal': 'Salinity', 'cond': 'Conductivity',
                'pres': 'Pressure', 'pH': 'pH', 'chl': 'Chlorophyll',
                'O2': 'Dissolved oxygen', 'org': 'Organic matter', 'tur': 'Turbidity',
-               'lux': 'Luminosity'}
+               'lux': 'Luminosity', 'CO2': 'Dissolved CO2'}
 _PARAM_UNIT = {'temp': '°C', 'sal': 'PSU', 'cond': 'mS/cm', 'pres': 'dbar', 'pH': '',
-               'chl': 'µg/L', 'O2': 'µM', 'org': 'ppb', 'tur': 'FTU', 'lux': 'lux'}
+               'chl': 'µg/L', 'O2': 'µM', 'org': 'ppb', 'tur': 'FTU', 'lux': 'lux',
+               'CO2': 'ppm'}
 # units for the single-value 'Other Parameters'
 _OTHER_UNIT = {'rep_cnt_fail': 'samples', 'rep_cnt_susp': 'samples',
                'dens_inv_tolerance': 'kg/m³', 'hobo_edge_temp_tol': '°C',
@@ -1220,6 +1320,7 @@ def build_qualification_tab(container, root, shared_log=None):
     pipeline stage); without it (standalone dev launch) the tab creates its
     own. All pipeline logic is unchanged."""
     global window, main_frame, input_frame, output_frame, fileNames_entry, browse_file_btn
+    global co2_btn, co2_label, co2_clear_btn
     global inputType_combobox, dType_combobox, replicate_label, replicate_combobox, replicate_var, update_profile_checkbox_state, units_frame
     global pressure_unit_combobox, conductivity_unit_combobox, options_frame, correct_gmt3h, gmt_check, select_profile_data
     global profile_check, check_variables, var_check, outputPath_entry, browse_output_btn, outputName_entry
@@ -1262,6 +1363,12 @@ def build_qualification_tab(container, root, shared_log=None):
     browse_file_btn.grid(row=1, column=2, padx=(5,0))
     ToolTip(browse_file_btn, TOOLTIPS['data_file'])
 
+    # Dissolved CO2 from a SEPARATE logger (Seaguard only, single file):
+    # optional; merged into the qualified sheet by time interpolation
+    co2_btn = ttk.Button(input_frame, text='Add CO₂ data', command=select_co2_file, width=14)
+    co2_btn.grid(row=1, column=3, padx=(10, 0), sticky='w')
+    ToolTip(co2_btn, TOOLTIPS['co2_file'])
+
     # Data type selection: Input Type -> Data Type -> Replicates side by side,
     # left-aligned in a compact sub-row (independent of the stretchy columns above)
     type_row = ttk.Frame(input_frame)
@@ -1290,6 +1397,15 @@ def build_qualification_tab(container, root, shared_log=None):
             "HOBO only: how many redundant HOBO files were selected in 'Browse'\n"
             "(set automatically - pick as many files as you want, one per replicate;\n"
             "each is qualified separately, then combined into one series)")
+
+    # the selected CO2 file shows HERE (beside Replicates, below the button),
+    # so a long file name never pushes the Browse/CO2 block to the right
+    co2_info = ttk.Frame(type_row)
+    co2_info.grid(row=1, column=3, sticky='w', padx=(14, 0))
+    co2_label = ttk.Label(co2_info, text='', style='Small.TLabel')
+    co2_label.pack(side='left', padx=(0, 2))
+    co2_clear_btn = ttk.Button(co2_info, text='×', width=2, command=clear_co2_file)
+    ToolTip(co2_clear_btn, 'Remove the selected CO₂ file')
 
     # update profile checkbox
     def update_profile_checkbox_state(event=None):
@@ -1321,7 +1437,9 @@ def build_qualification_tab(container, root, shared_log=None):
     options_frame = ttk.Frame(input_frame)
     options_frame.grid(row=5, column=0, columnspan=2, sticky='ew', pady=5)
 
-    correct_gmt3h = BooleanVar(value=False)
+    # GMT-3 correction is the DEFAULT for Seaguard data (Brazilian timezone);
+    # it is a per-run choice, not persisted (HOBO disables and unchecks it)
+    correct_gmt3h = BooleanVar(value=True)
     gmt_check = ttk.Checkbutton(options_frame, text="Correct GMT-3", variable=correct_gmt3h)
     gmt_check.pack(anchor='w', pady=2)
     ToolTip(gmt_check, TOOLTIPS['gmt_correction'])
@@ -1461,8 +1579,7 @@ def build_qualification_tab(container, root, shared_log=None):
             pressure_unit_combobox.config(state='readonly')
             conductivity_unit_combobox.config(state='readonly')
             gmt_check.config(state='normal')
-            if 'gmt' in _last_seaguard:
-                correct_gmt3h.set(_last_seaguard['gmt'])
+            correct_gmt3h.set(_last_seaguard.get('gmt', True))   # default ON for Seaguard
             macroregion_label.config(state='normal')
             macroregion_combobox.config(state='readonly')
             region_label.config(state='normal')
@@ -1471,6 +1588,7 @@ def build_qualification_tab(container, root, shared_log=None):
             replicate_combobox.config(state='disabled')
             update_profile_checkbox_state()
         apply_output_name()  # keep the Output File Name in sync (single vs combined)
+        update_co2_controls()  # CO2 import is Seaguard-only (single file)
 
     inputType_combobox.bind("<<ComboboxSelected>>", update_inputtype_state)
     update_inputtype_state()
@@ -1705,6 +1823,16 @@ def build_qualification_tab(container, root, shared_log=None):
             start_time = start_time - timedelta(hours=3)
             end_time = end_time - timedelta(hours=3)
 
+        # optional dissolved-CO2 import (separate logger): merged AFTER the GMT
+        # correction and NEVER shifted itself - the CO2 logger clock is local,
+        # while the Seaguard's is GMT (corrected above); they meet in local time
+        if INPUT.get('co2_file'):
+            log_line('Stage 2b: importing dissolved CO2 from %s...'
+                     % os.path.basename(INPUT['co2_file']))
+            raw_data, co2_msgs = data.merge_co2_data(raw_data, INPUT['co2_file'])
+            for message in co2_msgs:
+                log_line(message)
+
         # excluding other than main temperature sensors
         for name in raw_data.keys():
             if re.search('internal temperature', name, re.IGNORECASE):
@@ -1922,6 +2050,7 @@ def build_qualification_tab(container, root, shared_log=None):
             'O2':  (r'^(?=.*O2)(?=.*uM).*$', True),
             'org': ('organic matter', True),
             'tur': (r'turbidity \(ftu\)', True),
+            'CO2': (r'^(?=.*CO2)(?=.*ppm).*$', True),
         }
 
         # all runners take (column, flags, param_key); range/flat ignore param_key,
@@ -2014,6 +2143,7 @@ def build_qualification_tab(container, root, shared_log=None):
             ('pH',  'pH sensor range',           'pH sensor range',           run_range_test('sensor_min_pH', 'sensor_max_pH')),
             ('chl', 'Chlorophyll sensor range',  'chlorophyll sensor range',  run_range_test('sensor_min_chl', 'sensor_max_chl')),
             ('tur', 'Turbidity sensor range',    'turbidity sensor range',    run_range_test('sensor_min_tur', 'sensor_max_tur')),
+            ('CO2', 'Dissolved CO2 sensor range', 'dissolved CO2 sensor range', run_range_test('sensor_min_CO2', 'sensor_max_CO2')),
             ('T',   'Temperature environmental range',  'temperature environmental range',  run_range_test('env_min_temp', 'env_max_temp', QC.QC_flags.SUSPECT)),
             ('S',   'Salinity environmental range',     'salinity environmental range',     run_range_test('env_min_sal', 'env_max_sal', QC.QC_flags.SUSPECT)),
             ('C',   'Conductivity environmental range', 'conductivity environmental range', run_range_test('env_min_cond', 'env_max_cond', QC.QC_flags.SUSPECT)),
@@ -2023,6 +2153,7 @@ def build_qualification_tab(container, root, shared_log=None):
             ('O2',  'Dissolved oxygen environmental range', 'dissolved oxygen environmental range', run_range_test('env_min_O2', 'env_max_O2', QC.QC_flags.SUSPECT)),
             ('org', 'Dissolved organic matter environmental range', 'dissolved organic matter environmental range', run_range_test('env_min_org', 'env_max_org', QC.QC_flags.SUSPECT)),
             ('tur', 'Turbidity environmental range',    'turbidity environmental range',    run_range_test('env_min_tur', 'env_max_tur', QC.QC_flags.SUSPECT)),
+            ('CO2', 'Dissolved CO2 environmental range', 'dissolved CO2 environmental range', run_range_test('env_min_CO2', 'env_max_CO2', QC.QC_flags.SUSPECT)),
             ('T',   'Temperature spikes',  'temperature spikes',  run_spike_test),
             ('S',   'Salinity spikes',     'salinity spikes',     run_spike_test),
             ('C',   'Conductivity spikes', 'conductivity spikes', run_spike_test),
@@ -2032,6 +2163,7 @@ def build_qualification_tab(container, root, shared_log=None):
             ('O2',  'Dissolved oxygen spikes', 'dissolved oxygen spikes', run_spike_test),
             ('org', 'Dissolved organic matter spikes', 'dissolved organic matter spikes', run_spike_test),
             ('tur', 'Turbidity spikes',    'turbidity spikes',    run_spike_test),
+            ('CO2', 'Dissolved CO2 spikes', 'dissolved CO2 spikes', run_spike_test),
             ('T',   'Temperature rate of change',  'temperature rate of change',  run_rate_of_change_test),
             ('S',   'Salinity rate of change',     'salinity rate of change',     run_rate_of_change_test),
             ('C',   'Conductivity rate of change', 'conductivity rate of change', run_rate_of_change_test),
@@ -2178,8 +2310,11 @@ def build_qualification_tab(container, root, shared_log=None):
         # Export qualified data to .csv/.xlsx file (user's choice; reports are always .xlsx)
         os.chdir(OUTPUT['output_file_path'])
         # the qualification output folder is named after the input file + '_QLF'
-        # (same for every workflow: Seaguard profile/mooring and HOBO)
-        root_path = OUTPUT['output_file_path'] + '/' + re.search(r'^[^\.]+',INPUT['file_name']).group() + '_QLF'
+        # (same for every workflow: Seaguard profile/mooring and HOBO); for a
+        # DataNNN.bin the session-folder name is used (see _output_base_for)
+        root_path = (OUTPUT['output_file_path'] + '/'
+                     + _output_base_for(os.path.join(INPUT['raw_data_path'], INPUT['file_name']))
+                     + '_QLF')
         os.makedirs(root_path, exist_ok=True)
         data_folder = 'QCS qualified hobo data' if layout_type == 'hobo' else 'QCS qualified tscp data'
         path = root_path + '/' + data_folder + '/'

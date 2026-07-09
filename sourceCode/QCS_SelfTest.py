@@ -432,5 +432,126 @@ assert list(out14['Flag_T']) == [1, 5, 5], out14['Flag_T'].tolist()
 assert list(out14['Flag_S']) == [1, 3, 5], out14['Flag_S'].tolist()  # S row1 unharmed by the shared-dens 5
 ok.append('handle_output_file (manual-cut flag 5 rolls up per variable, no cross-contamination)')
 
+# 15) read_ctd on a SeaGuard II raw binary session (AADIBXML1.0): a synthetic
+# mini-session built to the reverse-engineered spec (header sections, template
+# XML, tag dictionary, sync-framed typed records) must decode into the same
+# standardized frame as a CSV export would.
+import struct as _struct
+
+def _aadi_dict_entry(ident, parent, type_code, name):
+    # 13-byte prefix (u16 id, u16 parent, 3B pad, u32 type, 2B pad) + name + NUL
+    return (_struct.pack('<HH', ident, parent) + b'\x00' * 3 +
+            _struct.pack('<I', type_code) + b'\x00' * 2 + name + b'\x00')
+
+def _build_mini_aadi():
+    template = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<Device ID="5650-0" ProdName="SeaGuard II">\n'
+        '<Time>2026-03-16T18:02:01Z</Time><StatusCode>0</StatusCode>\n'
+        '<Data><Time>t</Time><RecordNumber>0</RecordNumber>\n'
+        '<SensorData ID="4117B-1" Descr="Pressure Sensor #1">\n'
+        '<StatusCode>0</StatusCode><Parameters>\n'
+        '<Point ID="0" Descr="Pressure" Type="VT_R4" Unit="kPa"><StatusCode>0</StatusCode><Value /></Point>\n'
+        '<Point ID="1" Descr="Temperature" Type="VT_R4" Unit="DegC"><StatusCode>0</StatusCode><Value /></Point>\n'
+        '</Parameters></SensorData></Data></Device>').encode()
+    dictionary = b''.join([
+        _aadi_dict_entry(1, 0, 0x00, b'Device'),
+        _aadi_dict_entry(2, 1, 0x28, b'Time'),
+        _aadi_dict_entry(3, 1, 0x00, b'Data'),
+        _aadi_dict_entry(4, 3, 0x04, b'RecordNumber'),
+        _aadi_dict_entry(5, 3, 0x28, b'Time'),
+        _aadi_dict_entry(6, 3, 0x00, b'SensorData'),
+        _aadi_dict_entry(7, 6, 0x04, b'StatusCode'),
+        _aadi_dict_entry(8, 6, 0x00, b'Parameters'),
+        _aadi_dict_entry(9, 8, 0x00, b'Point'),
+        _aadi_dict_entry(10, 9, 0x04, b'StatusCode'),
+        _aadi_dict_entry(11, 9, 0x14, b'Value'),
+        _aadi_dict_entry(12, 8, 0x00, b'Point'),
+        _aadi_dict_entry(13, 12, 0x04, b'StatusCode'),
+        _aadi_dict_entry(14, 12, 0x14, b'Value'),
+    ])
+    tpl_off = 488
+    header = (b'AADIBXML1.0' + b'\x00' * (0x1c - 11) +
+              _struct.pack('<7I', tpl_off, 0, 0, tpl_off, len(template),
+                           tpl_off + len(template), len(dictionary)))
+    header += b'\x00' * (tpl_off - len(header))
+    ticks0 = 638_990_000_000_000_000            # a 2026 date, .NET ticks
+    records = b''
+    for i in range(3):
+        fields = (_struct.pack('<H', 2) + _struct.pack('<q', ticks0 + i * 600_000_000) +
+                  _struct.pack('<H', 4) + _struct.pack('<i', i + 1) +
+                  _struct.pack('<H', 5) + _struct.pack('<q', ticks0 + i * 600_000_000) +
+                  _struct.pack('<H', 7) + _struct.pack('<i', 0) +
+                  _struct.pack('<H', 11) + _struct.pack('<f', 101.5 + i) +
+                  _struct.pack('<H', 14) + _struct.pack('<f', 27.25 + 0.1 * i))
+        records += (b'\x11\x22\x33\x44\x55\x66\x77\x88' +
+                    _struct.pack('<II', len(fields), 6) + fields + b'\xae\xfd')
+    return header + template + dictionary + records
+
+with _tempfile.TemporaryDirectory() as tmp:
+    bin_path = _os.path.join(tmp, 'Data000.bin')
+    with open(bin_path, 'wb') as f:
+        f.write(_build_mini_aadi())
+    d = data.read_ctd({'raw_data_path': tmp, 'file_name': 'Data000.bin'})
+    assert len(d) == 3, len(d)
+    assert 'Pressure (kPa)' in d.columns and 'Temperature (degC)' in d.columns, list(d.columns)
+    assert abs(d['Pressure (kPa)'].iloc[0] - 101.5) < 1e-5
+    assert abs(d['Temperature (degC)'].iloc[2] - 27.45) < 1e-5
+    assert str(d['Datetime'].dtype).startswith('datetime64')
+    assert d['Datetime'].iloc[1] - d['Datetime'].iloc[0] == pd.Timedelta(minutes=1)
+    assert data.sniff_input_type(bin_path) == 'Seaguard'
+ok.append('read_ctd (SeaGuard raw .bin session decoded and standardized; sniffer detects it)')
+
+# 16) dissolved-CO2 import: the logger export (repeated headers, Year..Second
+# date columns) is read, and the merge LINEARLY INTERPOLATES onto the Seaguard
+# timestamps, never bridging logger gaps (> 2x the median interval) nor
+# extrapolating outside the CO2 coverage.
+with _tempfile.TemporaryDirectory() as tmp:
+    co2_path = _os.path.join(tmp, 'PISCINA_CO2.txt')
+    hdr = ('Measurement type,Year,Month,Day,Hour,Minute,Second,Reference A/D,'
+           'Current A/D,CO2 (PPM),Corrected disolved CO2 (PPM),Pressure sensor '
+           'temperature,Pressure,IRGA detector temperature,Supply voltage\n')
+    with open(co2_path, 'w', encoding='utf-8') as f:
+        f.write(hdr)
+        # samples every 2 min at :00 (values rise 10 ppm per sample), with a
+        # 20-min LOGGER GAP between 12:08 and 12:28
+        for i, (hh, mm) in enumerate([(12, 0), (12, 2), (12, 4), (12, 6), (12, 8),
+                                      (12, 28), (12, 30), (12, 32)]):
+            f.write('W M,2026,03,16,%02d,%02d,00,02217,02463,%0.2f,%0.2f,31.8,1013.3,26.8,7.0\n'
+                    % (hh, mm, 505.0 + 10 * i, 500.0 + 10 * i))
+        f.write(hdr)   # repeated header line (logger restart) must be skipped
+    co2_df, msgs = data.read_co2_file(co2_path)
+    assert len(co2_df) == 8, len(co2_df)
+    assert abs(co2_df['CO2 Level (ppm)'].iloc[0] - 500.0) < 1e-9   # corrected column used
+    # Seaguard minute grid 11:59..12:33
+    grid = pd.DataFrame({'Datetime': pd.date_range('2026-03-16 11:59', '2026-03-16 12:33', freq='min'),
+                         'Temperature (degC)': 27.0})
+    merged, mmsgs = data.merge_co2_data(grid, co2_path)
+    got = merged.set_index('Datetime')['CO2 Level (ppm)']
+    assert np.isnan(got.loc['2026-03-16 11:59']), 'no extrapolation before coverage'
+    assert abs(got.loc['2026-03-16 12:00'] - 500.0) < 1e-9         # exact sample
+    assert abs(got.loc['2026-03-16 12:01'] - 505.0) < 1e-9         # halfway between 500 and 510
+    assert np.isnan(got.loc['2026-03-16 12:15']), 'logger gap must NOT be bridged'
+    assert abs(got.loc['2026-03-16 12:29'] - 555.0) < 1e-9         # halfway between 550 and 560
+    assert np.isnan(got.loc['2026-03-16 12:33']), 'no extrapolation after coverage'
+ok.append('read_co2_file + merge_co2_data (interpolation, gap masking, no extrapolation)')
+
+# 17) CO2 qualification (v6.0): the 'CO2' flag bucket must roll up to Flag_CO2,
+# remove_bad must clear ONLY the flagged CO2 values, and the O2 removal must
+# NOT touch the CO2 column ('CO2 Level (ppm)' also matches a naive 'o2' regex).
+inp17 = pd.DataFrame({'O2 level (uM)': [200.0, 210.0, 220.0],
+                      'CO2 Level (ppm)': [500.0, 600.0, 700.0]})
+flag_layout_17 = ['O2', 'CO2']
+# row 0: both good; row 1: O2 bad / CO2 good; row 2: O2 good / CO2 bad
+flags_17 = ['11', '41', '14']
+out17 = data.handle_output_file(inp17, flags_17, flag_layout_17,
+                                remove_suspect=False, remove_bad=True)[0]
+assert list(out17['Flag_O2']) == [1, 4, 1], out17['Flag_O2'].tolist()
+assert list(out17['Flag_CO2']) == [1, 1, 4], out17['Flag_CO2'].tolist()
+assert np.isnan(out17['O2 level (uM)'].iloc[1]) and not np.isnan(out17['O2 level (uM)'].iloc[2])
+assert np.isnan(out17['CO2 Level (ppm)'].iloc[2]), 'bad CO2 value not removed'
+assert not np.isnan(out17['CO2 Level (ppm)'].iloc[1]), 'O2 flags must NOT clear CO2 values'
+ok.append('handle_output_file (CO2 bucket rolls up to Flag_CO2; O2/CO2 removals independent)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

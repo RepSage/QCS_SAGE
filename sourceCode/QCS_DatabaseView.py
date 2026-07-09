@@ -1349,7 +1349,8 @@ def build_step2(parent):
         main_params = ['Temperature (degC)', 'Luminosity (lux)']
         secondary_params = []
     else:
-        main_params = ['Temperature (degC)', 'Salinity (PSU)', 'CO2 level (ppm)',
+        # NOTE: 'CO2 Level (ppm)' (capital L) is the qualified sheet's column name
+        main_params = ['Temperature (degC)', 'Salinity (PSU)', 'CO2 Level (ppm)',
                        'O2 level (uM)', 'PAR (umol/m2/s)', 'Turbidity (FTU)',
                        'Chlorophyll (ug/L)', 'pH', 'Dissolved organic matter (ppb)']
         secondary_params = ['Conductivity (mS/cm)', 'Density (kg/m3)',
@@ -1360,7 +1361,7 @@ def build_step2(parent):
 
     def _param_display(param):
         # GUI label only - the data column keeps its original name
-        return param.replace(' level', '')
+        return re.sub(r'(?i)\s+level', '', param)
 
     # parameters this database actually carries data for (a column present with at
     # least one non-null value) - used as the default selection and for defaults
