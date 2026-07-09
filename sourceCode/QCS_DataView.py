@@ -1164,11 +1164,19 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
             # (band of total width = spread, centered on the plotted mean)
             if 'Temperature spread (degC)' in db.columns:
                 spread = pd.to_numeric(db['Temperature spread (degC)'], errors='coerce')
-                if spread.notna().any():
-                    handles.append(ax.fill_between(
-                        db['Datetime'], temp - spread / 2, temp + spread / 2,
-                        color=cParam[param], alpha=0.25, linewidth=0,
-                        label='Replicate disagreement (band height = max - min)'))
+                valid = spread.notna() & temp.notna() & (spread > 0)
+                if valid.any():
+                    # ONE vertical bar PER SAMPLE (bar length = max - min of the
+                    # replicates at that instant), centered on the plotted mean.
+                    # A continuous shaded band was tried first and read as
+                    # translucent lines linking the dots (it interpolated the
+                    # spread BETWEEN samples) - per-sample bars do not.
+                    eb = ax.errorbar(db.loc[valid.values, 'Datetime'], temp[valid],
+                                     yerr=spread[valid] / 2, fmt='none',
+                                     ecolor=cParam[param], elinewidth=1.0,
+                                     alpha=0.7,
+                                     label='Replicate disagreement (bar = max - min)')
+                    handles.append(eb)
             # NOTE: suspect/bad values are NOT highlighted here - keeping or
             # removing them was the operator's decision at qualification, and
             # the markers only cluttered the legend

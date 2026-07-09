@@ -1679,6 +1679,18 @@ def preview_database():
     _db_msgs_logged = True
     _preview_var.set(_summarize_database(db))
 
+def _push_recent(files, instrument):
+    """Puts a file selection on top of the Recent list and SHOWS it in the
+    combobox (the display must always reflect the current selection)."""
+    entry = {'files': files, 'instrument': instrument}
+    recents = [r for r in USER_PREFS.get('dbv_recent', []) if r.get('files') != files]
+    recents.insert(0, entry)
+    USER_PREFS['dbv_recent'] = recents[:8]
+    save_user_prefs()
+    _refresh_recent_combobox()
+    if _recent_combobox is not None:
+        _recent_combobox.set(_recent_display(entry))
+
 def _update_recents():
     """Keeps the last file selections in USER_PREFS for one-click reopening."""
     if inputSettings.get('joinFiles', False):
@@ -1686,12 +1698,7 @@ def _update_recents():
     files = inputSettings.get('databaseFileName', '').strip()
     if not files:
         return
-    entry = {'files': files, 'instrument': inputSettings.get('instrument', 'Seaguard')}
-    recents = [r for r in USER_PREFS.get('dbv_recent', []) if r.get('files') != files]
-    recents.insert(0, entry)
-    USER_PREFS['dbv_recent'] = recents[:8]
-    save_user_prefs()
-    _refresh_recent_combobox()
+    _push_recent(files, inputSettings.get('instrument', 'Seaguard'))
 
 def _recent_display(entry):
     names = ', '.join(os.path.basename(f) for f in entry['files'].split(';') if f)
@@ -1747,6 +1754,10 @@ def apply_pending_prefill(info):
     join.set(False)
     toggle_input_mode()
     _preview_cache['key'] = None   # force a rebuild for the new selection
+    # the just-qualified file IS the current selection: Recent must show it
+    # (not the previous session's file)
+    if info.get('file'):
+        _push_recent(info['file'], info.get('instrument', 'Seaguard'))
     print('Info: Visualization pre-selected the just-qualified file: %s'
           % os.path.basename(info.get('file', '')))
 
