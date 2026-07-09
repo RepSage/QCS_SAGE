@@ -40,6 +40,7 @@ CONFIG = {
         'pH sensor range': 'ON',
         'chlorophyll sensor range': 'ON',
         'turbidity sensor range': 'ON',
+        'dissolved CO2 sensor range': 'ON',
         'temperature environmental range': 'ON',
         'salinity environmental range': 'ON',
         'conductivity environmental range': 'ON',
@@ -49,6 +50,7 @@ CONFIG = {
         'dissolved oxygen environmental range': 'ON',
         'dissolved organic matter environmental range': 'ON',
         'turbidity environmental range': 'ON',
+        'dissolved CO2 environmental range': 'ON',
         'temperature spikes': 'ON',
         'salinity spikes': 'ON',
         'conductivity spikes': 'ON',
@@ -58,6 +60,7 @@ CONFIG = {
         'dissolved oxygen spikes': 'ON',
         'dissolved organic matter spikes': 'ON',
         'turbidity spikes': 'ON',
+        'dissolved CO2 spikes': 'ON',
         'temperature rate of change': 'ON',
         'salinity rate of change': 'ON',
         'conductivity rate of change': 'ON',
@@ -91,6 +94,8 @@ CONFIG = {
         'sensor_max_chl': 500,
         'sensor_min_tur': 0,
         'sensor_max_tur': 1500,
+        'sensor_min_CO2': 0,
+        'sensor_max_CO2': 10000,
         # Environmental ranges (broad climatological envelope - entire Brazilian coast, v3.0)
         'env_min_temp': 8,
         'env_max_temp': 35,
@@ -110,6 +115,9 @@ CONFIG = {
         'env_max_org': 50,
         'env_min_tur': 0,
         'env_max_tur': 50,
+        # dissolved CO2 (separate logger): broad coastal envelope, tune per site
+        'env_min_CO2': 100,
+        'env_max_CO2': 2000,
         # Light range: NOT a QC test (light uses the fouling window);
         # only sets the Y axis of the fixed-scale luminosity plot (HOBO).
         'env_min_lux': 0,
@@ -143,6 +151,7 @@ CONFIG = {
         'O2':  {'fail': 3, 'susp': 2.5, 'window': '30M'},
         'org': {'fail': 3, 'susp': 2.5, 'window': '30M'},
         'tur': {'fail': 3, 'susp': 2.5, 'window': '30M'},
+        'CO2': {'fail': 3, 'susp': 2.5, 'window': '30M'},
     },
     'tsQualityTests_vars': {},
     'tsSettings_entries': {},
@@ -167,7 +176,7 @@ FACTOR_VARS = [
 
 # Tooltips dictionary
 TOOLTIPS = {
-    'co2_file': "OPTIONAL (Seaguard only): dissolved-CO2 file from the separate\nCO2 logger (.txt/.csv export with Year..Second columns). Its values are\ninterpolated in time onto the Seaguard timestamps (the two instruments\nsample at different rates) and fill the 'CO2 Level (ppm)' column of the\nqualified sheet. The CO2 logger clock must follow the same GMT convention\nas the qualified data (after the GMT-3 correction, if applied).\nNot available for a batch (one deployment at a time).",
+    'co2_file': "OPTIONAL (Seaguard only): dissolved-CO2 file from the separate\nCO2 logger (.txt/.csv export with Year..Second columns). Its values are\ninterpolated in time onto the Seaguard timestamps (the two instruments\nsample at different rates), fill the 'CO2 Level (ppm)' column and go through\nthe CO2 quality tests (sensor/environmental range, spikes -> Flag_CO2).\nThe CO2 timestamps are used AS-IS: the GMT-3 correction is NEVER applied\nto them (the CO2 logger clock is local; the Seaguard side is corrected\nbefore the merge). Not available for a batch (one deployment at a time).",
     'data_file': "Select the raw data file(s) to be qualified\nFormats: .csv, .xlsx or SeaGuard .bin session (Data000.bin)\nSeaguard: several files = a BATCH, qualified one after another\nHOBO: several files = redundant replicates (combined)",
     'latitude': "Latitude of the collection site (decimal degrees, -90 to 90)\nSouthern hemisphere is negative (e.g. -17.5)\nUsed to convert pressure to depth",
     'longitude': "Longitude of the collection site (decimal degrees, -180 to 180)\nWestern hemisphere is negative (e.g. -40.0)\nUsed by the density inversion test",
@@ -210,6 +219,8 @@ TS_SETTINGS_TOOLTIPS = {
     'sensor_max_chl': "Maximum valid chlorophyll for sensor range (μg/L)\nValues above will be flagged",
     'sensor_min_tur': "Minimum valid turbidity for sensor range (FTU)\nValues below will be flagged",
     'sensor_max_tur': "Maximum valid turbidity for sensor range (FTU)\nValues above will be flagged",
+    'sensor_min_CO2': "Minimum valid dissolved CO2 for sensor range (ppm)\nValues below will be flagged",
+    'sensor_max_CO2': "Maximum valid dissolved CO2 for sensor range (ppm)\nValues above will be flagged",
     'env_min_temp': "Minimum expected environmental temperature (°C)\nValues below will be flagged",
     'env_max_temp': "Maximum expected environmental temperature (°C)\nValues above will be flagged",
     'env_min_sal': "Minimum expected environmental salinity (PSU)\nValues below will be flagged",
@@ -228,6 +239,8 @@ TS_SETTINGS_TOOLTIPS = {
     'env_max_org': "Maximum expected organic matter (ppb)\nValues above will be flagged",
     'env_min_tur': "Minimum expected turbidity (FTU)\nValues below will be flagged",
     'env_max_tur': "Maximum expected turbidity (FTU)\nValues above will be flagged",
+    'env_min_CO2': "Minimum expected environmental dissolved CO2 (ppm)\nValues below will be flagged",
+    'env_max_CO2': "Maximum expected environmental dissolved CO2 (ppm)\nValues above will be flagged",
     'env_min_lux': "Minimum luminosity (lux) for the FIXED-SCALE light plot.\nNot a QC test - only sets the plot's y-axis (HOBO).",
     'env_max_lux': "Maximum luminosity (lux) for the FIXED-SCALE light plot.\nNot a QC test - only sets the plot's y-axis (HOBO).",
     'rep_cnt_fail': "Number of repeated values to flag as FAIL\nFor flat line test",
@@ -256,6 +269,7 @@ TS_QUALITY_TESTS_TOOLTIPS = {
     'pH sensor range': "Check if pH values are within sensor specifications",
     'chlorophyll sensor range': "Check if chlorophyll values are within sensor specifications",
     'turbidity sensor range': "Check if turbidity values are within sensor specifications",
+    'dissolved CO2 sensor range': "Check if dissolved CO2 values are within sensor specifications",
     'temperature environmental range': "Check if temperature values are environmentally plausible",
     'salinity environmental range': "Check if salinity values are environmentally plausible",
     'conductivity environmental range': "Check if conductivity values are environmentally plausible",
@@ -265,6 +279,7 @@ TS_QUALITY_TESTS_TOOLTIPS = {
     'dissolved oxygen environmental range': "Check if dissolved oxygen values are environmentally plausible",
     'dissolved organic matter environmental range': "Check if organic matter values are environmentally plausible",
     'turbidity environmental range': "Check if turbidity values are environmentally plausible",
+    'dissolved CO2 environmental range': "Check if dissolved CO2 values are environmentally plausible",
     'temperature spikes': "Detect abnormal spikes in temperature values",
     'salinity spikes': "Detect abnormal spikes in salinity values",
     'conductivity spikes': "Detect abnormal spikes in conductivity values",
@@ -274,6 +289,7 @@ TS_QUALITY_TESTS_TOOLTIPS = {
     'dissolved oxygen spikes': "Detect abnormal spikes in dissolved oxygen values",
     'dissolved organic matter spikes': "Detect abnormal spikes in organic matter values",
     'turbidity spikes': "Detect abnormal spikes in turbidity values",
+    'dissolved CO2 spikes': "Detect abnormal spikes in dissolved CO2 values",
     'temperature rate of change': "Check for unrealistic temperature changes over time",
     'salinity rate of change': "Check for unrealistic salinity changes over time",
     'conductivity rate of change': "Check for unrealistic conductivity changes over time",
@@ -978,7 +994,8 @@ def create_tests_tab(parent):
             'dissolved oxygen sensor range',
             'pH sensor range',
             'chlorophyll sensor range',
-            'turbidity sensor range'
+            'turbidity sensor range',
+            'dissolved CO2 sensor range'
         ],
         "Environmental range tests": [
             'temperature environmental range',
@@ -989,7 +1006,8 @@ def create_tests_tab(parent):
             'chlorophyll environmental range',
             'dissolved oxygen environmental range',
             'dissolved organic matter environmental range',
-            'turbidity environmental range'
+            'turbidity environmental range',
+            'dissolved CO2 environmental range'
         ],
         "Spike tests": [
             'temperature spikes',
@@ -1000,7 +1018,8 @@ def create_tests_tab(parent):
             'chlorophyll spikes',
             'dissolved oxygen spikes',
             'dissolved organic matter spikes',
-            'turbidity spikes'
+            'turbidity spikes',
+            'dissolved CO2 spikes'
         ],
         "Rate of change tests": [
             'temperature rate of change',
@@ -1048,9 +1067,10 @@ def create_tests_tab(parent):
 _PARAM_NAME = {'temp': 'Temperature', 'sal': 'Salinity', 'cond': 'Conductivity',
                'pres': 'Pressure', 'pH': 'pH', 'chl': 'Chlorophyll',
                'O2': 'Dissolved oxygen', 'org': 'Organic matter', 'tur': 'Turbidity',
-               'lux': 'Luminosity'}
+               'lux': 'Luminosity', 'CO2': 'Dissolved CO2'}
 _PARAM_UNIT = {'temp': '°C', 'sal': 'PSU', 'cond': 'mS/cm', 'pres': 'dbar', 'pH': '',
-               'chl': 'µg/L', 'O2': 'µM', 'org': 'ppb', 'tur': 'FTU', 'lux': 'lux'}
+               'chl': 'µg/L', 'O2': 'µM', 'org': 'ppb', 'tur': 'FTU', 'lux': 'lux',
+               'CO2': 'ppm'}
 # units for the single-value 'Other Parameters'
 _OTHER_UNIT = {'rep_cnt_fail': 'samples', 'rep_cnt_susp': 'samples',
                'dens_inv_tolerance': 'kg/m³', 'hobo_edge_temp_tol': '°C',
@@ -1801,7 +1821,8 @@ def build_qualification_tab(container, root, shared_log=None):
             end_time = end_time - timedelta(hours=3)
 
         # optional dissolved-CO2 import (separate logger): merged AFTER the GMT
-        # correction, so both instruments must share the same clock convention
+        # correction and NEVER shifted itself - the CO2 logger clock is local,
+        # while the Seaguard's is GMT (corrected above); they meet in local time
         if INPUT.get('co2_file'):
             log_line('Stage 2b: importing dissolved CO2 from %s...'
                      % os.path.basename(INPUT['co2_file']))
@@ -2026,6 +2047,7 @@ def build_qualification_tab(container, root, shared_log=None):
             'O2':  (r'^(?=.*O2)(?=.*uM).*$', True),
             'org': ('organic matter', True),
             'tur': (r'turbidity \(ftu\)', True),
+            'CO2': (r'^(?=.*CO2)(?=.*ppm).*$', True),
         }
 
         # all runners take (column, flags, param_key); range/flat ignore param_key,
@@ -2118,6 +2140,7 @@ def build_qualification_tab(container, root, shared_log=None):
             ('pH',  'pH sensor range',           'pH sensor range',           run_range_test('sensor_min_pH', 'sensor_max_pH')),
             ('chl', 'Chlorophyll sensor range',  'chlorophyll sensor range',  run_range_test('sensor_min_chl', 'sensor_max_chl')),
             ('tur', 'Turbidity sensor range',    'turbidity sensor range',    run_range_test('sensor_min_tur', 'sensor_max_tur')),
+            ('CO2', 'Dissolved CO2 sensor range', 'dissolved CO2 sensor range', run_range_test('sensor_min_CO2', 'sensor_max_CO2')),
             ('T',   'Temperature environmental range',  'temperature environmental range',  run_range_test('env_min_temp', 'env_max_temp', QC.QC_flags.SUSPECT)),
             ('S',   'Salinity environmental range',     'salinity environmental range',     run_range_test('env_min_sal', 'env_max_sal', QC.QC_flags.SUSPECT)),
             ('C',   'Conductivity environmental range', 'conductivity environmental range', run_range_test('env_min_cond', 'env_max_cond', QC.QC_flags.SUSPECT)),
@@ -2127,6 +2150,7 @@ def build_qualification_tab(container, root, shared_log=None):
             ('O2',  'Dissolved oxygen environmental range', 'dissolved oxygen environmental range', run_range_test('env_min_O2', 'env_max_O2', QC.QC_flags.SUSPECT)),
             ('org', 'Dissolved organic matter environmental range', 'dissolved organic matter environmental range', run_range_test('env_min_org', 'env_max_org', QC.QC_flags.SUSPECT)),
             ('tur', 'Turbidity environmental range',    'turbidity environmental range',    run_range_test('env_min_tur', 'env_max_tur', QC.QC_flags.SUSPECT)),
+            ('CO2', 'Dissolved CO2 environmental range', 'dissolved CO2 environmental range', run_range_test('env_min_CO2', 'env_max_CO2', QC.QC_flags.SUSPECT)),
             ('T',   'Temperature spikes',  'temperature spikes',  run_spike_test),
             ('S',   'Salinity spikes',     'salinity spikes',     run_spike_test),
             ('C',   'Conductivity spikes', 'conductivity spikes', run_spike_test),
@@ -2136,6 +2160,7 @@ def build_qualification_tab(container, root, shared_log=None):
             ('O2',  'Dissolved oxygen spikes', 'dissolved oxygen spikes', run_spike_test),
             ('org', 'Dissolved organic matter spikes', 'dissolved organic matter spikes', run_spike_test),
             ('tur', 'Turbidity spikes',    'turbidity spikes',    run_spike_test),
+            ('CO2', 'Dissolved CO2 spikes', 'dissolved CO2 spikes', run_spike_test),
             ('T',   'Temperature rate of change',  'temperature rate of change',  run_rate_of_change_test),
             ('S',   'Salinity rate of change',     'salinity rate of change',     run_rate_of_change_test),
             ('C',   'Conductivity rate of change', 'conductivity rate of change', run_rate_of_change_test),

@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v5.2'
+QCS_VERSION = 'v6.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -222,8 +222,10 @@ def read_co2_file(file_path):
 
 def merge_co2_data(dataframe, co2_path, gap_factor=2.0):
     """Imports the dissolved-CO2 series into a Seaguard frame whose 'Datetime'
-    is ALREADY in its final time base (merge after the GMT correction - both
-    instruments must follow the same clock convention).
+    is ALREADY in its final time base. The CO2 timestamps are used AS-IS: the
+    GMT-3 correction is NEVER applied to them (the CO2 logger clock is set to
+    local time, unlike the Seaguard's GMT clock) - the Seaguard side is
+    corrected BEFORE this merge, so both series meet in local time.
 
     The two loggers sample at different rates, so the CO2 value at each
     Seaguard timestamp is LINEARLY INTERPOLATED in time between the two
@@ -252,9 +254,9 @@ def merge_co2_data(dataframe, co2_path, gap_factor=2.0):
                 'and %d outside the CO2 coverage left empty.'
                 % (n_fill, len(t_tgt), n_gap, tol, n_out))
     if n_fill == 0:
-        msgs.append('Warning: NO timestamps could be filled - check that the CO2 '
-                    'logger clock follows the same GMT convention as the Seaguard '
-                    'data after the correction.')
+        msgs.append('Warning: NO timestamps could be filled - the CO2 timestamps are '
+                    'used AS-IS (never GMT-corrected); check that the CO2 logger clock '
+                    'is in the same time base as the qualified data.')
     return dataframe, msgs
 
 
@@ -767,6 +769,7 @@ FLAG_BUCKET_MAP = {
     'chl': ['chl'], 'O2': ['O2'], 'org': ['org'], 'tur': ['tur'],
     'dens': ['T', 'S'],
     'lux': ['lux'],  # HOBO light (fouling test)
+    'CO2': ['CO2'],  # dissolved CO2 (imported from the separate logger, v6.0)
 }
 
 # Maps a data column to its per-variable rollup flag column, for consumers that
@@ -782,6 +785,7 @@ PARAM_FLAG_COLUMN = {
     'Chlorophyll (ug/L)': 'Flag_chl',
     'O2 level (uM)': 'Flag_O2',
     'O2 content (mg/L)': 'Flag_O2',
+    'CO2 Level (ppm)': 'Flag_CO2',
     'Dissolved organic matter (ppb)': 'Flag_org',
     'Turbidity (FTU)': 'Flag_tur',
     'TSS (mg/L)': 'Flag_tur',
@@ -899,8 +903,12 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 output_df.loc[pH_bdata, name] = np.nan
             if re.search('chlorophyll', name, re.IGNORECASE):
                 output_df.loc[chl_bdata, name] = np.nan
-            if re.search('o2', name, re.IGNORECASE):
+            # (?<!c)o2: dissolved oxygen only - 'CO2 Level (ppm)' must NOT be
+            # cleared by the O2 flags (it has its own CO2 bucket below)
+            if re.search(r'(?<!c)o2', name, re.IGNORECASE):
                 output_df.loc[O2_bdata, name] = np.nan
+            if re.search('co2', name, re.IGNORECASE) and 'CO2' in bdata:
+                output_df.loc[bdata['CO2'], name] = np.nan
             if re.search('organic matter', name, re.IGNORECASE):
                 output_df.loc[org_bdata, name] = np.nan
             if re.search('turbidity|tss', name, re.IGNORECASE):
@@ -923,8 +931,11 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 output_df.loc[pH_sdata, name] = np.nan
             if re.search('chlorophyll', name, re.IGNORECASE):
                 output_df.loc[chl_sdata, name] = np.nan
-            if re.search('o2', name, re.IGNORECASE):
+            # (?<!c)o2: dissolved oxygen only (see the remove_bad block)
+            if re.search(r'(?<!c)o2', name, re.IGNORECASE):
                 output_df.loc[O2_sdata, name] = np.nan
+            if re.search('co2', name, re.IGNORECASE) and 'CO2' in sdata:
+                output_df.loc[sdata['CO2'], name] = np.nan
             if re.search('organic matter', name, re.IGNORECASE):
                 output_df.loc[org_sdata, name] = np.nan
             if re.search('turbidity|tss', name, re.IGNORECASE):
@@ -945,8 +956,8 @@ def order_var (qualified_data, n_cel, data_type):
                         'Dissolved organic matter (ppb)': 17, 'Luminosity (lux)': 18, 'Soundspeed (m/s)': 19,
                         'Battery voltage (V)': 20, 'Flag': 21,
                         'Flag_T': 22, 'Flag_S': 23, 'Flag_C': 24, 'Flag_P': 25, 'Flag_pH': 26,
-                        'Flag_chl': 27, 'Flag_O2': 28, 'Flag_org': 29, 'Flag_tur': 30,
-                        'Flag_lux': 31, 'QCS version': 32}
+                        'Flag_chl': 27, 'Flag_CO2': 28, 'Flag_O2': 29, 'Flag_org': 30,
+                        'Flag_tur': 31, 'Flag_lux': 32, 'QCS version': 33}
     elif data_type == 'hobo':
         # HOBO Pendant: only the measured variables (temperature in Celsius and
         # light in lux), with the same metadata block as the TSCP standard. The
@@ -1032,9 +1043,10 @@ def tscp_stats_table (qualified_data):
     # are present and hold at least one valid value
     expected = ['Temperature (degC)', 'Salinity (PSU)', 'Conductivity (mS/cm)',
                 'Pressure (dbar)', 'Depth (m)', 'Density (kg/m3)', 'pH',
-                'O2 level (uM)', 'O2 content (mg/L)', 'Chlorophyll (ug/L)',
-                'Turbidity (FTU)', 'Dissolved organic matter (ppb)',
-                'PAR (umol/m2/s)', 'Soundspeed (m/s)', 'Luminosity (lux)']
+                'CO2 Level (ppm)', 'O2 level (uM)', 'O2 content (mg/L)',
+                'Chlorophyll (ug/L)', 'Turbidity (FTU)',
+                'Dissolved organic matter (ppb)', 'PAR (umol/m2/s)',
+                'Soundspeed (m/s)', 'Luminosity (lux)']
     present = [var for var in expected
                if var in qualified_data.columns and not qualified_data[var].isna().all()]
     stat = pd.DataFrame({'Variable': present,

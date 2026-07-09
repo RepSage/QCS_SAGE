@@ -536,5 +536,22 @@ with _tempfile.TemporaryDirectory() as tmp:
     assert np.isnan(got.loc['2026-03-16 12:33']), 'no extrapolation after coverage'
 ok.append('read_co2_file + merge_co2_data (interpolation, gap masking, no extrapolation)')
 
+# 17) CO2 qualification (v6.0): the 'CO2' flag bucket must roll up to Flag_CO2,
+# remove_bad must clear ONLY the flagged CO2 values, and the O2 removal must
+# NOT touch the CO2 column ('CO2 Level (ppm)' also matches a naive 'o2' regex).
+inp17 = pd.DataFrame({'O2 level (uM)': [200.0, 210.0, 220.0],
+                      'CO2 Level (ppm)': [500.0, 600.0, 700.0]})
+flag_layout_17 = ['O2', 'CO2']
+# row 0: both good; row 1: O2 bad / CO2 good; row 2: O2 good / CO2 bad
+flags_17 = ['11', '41', '14']
+out17 = data.handle_output_file(inp17, flags_17, flag_layout_17,
+                                remove_suspect=False, remove_bad=True)[0]
+assert list(out17['Flag_O2']) == [1, 4, 1], out17['Flag_O2'].tolist()
+assert list(out17['Flag_CO2']) == [1, 1, 4], out17['Flag_CO2'].tolist()
+assert np.isnan(out17['O2 level (uM)'].iloc[1]) and not np.isnan(out17['O2 level (uM)'].iloc[2])
+assert np.isnan(out17['CO2 Level (ppm)'].iloc[2]), 'bad CO2 value not removed'
+assert not np.isnan(out17['CO2 Level (ppm)'].iloc[1]), 'O2 flags must NOT clear CO2 values'
+ok.append('handle_output_file (CO2 bucket rolls up to Flag_CO2; O2/CO2 removals independent)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))
