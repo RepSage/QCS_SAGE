@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v5.1'
+QCS_VERSION = 'v5.2'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -20,12 +20,142 @@ QCS_VERSION = 'v5.1'
 
 # Search functions
 
+# ---------------------------------------------------------------------------
+# AADI SeaGuard II raw binary sessions (Data000.bin, format 'AADIBXML1.0').
+# The file is SELF-DESCRIBING: a header points to (1) a plain-XML template of
+# one full record (sensor names, parameter names, units, types) and (2) a tag
+# dictionary assigning a numeric id to every XML element; the data section is a
+# sequence of records framed by a sync marker, each a list of (id, value)
+# pairs. Decoding was validated against the instrument's own CSV export of a
+# real deployment: 1550/1550 records, 12/12 compared columns identical within
+# the CSV's print precision.
+# ---------------------------------------------------------------------------
+
+_AADI_MAGIC = b'AADIBXML'
+_AADI_SYNC = b'\x11\x22\x33\x44\x55\x66\x77\x88'
+_AADI_TICK0 = pd.Timestamp('0001-01-01').to_pydatetime()
+
+
+def _decode_aadi_bin(file_path):
+    """Decodes ONE DataNNN.bin file into a DataFrame with the same column
+    names as the instrument's CSV export ('Record Time', 'Record Number',
+    'Pressure[kPa]', ...), so the standard column mapping applies unchanged.
+    Times are GMT, as in the export (the GMT-3 correction stays an option)."""
+    import struct
+    import datetime as _dt
+    with open(file_path, 'rb') as f:
+        blob = f.read()
+    if not blob.startswith(_AADI_MAGIC):
+        raise ValueError("'%s' is not an AADI binary session file (missing "
+                         "AADIBXML header)." % os.path.basename(file_path))
+    tpl_off, _, _, _, tpl_len, dict_off, dict_len = struct.unpack_from('<7I', blob, 0x1c)
+    template = blob[tpl_off:tpl_off + tpl_len].decode('utf-8', errors='replace')
+    dictionary = blob[dict_off:dict_off + dict_len]
+
+    # tag dictionary: 13 bytes (u16 id, u16 parent, 3B pad, u32 type, 2B pad)
+    # followed by the ASCII element name
+    entries = {}
+    value_ids = []
+    for m in re.finditer(rb'[A-Za-z][A-Za-z0-9_]{3,}', dictionary):
+        if m.start() < 13:
+            continue
+        ident, parent = struct.unpack_from('<HH', dictionary, m.start() - 13)
+        type_code = struct.unpack_from('<I', dictionary, m.start() - 6)[0]
+        name = m.group().decode()
+        entries[ident] = (name, parent, type_code)
+        if name == 'Value':
+            value_ids.append(ident)
+
+    # template: the k-th dictionary 'Value' id corresponds to the k-th Point
+    # (document order); column name = PointDescr[Unit], as in the CSV export
+    columns = []
+    for sensor in re.finditer(r'<SensorData [^>]*Descr="[^"]+"(.*?)</SensorData>', template, re.S):
+        for point in re.finditer(r'<Point ID="\d+" Descr="([^"]+)" Type="\w+" Unit="([^"]*)"',
+                                 sensor.group(1)):
+            columns.append('%s[%s]' % (point.group(1), point.group(2)))
+    if len(columns) != len(value_ids):
+        raise ValueError('AADI reader (%s): %d parameters in the template but %d value '
+                         'slots in the tag dictionary - unsupported layout variant.'
+                         % (os.path.basename(file_path), len(columns), len(value_ids)))
+    # duplicate parameter names (e.g. each sensor's own Temperature) get the
+    # same .1/.2 suffixes pandas produces when reading the CSV export
+    seen = {}
+    for i, name in enumerate(columns):
+        if name in seen:
+            seen[name] += 1
+            columns[i] = '%s.%d' % (name, seen[name])
+        else:
+            seen[name] = 0
+    vid2col = dict(zip(value_ids, columns, strict=True))
+
+    rows = []
+    pos = blob.find(_AADI_SYNC)
+    while pos != -1:
+        q = pos + len(_AADI_SYNC)
+        _rec_len, n_fields = struct.unpack_from('<II', blob, q)
+        q += 8
+        row = {}
+        try:
+            for _ in range(n_fields):
+                ident = struct.unpack_from('<H', blob, q)[0]
+                q += 2
+                name, parent, type_code = entries[ident]
+                if type_code == 0x28:                     # timestamp, .NET ticks
+                    ticks = struct.unpack_from('<q', blob, q)[0]
+                    q += 8
+                    if name == 'Time' and parent != 1:    # the record's own time
+                        row['Record Time'] = pd.Timestamp(
+                            _AADI_TICK0 + _dt.timedelta(microseconds=ticks // 10))
+                elif ident in vid2col:                    # float32 parameter value
+                    row[vid2col[ident]] = struct.unpack_from('<f', blob, q)[0]
+                    q += 4
+                else:                                     # StatusCode / RecordNumber
+                    value = struct.unpack_from('<i', blob, q)[0]
+                    q += 4
+                    if name == 'RecordNumber':
+                        row['Record Number'] = value
+        except (KeyError, struct.error) as e:
+            raise ValueError('AADI reader (%s): corrupted record at byte %d (%s).'
+                             % (os.path.basename(file_path), pos, e)) from e
+        rows.append(row)
+        pos = blob.find(_AADI_SYNC, pos + 1)
+    if not rows:
+        raise ValueError('AADI reader (%s): no data records found.'
+                         % os.path.basename(file_path))
+    return pd.DataFrame(rows, columns=['Record Time', 'Record Number'] + columns)
+
+
+def read_seaguard_bin(file_path):
+    """Reads a SeaGuard II raw binary session: the selected DataNNN.bin plus any
+    sibling DataNNN.bin files of the same session folder, concatenated in time
+    order. Returns the CSV-export-equivalent DataFrame."""
+    folder = os.path.dirname(file_path)
+    siblings = sorted(f for f in os.listdir(folder)
+                      if re.fullmatch(r'Data\d+\.bin', f, re.IGNORECASE))
+    if not siblings:
+        siblings = [os.path.basename(file_path)]
+    parts = [_decode_aadi_bin(os.path.join(folder, f)) for f in siblings]
+    if len(parts) > 1:
+        print('Info: %d binary files of the session read together (%s).'
+              % (len(parts), ', '.join(siblings)))
+    frame = pd.concat(parts, ignore_index=True)
+    frame = frame.sort_values('Record Time', kind='stable')
+    frame.index = np.arange(len(frame))
+    print('Info: AADI binary session decoded: %d records, %s to %s.'
+          % (len(frame), frame['Record Time'].min(), frame['Record Time'].max()))
+    return frame
+
+
 def read_ctd(INPUT):
     # define file path
     file_path = os.path.join(INPUT['raw_data_path'], INPUT['file_name'])
-    
+
     # First determine file type and handle accordingly
-    if INPUT['file_name'].lower().endswith('.xlsx'):
+    if INPUT['file_name'].lower().endswith('.bin'):
+        # SeaGuard II raw binary session: decoded into the same layout as the
+        # instrument's CSV export, so everything below applies unchanged
+        dataframe = read_seaguard_bin(file_path)
+    elif INPUT['file_name'].lower().endswith('.xlsx'):
         # For Excel files, we need a different approach to find the header
         # Read the file line by line to find the header row
         header_row = 0
@@ -50,7 +180,8 @@ def read_ctd(INPUT):
                 i += 1
         dataframe = pd.read_csv(file_path, skiprows=i, header=0, delimiter=';')
     else:
-        raise ValueError("Unsupported file format. Only .xlsx and .csv files are supported.")
+        raise ValueError("Unsupported file format. Only .bin (SeaGuard session), "
+                         ".xlsx and .csv files are supported.")
 
     # set flags for identified columns
     column_flags = {
@@ -447,6 +578,10 @@ def sniff_input_type(file_path):
     together with a light-intensity column (Lux / lum/ft2), in English or
     Portuguese."""
     try:
+        # AADI raw binary session: unambiguous magic at byte 0
+        with open(file_path, 'rb') as f:
+            if f.read(8) == _AADI_MAGIC:
+                return 'Seaguard'
         if str(file_path).lower().endswith(('.xlsx', '.xls')):
             head = pd.read_excel(file_path, header=None, nrows=40)
             lines = [' '.join(str(c) for c in row if pd.notna(c))

@@ -167,7 +167,7 @@ FACTOR_VARS = [
 
 # Tooltips dictionary
 TOOLTIPS = {
-    'data_file': "Select the raw data file to be qualified\nSupported formats: .csv, .xlsx",
+    'data_file': "Select the raw data file(s) to be qualified\nFormats: .csv, .xlsx or SeaGuard .bin session (Data000.bin)\nSeaguard: several files = a BATCH, qualified one after another\nHOBO: several files = redundant replicates (combined)",
     'latitude': "Latitude of the collection site (decimal degrees, -90 to 90)\nSouthern hemisphere is negative (e.g. -17.5)\nUsed to convert pressure to depth",
     'longitude': "Longitude of the collection site (decimal degrees, -180 to 180)\nWestern hemisphere is negative (e.g. -40.0)\nUsed by the density inversion test",
     'macroregion': "Broad region of the world (currently only Brazil).\nStructured to add other regions in the future.",
@@ -318,34 +318,26 @@ def save_user_prefs():
 load_user_prefs()
 
 def selectFiles():
-    # HOBO: pick as many replicate files as wanted (multi-select) - the
-    # Replicates count follows the selection automatically. Seaguard: one file.
-    if inputType_combobox.get() == 'HOBO':
-        names = filedialog.askopenfilenames(
-            initialdir=USER_PREFS.get('last_data_dir', '/'),
-            title="Select the HOBO file(s) - one per replicate",
-            filetypes=(("Data files", "*.csv *.xlsx"), ("All files", "*.*")))
-        names = list(names)
-        if not names:
-            return
-        first = names[0]
-        fileNames_entry.delete(0, END)
-        fileNames_entry.insert(0, ';'.join(names))
-    else:
-        names = None
-        first = filedialog.askopenfilename(
-            initialdir=USER_PREFS.get('last_data_dir', '/'),
-            title="Select data file",
-            filetypes=(("Data files", "*.csv *.xlsx"), ("All files", "*.*")))
-        if not first:
-            return
-        fileNames_entry.delete(0, END)
-        fileNames_entry.insert(0, first)
+    # Multi-select for BOTH families: for HOBO the files are the redundant
+    # replicates of one deployment (qualified and then COMBINED); for Seaguard
+    # they are a BATCH - each file is qualified independently, in sequence.
+    names = filedialog.askopenfilenames(
+        initialdir=USER_PREFS.get('last_data_dir', '/'),
+        title=("Select the HOBO file(s) - one per replicate"
+               if inputType_combobox.get() == 'HOBO'
+               else "Select data file(s) - each is qualified in sequence"),
+        filetypes=(("Data files", "*.csv *.xlsx *.bin"), ("All files", "*.*")))
+    names = list(names)
+    if not names:
+        return
+    first = names[0]
+    fileNames_entry.delete(0, END)
+    fileNames_entry.insert(0, ';'.join(names))
     USER_PREFS['last_data_dir'] = os.path.dirname(first)
     save_user_prefs()
-    # Input type auto-detected from the file's header (Seaguard device block vs
-    # HOBOware export); the combobox stays editable, an unrecognized header just
-    # keeps the current choice. The user then only picks TSCP Mooring/Profile.
+    # Input type auto-detected from the file's header (Seaguard device block /
+    # AADI binary magic vs HOBOware export); the combobox stays editable, an
+    # unrecognized header just keeps the current choice.
     detected = data.sniff_input_type(first)
     if detected and detected != inputType_combobox.get():
         inputType_combobox.set(detected)
@@ -356,39 +348,50 @@ def selectFiles():
               'kept "%s".' % inputType_combobox.get())
     if inputType_combobox.get() == 'HOBO':
         # replicates = number of selected files (program-determined, display-only)
-        n_sel = len([p for p in fileNames_entry.get().split(';') if p.strip()])
-        replicate_var.set(str(n_sel))
-    elif names and len(names) > 1:
-        # multiple files picked but the file turned out to be Seaguard: replicates
-        # only exist for HOBO, keep the first file and say so
-        fileNames_entry.delete(0, END)
-        fileNames_entry.insert(0, first)
-        print('Warning: %d files selected but the file is a Seaguard export; '
-              'replicates apply to HOBO only - kept the first file.' % len(names))
+        replicate_var.set(str(len(names)))
+    elif len(names) > 1:
+        print('Info: %d files selected - each will be qualified independently, '
+              'in sequence (one _QLF output per file).' % len(names))
     # auto-fill the output folder from the first file; the name follows the
-    # replicate count (single vs combined)
+    # selection (single / combined replicates / batch)
     outputPath_entry.delete(0, END)
     outputPath_entry.insert(0, os.path.dirname(first))
     apply_output_name()
 
+def _output_base_for(path):
+    """Base name for a file's _QLF output: the file name without extension. For
+    a SeaGuard DataNNN.bin the SESSION FOLDER name is used instead ('Data000'
+    is meaningless on its own - every session calls its file that)."""
+    base = os.path.splitext(os.path.basename(path))[0]
+    if path.lower().endswith('.bin') and re.fullmatch(r'(?i)data\d+', base):
+        folder = os.path.basename(os.path.dirname(path))
+        if folder:
+            base = folder
+    return re.sub(r'[<>:"/\\|?*]', '-', base)
+
 def apply_output_name():
-    """Auto-fills 'Output File Name' from the selected file(s) and the replicate
-    count (the user can still edit it): a single file -> '<file>_QLF'; N>1 HOBO
-    replicates -> the COMBINED name (leading device token like 'HOBO1_' dropped)
-    + '_combined_QLF'. The individual replicate files keep their own '<file>_QLF'
-    names regardless."""
+    """Auto-fills 'Output File Name' from the selected file(s): a single file ->
+    '<file>_QLF' (editable); N>1 HOBO replicates -> the COMBINED name (leading
+    device token like 'HOBO1_' dropped) + '_combined_QLF'; a Seaguard BATCH ->
+    the names are automatic ('<file>_QLF' each), so the field just says so and
+    is locked."""
     paths = [p.strip() for p in fileNames_entry.get().split(';') if p.strip()]
     if not paths:
         return
-    base = os.path.splitext(os.path.basename(paths[0]))[0]
-    n_rep = int(replicate_combobox.get() or 1) if inputType_combobox.get() == 'HOBO' else 1
-    if n_rep > 1:
-        stripped = re.sub(r'(?i)^hobo\s*\d+[ _-]*', '', base)   # drop 'HOBO1_' device token
-        name = (stripped or base) + '_combined_QLF'
-    else:
-        name = base + '_QLF'
+    base = _output_base_for(paths[0])
+    is_hobo = inputType_combobox.get() == 'HOBO'
+    n_rep = int(replicate_var.get() or 1) if is_hobo else 1
+    outputName_entry.config(state='normal')
     outputName_entry.delete(0, END)
-    outputName_entry.insert(0, name)
+    if is_hobo and n_rep > 1:
+        stripped = re.sub(r'(?i)^hobo\s*\d+[ _-]*', '', base)   # drop 'HOBO1_' device token
+        outputName_entry.insert(0, (stripped or base) + '_combined_QLF')
+    elif not is_hobo and len(paths) > 1:
+        # batch: one output per file, named automatically
+        outputName_entry.insert(0, '(automatic: <file>_QLF for each file)')
+        outputName_entry.config(state='disabled')
+    else:
+        outputName_entry.insert(0, base + '_QLF')
 
 def selectOutputFolder():
     folderPath = filedialog.askdirectory(
@@ -507,8 +510,9 @@ def collect_input_settings():
         if not os.path.isfile(f):
             messagebox.showerror("Error", "Data file not found:\n%s" % f)
             return False
-        if not re.search(r'\.(csv|xlsx)$', f, re.IGNORECASE):
-            messagebox.showwarning("Warning", "Unsupported file format (use .csv or .xlsx):\n%s" % f)
+        if not re.search(r'\.(csv|xlsx|bin)$', f, re.IGNORECASE):
+            messagebox.showwarning("Warning", "Unsupported file format (use .csv, .xlsx or a "
+                                   "SeaGuard .bin session file):\n%s" % f)
             return False
     INPUT['replicate_files'] = replicate_files
     INPUT['n_replicates'] = n_rep
@@ -683,30 +687,40 @@ def write_combined_replicates(combined, light_plots=()):
 def start_qualification():
     """Runs the qualification without closing the main window, allowing new runs.
     For HOBO with N>1 replicates, each file is qualified independently (its own
-    light-window review) and then combined into one series."""
+    light-window review) and then combined into one series. For Seaguard with
+    N>1 files, each file is a separate deployment: they are qualified one after
+    another (a BATCH), each with its own '<file>_QLF' output."""
     if not collect_input_settings():
         return
     run_button.config(state='disabled')
     window.config(cursor='watch')
     files = INPUT.get('replicate_files') or [None]
     n = len(files)
+    combine_hobo = n > 1 and INPUT.get('input_type') == 'HOBO'
+    batch = n > 1 and not combine_hobo
     try:
         qualified_dfs = []
         light_plots = []
         for idx, fpath in enumerate(files, start=1):
             INPUT['file_name'] = os.path.basename(fpath)
             INPUT['raw_data_path'] = os.path.dirname(fpath)
-            if n > 1:
+            if batch:
+                # each batch file names its own output automatically
+                OUTPUT['output_file_name'] = (_output_base_for(fpath) + '_QLF'
+                                              + OUTPUT['output_data_format'])
+                log_line('=== File %d/%d: %s ===' % (idx, n, INPUT['file_name']))
+            elif n > 1:
                 log_line('=== Replicate %d/%d: %s ===' % (idx, n, INPUT['file_name']))
             else:
                 log_line('=== Qualification started: %s (the window may not respond while processing) ==='
                          % INPUT['file_name'])
             window.update_idletasks()
             run_full_qualification()
-            qualified_dfs.append(OUTPUT['last_qualified_df'])
-            if OUTPUT.get('last_light_plot'):
-                light_plots.append(OUTPUT['last_light_plot'])
-        if n > 1:
+            if combine_hobo:
+                qualified_dfs.append(OUTPUT['last_qualified_df'])
+                if OUTPUT.get('last_light_plot'):
+                    light_plots.append(OUTPUT['last_light_plot'])
+        if combine_hobo:
             log_line('Combining %d replicates...' % n)
             window.update_idletasks()
             combined, cmsgs = data.combine_hobo_replicates(qualified_dfs)
@@ -714,8 +728,12 @@ def start_qualification():
                 log_line(m)
             OUTPUT['last_output_root'] = write_combined_replicates(combined, light_plots)
             log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
-        log_line('Done: qualification finished. Results saved to: %s'
-                 % OUTPUT.get('last_output_root', ''))
+        if batch:
+            log_line('Done: batch finished - %d files qualified in sequence '
+                     '(one _QLF output per file).' % n)
+        else:
+            log_line('Done: qualification finished. Results saved to: %s'
+                     % OUTPUT.get('last_output_root', ''))
         # hand the just-qualified file to the Visualization tab so it can
         # pre-select it (Database File + Output Path) on the next switch there.
         # A module-level handoff (read by the QCS_App shell on tab change) avoids
@@ -732,11 +750,19 @@ def start_qualification():
                               else ('TSCP Profile' if INPUT.get('profile') else 'TSCP Mooring')),
                 'latitude': INPUT.get('latitude'),
                 'longitude': INPUT.get('longitude')}
-        messagebox.showinfo("Done",
-                            "Qualification completed successfully!\n\n"
-                            "Results saved to:\n%s\n\n"
-                            "You can select another file and run a new qualification "
-                            "without closing the program." % OUTPUT.get('last_output_root', ''))
+        if batch:
+            messagebox.showinfo("Done",
+                                "Batch completed: %d files qualified in sequence!\n\n"
+                                "Each file has its own _QLF output in the output folder\n"
+                                "(last one: %s).\n\n"
+                                "You can select other files and run a new qualification "
+                                "without closing the program." % (n, OUTPUT.get('last_output_root', '')))
+        else:
+            messagebox.showinfo("Done",
+                                "Qualification completed successfully!\n\n"
+                                "Results saved to:\n%s\n\n"
+                                "You can select another file and run a new qualification "
+                                "without closing the program." % OUTPUT.get('last_output_root', ''))
     except data.ManualCutCancelled:
         # Cancel/Esc during a manual-cut panel or the variable chooser: abort
         # cleanly and return to the form (no error dialog, nothing written)
