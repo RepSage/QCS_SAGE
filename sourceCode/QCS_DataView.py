@@ -80,6 +80,15 @@ def _time_of_day_axis(ax, h0, h1):
     ax.set_xlabel("Time of day (00:00 = midnight of each site's first day; dashed lines = day boundaries)")
 
 
+def _floor_fit(fitted):
+    """Every variable in this software is physically >= 0 (values <= 0 are
+    discarded or clamped at qualification), so a fitted tendency must not dip
+    below zero either: the curve is floored at 0 - it follows the zero line
+    where the polynomial goes negative and rejoins the fit where it returns
+    above zero."""
+    return np.maximum(fitted, 0.0)
+
+
 def _fit_margins(fig, pad=6):
     """Measure the actually-drawn content (tick labels + axis labels of every
     axis) and pull the plot's left/right margins in so NOTHING is clipped at the
@@ -657,6 +666,7 @@ def plot_database_panel1 (database, dataViewSettings):
                 # twin axes below).
                 if fit_lin_regression == True and y_list[0].name != 'Pressure (dbar)':
                     xp, yp = linear_regression (y, degree=deg)
+                    yp = _floor_fit(yp)
                     if points == True:
                         ax1.plot(x, y, color=cParam[y_list[0].name], linestyle='none', marker='.', markersize=3, label=rParam[0])
                     ax1.plot(xp, yp, color=bcParam[y_list[0].name], linestyle='-', label=rParam[0])
@@ -664,7 +674,7 @@ def plot_database_panel1 (database, dataViewSettings):
                         # only the tendency curve is drawn: hug its range. With the
                         # data points visible the axis must NOT be clamped to the
                         # fit, or genuine (approved) data gets clipped out of view.
-                        ax1.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
+                        ax1.set_ylim(([max(0.0, yp.min() - 0.05 * np.abs(yp.max()-yp.min())), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
                 elif y_list[0].name == 'Pressure (dbar)':
                     ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='--', marker='None', label=rParam[0])
                 else:
@@ -696,13 +706,14 @@ def plot_database_panel1 (database, dataViewSettings):
                     # plot adicional axis
                     if fit_lin_regression == True and y_list[i-1].name != 'Pressure (dbar)':
                         xp, yp = linear_regression (y, degree=deg)
+                        yp = _floor_fit(yp)
                         if points == True:
                             ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=cParam[y_list[i-1].name], label=rParam[i-1])
                         ax.plot(xp, yp, linestyle='-', c=bcParam[y_list[i-1].name], label=rParam[i-1])
                         if points != True:
                             # same rule as the first axis: clamp to the fit range
                             # only when the data points are hidden
-                            ax.set_ylim(([yp.min() - 0.05 * np.abs(yp.max()-yp.min()), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
+                            ax.set_ylim(([max(0.0, yp.min() - 0.05 * np.abs(yp.max()-yp.min())), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
 
                     else:
                         if y_list[i-1].name == 'Pressure (dbar)':
@@ -839,6 +850,7 @@ def plot_database_panel2(database, dataViewSettings):
                             color=colors[site], label=f'{site} data')
                 elif fit_lin_regression:
                     xp, yp = linear_regression(y, degree=deg)
+                    yp = _floor_fit(yp)
                     xp_hours = (xp - site_origin).total_seconds() / 3600
 
                     if points:
@@ -931,6 +943,7 @@ def plot_database_panel3(database, dataViewSettings):
                 # Plot first parameter
                 if fit_lin_regression == True:
                     yp, xp = linear_regression_profile(x, y, degree=deg)
+                    xp = _floor_fit(xp)   # the parameter is on the X axis in profiles
                     if points == True:
                         points_line = ax1.plot(x, y, color=cParam[x_list[0].name], linestyle='none', marker='.', markersize=3)
                     trend_line = ax1.plot(xp, yp, color=bcParam[x_list[0].name], linestyle='-')
@@ -992,7 +1005,7 @@ def plot_database_panel3(database, dataViewSettings):
                     # Plot data
                     if fit_lin_regression == True:
                         yp, xp = linear_regression_profile(x, y, degree=deg)
-                        xp[np.where(xp<0)[0]] = np.nan
+                        xp = _floor_fit(xp)   # was NaN-hidden; now follows the zero line
                         if points == True:
                             ax.plot(x, y, linestyle='none', marker='.', markersize=3, c=cParam[x_list[i-1].name])
                         trend_line = ax.plot(xp, yp, linestyle='-', c=bcParam[x_list[i-1].name])

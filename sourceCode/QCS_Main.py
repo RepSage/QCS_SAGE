@@ -343,6 +343,17 @@ def selectFiles():
         fileNames_entry.insert(0, first)
     USER_PREFS['last_data_dir'] = os.path.dirname(first)
     save_user_prefs()
+    # Input type auto-detected from the file's header (Seaguard device block vs
+    # HOBOware export); the combobox stays editable, an unrecognized header just
+    # keeps the current choice. The user then only picks TSCP Mooring/Profile.
+    detected = data.sniff_input_type(first)
+    if detected and detected != inputType_combobox.get():
+        inputType_combobox.set(detected)
+        inputType_combobox.event_generate('<<ComboboxSelected>>')  # apply HOBO/Seaguard field state
+        print('Info: input type auto-detected as %s (from the file header).' % detected)
+    elif not detected:
+        print('Info: could not auto-detect the input type from the file header; '
+              'kept "%s".' % inputType_combobox.get())
     # auto-fill the output folder from the first file; the name follows the
     # replicate count (single vs combined)
     outputPath_entry.delete(0, END)
@@ -710,7 +721,7 @@ def start_qualification():
                 # the qualified file does not store profile/mooring or the
                 # coordinates, so pass them along for the Visualization tab
                 'data_type': ('hobo' if INPUT.get('input_type') == 'HOBO'
-                              else ('profile' if INPUT.get('profile') else 'mooring')),
+                              else ('TSCP Profile' if INPUT.get('profile') else 'TSCP Mooring')),
                 'latitude': INPUT.get('latitude'),
                 'longitude': INPUT.get('longitude')}
         messagebox.showinfo("Done",

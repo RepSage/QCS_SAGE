@@ -27,7 +27,7 @@ TOOLTIPS = {
     'output_name': "Name for processed database file",
     'input_path': "Folder containing input files",
     'output_path': "Folder where results will be saved",
-    'data_type': "Type of data (profile or mooring)",
+    'data_type': "Type of data (TSCP Mooring or TSCP Profile),\nsame naming as the qualification Data Type",
     'filter_year': "Check the year(s) to visualize\nPanels are generated once per selected year",
     'time_start': "OPTIONAL: start of the X axis in mooring plots\nFormat: DD/MM/YYYY HH:MM (e.g. 15/04/2019 09:00)\nLeave empty to fit the data automatically\nCross-site panels standardize the TIME OF DAY: the window's\nday offset + clock time apply to each site's own days",
     'time_end': "OPTIONAL: end of the X axis in mooring plots\nFormat: DD/MM/YYYY HH:MM (e.g. 16/04/2019 09:00)\nLeave empty to fit the data automatically\nCross-site panels standardize the TIME OF DAY: the window's\nday offset + clock time apply to each site's own days",
@@ -301,6 +301,11 @@ def _param_data_extreme(param, kind):
     if pad == 0:                      # constant series: pad by 20% of |value| (or 1)
         pad = 0.2 * abs(hi) if hi != 0 else 1.0
     value = (lo - pad) if kind == 'min' else (hi + pad)
+    if kind == 'min' and value < 0:
+        # every variable is physically >= 0 in this software (values <= 0 are
+        # discarded/clamped at qualification), so the breathing room must not
+        # push the default below zero (e.g. PAR spanning 0..4500 gave -900)
+        value = 0.0
     return '%.4g' % value
 
 def toggle_data_type():
@@ -356,6 +361,11 @@ def toggle_data_type():
             if pd.notna(dt):
                 entry.insert(0, dt.strftime('%d/%m/%Y %H:%M'))
 
+    # a cross-site comparison panel is pointless with a single site in the
+    # database: 'Parameter across sites' (Seaguard panel 2) / 'HOBO Light
+    # multi-site' (HOBO panel 3) stay unavailable in that case
+    single_site = len(site_names) < 2 if site_names else True
+
     # Specific logic for each data type. A control that does not apply is
     # UNCHECKED/blanked and greyed out; one that applies again is re-enabled and
     # its previous value restored.
@@ -364,15 +374,21 @@ def toggle_data_type():
         # window still applies (time series)
         tsDiagram.set(False)
         set_disabled_style(ts_cb)
+        if single_site:
+            panel3.set(False)           # HOBO panel 3 = light multi-site
+            set_disabled_style(panel3_cb)
         _stash_disable(depth_min_entry, 'depth_min')
         _stash_disable(depth_max_entry, 'depth_max')
         _reset_time_default(time_start_entry, 'start')
         _reset_time_default(time_end_entry, 'end')
-    elif data_type == 'mooring':
+    elif data_type == 'TSCP Mooring':
         panel3.set(False)
         set_disabled_style(panel3_cb)
         tsDiagram.set(False)            # T-S is profile-only -> uncheck it here
         set_disabled_style(ts_cb)
+        if single_site:
+            panel2.set(False)           # 'Parameter across sites' needs >= 2 sites
+            set_disabled_style(panel2_cb)
         # default panel so the selection is never empty when switching here
         if not (panel1.get() or panel2.get()):
             panel1.set(True)
@@ -380,7 +396,7 @@ def toggle_data_type():
         _stash_disable(depth_max_entry, 'depth_max')
         _reset_time_default(time_start_entry, 'start')   # X-axis window applies (default range)
         _reset_time_default(time_end_entry, 'end')
-    elif data_type == 'profile':
+    elif data_type == 'TSCP Profile':
         panel1.set(False)
         panel2.set(False)
         set_disabled_style(panel1_cb)
@@ -731,7 +747,7 @@ def generatePanels():
                         error_logger.log("Error generating HOBO light multi-site (%d): %s" % (year, e))
                 continue
 
-            if dataViewSettings['dataType'] == 'mooring':
+            if dataViewSettings['dataType'] == 'TSCP Mooring':
                 if dataViewSettings.get('panel1', False):
                     try:
                         view.plot_database_panel1(database, dataViewSettings)
@@ -751,7 +767,7 @@ def generatePanels():
                 if dataViewSettings.get('panel3', False):
                     error_logger.log("Warning: Panel 3 is not suited for mooring data")
 
-            elif dataViewSettings['dataType'] == 'profile':
+            elif dataViewSettings['dataType'] == 'TSCP Profile':
                 if dataViewSettings.get('panel3', False):
                     try:
                         view.plot_database_panel3(database, dataViewSettings)
@@ -1073,7 +1089,8 @@ def build_step2(parent):
     # --- Data Settings ---
     # Data type (HOBO only has a time series: profile does not apply)
     ttk.Label(data_frame, text="Data type:").grid(row=0, column=0, sticky='w', pady=2)
-    dType_values = ["mooring"] if is_hobo_input() else ["mooring", "profile"]
+    # same names and order as the qualification Data Type, for consistency
+    dType_values = ["Mooring"] if is_hobo_input() else ["TSCP Mooring", "TSCP Profile"]
     dType_combobox = ttk.Combobox(data_frame, values=dType_values, width=25, state='readonly')
     dType_combobox.grid(row=1, column=0, sticky='w', pady=2)
     dType_combobox.bind("<<ComboboxSelected>>", lambda e: toggle_data_type())
@@ -1081,9 +1098,11 @@ def build_step2(parent):
 
     # In the empty space to the right: which spreadsheet(s) this database was read
     # from, so the loaded source is always visible on the Generate-panels screen.
+    # The value sits on the SAME row as the Data type combobox (vertically
+    # centered), with its header on the label row above.
     ttk.Label(data_frame, text="Reading:").grid(row=0, column=1, sticky='w', padx=(28, 4), pady=2)
     ttk.Label(data_frame, text=_current_source_label(), style='Small.TLabel',
-              wraplength=340, justify='left').grid(row=1, column=1, sticky='nw', padx=(28, 4), pady=2)
+              wraplength=340, justify='left').grid(row=1, column=1, sticky='w', padx=(28, 4), pady=2)
 
     # --- Visualization Settings ---
     # Panels: for HOBO the three checkboxes become the dedicated panels
@@ -1466,7 +1485,7 @@ def build_step2(parent):
     global _pending_step2
     handoff_type = _pending_step2.get('data_type')
     if is_hobo_input():
-        dType_combobox.set('mooring')
+        dType_combobox.set('Mooring')
         dType_combobox.config(state='disabled')  # HOBO has only one option
         toggle_data_type()
     elif handoff_type in dType_values:
