@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import json
 import pandas as pd
@@ -27,7 +28,7 @@ TOOLTIPS = {
     'output_name': "Name for processed database file",
     'input_path': "Folder containing input files",
     'output_path': "Folder where results will be saved",
-    'data_type': "Type of data (TSCP Mooring or TSCP Profile),\nsame naming as the qualification Data Type",
+    'data_type': "Type of data: TSCP Mooring or TSCP Profile\n(same naming as the qualification Data Type);\na HOBO database is shown as HOBO",
     'filter_year': "Check the year(s) to visualize\nPanels are generated once per selected year",
     'time_start': "OPTIONAL: start of the X axis in mooring plots\nFormat: DD/MM/YYYY HH:MM (e.g. 15/04/2019 09:00)\nLeave empty to fit the data automatically\nCross-site panels standardize the TIME OF DAY: the window's\nday offset + clock time apply to each site's own days",
     'time_end': "OPTIONAL: end of the X axis in mooring plots\nFormat: DD/MM/YYYY HH:MM (e.g. 16/04/2019 09:00)\nLeave empty to fit the data automatically\nCross-site panels standardize the TIME OF DAY: the window's\nday offset + clock time apply to each site's own days",
@@ -50,8 +51,8 @@ TOOLTIPS = {
     'param_filter': "Select parameters to include in visualization",
     'param_secondary': "Rarely-used variables: always start unchecked\n(check manually when needed)",
     'fixed_scale': "Use fixed scales for all plots to allow direct comparison",
-    'min_scale': "Minimum value for parameter scale",
-    'max_scale': "Maximum value for parameter scale"
+    'min_scale': "Minimum of this parameter's fixed scale\nDefault: smallest APPROVED value (flags 1/2) of the current\nSite/Year selection, minus 20% breathing room -\nfloored at 0 (no variable here can be negative)",
+    'max_scale': "Maximum of this parameter's fixed scale\nDefault: largest APPROVED value (flags 1/2) of the current\nSite/Year selection, plus 20% breathing room"
 }
 
 class ErrorLogger(theme.LogConsole):
@@ -1090,7 +1091,7 @@ def build_step2(parent):
     # Data type (HOBO only has a time series: profile does not apply)
     ttk.Label(data_frame, text="Data type:").grid(row=0, column=0, sticky='w', pady=2)
     # same names and order as the qualification Data Type, for consistency
-    dType_values = ["Mooring"] if is_hobo_input() else ["TSCP Mooring", "TSCP Profile"]
+    dType_values = ["HOBO"] if is_hobo_input() else ["TSCP Mooring", "TSCP Profile"]
     dType_combobox = ttk.Combobox(data_frame, values=dType_values, width=25, state='readonly')
     dType_combobox.grid(row=1, column=0, sticky='w', pady=2)
     dType_combobox.bind("<<ComboboxSelected>>", lambda e: toggle_data_type())
@@ -1309,8 +1310,12 @@ def build_step2(parent):
     # spacing) and can be height-matched 1:1 with the Scale-settings rows.
     param_col = ttk.Frame(filter_frame)
     param_col.grid(row=0, column=1, rowspan=99, sticky='nw')
-    param_lbl = ttk.Label(param_col, text="Select parameters:")
-    param_lbl.grid(row=0, column=0, sticky='w', pady=(5,2), padx=10)
+    # header row = label + the main group's All/None buttons (added below, after
+    # the groups are defined), all inside ONE grid row to keep the alignment
+    param_hdr_row = ttk.Frame(param_col)
+    param_hdr_row.grid(row=0, column=0, sticky='w', pady=(5,2), padx=10)
+    param_lbl = ttk.Label(param_hdr_row, text="Select parameters:")
+    param_lbl.pack(side='left')
     ToolTip(param_lbl, TOOLTIPS['param_filter'])
 
     # Parameters come in TWO groups: the MAIN group (checked by default on every
@@ -1339,15 +1344,38 @@ def build_step2(parent):
     params_with_data = [p for p in parameter_names
                         if p in database.columns and database[p].notna().any()]
 
+    def _set_group(group, value):
+        # All/None for a parameter group; only meaningful while the checkboxes
+        # are active (a panel is selected), like clicking them one by one
+        if str(next(iter(parameter_widgets.values())).cget('state')) == 'disabled':
+            return
+        for p in group:
+            parameter_vars[p].set(value)
+        toggle_scale_controls()
+
+    def _group_buttons(parent, group):
+        # small All/None pair placed INSIDE the group's header row, so the row
+        # numbering (and the 1:1 alignment with Scale settings) is unchanged
+        btns = ttk.Frame(parent)
+        ttk.Button(btns, text='All', width=4,
+                   command=lambda: _set_group(group, True)).pack(side='left', padx=(8, 2))
+        ttk.Button(btns, text='None', width=5,
+                   command=lambda: _set_group(group, False)).pack(side='left')
+        return btns
+
     # the checkboxes and the Scale-settings rows are built with the SAME row
     # numbering (including the group separator), so each Min/Max line can sit
     # exactly beside its parameter
+    _group_buttons(param_hdr_row, main_params).pack(side='left')
     prow = 1
     for param in parameter_names:
         if secondary_params and param == secondary_params[0]:
-            sep_lbl = ttk.Label(param_col, text="Rarely used:", style='Small.TLabel')
-            sep_lbl.grid(row=prow, column=0, sticky='w', pady=(8, 2), padx=10)
+            sep_row = ttk.Frame(param_col)
+            sep_row.grid(row=prow, column=0, sticky='w', pady=(8, 2), padx=10)
+            sep_lbl = ttk.Label(sep_row, text="Rarely used:", style='Small.TLabel')
+            sep_lbl.pack(side='left')
             ToolTip(sep_lbl, TOOLTIPS['param_secondary'])
+            _group_buttons(sep_row, secondary_params).pack(side='left')
             prow += 1
         var = BooleanVar(value=False)
         # toggling a parameter updates its per-parameter scale row (enable/fill/clear)
@@ -1403,21 +1431,27 @@ def build_step2(parent):
         ToolTip(max_entry, TOOLTIPS['max_scale'])
         srow += 1
 
-    # Align the two frames line by line: a Checkbutton and an Entry have different
-    # natural heights, which otherwise accumulates a visible offset down the list.
-    # Force every parameter row (and the header row) to the SAME height in the
-    # checkbox column and in the Scale frame, so each Min/Max sits beside its
-    # parameter checkbox.
+    # Align the two frames line by line: a Checkbutton, an Entry and a header
+    # with buttons all have different natural heights, which otherwise
+    # accumulates a visible offset down the list. Measure each row's REAL
+    # content (widget height + its pady) on both sides and give both frames the
+    # same row minsize, so each Min/Max sits beside its parameter checkbox.
     param_col.update_idletasks()
-    row_h = max(next(iter(parameter_widgets.values())).winfo_reqheight(),
-                next(iter(min_scale_entries.values())).winfo_reqheight()) + 4  # + 2*pady
-    hdr_h = max(param_lbl.winfo_reqheight() + 7,   # pady=(5,2)
-                scale_hdr.winfo_reqheight())
-    param_col.grid_rowconfigure(0, minsize=hdr_h)
-    scale_frame.grid_rowconfigure(0, minsize=hdr_h)
-    for r in range(1, srow):
-        param_col.grid_rowconfigure(r, minsize=row_h)
-        scale_frame.grid_rowconfigure(r, minsize=row_h)
+
+    def _row_content_h(frame, r):
+        h = 0
+        for w in frame.grid_slaves(row=r):
+            # pady may come back as an int, '8 2' or '(8, 2)' depending on Tk
+            pads = [int(p) for p in re.findall(r'\d+', str(w.grid_info().get('pady', 0)))]
+            pad = sum(pads) * (2 if len(pads) == 1 else 1)
+            h = max(h, w.winfo_reqheight() + pad)
+        return h
+
+    for r in range(0, srow):
+        h = max(_row_content_h(param_col, r), _row_content_h(scale_frame, r))
+        if h:
+            param_col.grid_rowconfigure(r, minsize=h)
+            scale_frame.grid_rowconfigure(r, minsize=h)
 
     # Configure grid weights for filter frame
     filter_frame.columnconfigure(0, weight=1)
@@ -1458,12 +1492,15 @@ def build_step2(parent):
     for y in USER_PREFS.get('dbv_selected_years', []):
         if y in year_vars:
             year_vars[y].set(True)
-    # Year/Site: default to the FIRST available (and, if there is only one, it is
-    # selected by definition) when nothing valid was restored for this database.
-    if not any(v.get() for v in year_vars.values()) and available_years:
-        year_vars[available_years[0]].set(True)
-    if not any(v.get() for v in site_vars.values()) and site_names:
-        site_vars[site_names[0]].set(True)
+    # Year/Site: default to ALL available when nothing valid was restored for
+    # this database (with several years/sites the user usually wants everything;
+    # unchecking is easier than hunting for what is missing).
+    if not any(v.get() for v in year_vars.values()):
+        for v in year_vars.values():
+            v.set(True)
+    if not any(v.get() for v in site_vars.values()):
+        for v in site_vars.values():
+            v.set(True)
     # Parameters: default to the MAIN-group ones that actually HAVE data in this
     # database (recomputed per imported sheet; NOT persisted between sessions).
     # SECONDARY parameters (rarely used) always start unchecked.
@@ -1485,7 +1522,7 @@ def build_step2(parent):
     global _pending_step2
     handoff_type = _pending_step2.get('data_type')
     if is_hobo_input():
-        dType_combobox.set('Mooring')
+        dType_combobox.set('HOBO')
         dType_combobox.config(state='disabled')  # HOBO has only one option
         toggle_data_type()
     elif handoff_type in dType_values:
@@ -1494,6 +1531,11 @@ def build_step2(parent):
         toggle_data_type()
     elif USER_PREFS.get('dbv_data_type') in dType_values:
         dType_combobox.set(USER_PREFS['dbv_data_type'])
+        toggle_data_type()
+    else:
+        # opened a file directly (no qualification handoff, no valid saved
+        # choice): default to TSCP Mooring instead of leaving the field blank
+        dType_combobox.set(dType_values[0])
         toggle_data_type()
 
     # coordinates from the qualification region (the file does not store them);
