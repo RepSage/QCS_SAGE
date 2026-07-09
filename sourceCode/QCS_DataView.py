@@ -1167,19 +1167,15 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
                 if spread.notna().any():
                     handles.append(ax.fill_between(
                         db['Datetime'], temp - spread / 2, temp + spread / 2,
-                        color=cParam[param], alpha=0.35, linewidth=0,
-                        label='Replicate spread (max - min)'))
+                        color=cParam[param], alpha=0.25, linewidth=0,
+                        label='Replicate disagreement (band height = max - min)'))
+            # NOTE: suspect/bad values are NOT highlighted here - keeping or
+            # removing them was the operator's decision at qualification, and
+            # the markers only cluttered the legend
             if points or not fit:
                 h, = ax.plot(db['Datetime'], temp, linestyle='None', marker='.',
                              markersize=3, color=bcParam[param], label='Temperature')
                 handles.append(h)
-                if 'Flag_T' in db.columns:
-                    flagged = pd.to_numeric(db['Flag_T'], errors='coerce').isin([3, 4])
-                    if flagged.any():
-                        h, = ax.plot(db.loc[flagged, 'Datetime'], temp[flagged],
-                                     linestyle='None', marker='x', markersize=5,
-                                     color='black', label='Suspect/bad (Flag_T >= 3)')
-                        handles.append(h)
             if fit:
                 s = pd.Series(temp.values, index=pd.DatetimeIndex(db['Datetime'])).dropna()
                 if len(s) > 3:

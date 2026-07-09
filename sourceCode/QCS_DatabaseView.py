@@ -234,13 +234,17 @@ def toggle_ts_controls():
 
 def toggle_scale_controls():
     """Per-parameter scale controls: the Min/Max of a parameter are editable only
-    when Fixed scale is on, a panel is selected AND that parameter is checked.
+    when Fixed scale is on, a panel is selected, that parameter is checked AND
+    the current Site/Year selection actually carries data for it (no data means
+    there is nothing to scale - the row stays grey to reflect that).
     Enabling pre-fills the data's own min/max (once, if empty); disabling clears
     the fields. Scale values are per-imported-sheet and are not persisted."""
     active = fixedScale.get() and (panel1.get() or panel2.get() or panel3.get())
     for param, min_e in min_scale_entries.items():
         max_e = max_scale_entries[param]
         on = active and param in parameter_vars and parameter_vars[param].get()
+        if on and _param_data_extreme(param, 'min') == '':
+            on = False   # parameter without data in the selected sites/years
         if on:
             if not (min_e.get().strip() or max_e.get().strip()):
                 _fill_scale(param)   # first activation -> auto default from data
@@ -265,7 +269,10 @@ def _fill_scale(param):
 
 def _refresh_scale_defaults():
     """Re-fill the still-auto scale fields from the current Site/Year selection
-    (called when those filters change); user-edited fields are left untouched."""
+    (called when those filters change); user-edited fields are left untouched.
+    Also re-evaluates which rows are available: a parameter without data in the
+    new selection goes grey (see toggle_scale_controls)."""
+    toggle_scale_controls()
     for param in list(_auto_scale):
         if param in parameter_vars and parameter_vars[param].get():
             _fill_scale(param)
@@ -882,12 +889,12 @@ def build_step1(parent):
     # Options
     join = BooleanVar(value=False)
     join_cb = ttk.Checkbutton(input_frame, text="Build database from a folder", variable=join, command=toggle_input_mode)
-    join_cb.grid(row=4, column=0, sticky='w', pady=2)
+    join_cb.grid(row=5, column=0, sticky='w', pady=2)
     ToolTip(join_cb, TOOLTIPS['join_files'])
 
     sort = BooleanVar(value=False)
     sort_cb = ttk.Checkbutton(input_frame, text="Sort by time", variable=sort)
-    sort_cb.grid(row=5, column=0, sticky='w', pady=2)
+    sort_cb.grid(row=4, column=0, sticky='w', pady=2)
     ToolTip(sort_cb, TOOLTIPS['sort_time'])
 
     # Instrument (Seaguard/TSCP or HOBO): the two are never stackable, so the
@@ -1404,11 +1411,16 @@ def build_step2(parent):
         prow += 1
 
     # --- Scale Settings ---
-    # Headers for the scale columns
+    # Headers for the scale columns; the default-rule tooltips live HERE (one
+    # hover explains the whole column) instead of on every entry
     scale_hdr = ttk.Label(scale_frame, text="Parameter")
     scale_hdr.grid(row=0, column=0, sticky='w', padx=5)
-    ttk.Label(scale_frame, text="Min").grid(row=0, column=1, sticky='w', padx=5)
-    ttk.Label(scale_frame, text="Max").grid(row=0, column=2, sticky='w', padx=5)
+    min_hdr = ttk.Label(scale_frame, text="Min")
+    min_hdr.grid(row=0, column=1, sticky='w', padx=5)
+    ToolTip(min_hdr, TOOLTIPS['min_scale'])
+    max_hdr = ttk.Label(scale_frame, text="Max")
+    max_hdr.grid(row=0, column=2, sticky='w', padx=5)
+    ToolTip(max_hdr, TOOLTIPS['max_scale'])
 
     # Dictionaries to store the scale entry widgets
     min_scale_entries = {}
@@ -1436,7 +1448,6 @@ def build_step2(parent):
         min_entry.bind('<KeyRelease>', _untrack)
         min_scale_entries[param] = min_entry
         set_disabled_style(min_entry)
-        ToolTip(min_entry, TOOLTIPS['min_scale'])
 
         # Entry for maximum value
         max_entry = ttk.Entry(scale_frame, width=10)
@@ -1444,7 +1455,6 @@ def build_step2(parent):
         max_entry.bind('<KeyRelease>', _untrack)
         max_scale_entries[param] = max_entry
         set_disabled_style(max_entry)
-        ToolTip(max_entry, TOOLTIPS['max_scale'])
         srow += 1
 
     # Align the two frames line by line: a Checkbutton, an Entry and a header
