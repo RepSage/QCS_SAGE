@@ -502,5 +502,39 @@ with _tempfile.TemporaryDirectory() as tmp:
     assert data.sniff_input_type(bin_path) == 'Seaguard'
 ok.append('read_ctd (SeaGuard raw .bin session decoded and standardized; sniffer detects it)')
 
+# 16) dissolved-CO2 import: the logger export (repeated headers, Year..Second
+# date columns) is read, and the merge LINEARLY INTERPOLATES onto the Seaguard
+# timestamps, never bridging logger gaps (> 2x the median interval) nor
+# extrapolating outside the CO2 coverage.
+with _tempfile.TemporaryDirectory() as tmp:
+    co2_path = _os.path.join(tmp, 'PISCINA_CO2.txt')
+    hdr = ('Measurement type,Year,Month,Day,Hour,Minute,Second,Reference A/D,'
+           'Current A/D,CO2 (PPM),Corrected disolved CO2 (PPM),Pressure sensor '
+           'temperature,Pressure,IRGA detector temperature,Supply voltage\n')
+    with open(co2_path, 'w', encoding='utf-8') as f:
+        f.write(hdr)
+        # samples every 2 min at :00 (values rise 10 ppm per sample), with a
+        # 20-min LOGGER GAP between 12:08 and 12:28
+        for i, (hh, mm) in enumerate([(12, 0), (12, 2), (12, 4), (12, 6), (12, 8),
+                                      (12, 28), (12, 30), (12, 32)]):
+            f.write('W M,2026,03,16,%02d,%02d,00,02217,02463,%0.2f,%0.2f,31.8,1013.3,26.8,7.0\n'
+                    % (hh, mm, 505.0 + 10 * i, 500.0 + 10 * i))
+        f.write(hdr)   # repeated header line (logger restart) must be skipped
+    co2_df, msgs = data.read_co2_file(co2_path)
+    assert len(co2_df) == 8, len(co2_df)
+    assert abs(co2_df['CO2 Level (ppm)'].iloc[0] - 500.0) < 1e-9   # corrected column used
+    # Seaguard minute grid 11:59..12:33
+    grid = pd.DataFrame({'Datetime': pd.date_range('2026-03-16 11:59', '2026-03-16 12:33', freq='min'),
+                         'Temperature (degC)': 27.0})
+    merged, mmsgs = data.merge_co2_data(grid, co2_path)
+    got = merged.set_index('Datetime')['CO2 Level (ppm)']
+    assert np.isnan(got.loc['2026-03-16 11:59']), 'no extrapolation before coverage'
+    assert abs(got.loc['2026-03-16 12:00'] - 500.0) < 1e-9         # exact sample
+    assert abs(got.loc['2026-03-16 12:01'] - 505.0) < 1e-9         # halfway between 500 and 510
+    assert np.isnan(got.loc['2026-03-16 12:15']), 'logger gap must NOT be bridged'
+    assert abs(got.loc['2026-03-16 12:29'] - 555.0) < 1e-9         # halfway between 550 and 560
+    assert np.isnan(got.loc['2026-03-16 12:33']), 'no extrapolation after coverage'
+ok.append('read_co2_file + merge_co2_data (interpolation, gap masking, no extrapolation)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

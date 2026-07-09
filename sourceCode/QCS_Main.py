@@ -167,6 +167,7 @@ FACTOR_VARS = [
 
 # Tooltips dictionary
 TOOLTIPS = {
+    'co2_file': "OPTIONAL (Seaguard only): dissolved-CO2 file from the separate\nCO2 logger (.txt/.csv export with Year..Second columns). Its values are\ninterpolated in time onto the Seaguard timestamps (the two instruments\nsample at different rates) and fill the 'CO2 Level (ppm)' column of the\nqualified sheet. The CO2 logger clock must follow the same GMT convention\nas the qualified data (after the GMT-3 correction, if applied).\nNot available for a batch (one deployment at a time).",
     'data_file': "Select the raw data file(s) to be qualified\nFormats: .csv, .xlsx or SeaGuard .bin session (Data000.bin)\nSeaguard: several files = a BATCH, qualified one after another\nHOBO: several files = redundant replicates (combined)",
     'latitude': "Latitude of the collection site (decimal degrees, -90 to 90)\nSouthern hemisphere is negative (e.g. -17.5)\nUsed to convert pressure to depth",
     'longitude': "Longitude of the collection site (decimal degrees, -180 to 180)\nWestern hemisphere is negative (e.g. -40.0)\nUsed by the density inversion test",
@@ -317,6 +318,52 @@ def save_user_prefs():
 
 load_user_prefs()
 
+_co2_file = ''   # optional dissolved-CO2 file (Seaguard only), set by its button
+
+def _is_seaguard_batch():
+    files = [p for p in fileNames_entry.get().split(';') if p.strip()]
+    return inputType_combobox.get() != 'HOBO' and len(files) > 1
+
+def update_co2_controls():
+    """'Add CO2 data' applies to a SINGLE Seaguard qualification: disabled (and
+    cleared) for HOBO and for a batch; the label shows the loaded file."""
+    global _co2_file
+    allowed = inputType_combobox.get() == 'Seaguard' and not _is_seaguard_batch()
+    if not allowed and _co2_file:
+        print('Info: CO2 file cleared (CO2 import applies to a single Seaguard '
+              'qualification).')
+        _co2_file = ''
+    co2_btn.config(state='normal' if allowed else 'disabled')
+    if _co2_file:
+        co2_label.config(text=os.path.basename(_co2_file))
+        co2_clear_btn.pack(side='left')
+    else:
+        co2_label.config(text='')
+        co2_clear_btn.pack_forget()
+
+def select_co2_file():
+    global _co2_file
+    path = filedialog.askopenfilename(
+        initialdir=USER_PREFS.get('last_data_dir', '/'),
+        title='Select the dissolved-CO2 logger file',
+        filetypes=(('CO2 logger files', '*.txt *.csv'), ('All files', '*.*')))
+    if not path:
+        return
+    try:
+        _co2_probe, _co2_msgs = data.read_co2_file(path)
+        for m in _co2_msgs:
+            print(m)
+    except Exception as e:
+        messagebox.showerror('CO2 file', 'Could not read the CO2 file:\n%s' % e)
+        return
+    _co2_file = path
+    update_co2_controls()
+
+def clear_co2_file():
+    global _co2_file
+    _co2_file = ''
+    update_co2_controls()
+
 def selectFiles():
     # Multi-select for BOTH families: for HOBO the files are the redundant
     # replicates of one deployment (qualified and then COMBINED); for Seaguard
@@ -357,6 +404,7 @@ def selectFiles():
     outputPath_entry.delete(0, END)
     outputPath_entry.insert(0, os.path.dirname(first))
     apply_output_name()
+    update_co2_controls()   # a batch disables/clears the CO2 import
 
 def _output_base_for(path):
     """Base name for a file's _QLF output: the file name without extension. For
@@ -555,6 +603,12 @@ def collect_input_settings():
     OUTPUT['output_file_name'] = outputName_entry.get() + OUTPUT['output_data_format']
     OUTPUT['remove_bad'] = remove_bad.get()
     OUTPUT['remove_suspect'] = remove_suspect.get()
+
+    # optional dissolved-CO2 file (Seaguard only; cleared for HOBO/batch by the UI)
+    if _co2_file and not os.path.isfile(_co2_file):
+        messagebox.showerror("Error", "CO2 file not found:\n%s" % _co2_file)
+        return False
+    INPUT['co2_file'] = _co2_file or None
 
     INPUT['site'] = siteSelect_entry.get().strip().upper()
     if len(INPUT['site']) > 10:
@@ -1246,6 +1300,7 @@ def build_qualification_tab(container, root, shared_log=None):
     pipeline stage); without it (standalone dev launch) the tab creates its
     own. All pipeline logic is unchanged."""
     global window, main_frame, input_frame, output_frame, fileNames_entry, browse_file_btn
+    global co2_btn, co2_label, co2_clear_btn
     global inputType_combobox, dType_combobox, replicate_label, replicate_combobox, replicate_var, update_profile_checkbox_state, units_frame
     global pressure_unit_combobox, conductivity_unit_combobox, options_frame, correct_gmt3h, gmt_check, select_profile_data
     global profile_check, check_variables, var_check, outputPath_entry, browse_output_btn, outputName_entry
@@ -1287,6 +1342,18 @@ def build_qualification_tab(container, root, shared_log=None):
     browse_file_btn = ttk.Button(input_frame, text="Browse...", command=selectFiles, width=10)
     browse_file_btn.grid(row=1, column=2, padx=(5,0))
     ToolTip(browse_file_btn, TOOLTIPS['data_file'])
+
+    # Dissolved CO2 from a SEPARATE logger (Seaguard only, single file):
+    # optional; merged into the qualified sheet by time interpolation
+    co2_row = ttk.Frame(input_frame)
+    co2_row.grid(row=1, column=3, padx=(10, 0), sticky='w')
+    co2_btn = ttk.Button(co2_row, text='Add CO₂ data', command=select_co2_file, width=14)
+    co2_btn.pack(side='left')
+    ToolTip(co2_btn, TOOLTIPS['co2_file'])
+    co2_label = ttk.Label(co2_row, text='', style='Small.TLabel')
+    co2_label.pack(side='left', padx=(6, 2))
+    co2_clear_btn = ttk.Button(co2_row, text='×', width=2, command=clear_co2_file)
+    ToolTip(co2_clear_btn, 'Remove the selected CO₂ file')
 
     # Data type selection: Input Type -> Data Type -> Replicates side by side,
     # left-aligned in a compact sub-row (independent of the stretchy columns above)
@@ -1498,6 +1565,7 @@ def build_qualification_tab(container, root, shared_log=None):
             replicate_combobox.config(state='disabled')
             update_profile_checkbox_state()
         apply_output_name()  # keep the Output File Name in sync (single vs combined)
+        update_co2_controls()  # CO2 import is Seaguard-only (single file)
 
     inputType_combobox.bind("<<ComboboxSelected>>", update_inputtype_state)
     update_inputtype_state()
@@ -1731,6 +1799,15 @@ def build_qualification_tab(container, root, shared_log=None):
             raw_data['Datetime'] = raw_data['Datetime'] - timedelta(hours=3)
             start_time = start_time - timedelta(hours=3)
             end_time = end_time - timedelta(hours=3)
+
+        # optional dissolved-CO2 import (separate logger): merged AFTER the GMT
+        # correction, so both instruments must share the same clock convention
+        if INPUT.get('co2_file'):
+            log_line('Stage 2b: importing dissolved CO2 from %s...'
+                     % os.path.basename(INPUT['co2_file']))
+            raw_data, co2_msgs = data.merge_co2_data(raw_data, INPUT['co2_file'])
+            for message in co2_msgs:
+                log_line(message)
 
         # excluding other than main temperature sensors
         for name in raw_data.keys():
@@ -2205,8 +2282,11 @@ def build_qualification_tab(container, root, shared_log=None):
         # Export qualified data to .csv/.xlsx file (user's choice; reports are always .xlsx)
         os.chdir(OUTPUT['output_file_path'])
         # the qualification output folder is named after the input file + '_QLF'
-        # (same for every workflow: Seaguard profile/mooring and HOBO)
-        root_path = OUTPUT['output_file_path'] + '/' + re.search(r'^[^\.]+',INPUT['file_name']).group() + '_QLF'
+        # (same for every workflow: Seaguard profile/mooring and HOBO); for a
+        # DataNNN.bin the session-folder name is used (see _output_base_for)
+        root_path = (OUTPUT['output_file_path'] + '/'
+                     + _output_base_for(os.path.join(INPUT['raw_data_path'], INPUT['file_name']))
+                     + '_QLF')
         os.makedirs(root_path, exist_ok=True)
         data_folder = 'QCS qualified hobo data' if layout_type == 'hobo' else 'QCS qualified tscp data'
         path = root_path + '/' + data_folder + '/'

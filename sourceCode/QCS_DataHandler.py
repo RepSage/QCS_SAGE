@@ -146,6 +146,118 @@ def read_seaguard_bin(file_path):
     return frame
 
 
+# ---------------------------------------------------------------------------
+# Dissolved-CO2 logger (separate instrument). Export: comma CSV with the header
+# line repeated on every logger restart; date split into Year..Second columns;
+# the value imported is 'Corrected disolved CO2 (PPM)' (the device's own
+# spelling). The logger samples at its own rate (~2 min), different from the
+# Seaguard's, so the merge interpolates in time.
+# ---------------------------------------------------------------------------
+
+def read_co2_file(file_path):
+    """Reads the dissolved-CO2 logger export. Returns (DataFrame with
+    ['Datetime', 'CO2 Level (ppm)'] sorted in time, messages)."""
+    msgs = []
+    header = None
+    rows = []
+    n_headers = 0
+    n_badrows = 0
+    with open(file_path, encoding='utf-8', errors='replace') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.lower().startswith('measurement type'):
+                n_headers += 1
+                if header is None:
+                    header = [h.strip() for h in line.split(',')]
+                continue
+            parts = [p.strip() for p in line.split(',')]
+            if header is None or len(parts) != len(header):
+                n_badrows += 1
+                continue
+            rows.append(parts)
+    base = os.path.basename(file_path)
+    if header is None:
+        raise ValueError("CO2 reader (%s): no 'Measurement type' header line found - "
+                         "not a dissolved-CO2 logger export." % base)
+    df = pd.DataFrame(rows, columns=header)
+    co2_col = next((c for c in df.columns
+                    if re.search(r'corrected\s+dis+olved\s+co2', c, re.IGNORECASE)), None)
+    if co2_col is None:   # fall back to the uncorrected reading
+        co2_col = next((c for c in df.columns if re.fullmatch(r'CO2 \(PPM\)', c, re.IGNORECASE)), None)
+        if co2_col is None:
+            raise ValueError('CO2 reader (%s): no CO2 column found in the header.' % base)
+        msgs.append("Warning: 'Corrected disolved CO2' column not found in %s - "
+                    "using the uncorrected 'CO2 (PPM)' column." % base)
+    for c in ('Year', 'Month', 'Day', 'Hour', 'Minute', 'Second'):
+        if c not in df.columns:
+            raise ValueError('CO2 reader (%s): date column %r missing.' % (base, c))
+    stamp = pd.to_datetime(dict(year=pd.to_numeric(df['Year'], errors='coerce'),
+                                month=pd.to_numeric(df['Month'], errors='coerce'),
+                                day=pd.to_numeric(df['Day'], errors='coerce'),
+                                hour=pd.to_numeric(df['Hour'], errors='coerce'),
+                                minute=pd.to_numeric(df['Minute'], errors='coerce'),
+                                second=pd.to_numeric(df['Second'], errors='coerce')),
+                           errors='coerce')
+    out = pd.DataFrame({'Datetime': stamp,
+                        'CO2 Level (ppm)': pd.to_numeric(df[co2_col], errors='coerce')})
+    n_invalid = int((out['Datetime'].isna() | out['CO2 Level (ppm)'].isna()).sum())
+    out = out.dropna().sort_values('Datetime')
+    out = out.drop_duplicates(subset='Datetime', keep='first')
+    out.index = np.arange(len(out))
+    if out.empty:
+        raise ValueError('CO2 reader (%s): no valid CO2 records.' % base)
+    if n_headers > 1:
+        msgs.append('Info: %d repeated header line(s) skipped in %s (logger restarts).'
+                    % (n_headers - 1, base))
+    if n_badrows or n_invalid:
+        msgs.append('Warning: %d malformed/invalid CO2 row(s) skipped in %s.'
+                    % (n_badrows + n_invalid, base))
+    interval = out['Datetime'].diff().median()
+    msgs.append('Info: CO2 file read: %d records, %s to %s, median interval %s.'
+                % (len(out), out['Datetime'].iloc[0], out['Datetime'].iloc[-1], interval))
+    return out, msgs
+
+
+def merge_co2_data(dataframe, co2_path, gap_factor=2.0):
+    """Imports the dissolved-CO2 series into a Seaguard frame whose 'Datetime'
+    is ALREADY in its final time base (merge after the GMT correction - both
+    instruments must follow the same clock convention).
+
+    The two loggers sample at different rates, so the CO2 value at each
+    Seaguard timestamp is LINEARLY INTERPOLATED in time between the two
+    bracketing CO2 samples. A timestamp is filled only when those samples are
+    at most `gap_factor` x the CO2 logger's median interval apart (logger gaps
+    and off periods are never bridged) and never outside the CO2 coverage.
+    Fills the 'CO2 Level (ppm)' column. Returns (dataframe, messages)."""
+    co2, msgs = read_co2_file(co2_path)
+    t_src = co2['Datetime'].astype('int64').to_numpy() / 1e9        # epoch seconds
+    v_src = co2['CO2 Level (ppm)'].to_numpy(dtype=float)
+    t_tgt = pd.to_datetime(dataframe['Datetime']).astype('int64').to_numpy() / 1e9
+    interp = np.interp(t_tgt, t_src, v_src, left=np.nan, right=np.nan)
+    inside = (t_tgt >= t_src[0]) & (t_tgt <= t_src[-1])
+    tol = gap_factor * float(np.median(np.diff(t_src))) if len(t_src) > 1 else 0.0
+    # bracketing-gap check: the two CO2 samples around each target must be close
+    right = np.searchsorted(t_src, t_tgt, side='left').clip(1, len(t_src) - 1)
+    bracket_gap = t_src[right] - t_src[right - 1]
+    valid = inside & (bracket_gap <= tol)
+    dataframe = dataframe.copy()
+    dataframe['CO2 Level (ppm)'] = np.where(valid, interp, np.nan)
+    n_fill = int(valid.sum())
+    n_gap = int((inside & ~valid).sum())
+    n_out = int((~inside).sum())
+    msgs.append('Info: CO2 imported into %d of %d timestamps (linear interpolation '
+                'between the bracketing CO2 samples); %d inside logger gaps > %.0f s '
+                'and %d outside the CO2 coverage left empty.'
+                % (n_fill, len(t_tgt), n_gap, tol, n_out))
+    if n_fill == 0:
+        msgs.append('Warning: NO timestamps could be filled - check that the CO2 '
+                    'logger clock follows the same GMT convention as the Seaguard '
+                    'data after the correction.')
+    return dataframe, msgs
+
+
 def read_ctd(INPUT):
     # define file path
     file_path = os.path.join(INPUT['raw_data_path'], INPUT['file_name'])
