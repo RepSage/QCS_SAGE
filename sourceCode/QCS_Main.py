@@ -813,7 +813,7 @@ def restore_user_prefs():
         conductivity_unit_combobox.set(p['conductivity_unit'])
     if p.get('output_format'):
         outputFilesFormat_combobox.set(p['output_format'])
-    correct_gmt3h.set(p.get('correct_gmt3h', False))
+    correct_gmt3h.set(True)   # GMT-3 defaults ON for Seaguard (not restored from prefs)
     select_profile_data.set(p.get('select_profile_data', False))
     check_variables.set(p.get('check_variables', False))
     remove_bad.set(p.get('remove_bad', False))
@@ -1347,7 +1347,9 @@ def build_qualification_tab(container, root, shared_log=None):
     options_frame = ttk.Frame(input_frame)
     options_frame.grid(row=5, column=0, columnspan=2, sticky='ew', pady=5)
 
-    correct_gmt3h = BooleanVar(value=False)
+    # GMT-3 correction is the DEFAULT for Seaguard data (Brazilian timezone);
+    # it is a per-run choice, not persisted (HOBO disables and unchecks it)
+    correct_gmt3h = BooleanVar(value=True)
     gmt_check = ttk.Checkbutton(options_frame, text="Correct GMT-3", variable=correct_gmt3h)
     gmt_check.pack(anchor='w', pady=2)
     ToolTip(gmt_check, TOOLTIPS['gmt_correction'])
@@ -1487,8 +1489,7 @@ def build_qualification_tab(container, root, shared_log=None):
             pressure_unit_combobox.config(state='readonly')
             conductivity_unit_combobox.config(state='readonly')
             gmt_check.config(state='normal')
-            if 'gmt' in _last_seaguard:
-                correct_gmt3h.set(_last_seaguard['gmt'])
+            correct_gmt3h.set(_last_seaguard.get('gmt', True))   # default ON for Seaguard
             macroregion_label.config(state='normal')
             macroregion_combobox.config(state='readonly')
             region_label.config(state='normal')
