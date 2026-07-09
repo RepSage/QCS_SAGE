@@ -318,13 +318,12 @@ def save_user_prefs():
 load_user_prefs()
 
 def selectFiles():
-    # HOBO with N>1 replicates: pick the N files at once (multi-select);
-    # otherwise a single file.
-    n_rep = int(replicate_combobox.get()) if inputType_combobox.get() == 'HOBO' else 1
-    if n_rep > 1:
+    # HOBO: pick as many replicate files as wanted (multi-select) - the
+    # Replicates count follows the selection automatically. Seaguard: one file.
+    if inputType_combobox.get() == 'HOBO':
         names = filedialog.askopenfilenames(
             initialdir=USER_PREFS.get('last_data_dir', '/'),
-            title="Select the %d HOBO replicate files" % n_rep,
+            title="Select the HOBO file(s) - one per replicate",
             filetypes=(("Data files", "*.csv *.xlsx"), ("All files", "*.*")))
         names = list(names)
         if not names:
@@ -333,6 +332,7 @@ def selectFiles():
         fileNames_entry.delete(0, END)
         fileNames_entry.insert(0, ';'.join(names))
     else:
+        names = None
         first = filedialog.askopenfilename(
             initialdir=USER_PREFS.get('last_data_dir', '/'),
             title="Select data file",
@@ -343,6 +343,28 @@ def selectFiles():
         fileNames_entry.insert(0, first)
     USER_PREFS['last_data_dir'] = os.path.dirname(first)
     save_user_prefs()
+    # Input type auto-detected from the file's header (Seaguard device block vs
+    # HOBOware export); the combobox stays editable, an unrecognized header just
+    # keeps the current choice. The user then only picks TSCP Mooring/Profile.
+    detected = data.sniff_input_type(first)
+    if detected and detected != inputType_combobox.get():
+        inputType_combobox.set(detected)
+        inputType_combobox.event_generate('<<ComboboxSelected>>')  # apply HOBO/Seaguard field state
+        print('Info: input type auto-detected as %s (from the file header).' % detected)
+    elif not detected:
+        print('Info: could not auto-detect the input type from the file header; '
+              'kept "%s".' % inputType_combobox.get())
+    if inputType_combobox.get() == 'HOBO':
+        # replicates = number of selected files (program-determined, display-only)
+        n_sel = len([p for p in fileNames_entry.get().split(';') if p.strip()])
+        replicate_var.set(str(n_sel))
+    elif names and len(names) > 1:
+        # multiple files picked but the file turned out to be Seaguard: replicates
+        # only exist for HOBO, keep the first file and say so
+        fileNames_entry.delete(0, END)
+        fileNames_entry.insert(0, first)
+        print('Warning: %d files selected but the file is a Seaguard export; '
+              'replicates apply to HOBO only - kept the first file.' % len(names))
     # auto-fill the output folder from the first file; the name follows the
     # replicate count (single vs combined)
     outputPath_entry.delete(0, END)
@@ -359,7 +381,7 @@ def apply_output_name():
     if not paths:
         return
     base = os.path.splitext(os.path.basename(paths[0]))[0]
-    n_rep = int(replicate_combobox.get()) if inputType_combobox.get() == 'HOBO' else 1
+    n_rep = int(replicate_combobox.get() or 1) if inputType_combobox.get() == 'HOBO' else 1
     if n_rep > 1:
         stripped = re.sub(r'(?i)^hobo\s*\d+[ _-]*', '', base)   # drop 'HOBO1_' device token
         name = (stripped or base) + '_combined_QLF'
@@ -474,16 +496,13 @@ def collect_input_settings():
     if not fileNames_entry.get().strip():
         messagebox.showwarning("Warning", "Select the data file to be qualified\n('Data File' field).")
         return False
-    # HOBO redundant replicates: N spreadsheets chosen at once (';'-separated);
-    # for Seaguard or 1 replicate this is just the single file.
-    n_rep = int(replicate_combobox.get()) if inputType_combobox.get() == 'HOBO' else 1
+    # HOBO redundant replicates: the user selects as many files as they want
+    # (';'-separated) and the replicate count FOLLOWS the selection - the
+    # program says how many replicates there are, not the user.
     replicate_files = [p.strip() for p in fileNames_entry.get().split(';') if p.strip()]
-    if len(replicate_files) != n_rep:
-        messagebox.showwarning("Warning",
-                               "Replicates = %d, but %d file(s) are selected.\nSelect exactly %d "
-                               "file(s) (Browse allows multi-select for HOBO replicates)."
-                               % (n_rep, len(replicate_files), n_rep))
-        return False
+    n_rep = len(replicate_files) if inputType_combobox.get() == 'HOBO' else 1
+    if inputType_combobox.get() == 'HOBO':
+        replicate_var.set(str(n_rep))   # display-only, kept in sync
     for f in replicate_files:
         if not os.path.isfile(f):
             messagebox.showerror("Error", "Data file not found:\n%s" % f)
@@ -710,7 +729,7 @@ def start_qualification():
                 # the qualified file does not store profile/mooring or the
                 # coordinates, so pass them along for the Visualization tab
                 'data_type': ('hobo' if INPUT.get('input_type') == 'HOBO'
-                              else ('profile' if INPUT.get('profile') else 'mooring')),
+                              else ('TSCP Profile' if INPUT.get('profile') else 'TSCP Mooring')),
                 'latitude': INPUT.get('latitude'),
                 'longitude': INPUT.get('longitude')}
         messagebox.showinfo("Done",
@@ -1201,7 +1220,7 @@ def build_qualification_tab(container, root, shared_log=None):
     pipeline stage); without it (standalone dev launch) the tab creates its
     own. All pipeline logic is unchanged."""
     global window, main_frame, input_frame, output_frame, fileNames_entry, browse_file_btn
-    global inputType_combobox, dType_combobox, replicate_label, replicate_combobox, update_profile_checkbox_state, units_frame
+    global inputType_combobox, dType_combobox, replicate_label, replicate_combobox, replicate_var, update_profile_checkbox_state, units_frame
     global pressure_unit_combobox, conductivity_unit_combobox, options_frame, correct_gmt3h, gmt_check, select_profile_data
     global profile_check, check_variables, var_check, outputPath_entry, browse_output_btn, outputName_entry
     global outputFilesFormat_combobox, filter_frame, remove_bad, bad_check, remove_suspect, suspect_check
@@ -1258,18 +1277,19 @@ def build_qualification_tab(container, root, shared_log=None):
     dType_combobox.grid(row=1, column=1, sticky='w', padx=(12, 0))
     ToolTip(dType_combobox, TOOLTIPS['data_type'])
 
-    # Replicates (HOBO only): how many redundant HOBO spreadsheets to qualify and
-    # combine into one series (temperature mean + spread, light max-of-clean).
+    # Replicates (HOBO only): DISPLAY of how many redundant HOBO spreadsheets were
+    # selected in Browse - the count follows the file selection automatically
+    # (each replicate is qualified separately, then combined into one series).
     replicate_label = ttk.Label(type_row, text="Replicates:", style='Header.TLabel')
     replicate_label.grid(row=0, column=2, sticky='w', padx=(12, 0), pady=(0, 2))
-    replicate_combobox = ttk.Combobox(type_row, values=["1", "2", "3", "4"], width=4, state='disabled')
-    replicate_combobox.set("1")
+    replicate_var = StringVar(value="1")
+    replicate_combobox = ttk.Entry(type_row, textvariable=replicate_var, width=4,
+                                   state='disabled', justify='center')
     replicate_combobox.grid(row=1, column=2, sticky='w', padx=(12, 0))
     ToolTip(replicate_combobox,
-            "HOBO only: number of redundant HOBO files (2-4) to qualify together and\n"
-            "combine into one series. Select all N files at once with 'Browse'.")
-    # re-derive the Output File Name when the replicate count changes (single vs combined)
-    replicate_combobox.bind("<<ComboboxSelected>>", lambda e: apply_output_name())
+            "HOBO only: how many redundant HOBO files were selected in 'Browse'\n"
+            "(set automatically - pick as many files as you want, one per replicate;\n"
+            "each is qualified separately, then combined into one series)")
 
     # update profile checkbox
     def update_profile_checkbox_state(event=None):
@@ -1415,6 +1435,10 @@ def build_qualification_tab(container, root, shared_log=None):
             dType_combobox.config(state='disabled')
             pressure_unit_combobox.config(state='disabled')
             conductivity_unit_combobox.config(state='disabled')
+            # GMT-3 does not apply: greyed out AND unchecked (the last Seaguard
+            # choice is remembered and restored when switching back)
+            _last_seaguard['gmt'] = correct_gmt3h.get()
+            correct_gmt3h.set(False)
             gmt_check.config(state='disabled')
             select_profile_data.set(False)
             profile_check.config(state='disabled')
@@ -1422,9 +1446,9 @@ def build_qualification_tab(container, root, shared_log=None):
             macroregion_combobox.config(state='disabled')
             region_label.config(state='disabled')
             region_combobox.config(state='disabled')
-            if not replicate_combobox.get():               # restore a usable value when returning from Seaguard
-                replicate_combobox.set('1')
-            replicate_combobox.config(state='readonly')    # replicates apply to HOBO
+            if not replicate_combobox.get():               # count not known until files are selected
+                replicate_var.set('1')
+            replicate_combobox.config(state='disabled')    # display-only: follows the file selection
         else:
             # restore the last stored Seaguard selection (if any)
             if _last_seaguard.get('data_type'):
@@ -1437,11 +1461,13 @@ def build_qualification_tab(container, root, shared_log=None):
             pressure_unit_combobox.config(state='readonly')
             conductivity_unit_combobox.config(state='readonly')
             gmt_check.config(state='normal')
+            if 'gmt' in _last_seaguard:
+                correct_gmt3h.set(_last_seaguard['gmt'])
             macroregion_label.config(state='normal')
             macroregion_combobox.config(state='readonly')
             region_label.config(state='normal')
             region_combobox.config(state='readonly')
-            replicate_combobox.set('')                     # replicates are HOBO-only: leave empty for Seaguard
+            replicate_var.set('')                          # replicates are HOBO-only: leave empty for Seaguard
             replicate_combobox.config(state='disabled')
             update_profile_checkbox_state()
         apply_output_name()  # keep the Output File Name in sync (single vs combined)
@@ -1503,9 +1529,9 @@ def build_qualification_tab(container, root, shared_log=None):
         from matplotlib.widgets import Button
         fig, ax = view.plot_light_window(lux_info, site)
         ax.set_title(ax.get_title() +
-                     '\nClick = move cutoff  |  buttons below (or keys R / S / Enter)  |  Help explains it')
+                     '\nClick = move cutoff  |  buttons below (keys: S / R / Enter = Done / Esc = Cancel)')
         fig.subplots_adjust(bottom=0.30)  # room for the button row above the rule text
-        state = {'cutoff': lux_info['proposed_cutoff'], 'artists': []}
+        state = {'cutoff': lux_info['proposed_cutoff'], 'artists': [], 'cancelled': False}
 
         def redraw():
             for artist in state['artists']:
@@ -1533,7 +1559,8 @@ def build_qualification_tab(container, root, shared_log=None):
                 "  - Click on the plot: set the cutoff at that date/time\n"
                 "  - 'Suggested cutoff' (key S): restore the software's proposal\n"
                 "  - 'Remove cutoff' (key R): no cutoff (light usable all deployment)\n"
-                "  - Enter, or close the window: confirm the current cutoff\n\n"
+                "  - 'Done' (Enter, or closing the window): confirm the current cutoff\n"
+                "  - 'Cancel' (Esc): abort the whole qualification (nothing is written)\n\n"
                 "Method:\n"
                 "  - Baseline = highest daily light peak of the first %d day(s)\n"
                 "    (the unfouled sensor's clean-state light).\n"
@@ -1557,22 +1584,37 @@ def build_qualification_tab(container, root, shared_log=None):
                 state['cutoff'] = pd.Timestamp(mdates.num2date(event.xdata).replace(tzinfo=None))
                 redraw()
 
+        def confirm(*_event):
+            plt.close(fig)
+
+        def cancel(*_event):
+            # same behavior as the manual-cut panels: abort the qualification
+            state['cancelled'] = True
+            plt.close(fig)
+
         def on_key(event):
             if event.key in ('r', 'R', 'n', 'N'):   # R (or N) = remove the cutoff
                 remove_cutoff()
             elif event.key in ('s', 'S'):            # S = restore the suggested cutoff
                 reset_to_suggested()
-            elif event.key == 'enter':
-                plt.close(fig)
+            elif event.key == 'enter':               # Enter = Done
+                confirm()
+            elif event.key == 'escape':              # Esc = Cancel
+                cancel()
 
-        # button row (kept referenced so matplotlib does not garbage-collect them)
-        reset_btn = Button(fig.add_axes([0.30, 0.175, 0.19, 0.055]), 'Suggested cutoff')
-        remove_btn = Button(fig.add_axes([0.51, 0.175, 0.17, 0.055]), 'Remove cutoff')
-        help_btn = Button(fig.add_axes([0.70, 0.175, 0.11, 0.055]), 'Help')
+        # button row (kept referenced so matplotlib does not garbage-collect them);
+        # Done/Cancel at the end, same convention as the manual-cut panels
+        reset_btn = Button(fig.add_axes([0.13, 0.175, 0.19, 0.055]), 'Suggested cutoff')
+        remove_btn = Button(fig.add_axes([0.34, 0.175, 0.17, 0.055]), 'Remove cutoff')
+        help_btn = Button(fig.add_axes([0.53, 0.175, 0.10, 0.055]), 'Help')
+        done_btn = Button(fig.add_axes([0.65, 0.175, 0.10, 0.055]), 'Done')
+        cancel_btn = Button(fig.add_axes([0.77, 0.175, 0.10, 0.055]), 'Cancel')
         reset_btn.on_clicked(reset_to_suggested)
         remove_btn.on_clicked(remove_cutoff)
         help_btn.on_clicked(show_review_help)
-        state['buttons'] = (reset_btn, remove_btn, help_btn)
+        done_btn.on_clicked(confirm)
+        cancel_btn.on_clicked(cancel)
+        state['buttons'] = (reset_btn, remove_btn, help_btn, done_btn, cancel_btn)
 
         fig.canvas.mpl_connect('button_press_event', on_click)
         fig.canvas.mpl_connect('key_press_event', on_key)
@@ -1593,6 +1635,8 @@ def build_qualification_tab(container, root, shared_log=None):
         fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
         fig.show()
         window.wait_variable(done)
+        if state['cancelled']:
+            raise data.ManualCutCancelled('Light window review cancelled.')
         return state['cutoff']
 
     # The whole qualification pipeline runs inside this function so the main

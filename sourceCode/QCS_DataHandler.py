@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v5.0'
+QCS_VERSION = 'v5.1'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -435,6 +435,36 @@ def pressure_to_depth (dataframe, latitude, adjust_for_atm):
     depth = ((((-1.82e-15 * p + 2.279e-10) * p-2.2512e-5) * p + 9.72659)*p) / g
     dataframe['Depth (m)'] = round(depth, 2)
     return dataframe
+
+def sniff_input_type(file_path):
+    """Best-effort detection of a RAW data file's instrument family from its
+    header lines: returns 'Seaguard', 'HOBO' or None (unrecognized - the caller
+    keeps the user's current choice). Only the first ~40 lines are read.
+
+    Markers (from the real exports): Seaguard/TSCP files open with a device
+    description block ('Description;Seaguard II Platform', 'Product Name;...');
+    HOBOware exports carry a 'Plot Title' line and/or a Date-Time header
+    together with a light-intensity column (Lux / lum/ft2), in English or
+    Portuguese."""
+    try:
+        if str(file_path).lower().endswith(('.xlsx', '.xls')):
+            head = pd.read_excel(file_path, header=None, nrows=40)
+            lines = [' '.join(str(c) for c in row if pd.notna(c))
+                     for row in head.itertuples(index=False)]
+        else:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                lines = [f.readline() for _ in range(40)]
+    except Exception:
+        return None
+    text = ' '.join(lines).lower()
+    if 'seaguard' in text or 'aanderaa' in text:
+        return 'Seaguard'
+    if ('plot title' in text or 'hoboware' in text
+            or (re.search(r'data\s*hora|date\s*time', text) is not None
+                and re.search(r'intensity|intensidade|lum/ft|lux', text) is not None)):
+        return 'HOBO'
+    return None
+
 
 def clean_below_zero(data, settings):
     # Handles non-physical values <= 0 before the quality tests:

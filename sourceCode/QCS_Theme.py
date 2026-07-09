@@ -407,7 +407,9 @@ def set_window_icon(window, icon_name='qcs_icon.ico', app_id='sage.qcs.qualityco
 def style_plot_window(fig, title=None):
     """Give a matplotlib figure window the app icon and a meaningful title (so it
     matches the rest of the software instead of showing the default matplotlib
-    icon and 'Figure N'). Best-effort and backend-dependent."""
+    icon and 'Figure N'), and bring it IN FRONT of the main window (a brief
+    topmost pulse - not permanently topmost, so other applications can still
+    cover it). Best-effort and backend-dependent."""
     try:
         mgr = fig.canvas.manager
         if title:
@@ -415,5 +417,11 @@ def style_plot_window(fig, title=None):
         win = getattr(mgr, 'window', None)
         if win is not None:
             set_window_icon(win)
+            try:
+                win.lift()
+                win.attributes('-topmost', True)
+                win.after(300, lambda: win.attributes('-topmost', False))
+            except Exception:
+                pass
     except Exception:
         pass
