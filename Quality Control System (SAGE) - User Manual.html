@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v5.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v6.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -227,11 +227,26 @@
         </tr>
         <tr>
             <td>Data file</td>
-            <td>Selects the raw data file (CSV or XLSX). A tooltip explains the supported formats.</td>
+            <td>Selects the raw data file(s): CSV, XLSX or a SeaGuard raw binary session
+            (<code>Data000.bin</code> &mdash; no spreadsheet export needed). Selecting SEVERAL
+            Seaguard files creates a <strong>batch</strong>: each file is qualified independently,
+            in sequence, with its own automatic <code>&lt;file&gt;_QLF</code> output. For HOBO,
+            several files are the redundant replicates of one deployment.</td>
         </tr>
         <tr>
             <td>Browse...</td>
-            <td>Opens the file explorer for selection.</td>
+            <td>Opens the file explorer for selection (multi-select allowed).</td>
+        </tr>
+        <tr>
+            <td>Add CO&#8322; data</td>
+            <td>OPTIONAL (Seaguard, single file): selects the dissolved-CO2 file from the
+            separate CO2 logger. Its values are interpolated in time onto the Seaguard
+            timestamps (the two instruments sample at different rates), fill the
+            <code>CO2 Level (ppm)</code> column and go through the CO2 quality tests
+            (sensor/environmental range, spikes &rarr; <code>Flag_CO2</code>). The CO2
+            timestamps are used AS-IS &mdash; the GMT-3 correction is never applied to them
+            (the CO2 logger clock is local). The selected file shows beside
+            <em>Replicates</em>, with an &times; to remove it.</td>
         </tr>
         <tr>
             <td>Input type</td>

@@ -1365,15 +1365,9 @@ def build_qualification_tab(container, root, shared_log=None):
 
     # Dissolved CO2 from a SEPARATE logger (Seaguard only, single file):
     # optional; merged into the qualified sheet by time interpolation
-    co2_row = ttk.Frame(input_frame)
-    co2_row.grid(row=1, column=3, padx=(10, 0), sticky='w')
-    co2_btn = ttk.Button(co2_row, text='Add CO₂ data', command=select_co2_file, width=14)
-    co2_btn.pack(side='left')
+    co2_btn = ttk.Button(input_frame, text='Add CO₂ data', command=select_co2_file, width=14)
+    co2_btn.grid(row=1, column=3, padx=(10, 0), sticky='w')
     ToolTip(co2_btn, TOOLTIPS['co2_file'])
-    co2_label = ttk.Label(co2_row, text='', style='Small.TLabel')
-    co2_label.pack(side='left', padx=(6, 2))
-    co2_clear_btn = ttk.Button(co2_row, text='×', width=2, command=clear_co2_file)
-    ToolTip(co2_clear_btn, 'Remove the selected CO₂ file')
 
     # Data type selection: Input Type -> Data Type -> Replicates side by side,
     # left-aligned in a compact sub-row (independent of the stretchy columns above)
@@ -1403,6 +1397,15 @@ def build_qualification_tab(container, root, shared_log=None):
             "HOBO only: how many redundant HOBO files were selected in 'Browse'\n"
             "(set automatically - pick as many files as you want, one per replicate;\n"
             "each is qualified separately, then combined into one series)")
+
+    # the selected CO2 file shows HERE (beside Replicates, below the button),
+    # so a long file name never pushes the Browse/CO2 block to the right
+    co2_info = ttk.Frame(type_row)
+    co2_info.grid(row=1, column=3, sticky='w', padx=(14, 0))
+    co2_label = ttk.Label(co2_info, text='', style='Small.TLabel')
+    co2_label.pack(side='left', padx=(0, 2))
+    co2_clear_btn = ttk.Button(co2_info, text='×', width=2, command=clear_co2_file)
+    ToolTip(co2_clear_btn, 'Remove the selected CO₂ file')
 
     # update profile checkbox
     def update_profile_checkbox_state(event=None):
