@@ -37,9 +37,8 @@ TOOLTIPS = {
     'panel1': "Panel 1: Comparison between parameters at the same site",
     'panel2': "Panel 2: Comparison of the same parameter between sites",
     'panel3': "Panel 3: Comparison between parameters at the same site (vertical profile)",
-    'hobo_temp': "HOBO panel: temperature over time, one plot per selected site\nSuspect/bad points (Flag_T >= 3) are highlighted",
-    'hobo_light': "HOBO panel: light over time (log scale), one plot per selected site\nThe fouling window (Flag_lux == 4) is shaded from the cutoff on",
-    'hobo_light_multi': "HOBO panel: light (log scale) with all selected sites together\nEach site's fouling cutoff is marked to compare fouling onset",
+    'hobo_params_site': "HOBO panel: the selected parameters (temperature/light) at one site,\none figure per site, all selected years in a single plot.\nLight is drawn as its DAILY PEAK envelope (linear scale) with the\nfouling window shaded; suspect/bad temperature is highlighted",
+    'hobo_params_across': "HOBO panel: one figure per selected parameter with all sites together,\naligned by TIME OF DAY (hours since each site's first midnight).\nLight uses the daily-peak envelope; each site's fouling cutoff is marked",
     'ts_diagram': "Generate a Temperature-Salinity (T-S) diagram: temperature vs\nsalinity with depth as the colour, to identify water masses.",
     'latitude': "Latitude used by the T-S diagram (gsw). Pre-filled from the\nqualification region and locked; editable only for a\nstandalone file (which stores no coordinates).",
     'longitude': "Longitude used by the T-S diagram (gsw). Pre-filled from the\nqualification region and locked; editable only for a\nstandalone file (which stores no coordinates).",
@@ -177,18 +176,19 @@ def toggle_input_mode():
         outputName_entry.config(state='normal')
         outputName_entry.delete(0, END)
         set_disabled_style(outputName_entry)
+    # the Preview button applies to FOLDER mode only (it scans/builds a folder)
+    if preview_btn is not None:
+        if join.get():
+            set_enabled_style(preview_btn)
+        else:
+            set_disabled_style(preview_btn)
 
 def toggle_panel_dependent_controls():
+    # trend lines, points and fixed scale apply to every panel family,
+    # HOBO included (its panels honor them like the Seaguard ones)
     any_panel_selected = panel1.get() or panel2.get() or panel3.get()
 
-    if any_panel_selected and is_hobo_input():
-        # HOBO panels already define the presentation (points, log scale):
-        # trend lines and 'show points' do not apply
-        set_disabled_style(tendency_cb)
-        set_disabled_style(tendency_entry)
-        set_disabled_style(points_cb)
-        set_enabled_style(fixed_scale_cb)
-    elif any_panel_selected:
+    if any_panel_selected:
         set_enabled_style(tendency_cb)
         if tendency.get():
             set_enabled_style(tendency_entry)
@@ -199,13 +199,13 @@ def toggle_panel_dependent_controls():
         set_disabled_style(tendency_entry)
         set_disabled_style(points_cb)
         set_disabled_style(fixed_scale_cb)
-    
+
     toggle_scale_controls()
 
 def toggle_parameter_checkboxes():
-    # in HOBO panels each panel already states which variable it plots
-    # (temperature or light), so the parameter filter does not apply and stays disabled
-    if (panel1.get() or panel2.get() or panel3.get()) and not is_hobo_input():
+    # the parameter filter applies to every family (for HOBO it selects between
+    # temperature and light); active whenever a panel is selected
+    if panel1.get() or panel2.get() or panel3.get():
         for cb in parameter_widgets.values():
             set_enabled_style(cb)
     else:
@@ -371,13 +371,16 @@ def toggle_data_type():
     # UNCHECKED/blanked and greyed out; one that applies again is re-enabled and
     # its previous value restored.
     if is_hobo_input():
-        # HOBO: no T-S (no salinity) and no profile (no depth); the X-axis time
-        # window still applies (time series)
+        # HOBO: two panels only (at a site / across sites); T-S, profile panel
+        # and the depth range do not exist for a temp/light logger (their
+        # widgets are removed from the window); X-axis time window applies
         tsDiagram.set(False)
-        set_disabled_style(ts_cb)
+        panel3.set(False)
         if single_site:
-            panel3.set(False)           # HOBO panel 3 = light multi-site
-            set_disabled_style(panel3_cb)
+            panel2.set(False)           # 'Parameters across sites' needs >= 2 sites
+            set_disabled_style(panel2_cb)
+        if not (panel1.get() or panel2.get()):
+            panel1.set(True)            # default panel: never an empty selection
         _stash_disable(depth_min_entry, 'depth_min')
         _stash_disable(depth_max_entry, 'depth_max')
         _reset_time_default(time_start_entry, 'start')
@@ -707,46 +710,39 @@ def generatePanels():
         # end reports how many panels were produced (no per-panel green lines, so
         # the log is not a wall of redundant "generated successfully" messages)
         n_ok = 0
-        # panels are generated once for each selected year
-        for year in selected_years:
-            dataViewSettings['filterByYear'] = year
-            if is_hobo_input():
-                # HOBO: dedicated panels (temperature / light+window / light
-                # multi-site); T-S does not apply (no salinity)
-                selected_sites = dataViewSettings.get('siteList', [])
-                any_hobo_panel = (dataViewSettings.get('panel1', False)
-                                  or dataViewSettings.get('panel2', False)
-                                  or dataViewSettings.get('panel3', False))
-                if any_hobo_panel and not selected_sites:
-                    error_logger.log("Error: no site selected - check at least one site in 'Filter by Site'")
-                    continue
+        if is_hobo_input():
+            # HOBO: two panels, each spanning EVERY selected year in one figure
+            # (a deployment crossing the new year is never split into truncated
+            # per-year plots); T-S does not apply (no salinity)
+            selected_sites = dataViewSettings.get('siteList', [])
+            any_hobo_panel = (dataViewSettings.get('panel1', False)
+                              or dataViewSettings.get('panel2', False))
+            if any_hobo_panel and not selected_sites:
+                error_logger.log("Error: no site selected - check at least one site in 'Filter by Site'")
 
+            elif dataViewSettings.get('panel1', False) or dataViewSettings.get('panel2', False):
                 if dataViewSettings.get('panel1', False):
                     for site in selected_sites:
                         try:
-                            view.plot_hobo_temperature(database, dataViewSettings, site)
-                            error_logger.log("Info: HOBO temperature panel for %s (%d) generated." % (site, year))
-                            n_ok += 1
+                            n = view.plot_hobo_params_at_site(database, dataViewSettings, site)
+                            if n:
+                                error_logger.log("Info: HOBO parameters panel for %s generated." % site)
+                                n_ok += n
                         except Exception as e:
-                            error_logger.log("Error generating HOBO temperature for %s (%d): %s" % (site, year, e))
+                            error_logger.log("Error generating HOBO parameters for %s: %s" % (site, e))
 
                 if dataViewSettings.get('panel2', False):
-                    for site in selected_sites:
-                        try:
-                            view.plot_hobo_light(database, dataViewSettings, site)
-                            error_logger.log("Info: HOBO light panel for %s (%d) generated." % (site, year))
-                            n_ok += 1
-                        except Exception as e:
-                            error_logger.log("Error generating HOBO light for %s (%d): %s" % (site, year, e))
-
-                if dataViewSettings.get('panel3', False):
                     try:
-                        view.plot_hobo_light_multisite(database, dataViewSettings)
-                        error_logger.log("Info: HOBO light multi-site panel (%d) generated." % year)
-                        n_ok += 1
+                        n = view.plot_hobo_params_across_sites(database, dataViewSettings)
+                        if n:
+                            error_logger.log("Info: HOBO across-sites panel(s) generated (%d figure(s))." % n)
+                            n_ok += n
                     except Exception as e:
-                        error_logger.log("Error generating HOBO light multi-site (%d): %s" % (year, e))
-                continue
+                        error_logger.log("Error generating HOBO across-sites panel: %s" % e)
+
+        # Seaguard panels are generated once for each selected year
+        for year in (selected_years if not is_hobo_input() else []):
+            dataViewSettings['filterByYear'] = year
 
             if dataViewSettings['dataType'] == 'TSCP Mooring':
                 if dataViewSettings.get('panel1', False):
@@ -913,26 +909,26 @@ def build_step1(parent):
     _refresh_recent_combobox()
 
     # --- Output Section ---
-    # Output naming
-    ttk.Label(output_frame, text="Output name:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
-    outputName_entry = ttk.Entry(output_frame, width=24)
-    outputName_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
-    set_disabled_style(outputName_entry)
-    ToolTip(outputName_entry, TOOLTIPS['output_name'])
-
-    # Output path
-    ttk.Label(output_frame, text="Output path:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(5,2))
+    # Output path first (it always applies; the name only names a built database)
+    ttk.Label(output_frame, text="Output path:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
     outputPath_entry = ttk.Entry(output_frame, width=24)
-    outputPath_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
+    outputPath_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
     ToolTip(outputPath_entry, TOOLTIPS['output_path'])
 
     browse_output_btn = ttk.Button(output_frame, text="Browse...", command=selectOutputFolder, width=10)
-    browse_output_btn.grid(row=3, column=1, padx=5)
+    browse_output_btn.grid(row=1, column=1, padx=5)
     ToolTip(browse_output_btn, TOOLTIPS['output_path'])
+
+    # Output naming
+    ttk.Label(output_frame, text="Output name:", style='Header.TLabel').grid(row=2, column=0, sticky='w', pady=(5,2))
+    outputName_entry = ttk.Entry(output_frame, width=24)
+    outputName_entry.grid(row=3, column=0, sticky='ew', pady=(0,5))
+    set_disabled_style(outputName_entry)
+    ToolTip(outputName_entry, TOOLTIPS['output_name'])
 
     # Database preview: build now and summarize (sites, period, rows) so the
     # user can confirm the selection BEFORE moving on; Next reuses the result
-    global _preview_var
+    global _preview_var, preview_btn
     preview_frame = ttk.LabelFrame(main_frame, text=" Database preview ", padding=12)
     preview_frame.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky='ew')
     preview_frame.columnconfigure(1, weight=1)
@@ -1106,13 +1102,13 @@ def build_step2(parent):
               wraplength=340, justify='left').grid(row=1, column=1, sticky='w', padx=(28, 4), pady=2)
 
     # --- Visualization Settings ---
-    # Panels: for HOBO the three checkboxes become the dedicated panels
-    # (temperature / light+window / light multi-site) instead of Panel 1/2/3
+    # Panels: HOBO has only TWO panels (parameters at a site / across sites);
+    # the profile panel and the T-S diagram do not exist for a temp/light logger
     if is_hobo_input():
-        panel_labels = ("HOBO Temperature (per site)",
-                        "HOBO Light + fouling window (per site)",
-                        "HOBO Light multi-site")
-        panel_tips = (TOOLTIPS['hobo_temp'], TOOLTIPS['hobo_light'], TOOLTIPS['hobo_light_multi'])
+        panel_labels = ("Parameters at a site",
+                        "Parameters across sites",
+                        "(unused)")
+        panel_tips = (TOOLTIPS['hobo_params_site'], TOOLTIPS['hobo_params_across'], '')
     else:
         panel_labels = ("Parameters at a site",
                         "Parameter across sites",
@@ -1137,6 +1133,8 @@ def build_step2(parent):
                                command=lambda: [toggle_panel_dependent_controls(), toggle_parameter_checkboxes()])
     panel3_cb.grid(row=3, column=0, sticky='w', pady=2)
     ToolTip(panel3_cb, panel_tips[2])
+    if is_hobo_input():
+        panel3_cb.grid_remove()          # HOBO has no third panel at all
 
     # TS Diagram
     tsDiagram = BooleanVar(value=False)
@@ -1146,20 +1144,23 @@ def build_step2(parent):
 
     # Coordinates
     _FIELD_W = 18   # compact width for the coordinate boxes (short values)
-    ttk.Label(vis_frame, text="Latitude:").grid(row=5, column=0, sticky='w', pady=2)
+    lat_lbl = ttk.Label(vis_frame, text="Latitude:")
+    lat_lbl.grid(row=5, column=0, sticky='w', pady=2)
     latitude_entry = ttk.Entry(vis_frame, width=_FIELD_W)
     latitude_entry.grid(row=6, column=0, sticky='w', pady=2)
     set_disabled_style(latitude_entry)
     ToolTip(latitude_entry, TOOLTIPS['latitude'])
 
-    ttk.Label(vis_frame, text="Longitude:").grid(row=7, column=0, sticky='w', pady=2)
+    long_lbl = ttk.Label(vis_frame, text="Longitude:")
+    long_lbl.grid(row=7, column=0, sticky='w', pady=2)
     longitude_entry = ttk.Entry(vis_frame, width=_FIELD_W)
     longitude_entry.grid(row=8, column=0, sticky='w', pady=2)
     set_disabled_style(longitude_entry)
     ToolTip(longitude_entry, TOOLTIPS['longitude'])
 
     # TS Parameters
-    ttk.Label(vis_frame, text="T-S parameters:").grid(row=9, column=0, sticky='w', pady=2)
+    tsp_lbl = ttk.Label(vis_frame, text="T-S parameters:")
+    tsp_lbl.grid(row=9, column=0, sticky='w', pady=2)
     tsParam_combobox = ttk.Combobox(vis_frame, values=["Conservative T & Absolute S", "Potential T & Practical S"], width=_FIELD_W, state='readonly')
     tsParam_combobox.grid(row=10, column=0, sticky='w', pady=2)
     set_disabled_style(tsParam_combobox)
@@ -1197,6 +1198,13 @@ def build_step2(parent):
                           lambda e: tsParam_combobox.after_idle(_widen_ts_popup), add='+')
     _widen_ts_popup()
 
+    if is_hobo_input():
+        # a temp/light logger has no salinity: the whole T-S section (checkbox,
+        # coordinates and parameter choice) is removed, not just greyed out
+        for w in (ts_cb, lat_lbl, latitude_entry, long_lbl, longitude_entry,
+                  tsp_lbl, tsParam_combobox):
+            w.grid_remove()
+
     # Display options
     ttk.Label(vis_frame, text="Display options:").grid(row=0, column=1, sticky='w', pady=5)
 
@@ -1222,13 +1230,14 @@ def build_step2(parent):
     fixed_scale_cb.grid(row=5, column=1, sticky='w', pady=5)
     ToolTip(fixed_scale_cb, TOOLTIPS['fixed_scale'])
 
-    # X-axis time window (mooring plots)
-    ttk.Label(vis_frame, text="X-axis start (mooring):").grid(row=6, column=1, sticky='w', pady=(8,2))
+    # X-axis time window (time-series plots; label says which family applies)
+    _x_kind = 'HOBO' if is_hobo_input() else 'mooring'
+    ttk.Label(vis_frame, text="X-axis start (%s):" % _x_kind).grid(row=6, column=1, sticky='w', pady=(8,2))
     time_start_entry = ttk.Entry(vis_frame, width=28)
     time_start_entry.grid(row=7, column=1, sticky='w', pady=2)
     ToolTip(time_start_entry, TOOLTIPS['time_start'])
 
-    ttk.Label(vis_frame, text="X-axis end (mooring):").grid(row=8, column=1, sticky='w', pady=2)
+    ttk.Label(vis_frame, text="X-axis end (%s):" % _x_kind).grid(row=8, column=1, sticky='w', pady=2)
     time_end_entry = ttk.Entry(vis_frame, width=28)
     time_end_entry.grid(row=9, column=1, sticky='w', pady=2)
     ToolTip(time_end_entry, TOOLTIPS['time_end'])
@@ -1246,12 +1255,14 @@ def build_step2(parent):
         row=10, column=1, sticky='w', pady=(0,2))
 
     # Depth-axis range (profile plots) - analogous to the time window above
-    ttk.Label(vis_frame, text="Depth-axis min (profile):").grid(row=11, column=1, sticky='w', pady=(10,2))
+    dmin_lbl = ttk.Label(vis_frame, text="Depth-axis min (profile):")
+    dmin_lbl.grid(row=11, column=1, sticky='w', pady=(10,2))
     depth_min_entry = ttk.Entry(vis_frame, width=28)
     depth_min_entry.grid(row=12, column=1, sticky='w', pady=2)
     ToolTip(depth_min_entry, TOOLTIPS['depth_min'])
 
-    ttk.Label(vis_frame, text="Depth-axis max (profile):").grid(row=13, column=1, sticky='w', pady=2)
+    dmax_lbl = ttk.Label(vis_frame, text="Depth-axis max (profile):")
+    dmax_lbl.grid(row=13, column=1, sticky='w', pady=2)
     depth_max_entry = ttk.Entry(vis_frame, width=28)
     depth_max_entry.grid(row=14, column=1, sticky='w', pady=2)
     ToolTip(depth_max_entry, TOOLTIPS['depth_max'])
@@ -1263,12 +1274,17 @@ def build_step2(parent):
                                                           database['Depth (m)'].max())
     else:
         depth_text = "Depth available: no depth column"
-    ttk.Label(vis_frame, text=depth_text, style='Small.TLabel').grid(
-        row=15, column=1, sticky='w', pady=(2,5))
+    depth_avail_lbl = ttk.Label(vis_frame, text=depth_text, style='Small.TLabel')
+    depth_avail_lbl.grid(row=15, column=1, sticky='w', pady=(2,5))
+    if is_hobo_input():
+        # HOBO has no depth at all: remove the whole depth block, not just grey it
+        for w in (dmin_lbl, depth_min_entry, dmax_lbl, depth_max_entry, depth_avail_lbl):
+            w.grid_remove()
 
     # --- Filter Settings ---
     # Year filter: one checkbox per year actually present in the database
-    ttk.Label(filter_frame, text="Filter by year:").grid(row=0, column=0, sticky='w', pady=(5,2))
+    year_lbl = ttk.Label(filter_frame, text="Filter by year:")
+    year_lbl.grid(row=0, column=0, sticky='w', pady=(5,2))
     available_years = sorted(set(int(y) for y in database['Datetime'].dt.year.dropna().unique()))
     year_vars = {}    # BooleanVar for each year
     year_widgets = {} # Checkbutton for each year
@@ -1453,6 +1469,11 @@ def build_step2(parent):
             param_col.grid_rowconfigure(r, minsize=h)
             scale_frame.grid_rowconfigure(r, minsize=h)
 
+    # 'Filter by year:' sits beside the parameters header (which is taller now,
+    # holding the All/None buttons): pad it down so the two headers align
+    dy = max(0, (param_hdr_row.winfo_reqheight() - year_lbl.winfo_reqheight()) // 2)
+    year_lbl.grid_configure(pady=(5 + dy, 2))
+
     # Configure grid weights for filter frame
     filter_frame.columnconfigure(0, weight=1)
     filter_frame.columnconfigure(1, weight=1)
@@ -1486,21 +1507,14 @@ def build_step2(parent):
     tendency.set(USER_PREFS.get('dbv_tendency', False))
     dataPoints.set(USER_PREFS.get('dbv_data_points', False))
     fixedScale.set(USER_PREFS.get('dbv_fixed_scale', False))
-    for site in USER_PREFS.get('dbv_selected_sites', []):
-        if site in site_vars:
-            site_vars[site].set(True)
-    for y in USER_PREFS.get('dbv_selected_years', []):
-        if y in year_vars:
-            year_vars[y].set(True)
-    # Year/Site: default to ALL available when nothing valid was restored for
-    # this database (with several years/sites the user usually wants everything;
-    # unchecking is easier than hunting for what is missing).
-    if not any(v.get() for v in year_vars.values()):
-        for v in year_vars.values():
-            v.set(True)
-    if not any(v.get() for v in site_vars.values()):
-        for v in site_vars.values():
-            v.set(True)
+    # Year/Site: ALL checked by default on every import (like the parameters,
+    # these are per-imported-sheet and NOT restored from preferences): with
+    # several years/sites the user usually wants everything, and unchecking is
+    # easier than hunting for what is missing.
+    for v in year_vars.values():
+        v.set(True)
+    for v in site_vars.values():
+        v.set(True)
     # Parameters: default to the MAIN-group ones that actually HAVE data in this
     # database (recomputed per imported sheet; NOT persisted between sessions).
     # SECONDARY parameters (rarely used) always start unchecked.
@@ -1600,6 +1614,7 @@ _step2_frame = None
 _shared_log = None        # app-wide Execution log (owned by the QCS_App shell)
 _db_msgs_logged = False   # True once db_build_messages went to the log (no dupes)
 _recent_combobox = None   # Step 1 'Recent' picker (created in build_step1)
+preview_btn = None        # Step 1 'Preview' button (folder mode only)
 _preview_var = None       # Step 1 preview summary text (created in build_step1)
 _input_mode_cache = {}    # stashes Database File(s) while folder-scan mode is on
 _auto_scale = set()       # params whose Min/Max still hold auto-computed defaults
@@ -1677,7 +1692,11 @@ def _recent_display(entry):
 def _refresh_recent_combobox():
     if _recent_combobox is None:
         return
-    _recent_combobox['values'] = [_recent_display(r) for r in USER_PREFS.get('dbv_recent', [])]
+    values = [_recent_display(r) for r in USER_PREFS.get('dbv_recent', [])]
+    _recent_combobox['values'] = values
+    # show the most recently USED selection instead of an easy-to-miss blank box
+    if values and not _recent_combobox.get():
+        _recent_combobox.set(values[0])
 
 def _apply_recent(event=None):
     """Fills Step 1 from the picked recent selection."""

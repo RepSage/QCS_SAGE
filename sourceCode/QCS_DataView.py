@@ -1099,15 +1099,25 @@ def mark_light_cutoff(ax, cutoff, lux_info):
     return artists
 
 
-def _hobo_site_slice (database, year, site, dataViewSettings=None):
-    """Slice by year and site used by the HOBO panels (same annual slicing
-    rule as the Seaguard panels), sorted in time. When a X-axis time window is
-    set, keep only those hours (plot only the chosen window, not just zoom)."""
-    db = database.copy()
-    db = db[(db['Datetime'].dt.year == year) & (db['Site'] == site)]
-    if dataViewSettings is not None:
+def _hobo_slice_years (database, dataViewSettings, site, time_window=True):
+    """Site slice over EVERY selected year in ONE series (a deployment crossing
+    the new year is never split into truncated per-year plots), optionally
+    filtered to the absolute X-axis time window, sorted in time."""
+    years = dataViewSettings.get('filterByYears') or []
+    db = database[database['Site'] == site]
+    if years:
+        db = db[db['Datetime'].dt.year.isin(years)]
+    if time_window:
         db = _apply_time_window(db, dataViewSettings)
     return db.sort_values('Datetime')
+
+
+def _lux_daily_peak (db):
+    """Daily maximum of the light series - the envelope used by the fouling
+    review plot - as a Series indexed by day."""
+    lux = pd.to_numeric(db['Luminosity (lux)'], errors='coerce')
+    s = pd.Series(lux.values, index=pd.DatetimeIndex(db['Datetime']))
+    return s.resample('D').max().dropna()
 
 
 def _hobo_light_cutoff_start (db):
@@ -1120,186 +1130,203 @@ def _hobo_light_cutoff_start (db):
     return flagged_times.iloc[0]
 
 
-def _apply_hobo_common_settings (ax, dataViewSettings):
-    """Optional fixed X-axis time window (same option as panels 1/2)
-    and a date format suited to multi-month deployments."""
-    if dataViewSettings.get('xAxisStart') is not None and dataViewSettings.get('xAxisEnd') is not None:
-        ax.set_xlim(pd.Timestamp(dataViewSettings['xAxisStart']),
-                    pd.Timestamp(dataViewSettings['xAxisEnd']))
-    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m/%Y'))
-
-
-def _mask_nonpositive_lux (lux, site):
-    """A log scale cannot represent values <= 0 (night readings): they become
-    gaps in the plot. The total omitted is always reported to the console."""
-    n_nonpositive = int((lux <= 0).sum())
-    if n_nonpositive:
-        print('Info: %d light reading(s) <= 0 lux for %s omitted from the log-scale plot (night readings).'
-              % (n_nonpositive, site))
-    return lux.where(lux > 0)
-
-
-def plot_hobo_temperature (database, dataViewSettings, site):
-    """Time series of the HOBO temperature for a site, with the
-    suspect/bad points (Flag_T >= 3) highlighted, as in the Seaguard."""
-    year = dataViewSettings['filterByYear']
+def plot_hobo_params_at_site (database, dataViewSettings, site):
+    """HOBO 'Parameters at a site': the selected parameters (temperature and/or
+    light) for ONE site in a single figure spanning EVERY selected year (a
+    deployment crossing the new year is not split). Temperature: dots +
+    suspect/bad highlights + replicate-spread band + optional tendency line
+    (floored at 0). Light: LINEAR scale with the DAILY-PEAK envelope (the same
+    visual as the fouling review), optional raw points, and the fouling window
+    (Flag_lux == 4) shaded. Returns the number of figures generated (0 or 1)."""
     cParam, bcParam = getParamColors()
-    db = _hobo_site_slice(database, year, site, dataViewSettings)
-    if db.empty:
-        print('\nNo HOBO data for %s during %d.' % (site, year))
-        return
-    temp = pd.to_numeric(db['Temperature (degC)'], errors='coerce')
-    flag_t = pd.to_numeric(db['Flag_T'], errors='coerce')
+    db = _hobo_slice_years(database, dataViewSettings, site)
+    params = [p for p in dataViewSettings['parameterList']
+              if p in ('Temperature (degC)', 'Luminosity (lux)') and p in db.columns
+              and pd.to_numeric(db[p], errors='coerce').notna().any()]
+    if db.empty or not params:
+        print('\nNo HOBO data to plot for %s (check the parameters/years/window).' % site)
+        return 0
+    fit = dataViewSettings['tendencyLines']
+    deg = dataViewSettings['linearRegressionDegree']
+    points = dataViewSettings['viewDataPoints']
 
-    fig, ax = plt.subplots(figsize=(980 / 100, 520 / 100))
+    fig, ax1 = plt.subplots(figsize=(1050 / 100, 540 / 100))
     plt.xticks(rotation=35)
-    plt.subplots_adjust(bottom=0.18)  # room for the rotated date labels
-    ax.grid(True, linestyle='dotted', linewidth=0.5)
-    # combined-replicates file: shade the between-replicate disagreement as a
-    # band of total width = spread (max - min), centered on the plotted mean.
-    # (The file stores mean and spread only, so the true replicate envelope is
-    # not exactly recoverable; the centered band has the correct width.)
-    if 'Temperature spread (degC)' in db.columns:
-        spread = pd.to_numeric(db['Temperature spread (degC)'], errors='coerce')
-        if spread.notna().any():
-            ax.fill_between(db['Datetime'], temp - spread / 2, temp + spread / 2,
-                            color=cParam['Temperature (degC)'], alpha=0.35,
-                            linewidth=0, label='Replicate spread (max - min)')
-    ax.plot(db['Datetime'], temp, linestyle='None', marker='.', markersize=3,
-            color=bcParam['Temperature (degC)'], label='Temperature')
-    # highlight: flags 3 (suspect) and 4 (bad); 9 = missing, not highlighted
-    flagged = flag_t.isin([3, 4])
-    if flagged.any():
-        ax.plot(db.loc[flagged, 'Datetime'], temp[flagged], linestyle='None',
-                marker='x', markersize=5, color='black',
-                label='Suspect/bad (Flag_T >= 3)')
-    ax.set_ylabel(renameParameters(['Temperature (degC)'])[0])
-    ax.set_title('HOBO temperature for %s during %d' % (site, year))
-    if dataViewSettings.get('fixedScale') and 'Temperature (degC)' in dataViewSettings.get('scaleSettings', {}):
-        ax.set_ylim(dataViewSettings['scaleSettings']['Temperature (degC)']['min'],
-                    dataViewSettings['scaleSettings']['Temperature (degC)']['max'])
-    _apply_hobo_common_settings(ax, dataViewSettings)
-    ax.legend(fontsize=8)
-    plt.savefig('hobo_temperature_%s_%d.svg' % (site, year), bbox_inches='tight')
-    enable_scroll_zoom(fig)
-    plt.show()
-
-
-def plot_hobo_light (database, dataViewSettings, site):
-    """Time series of the HOBO light (log scale) for a site, with the region
-    after the fouling cutoff (Flag_lux == 4) shaded - same visual language
-    as the QCS_light_window.svg generated during qualification."""
-    year = dataViewSettings['filterByYear']
-    cParam, bcParam = getParamColors()
-    db = _hobo_site_slice(database, year, site, dataViewSettings)
-    if db.empty:
-        print('\nNo HOBO data for %s during %d.' % (site, year))
-        return
-    lux = _mask_nonpositive_lux(pd.to_numeric(db['Luminosity (lux)'], errors='coerce'), site)
-
-    fig, ax = plt.subplots(figsize=(980 / 100, 520 / 100))
-    plt.xticks(rotation=35)
-    plt.subplots_adjust(bottom=0.18)  # room for the rotated date labels
-    ax.grid(True, linestyle='dotted', linewidth=0.5)
-    ax.plot(db['Datetime'], lux, linestyle='None', marker='.', markersize=3,
-            color=bcParam['Luminosity (lux)'], label='Luminosity')
-    ax.set_yscale('log')
-    ax.set_ylabel('Luminosity (lux, log scale)')
-    ax.set_title('HOBO light for %s during %d' % (site, year))
-    if dataViewSettings.get('fixedScale') and 'Luminosity (lux)' in dataViewSettings.get('scaleSettings', {}):
-        lim = dataViewSettings['scaleSettings']['Luminosity (lux)']
-        if lim['min'] > 0:
-            ax.set_ylim(lim['min'], lim['max'])
+    plt.subplots_adjust(bottom=0.18)
+    ax1.grid(True, linestyle='dotted', linewidth=0.5)
+    handles = []
+    for i, param in enumerate(params):
+        ax = ax1 if i == 0 else ax1.twinx()
+        display = renameParameters([param])[0]
+        if param == 'Temperature (degC)':
+            temp = pd.to_numeric(db['Temperature (degC)'], errors='coerce')
+            # combined-replicates file: shade the between-replicate disagreement
+            # (band of total width = spread, centered on the plotted mean)
+            if 'Temperature spread (degC)' in db.columns:
+                spread = pd.to_numeric(db['Temperature spread (degC)'], errors='coerce')
+                if spread.notna().any():
+                    handles.append(ax.fill_between(
+                        db['Datetime'], temp - spread / 2, temp + spread / 2,
+                        color=cParam[param], alpha=0.35, linewidth=0,
+                        label='Replicate spread (max - min)'))
+            if points or not fit:
+                h, = ax.plot(db['Datetime'], temp, linestyle='None', marker='.',
+                             markersize=3, color=bcParam[param], label='Temperature')
+                handles.append(h)
+                if 'Flag_T' in db.columns:
+                    flagged = pd.to_numeric(db['Flag_T'], errors='coerce').isin([3, 4])
+                    if flagged.any():
+                        h, = ax.plot(db.loc[flagged, 'Datetime'], temp[flagged],
+                                     linestyle='None', marker='x', markersize=5,
+                                     color='black', label='Suspect/bad (Flag_T >= 3)')
+                        handles.append(h)
+            if fit:
+                s = pd.Series(temp.values, index=pd.DatetimeIndex(db['Datetime'])).dropna()
+                if len(s) > 3:
+                    xp, yp = linear_regression(s, degree=deg)
+                    yp = _floor_fit(yp)
+                    h, = ax.plot(xp, yp, linestyle='-', color=bcParam[param],
+                                 label='Temperature tendency')
+                    handles.append(h)
         else:
-            print('Warning: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
-    _apply_hobo_common_settings(ax, dataViewSettings)
-
-    # fouling window: same colors as mark_light_cutoff (qualification)
-    cutoff = _hobo_light_cutoff_start(db)
-    if cutoff is not None:
-        ax.axvline(cutoff, color='#b30000', lw=1.6)
-        ax.axvspan(cutoff, db['Datetime'].iloc[-1], color='#b30000', alpha=0.10,
-                   label='Fouling window (Flag_lux == 4)')
-        ax.text(cutoff, ax.get_ylim()[1], ' cutoff: %s' % pd.Timestamp(cutoff).date(),
-                color='#b30000', fontsize=9, va='top')
-    else:
-        ax.text(0.02, 0.99, 'no cutoff: light usable for the whole deployment',
-                transform=ax.transAxes, color='#1f7a1f', fontsize=9, va='top')
-
-    ax.legend(fontsize=8, loc='lower left')
-    plt.savefig('hobo_light_%s_%d.svg' % (site, year), bbox_inches='tight')
+            # light: daily-peak envelope on a LINEAR scale (the fouling-review
+            # visual the operator already knows), optional raw points
+            lux = pd.to_numeric(db['Luminosity (lux)'], errors='coerce')
+            peak = _lux_daily_peak(db)
+            if points:
+                h, = ax.plot(db['Datetime'], lux, linestyle='None', marker='.',
+                             markersize=2, alpha=0.35, color=cParam[param],
+                             label='Light readings')
+                handles.append(h)
+            h, = ax.plot(peak.index, peak.values, linestyle='-', marker='.',
+                         markersize=4, lw=1.2, color=bcParam[param],
+                         label='Daily light peak')
+            handles.append(h)
+            if 'Flag_lux' in db.columns:
+                cutoff = _hobo_light_cutoff_start(db)
+                if cutoff is not None:
+                    ax.axvline(cutoff, color='#b30000', lw=1.6)
+                    handles.append(ax.axvspan(cutoff, db['Datetime'].iloc[-1],
+                                              color='#b30000', alpha=0.10,
+                                              label='Fouling window (Flag_lux == 4)'))
+        ax.set_ylabel(display, color=bcParam[param])
+        ax.tick_params(axis='y', colors=bcParam[param])
+        if i == 1:
+            ax.spines['right'].set_color(bcParam[param])
+        if dataViewSettings.get('fixedScale') and param in dataViewSettings.get('scaleSettings', {}):
+            ax.set_ylim(dataViewSettings['scaleSettings'][param]['min'],
+                        dataViewSettings['scaleSettings'][param]['max'])
+    years = dataViewSettings.get('filterByYears') or []
+    year_text = ', '.join(str(y) for y in years)
+    ax1.set_title('HOBO parameters for %s%s' % (site, ' (%s)' % year_text if year_text else ''))
+    ax1.xaxis.set_major_formatter(_mdates.DateFormatter('%d/%m %H:%M'))
+    ax1.legend(handles=handles, fontsize=8)
+    plt.savefig('hobo_params_%s.svg' % site, bbox_inches='tight')
     enable_scroll_zoom(fig)
     plt.show()
+    return 1
 
 
-def plot_hobo_light_multisite (database, dataViewSettings):
-    """Multi-site comparison of the HOBO light (log scale). The start of each
-    site's fouling window (first Flag_lux == 4) is marked with a dashed
-    vertical line in the site's color, to compare when fouling
-    started at each one."""
-    year = dataViewSettings['filterByYear']
+def plot_hobo_params_across_sites (database, dataViewSettings):
+    """HOBO 'Parameters across sites': ONE figure per selected parameter with
+    every selected site overlaid on the TIME-OF-DAY axis (hours since each
+    site's own first midnight - B6), spanning every selected year in one plot.
+    Temperature: dots + optional per-site tendency (floored at 0). Light: the
+    daily-peak envelope per site (linear scale) with each site's fouling cutoff
+    marked. Returns the number of figures generated."""
     site_names = dataViewSettings['siteList']
+    params = [p for p in dataViewSettings['parameterList']
+              if p in ('Temperature (degC)', 'Luminosity (lux)')]
     colors = getSiteColors(site_names)
+    fit = dataViewSettings['tendencyLines']
+    deg = dataViewSettings['linearRegressionDegree']
+    points = dataViewSettings['viewDataPoints']
 
-    fig, ax = plt.subplots(figsize=(980 / 100, 520 / 100))
-    plt.subplots_adjust(bottom=0.14)
-    ax.grid(True, linestyle='dotted', linewidth=0.5)
-    plotted_sites = 0
-    max_hour = 0.0
-    # window anchor: midnight of the first day over the SELECTED sites (see
-    # _window_day_hours - keeps the window's day offset + clock time per site)
-    sel = database[(database['Datetime'].dt.year == year) & (database['Site'].isin(site_names))]
+    # window anchor: midnight of the first day over the SELECTED sites/years
+    # (see _window_day_hours - keeps the window's day offset + clock time)
+    years = dataViewSettings.get('filterByYears') or []
+    sel = database[database['Site'].isin(site_names)]
+    if years:
+        sel = sel[sel['Datetime'].dt.year.isin(years)]
     window_anchor = sel['Datetime'].min().normalize() if not sel.empty else None
     win = _window_day_hours(dataViewSettings, window_anchor)
-    for site in site_names:
-        # X axis standardized by TIME OF DAY (B6): hours since midnight of each
-        # site's OWN first sampled day, so sites sampled on different dates
-        # overlay by clock time (the absolute-date axis kept them side by side).
-        db = _hobo_site_slice(database, year, site)   # window applied below, in day-hours
-        if db.empty:
-            print('\nNo HOBO data for %s during %d.' % (site, year))
-            continue
-        site_origin = db['Datetime'].min().normalize()
-        x_hours = (pd.DatetimeIndex(db['Datetime']) - site_origin).total_seconds() / 3600
-        if win is not None:
-            keep = (x_hours >= win[0]) & (x_hours <= win[1])
-            db, x_hours = db[keep.values], x_hours[keep]
-            if db.empty:
-                print('\nNo HOBO data for %s inside the X-axis window during %d.' % (site, year))
+
+    n_figs = 0
+    for param in params:
+        display = renameParameters([param])[0]
+        fig, ax = plt.subplots(figsize=(1050 / 100, 540 / 100))
+        plt.subplots_adjust(bottom=0.14)
+        ax.grid(True, linestyle='dotted', linewidth=0.5)
+        plotted = 0
+        max_hour = 0.0
+        for site in site_names:
+            db = _hobo_slice_years(database, dataViewSettings, site, time_window=False)
+            if db.empty or param not in db.columns:
+                print('\nNo %s data for %s.' % (param, site))
                 continue
-        max_hour = max(max_hour, float(x_hours.max()))
-        lux = _mask_nonpositive_lux(pd.to_numeric(db['Luminosity (lux)'], errors='coerce'), site)
-        ax.plot(x_hours, lux, linestyle='None', marker='.', markersize=3,
-                color=colors[site], label=site)
-        cutoff = _hobo_light_cutoff_start(db)
-        if cutoff is not None:
-            cutoff_h = (pd.Timestamp(cutoff) - site_origin).total_seconds() / 3600
-            ax.axvline(cutoff_h, color=colors[site], lw=1.4, linestyle='--',
-                       label='%s cutoff (%s)' % (site, pd.Timestamp(cutoff).date()))
-        plotted_sites += 1
-    if plotted_sites == 0:
-        plt.close(fig)
-        print('\nNo HOBO data for any selected site during %d.' % year)
-        return
-    if win is not None:
-        _time_of_day_axis(ax, win[0], win[1])
-    else:
-        _time_of_day_axis(ax, 0.0, max(np.ceil(max_hour / 6.0) * 6.0, 24.0))
-    ax.set_yscale('log')
-    ax.set_ylabel('Luminosity (lux, log scale)')
-    ax.set_title('HOBO light comparison between sites during %d' % year)
-    if dataViewSettings.get('fixedScale') and 'Luminosity (lux)' in dataViewSettings.get('scaleSettings', {}):
-        lim = dataViewSettings['scaleSettings']['Luminosity (lux)']
-        if lim['min'] > 0:
-            ax.set_ylim(lim['min'], lim['max'])
+            values = pd.to_numeric(db[param], errors='coerce')
+            if not values.notna().any():
+                print('\nNo %s data for %s.' % (param, site))
+                continue
+            site_origin = db['Datetime'].min().normalize()
+            x_hours = (pd.DatetimeIndex(db['Datetime']) - site_origin).total_seconds() / 3600
+            if win is not None:
+                keep = (x_hours >= win[0]) & (x_hours <= win[1])
+                db, values, x_hours = db[keep.values], values[keep.values], x_hours[keep]
+                if db.empty:
+                    print('\nNo %s data for %s inside the X-axis window.' % (param, site))
+                    continue
+            max_hour = max(max_hour, float(x_hours.max()))
+            if param == 'Luminosity (lux)':
+                peak = _lux_daily_peak(db)
+                peak_h = (peak.index - site_origin).total_seconds() / 3600
+                if points:
+                    ax.plot(x_hours, values, linestyle='None', marker='.',
+                            markersize=2, alpha=0.30, color=colors[site])
+                ax.plot(peak_h, peak.values, linestyle='-', marker='.', markersize=4,
+                        lw=1.2, color=colors[site], label='%s daily peak' % site)
+                if 'Flag_lux' in db.columns:
+                    cutoff = _hobo_light_cutoff_start(db)
+                    if cutoff is not None:
+                        cutoff_h = (pd.Timestamp(cutoff) - site_origin).total_seconds() / 3600
+                        ax.axvline(cutoff_h, color=colors[site], lw=1.4, linestyle='--',
+                                   label='%s cutoff (%s)' % (site, pd.Timestamp(cutoff).date()))
+            else:
+                if fit:
+                    s = pd.Series(values.values, index=pd.DatetimeIndex(db['Datetime'])).dropna()
+                    if points:
+                        ax.plot(x_hours, values, linestyle='None', marker='.',
+                                markersize=3, color=colors[site], label='%s data' % site)
+                    if len(s) > 3:
+                        xp, yp = linear_regression(s, degree=deg)
+                        yp = _floor_fit(yp)
+                        xp_hours = (xp - site_origin).total_seconds() / 3600
+                        ax.plot(xp_hours, yp, linestyle='-', color=colors[site],
+                                label='%s tendency' % site)
+                else:
+                    ax.plot(x_hours, values, linestyle='None', marker='.',
+                            markersize=3, color=colors[site], label='%s data' % site)
+            plotted += 1
+        if plotted == 0:
+            plt.close(fig)
+            print('\nNo %s data for any selected site.' % param)
+            continue
+        if win is not None:
+            _time_of_day_axis(ax, win[0], win[1])
         else:
-            print('Warning: fixed scale for Luminosity ignored (min must be > 0 on a log axis).')
-    # NOTE: no _apply_hobo_common_settings here - this panel uses the
-    # midnight-anchored hour axis, not absolute dates
-    ax.legend(fontsize=8, loc='lower left')
-    plt.savefig('hobo_light_multisite_%d.svg' % year, bbox_inches='tight')
-    enable_scroll_zoom(fig)
-    plt.show()
+            _time_of_day_axis(ax, 0.0, max(np.ceil(max_hour / 6.0) * 6.0, 24.0))
+        ax.set_ylabel(display)
+        ax.set_title('HOBO %s across sites' % display)
+        if dataViewSettings.get('fixedScale') and param in dataViewSettings.get('scaleSettings', {}):
+            ax.set_ylim(dataViewSettings['scaleSettings'][param]['min'],
+                        dataViewSettings['scaleSettings'][param]['max'])
+        ax.legend(fontsize=8, loc='lower left')
+        param_r = re.sub(r'\([^()]*\)', '', param).strip().replace(' ', '_')
+        plt.savefig('hobo_%s_across_sites.svg' % param_r, bbox_inches='tight')
+        enable_scroll_zoom(fig)
+        plt.show()
+        n_figs += 1
+    return n_figs
 
 def plot_TS_diagram (database, dataViewSettings):
     import gsw # type: ignore

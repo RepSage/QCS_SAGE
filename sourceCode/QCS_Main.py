@@ -357,7 +357,7 @@ def selectFiles():
     if inputType_combobox.get() == 'HOBO':
         # replicates = number of selected files (program-determined, display-only)
         n_sel = len([p for p in fileNames_entry.get().split(';') if p.strip()])
-        replicate_combobox.set(str(n_sel))
+        replicate_var.set(str(n_sel))
     elif names and len(names) > 1:
         # multiple files picked but the file turned out to be Seaguard: replicates
         # only exist for HOBO, keep the first file and say so
@@ -502,7 +502,7 @@ def collect_input_settings():
     replicate_files = [p.strip() for p in fileNames_entry.get().split(';') if p.strip()]
     n_rep = len(replicate_files) if inputType_combobox.get() == 'HOBO' else 1
     if inputType_combobox.get() == 'HOBO':
-        replicate_combobox.set(str(n_rep))   # display-only, kept in sync
+        replicate_var.set(str(n_rep))   # display-only, kept in sync
     for f in replicate_files:
         if not os.path.isfile(f):
             messagebox.showerror("Error", "Data file not found:\n%s" % f)
@@ -1220,7 +1220,7 @@ def build_qualification_tab(container, root, shared_log=None):
     pipeline stage); without it (standalone dev launch) the tab creates its
     own. All pipeline logic is unchanged."""
     global window, main_frame, input_frame, output_frame, fileNames_entry, browse_file_btn
-    global inputType_combobox, dType_combobox, replicate_label, replicate_combobox, update_profile_checkbox_state, units_frame
+    global inputType_combobox, dType_combobox, replicate_label, replicate_combobox, replicate_var, update_profile_checkbox_state, units_frame
     global pressure_unit_combobox, conductivity_unit_combobox, options_frame, correct_gmt3h, gmt_check, select_profile_data
     global profile_check, check_variables, var_check, outputPath_entry, browse_output_btn, outputName_entry
     global outputFilesFormat_combobox, filter_frame, remove_bad, bad_check, remove_suspect, suspect_check
@@ -1282,8 +1282,9 @@ def build_qualification_tab(container, root, shared_log=None):
     # (each replicate is qualified separately, then combined into one series).
     replicate_label = ttk.Label(type_row, text="Replicates:", style='Header.TLabel')
     replicate_label.grid(row=0, column=2, sticky='w', padx=(12, 0), pady=(0, 2))
-    replicate_combobox = ttk.Combobox(type_row, width=4, state='disabled')
-    replicate_combobox.set("1")
+    replicate_var = StringVar(value="1")
+    replicate_combobox = ttk.Entry(type_row, textvariable=replicate_var, width=4,
+                                   state='disabled', justify='center')
     replicate_combobox.grid(row=1, column=2, sticky='w', padx=(12, 0))
     ToolTip(replicate_combobox,
             "HOBO only: how many redundant HOBO files were selected in 'Browse'\n"
@@ -1446,7 +1447,7 @@ def build_qualification_tab(container, root, shared_log=None):
             region_label.config(state='disabled')
             region_combobox.config(state='disabled')
             if not replicate_combobox.get():               # count not known until files are selected
-                replicate_combobox.set('1')
+                replicate_var.set('1')
             replicate_combobox.config(state='disabled')    # display-only: follows the file selection
         else:
             # restore the last stored Seaguard selection (if any)
@@ -1466,7 +1467,7 @@ def build_qualification_tab(container, root, shared_log=None):
             macroregion_combobox.config(state='readonly')
             region_label.config(state='normal')
             region_combobox.config(state='readonly')
-            replicate_combobox.set('')                     # replicates are HOBO-only: leave empty for Seaguard
+            replicate_var.set('')                          # replicates are HOBO-only: leave empty for Seaguard
             replicate_combobox.config(state='disabled')
             update_profile_checkbox_state()
         apply_output_name()  # keep the Output File Name in sync (single vs combined)
