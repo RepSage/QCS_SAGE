@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v5.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v5.1</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -450,20 +450,20 @@
         </tr>
         <tr>
             <td>Panel 1</td>
-            <td>Checkbox to enable the panel comparing parameters (Seaguard).
-            <strong>With Instrument = HOBO</strong>, this checkbox becomes
-            <em>"HOBO Temperature (per site)"</em> — see section 11.</td>
+            <td>Checkbox to enable the panel comparing parameters at a site.
+            <strong>With Instrument = HOBO</strong> it reads
+            <em>"Parameters at a site"</em> — see section 11.</td>
         </tr>
         <tr>
             <td>Panel 2</td>
-            <td>Checkbox to enable the panel comparing sites (Seaguard).
-            <strong>With Instrument = HOBO</strong>, it becomes
-            <em>"HOBO Light + fouling window (per site)"</em>.</td>
+            <td>Checkbox to enable the panel comparing the same parameter between sites.
+            <strong>With Instrument = HOBO</strong> it reads <em>"Parameters across sites"</em>.
+            Unavailable when the database has a single site.</td>
         </tr>
         <tr>
             <td>Panel 3</td>
-            <td>Checkbox to enable the vertical-profile panel (Seaguard).
-            <strong>With Instrument = HOBO</strong>, it becomes <em>"HOBO Light multi-site"</em>.</td>
+            <td>Checkbox to enable the vertical-profile panel (Seaguard only;
+            removed for HOBO, which has no profile).</td>
         </tr>
         <tr>
             <td>T-S Diagram</td>
@@ -920,8 +920,9 @@
     shaded), see section 11.</p>
 
     <h3>Redundant replicates (2-4 HOBOs)</h3>
-    <p>When two or more HOBOs are deployed together for redundancy, set
-    <strong>Replicates</strong> (2-4) in the main window and select all N files at once with Browse.
+    <p>When two or more HOBOs are deployed together for redundancy, simply select all the
+    files at once with Browse — the <strong>Replicates</strong> box shows how many were picked
+    (the count is program-determined, no manual choice).
     Each replicate is qualified <strong>independently</strong> (its own light-window review) and then
     combined into a single series, saved to a <code>&lt;site&gt;_&lt;start&gt;_&lt;end&gt;_combined_QLF</code>
     folder (the individual per-file <code>_QLF</code> outputs are also kept). The method is written to
@@ -1048,33 +1049,25 @@
             <th>Generated file</th>
         </tr>
         <tr>
-            <td>HOBO Temperature (per site)</td>
-            <td>Temperature time series, one plot per selected site, with the suspect/bad points
-                (<code>Flag_T &ge; 3</code>) highlighted with ×</td>
-            <td><code>hobo_temperature_&lt;site&gt;_&lt;year&gt;.svg</code></td>
+            <td>Parameters at a site</td>
+            <td>The selected parameters (temperature and/or light) for one site in a single
+                figure with twin axes, spanning <strong>every selected year in one plot</strong>.
+                Temperature: dots, optional tendency line and, for combined-replicates files,
+                one vertical bar per sample showing the replicate disagreement
+                (bar length = max &minus; min). Light: <strong>daily-peak envelope on a linear
+                scale</strong> (the fouling-review visual), optional raw points, and the fouling
+                window (<code>Flag_lux == 4</code>) shaded</td>
+            <td><code>hobo_params_&lt;site&gt;.svg</code></td>
         </tr>
         <tr>
-            <td>HOBO Light + fouling window (per site)</td>
-            <td>Light time series on a <strong>logarithmic scale</strong>, one plot per site,
-                with the region after the fouling cutoff (<code>Flag_lux == 4</code>)
-                <strong>shaded</strong> and the cutoff date annotated — it shows how far the light
-                is reliable. Without a cutoff, the plot states that the light is usable for the
-                whole deployment</td>
-            <td><code>hobo_light_&lt;site&gt;_&lt;year&gt;.svg</code></td>
-        </tr>
-        <tr>
-            <td>HOBO Light multi-site</td>
-            <td>Light from all selected sites on the same log axis, with each site's fouling
-                onset marked by a dashed line in the site's color — it compares when fouling
-                started at each location</td>
-            <td><code>hobo_light_multisite_&lt;year&gt;.svg</code></td>
+            <td>Parameters across sites</td>
+            <td>One figure per selected parameter with all sites overlaid on the
+                <strong>time-of-day axis</strong> (hours since each site's first midnight).
+                Light uses the per-site daily-peak envelope with each site's fouling cutoff
+                marked; temperature gains per-site tendency lines</td>
+            <td><code>hobo_&lt;parameter&gt;_across_sites.svg</code></td>
         </tr>
     </table>
-    <div class="note">
-        <p>On the logarithmic axes, light readings equal to 0 (night) cannot be represented and
-        become gaps in the plot; the number omitted is reported in the console. The fixed
-        luminosity scale is only applied if the minimum is greater than 0.</p>
-    </div>
 
     <h3>Scale Configuration</h3>
     <p>Advanced control over the plot scales through the "SCALE SETTINGS" panel.</p>
