@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v6.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v7.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -228,10 +228,16 @@
         <tr>
             <td>Data file</td>
             <td>Selects the raw data file(s): CSV, XLSX or a SeaGuard raw binary session
-            (<code>Data000.bin</code> &mdash; no spreadsheet export needed). Selecting SEVERAL
-            Seaguard files creates a <strong>batch</strong>: each file is qualified independently,
-            in sequence, with its own automatic <code>&lt;file&gt;_QLF</code> output. For HOBO,
-            several files are the redundant replicates of one deployment.</td>
+            (<code>Data000.bin</code> &mdash; no spreadsheet export needed). A SeaGuard cast can
+            store its sensors in several group folders (e.g. CTD, the optical pH/chlorophyll/
+            turbidity group, PAR); selecting any group's <code>Data000.bin</code> reads the
+            <strong>whole deployment</strong> &mdash; all sensor groups merged onto one time axis
+            (groups sampled at different rates are interpolated onto the finest one), so every
+            variable is qualified together. Doppler current-profiler groups are archived but not
+            qualified. Selecting SEVERAL Seaguard files creates a <strong>batch</strong>: each file
+            is qualified independently, in sequence, with its own automatic
+            <code>&lt;file&gt;_QLF</code> output. For HOBO, several files are the redundant
+            replicates of one deployment.</td>
         </tr>
         <tr>
             <td>Browse...</td>

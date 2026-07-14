@@ -771,9 +771,16 @@ def start_qualification():
     try:
         qualified_dfs = []
         light_plots = []
+        batch_failures = []
         for idx, fpath in enumerate(files, start=1):
             INPUT['file_name'] = os.path.basename(fpath)
             INPUT['raw_data_path'] = os.path.dirname(fpath)
+            # clear the previous run's success markers, so a run that fails cannot
+            # leave a stale 'last_qualified_file' that later reads as a success
+            # (the Visualization hand-off consults these).
+            OUTPUT['last_qualified_file'] = None
+            OUTPUT['last_output_root'] = None
+            OUTPUT['last_qualified_df'] = None
             if batch:
                 # each batch file names its own output automatically
                 OUTPUT['output_file_name'] = (_output_base_for(fpath) + '_QLF'
@@ -785,7 +792,23 @@ def start_qualification():
                 log_line('=== Qualification started: %s (the window may not respond while processing) ==='
                          % INPUT['file_name'])
             window.update_idletasks()
-            run_full_qualification()
+            if batch:
+                # isolate each batch file: one bad session (e.g. a 1-record capture)
+                # must not cancel the files queued after it.
+                try:
+                    run_full_qualification()
+                except data.ManualCutCancelled:
+                    raise
+                except Exception as exc:
+                    batch_failures.append((INPUT['file_name'], str(exc)))
+                    for line in traceback.format_exc().strip().splitlines():
+                        log_line('Error: %s' % line)
+                    log_line('File %s could not be qualified (%s) - skipped; continuing the batch.'
+                             % (INPUT['file_name'], exc))
+                    plt.close('all')
+                    continue
+            else:
+                run_full_qualification()
             if combine_hobo:
                 qualified_dfs.append(OUTPUT['last_qualified_df'])
                 if OUTPUT.get('last_light_plot'):
@@ -799,8 +822,13 @@ def start_qualification():
             OUTPUT['last_output_root'] = write_combined_replicates(combined, light_plots)
             log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
         if batch:
-            log_line('Done: batch finished - %d files qualified in sequence '
-                     '(one _QLF output per file).' % n)
+            n_done = n - len(batch_failures)
+            msg = ('Done: batch finished - %d of %d files qualified (one _QLF output per file).'
+                   % (n_done, n))
+            if batch_failures:
+                msg += (' %d file(s) skipped: %s.'
+                        % (len(batch_failures), ', '.join(f for f, _ in batch_failures)))
+            log_line(msg)
         else:
             log_line('Done: qualification finished. Results saved to: %s'
                      % OUTPUT.get('last_output_root', ''))
@@ -821,12 +849,16 @@ def start_qualification():
                 'latitude': INPUT.get('latitude'),
                 'longitude': INPUT.get('longitude')}
         if batch:
+            n_done = n - len(batch_failures)
+            skipped_note = ("" if not batch_failures else
+                            "\n\n%d file(s) were SKIPPED (an error is logged for each):\n%s"
+                            % (len(batch_failures), "\n".join('- %s: %s' % (f, e)
+                                                              for f, e in batch_failures)))
             messagebox.showinfo("Done",
-                                "Batch completed: %d files qualified in sequence!\n\n"
-                                "Each file has its own _QLF output in the output folder\n"
-                                "(last one: %s).\n\n"
+                                "Batch finished: %d of %d files qualified.%s\n\n"
+                                "Each qualified file has its own _QLF output in the output folder.\n\n"
                                 "You can select other files and run a new qualification "
-                                "without closing the program." % (n, OUTPUT.get('last_output_root', '')))
+                                "without closing the program." % (n_done, n, skipped_note))
         else:
             messagebox.showinfo("Done",
                                 "Qualification completed successfully!\n\n"
@@ -1793,9 +1825,16 @@ def build_qualification_tab(container, root, shared_log=None):
         end_time = raw_data['Datetime'].iloc[-1]
         # median interval in microseconds: keeps sub-second precision (some sensors log at 8 Hz)
         # and is robust to occasional gaps between records
-        ms_interval = np.timedelta64(raw_data['Datetime'].diff().median(), 'us')
-        if ms_interval <= np.timedelta64(0, 'us'):
-            raise ValueError('Could not determine the sampling interval from the Datetime column.')
+        # median interval; a single-record session (or non-increasing timestamps)
+        # gives NaT here - guard BEFORE np.timedelta64, which would otherwise raise
+        # a cryptic TypeError instead of this clear message (some raw sessions are
+        # aborted/instant captures with just one record).
+        _median_step = raw_data['Datetime'].diff().median()
+        if len(raw_data) < 2 or pd.isna(_median_step) or _median_step <= pd.Timedelta(0):
+            raise ValueError('Not enough records to qualify: the file has fewer than 2 valid '
+                             'timestamps (or non-increasing time), so no sampling interval can '
+                             'be determined. This session was skipped.')
+        ms_interval = np.timedelta64(_median_step, 'us')
         INPUT['start_time'] = start_time
         INPUT['end_time'] = end_time
 

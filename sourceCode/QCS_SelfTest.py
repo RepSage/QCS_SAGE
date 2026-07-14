@@ -553,5 +553,91 @@ assert np.isnan(out17['CO2 Level (ppm)'].iloc[2]), 'bad CO2 value not removed'
 assert not np.isnan(out17['CO2 Level (ppm)'].iloc[1]), 'O2 flags must NOT clear CO2 values'
 ok.append('handle_output_file (CO2 bucket rolls up to Flag_CO2; O2/CO2 removals independent)')
 
+# 18) reader fix (v7.0): a <Point> OUTSIDE the <SensorData> blocks (device
+# housekeeping like 'Input Voltage'/'Memory Used') still owns a Value slot in the
+# tag dictionary. The old reader counted only SensorData points and rejected the
+# layout ('unsupported layout variant'); this is exactly the group that carries
+# pH/chlorophyll/turbidity on real deployments. Now every <Point> is taken.
+def _one_sensor_aadi(descr, unit, samples, ticks0, inside=True, sys_descr=None):
+    # samples: list of (offset_seconds, value); one sensor Point (+ optional
+    # system Point OUTSIDE <SensorData>). Mirrors _build_mini_aadi's layout.
+    tps = 10_000_000                                    # .NET ticks per second
+    sys_point = ('<Point ID="9" Descr="%s" Type="VT_R4" Unit="V" Format="%%.1f">'
+                 '<StatusCode>0</StatusCode><Value /></Point>\n' % sys_descr) if sys_descr else ''
+    template = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<Device ID="5650-0" ProdName="SeaGuard II">\n'
+        '<Time>2026-03-16T18:02:01Z</Time><StatusCode>0</StatusCode>\n'
+        '<Data><Time>t</Time><RecordNumber>0</RecordNumber>\n'
+        '<SensorData ID="S-1" Descr="Group #0">\n'
+        '<StatusCode>0</StatusCode><Parameters>\n'
+        '<Point ID="0" Descr="%s" Type="VT_R4" Unit="%s"><StatusCode>0</StatusCode><Value /></Point>\n'
+        '</Parameters></SensorData>\n%s</Data></Device>' % (descr, unit, sys_point)).encode()
+    entries = [
+        _aadi_dict_entry(1, 0, 0x00, b'Device'), _aadi_dict_entry(2, 1, 0x28, b'Time'),
+        _aadi_dict_entry(3, 1, 0x00, b'Data'), _aadi_dict_entry(4, 3, 0x04, b'RecordNumber'),
+        _aadi_dict_entry(5, 3, 0x28, b'Time'), _aadi_dict_entry(6, 3, 0x00, b'SensorData'),
+        _aadi_dict_entry(7, 6, 0x04, b'StatusCode'), _aadi_dict_entry(8, 6, 0x00, b'Parameters'),
+        _aadi_dict_entry(9, 8, 0x00, b'Point'), _aadi_dict_entry(10, 9, 0x04, b'StatusCode'),
+        _aadi_dict_entry(11, 9, 0x14, b'Value'),
+    ]
+    if sys_descr:                                       # system Point outside SensorData
+        entries += [_aadi_dict_entry(12, 3, 0x00, b'Point'),
+                    _aadi_dict_entry(13, 12, 0x04, b'StatusCode'),
+                    _aadi_dict_entry(14, 12, 0x14, b'Value')]
+    dictionary = b''.join(entries)
+    tpl_off = 488
+    header = (b'AADIBXML1.0' + b'\x00' * (0x1c - 11) +
+              _struct.pack('<7I', tpl_off, 0, 0, tpl_off, len(template),
+                           tpl_off + len(template), len(dictionary)))
+    header += b'\x00' * (tpl_off - len(header))
+    records = b''
+    for i, (off, val) in enumerate(samples):
+        fields = (_struct.pack('<H', 2) + _struct.pack('<q', ticks0) +
+                  _struct.pack('<H', 4) + _struct.pack('<i', i + 1) +
+                  _struct.pack('<H', 5) + _struct.pack('<q', ticks0 + off * tps) +
+                  _struct.pack('<H', 7) + _struct.pack('<i', 0) +
+                  _struct.pack('<H', 11) + _struct.pack('<f', val))
+        nf = 5
+        if sys_descr:
+            fields += _struct.pack('<H', 14) + _struct.pack('<f', 7.7); nf = 6
+        records += (b'\x11\x22\x33\x44\x55\x66\x77\x88' +
+                    _struct.pack('<II', len(fields), nf) + fields + b'\xae\xfd')
+    return header + template + dictionary + records
+
+_TICKS0 = 638_990_000_000_000_000
+with _tempfile.TemporaryDirectory() as tmp:
+    bin_path = _os.path.join(tmp, 'Data000.bin')
+    with open(bin_path, 'wb') as f:
+        f.write(_one_sensor_aadi('AMT pH#1', 'pH', [(0, 7.0), (10, 7.1), (20, 7.2)],
+                                 _TICKS0, sys_descr='Input Voltage'))
+    raw = data.read_seaguard_bin(bin_path)              # would raise before the fix
+    assert 'AMT pH#1[pH]' in raw.columns and 'Input Voltage[V]' in raw.columns, list(raw.columns)
+    assert abs(raw['AMT pH#1[pH]'].iloc[0] - 7.0) < 1e-5
+    assert abs(raw['Input Voltage[V]'].iloc[0] - 7.7) < 1e-5
+    std = data.read_ctd({'raw_data_path': tmp, 'file_name': 'Data000.bin'})
+    assert 'pH' in std.columns and abs(std['pH'].iloc[2] - 7.2) < 1e-5, list(std.columns)
+ok.append('read_seaguard_bin (Point outside <SensorData> decodes; pH/optical group unlocked)')
+
+# 19) deployment merge (v7.0): sibling sensor-group folders of the same cast,
+# sampled at DIFFERENT rates, are merged onto the FINEST group's time axis with
+# linear interpolation (slower sensors), so a multi-group cast qualifies together.
+with _tempfile.TemporaryDirectory() as tmp:
+    coarse = _os.path.join(tmp, '5650-2097-0-2026-03-16T18-02-01.000Z')   # pH every 20 s
+    fine = _os.path.join(tmp, '5650-2097-1-2026-03-16T18-02-01.100Z')     # temp every 10 s
+    _os.makedirs(coarse); _os.makedirs(fine)
+    with open(_os.path.join(coarse, 'Data000.bin'), 'wb') as f:
+        f.write(_one_sensor_aadi('AMT pH#1', 'pH', [(0, 7.0), (20, 7.2), (40, 7.4)], _TICKS0))
+    with open(_os.path.join(fine, 'Data000.bin'), 'wb') as f:
+        f.write(_one_sensor_aadi('Temperature', 'DegC',
+                                 [(0, 27.0), (10, 27.1), (20, 27.2), (30, 27.3), (40, 27.4)], _TICKS0))
+    dep = data.read_seaguard_deployment(_os.path.join(fine, 'Data000.bin'))
+    assert len(dep) == 5, len(dep)                      # master = finest (temperature) axis
+    assert 'Temperature[DegC]' in dep.columns and 'AMT pH#1[pH]' in dep.columns, list(dep.columns)
+    assert abs(dep['Temperature[DegC]'].iloc[0] - 27.0) < 1e-5
+    assert abs(dep['AMT pH#1[pH]'].iloc[1] - 7.1) < 1e-5, dep['AMT pH#1[pH]'].tolist()  # interp at +10 s
+    assert abs(dep['AMT pH#1[pH]'].iloc[3] - 7.3) < 1e-5                                 # interp at +30 s
+ok.append('read_seaguard_deployment (sibling sensor groups merged onto finest axis by time interpolation)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

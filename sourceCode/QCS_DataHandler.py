@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v6.0'
+QCS_VERSION = 'v7.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -66,16 +66,23 @@ def _decode_aadi_bin(file_path):
         if name == 'Value':
             value_ids.append(ident)
 
-    # template: the k-th dictionary 'Value' id corresponds to the k-th Point
-    # (document order); column name = PointDescr[Unit], as in the CSV export
+    # the k-th dictionary 'Value' id corresponds to the k-th Point in template
+    # document order; column name = PointDescr[Unit], as in the CSV export.
+    # Points may sit OUTSIDE the <SensorData> blocks (device housekeeping such as
+    # 'Input Voltage' and 'Memory Used'), yet they still occupy a Value slot in
+    # the tag dictionary - so every <Point> is taken, not only those nested in a
+    # <SensorData>. Attribute order is not assumed (Descr/Unit read individually).
     columns = []
-    for sensor in re.finditer(r'<SensorData [^>]*Descr="[^"]+"(.*?)</SensorData>', template, re.S):
-        for point in re.finditer(r'<Point ID="\d+" Descr="([^"]+)" Type="\w+" Unit="([^"]*)"',
-                                 sensor.group(1)):
-            columns.append('%s[%s]' % (point.group(1), point.group(2)))
+    for point in re.finditer(r'<Point\b[^>]*>', template):
+        tag = point.group(0)
+        descr = re.search(r'\bDescr="([^"]*)"', tag)
+        unit = re.search(r'\bUnit="([^"]*)"', tag)
+        columns.append('%s[%s]' % (descr.group(1) if descr else '',
+                                   unit.group(1) if unit else ''))
     if len(columns) != len(value_ids):
         raise ValueError('AADI reader (%s): %d parameters in the template but %d value '
-                         'slots in the tag dictionary - unsupported layout variant.'
+                         'slots in the tag dictionary - unsupported layout variant '
+                         '(e.g. DCPS/Doppler current profiler).'
                          % (os.path.basename(file_path), len(columns), len(value_ids)))
     # duplicate parameter names (e.g. each sensor's own Temperature) get the
     # same .1/.2 suffixes pandas produces when reading the CSV export
@@ -144,6 +151,122 @@ def read_seaguard_bin(file_path):
     print('Info: AADI binary session decoded: %d records, %s to %s.'
           % (len(frame), frame['Record Time'].min(), frame['Record Time'].max()))
     return frame
+
+
+# ---------------------------------------------------------------------------
+# A SeaGuard cast/deployment can be split into several sensor-GROUP folders that
+# sit side by side (named '<serial>-<groupindex>-<start-timestamp>Z'): the
+# current standard protocol logs all sensors together in one synchronous group
+# (plus a separate Doppler group), but older deployments split the sensors into
+# groups sampled at DIFFERENT rates (e.g. CTD 2 s, pH/optical 10 s, PAR 5 s) over
+# the same time window. To qualify a deployment as one record, the groups are
+# merged in time: the finest group is the master axis and the slower groups are
+# linearly interpolated onto it (same approach as the dissolved-CO2 merge).
+# Doppler/DCPS current-profiler groups are skipped - QCS qualifies scalar water
+# properties, not current velocity; the raw .bin stays archived.
+# ---------------------------------------------------------------------------
+
+def _merge_sensor_groups(groups):
+    """Aligns sensor groups (already decoded DataFrames) onto ONE time axis: the
+    finest group (most records) is the master; every other group's parameter
+    columns are linearly interpolated in time onto the master's 'Record Time'.
+    A gap larger than 2x a group's own median interval is not bridged (NaN) and
+    no value is extrapolated beyond a group's own coverage."""
+    groups = sorted(groups, key=len, reverse=True)      # finest = most records
+    master = groups[0].copy().reset_index(drop=True)
+    master_t = master['Record Time'].values.astype('datetime64[ns]').astype('int64')
+    for g in groups[1:]:
+        g = g.sort_values('Record Time')
+        gt = g['Record Time'].values.astype('datetime64[ns]').astype('int64')
+        if len(gt) < 2:
+            continue
+        med = float(np.median(np.diff(gt)))             # median interval (ns)
+        tol = 2.0 * med
+        pos = np.searchsorted(gt, master_t)
+        lo = np.clip(pos - 1, 0, len(gt) - 1)
+        hi = np.clip(pos, 0, len(gt) - 1)
+        gap = np.minimum(np.abs(master_t - gt[lo]), np.abs(master_t - gt[hi]))
+        valid = (master_t >= gt[0]) & (master_t <= gt[-1]) & (gap <= tol)
+        for col in g.columns:
+            if col in ('Record Time', 'Record Number'):
+                continue
+            name = col
+            k = 1
+            while name in master.columns:               # keep cross-group names unique
+                name = '%s.%d' % (col, k)
+                k += 1
+            vals = np.interp(master_t, gt, g[col].values.astype(float))
+            vals[~valid] = np.nan
+            master[name] = vals
+    master = master.sort_values('Record Time', kind='stable')
+    master.index = np.arange(len(master))
+    return master
+
+
+def read_seaguard_deployment(file_path):
+    """Reads a whole SeaGuard deployment: the selected sensor-group folder plus
+    any sibling sensor-group folders of the SAME cast (same instrument serial and
+    start time, within a small tolerance), merged onto one time axis by
+    _merge_sensor_groups. Doppler/DCPS groups are skipped. Falls back to the
+    single-folder read when the folder is not a '<serial>-<group>-<timestamp>'
+    session folder (e.g. a lone Data000.bin)."""
+    import datetime as _dt
+    group_folder = os.path.dirname(file_path)
+    parent = os.path.dirname(group_folder)
+    pat = re.compile(r'(\d+-\d+)-(\d+)-(\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d)')
+    m = pat.match(os.path.basename(group_folder))
+    if not m:
+        return read_seaguard_bin(file_path)
+    serial = m.group(1)
+    sel_name = os.path.basename(group_folder)
+    # every same-serial session folder in the parent, with its start time
+    sessions = []
+    for name in os.listdir(parent):
+        mm = pat.match(name)
+        if not mm or mm.group(1) != serial:
+            continue
+        if os.path.exists(os.path.join(parent, name, 'Data000.bin')):
+            sessions.append((_dt.datetime.strptime(mm.group(3), '%Y-%m-%dT%H-%M-%S'), name))
+    sessions.sort()
+    # Cluster into CASTS. The sensor groups of one cast start close together
+    # (seconds to a couple of minutes apart - each group's logging begins at a
+    # slightly different instant, and the Doppler group can start a few minutes
+    # off), while different casts in the same folder are far apart. A start-time
+    # gap larger than CAST_GAP opens a new cast. Anchoring on the SELECTED group's
+    # own start (the old 90 s window) missed groups when the selected one was the
+    # time outlier - e.g. picking the Doppler group made its sensor siblings
+    # invisible and the whole cast was lost.
+    CAST_GAP = 15 * 60
+    clusters, cur = [], []
+    for st, name in sessions:
+        if cur and (st - cur[-1][0]).total_seconds() > CAST_GAP:
+            clusters.append(cur)
+            cur = []
+        cur.append((st, name))
+    if cur:
+        clusters.append(cur)
+    cast = next((c for c in clusters if any(n == sel_name for _, n in c)), None)
+    siblings = [(name, os.path.join(parent, name, 'Data000.bin')) for _, name in (cast or [])]
+    if len(siblings) <= 1:
+        return read_seaguard_bin(file_path)
+    groups, skipped = [], []
+    for name, path in siblings:
+        try:
+            groups.append(read_seaguard_bin(path))
+        except ValueError as exc:                              # e.g. DCPS/Doppler
+            skipped.append('%s (%s)' % (name, exc))
+    if skipped:
+        print('Info: %d sensor group(s) skipped in the deployment: %s'
+              % (len(skipped), '; '.join(skipped)))
+    groups = [g for g in groups if g is not None and len(g)]
+    if not groups:
+        raise ValueError('No readable sensor group in the deployment %r.' % parent)
+    if len(groups) == 1:
+        return groups[0]
+    merged = _merge_sensor_groups(groups)
+    print('Info: %d sensor groups merged onto the finest time axis: %d records, '
+          '%d columns.' % (len(groups), len(merged), merged.shape[1]))
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -267,8 +390,10 @@ def read_ctd(INPUT):
     # First determine file type and handle accordingly
     if INPUT['file_name'].lower().endswith('.bin'):
         # SeaGuard II raw binary session: decoded into the same layout as the
-        # instrument's CSV export, so everything below applies unchanged
-        dataframe = read_seaguard_bin(file_path)
+        # instrument's CSV export, so everything below applies unchanged. Reads
+        # the whole deployment - all sibling sensor-group folders merged in time
+        # (Doppler excluded) - so a multi-group cast qualifies as one record.
+        dataframe = read_seaguard_deployment(file_path)
     elif INPUT['file_name'].lower().endswith('.xlsx'):
         # For Excel files, we need a different approach to find the header
         # Read the file line by line to find the header row
