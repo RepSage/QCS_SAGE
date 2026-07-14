@@ -1791,6 +1791,54 @@ def build_qualification_tab(container, root, shared_log=None):
 
     # The whole qualification pipeline runs inside this function so the main
     # window stays open and the user can qualify several files in sequence.
+    def run_doppler_qualification(bin_path):
+        """DCPS / Doppler current-profiler pipeline (v8.0): reads the raw
+        session, runs the 4 current QC tests, writes the qualified sheet and
+        the 4 current panels. Selected automatically when the chosen .bin
+        belongs to a DCPS sensor group."""
+        log_line('DCPS session detected: running the CURRENT-PROFILER qualification.')
+        log_line('Stage 1/4: reading the raw Doppler session...')
+        frame = data.read_seaguard_doppler(bin_path)
+        if INPUT['correct_gmt3h']:
+            frame['Datetime'] = frame['Datetime'] - timedelta(hours=3)
+            log_line('Info: GMT-3 correction applied to the record times.')
+        log_line('Stage 2/4: running current quality tests (%d cell samples)...' % len(frame))
+        flags, rollup = QC.doppler_qc(frame, CONFIG.get('dopplerSettings'))
+        frame['Flag'] = flags
+        frame['Flag_cur'] = rollup
+        frame['QCS version'] = data.QCS_VERSION
+        counts = frame['Flag_cur'].value_counts().to_dict()
+        log_line('Current QC: good %d, suspect %d, bad %d, missing %d.'
+                 % (counts.get(1, 0), counts.get(3, 0), counts.get(4, 0), counts.get(9, 0)))
+        log_line('Stage 3/4: writing the qualified current table...')
+        base = _output_base_for(bin_path)
+        root_out = os.path.join(OUTPUT['output_file_path'], base + '_DOPPLER_QLF')
+        table_dir = os.path.join(root_out, 'QCS qualified current data')
+        os.makedirs(table_dir, exist_ok=True)
+        out_name = os.path.splitext(OUTPUT['output_file_name'])[0]
+        fmt = OUTPUT['output_data_format']
+        table_path = os.path.join(table_dir, out_name + fmt)
+        if fmt == '.xlsx':
+            frame.to_excel(table_path, index=False)
+        else:
+            frame.to_csv(table_path, index=False, sep=';')
+        legend = os.path.join(table_dir, 'QCS_current_flag_legend.txt')
+        with open(legend, 'w', encoding='utf-8') as f:
+            f.write('QCS Doppler current qualification - flag string positions\n')
+            for pos, (key, label) in enumerate(QC.DOPPLER_TEST_SEQUENCE, start=1):
+                f.write('%d. %s (%s)\n' % (pos, label, key))
+            f.write('\nFlag codes: 1 good, 2 not evaluated, 3 suspect, 4 bad, 9 missing.\n')
+            f.write('Flag_cur = worst flag of the row (4 > 3 > 9 > 1).\n')
+        log_line('Stage 4/4: rendering the current panels...')
+        panel_dir = os.path.join(root_out, 'QCS current panels')
+        site = INPUT.get('site') or base
+        files = view.plot_doppler_panels(frame, panel_dir, label=site)
+        log_line('Info: %d current panel(s) saved.' % len(files))
+        OUTPUT['last_qualified_df'] = frame
+        OUTPUT['last_qualified_file'] = table_path
+        OUTPUT['last_output_root'] = root_out
+        log_line('Done: Doppler qualification finished. Results saved to: %s' % root_out)
+
     def run_full_qualification():
         tsSettings = CONFIG['tsSettings']
         tsQualityTests = CONFIG['tsQualityTests']
@@ -1798,6 +1846,15 @@ def build_qualification_tab(container, root, shared_log=None):
 
         # change to folder containing raw data
         os.chdir(INPUT['raw_data_path'])
+
+        # DCPS / Doppler current-profiler session: its own pipeline (v8.0)
+        _bin_path = os.path.join(INPUT['raw_data_path'], INPUT['file_name'])
+        if (INPUT['input_type'] == 'Seaguard'
+                and INPUT['file_name'].lower().endswith('.bin')
+                and data.is_seaguard_doppler(_bin_path)):
+            run_doppler_qualification(_bin_path)
+            return
+
         log_line('Stage 1/5: reading input file (%s)...' % INPUT['input_type'])
         for message in INPUT.get('coord_msgs', []):
             log_line('Info: %s' % message)

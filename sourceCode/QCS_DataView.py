@@ -1459,3 +1459,84 @@ def plot_TS_diagram (database, dataViewSettings):
             plt.show()
 
 
+
+
+# ---------------------------------------------------------------------------
+# DCPS / Doppler current-profiler panels (v8.0). Four figures rendered from
+# the QUALIFIED tidy frame (needs 'Flag_cur'): rows flagged BAD are excluded.
+# ---------------------------------------------------------------------------
+
+def plot_doppler_panels(frame, out_dir, label=''):
+    """Saves the 4 current panels as SVGs into out_dir. Returns file list."""
+    import os
+    import matplotlib.dates as mdates
+    os.makedirs(out_dir, exist_ok=True)
+    ok = frame[frame['Flag_cur'] != 4].copy()
+    if not len(ok):
+        return []
+    files = []
+    t0 = ok['Datetime'].min()
+
+    # 1) time x depth heatmaps: speed + direction
+    fig, axes = plt.subplots(2, 1, figsize=(11, 7), sharex=True)
+    for ax, col, cmap, unit in ((axes[0], 'Horizontal speed (cm/s)', 'viridis', 'cm/s'),
+                                (axes[1], 'Direction (deg)', 'twilight', 'deg')):
+        piv = ok.pivot_table(index='Depth (m)', columns='Datetime', values=col)
+        if piv.size:
+            m = ax.pcolormesh(piv.columns, piv.index, piv.values, cmap=cmap, shading='nearest')
+            fig.colorbar(m, ax=ax, label='%s [%s]' % (col.split(' (')[0], unit))
+        ax.invert_yaxis()
+        ax.set_ylabel('Depth (m)')
+    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+    fig.suptitle('Current profile - %s' % label)
+    fig.autofmt_xdate()
+    p = os.path.join(out_dir, 'Current profile (time x depth).svg')
+    fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+
+    # representative depth = the GOOD cell with most samples
+    rep_depth = ok.groupby('Depth (m)').size().idxmax()
+    rep = ok[ok['Depth (m)'] == rep_depth].sort_values('Datetime')
+
+    # 2) stick plot (vectors at the representative depth)
+    fig, ax = plt.subplots(figsize=(11, 4))
+    tnum = mdates.date2num(rep['Datetime'])
+    ax.quiver(tnum, np.zeros(len(rep)), rep['East speed (cm/s)'], rep['North speed (cm/s)'],
+              angles='uv', scale_units='y', scale=1, width=0.002)
+    ax.axhline(0, color='0.6', lw=0.8)
+    ax.set_ylabel('North component (cm/s)')
+    ax.set_title('Current sticks at %.1f m - %s' % (rep_depth, label))
+    ax.xaxis_date(); ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+    fig.autofmt_xdate()
+    p = os.path.join(out_dir, 'Current stick plot.svg')
+    fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+
+    # 3) U/V component series at up to 4 depths
+    depths = sorted(ok['Depth (m)'].dropna().unique())
+    sel = depths[:: max(1, len(depths) // 4)][:4]
+    fig, axes = plt.subplots(2, 1, figsize=(11, 6), sharex=True)
+    for d in sel:
+        sub = ok[ok['Depth (m)'] == d].sort_values('Datetime')
+        axes[0].plot(sub['Datetime'], sub['East speed (cm/s)'], lw=0.9, label='%.1f m' % d)
+        axes[1].plot(sub['Datetime'], sub['North speed (cm/s)'], lw=0.9, label='%.1f m' % d)
+    axes[0].set_ylabel('East U (cm/s)'); axes[1].set_ylabel('North V (cm/s)')
+    axes[0].legend(fontsize=8, ncol=len(sel)); axes[0].set_title('Current components - %s' % label)
+    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+    fig.autofmt_xdate()
+    p = os.path.join(out_dir, 'Current components (U-V).svg')
+    fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+
+    # 4) progressive vector diagram at the representative depth
+    fig, ax = plt.subplots(figsize=(7, 7))
+    dt_s = rep['Datetime'].diff().dt.total_seconds().fillna(0).to_numpy()
+    x_km = np.cumsum(rep['East speed (cm/s)'].to_numpy() / 100.0 * dt_s) / 1000.0
+    y_km = np.cumsum(rep['North speed (cm/s)'].to_numpy() / 100.0 * dt_s) / 1000.0
+    ax.plot(x_km, y_km, '-', lw=1.2)
+    ax.plot([0], [0], 'o', ms=6)
+    ax.set_xlabel('East displacement (km)'); ax.set_ylabel('North displacement (km)')
+    ax.set_title('Progressive vector at %.1f m - %s\n(%s to %s)'
+                 % (rep_depth, label, t0.strftime('%d/%m %H:%M'),
+                    ok['Datetime'].max().strftime('%d/%m %H:%M')))
+    ax.set_aspect('equal', adjustable='datalim'); ax.grid(alpha=0.3)
+    p = os.path.join(out_dir, 'Progressive vector diagram.svg')
+    fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+    return files

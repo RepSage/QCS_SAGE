@@ -639,5 +639,48 @@ with _tempfile.TemporaryDirectory() as tmp:
     assert abs(dep['AMT pH#1[pH]'].iloc[3] - 7.3) < 1e-5                                 # interp at +30 s
 ok.append('read_seaguard_deployment (sibling sensor groups merged onto finest axis by time interpolation)')
 
+# 20) Doppler current QC (v8.0): the 4-test flag string and the Flag_cur rollup.
+# Rows: good | over-speed BAD | dead cell (state!=0) BAD | noisy SUSPECT |
+# tilted SUSPECT | missing.
+import QCS_Tests as _QCT
+dop = pd.DataFrame({
+    'Horizontal speed (cm/s)': [10.0, 400.0, 0.0, 12.0, 11.0, np.nan],
+    'Signal strength (dB)':    [-40.0, -40.0, 0.0, -40.0, -40.0, -40.0],
+    'Cell state':              [0, 0, 9408, 0, 0, 0],
+    'Speed stdev (cm/s)':      [5.0, 5.0, 5.0, 80.0, 5.0, 5.0],
+    'Tilt (deg)':              [5.0, 5.0, 5.0, 5.0, 20.0, 5.0],
+})
+dflags, droll = _QCT.doppler_qc(dop)
+assert dflags[0] == '1111' and droll[0] == 1, (dflags[0], droll[0])
+assert dflags[1][0] == '4' and droll[1] == 4, dflags[1]          # over max_speed
+assert dflags[2][1] == '4' and droll[2] == 4, dflags[2]          # dead cell state
+assert dflags[3][2] == '3' and droll[3] == 3, dflags[3]          # noisy stdev
+assert dflags[4][3] == '3' and droll[4] == 3, dflags[4]          # tilt suspect
+assert dflags[5] == '9999' and droll[5] == 9, dflags[5]          # missing
+# tilt BAD threshold
+dflags2, droll2 = _QCT.doppler_qc(dop.assign(**{'Tilt (deg)': [40.0] * 6}))
+assert dflags2[0][3] == '4' and droll2[0] == 4
+ok.append('doppler_qc (speed range / signal quality / stdev / tilt; Flag_cur rollup)')
+
+# 21) is_seaguard_doppler: detects the DCPS template, rejects the scalar one.
+with _tempfile.TemporaryDirectory() as tmp:
+    dcps_tpl = ('<?xml version="1.0"?><Device><Data>'
+                '<SensorData ID="5400-1" Descr="DCPS #1" ProdName="Doppler Current '
+                'Profiler Sensor"></SensorData></Data></Device>').encode()
+    tpl_off = 488
+    hdr = (b'AADIBXML1.0' + b'\x00' * (0x1c - 11) +
+           _struct.pack('<7I', tpl_off, 0, 0, tpl_off, len(dcps_tpl),
+                        tpl_off + len(dcps_tpl), 0))
+    hdr += b'\x00' * (tpl_off - len(hdr))
+    p_dcps = _os.path.join(tmp, 'Data000.bin')
+    with open(p_dcps, 'wb') as f:
+        f.write(hdr + dcps_tpl)
+    assert data.is_seaguard_doppler(p_dcps) is True
+    p_scalar = _os.path.join(tmp, 'Data001.bin')
+    with open(p_scalar, 'wb') as f:
+        f.write(_build_mini_aadi())
+    assert data.is_seaguard_doppler(p_scalar) is False
+ok.append('is_seaguard_doppler (DCPS template detected; scalar session rejected)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))
