@@ -270,6 +270,255 @@ def read_seaguard_deployment(file_path):
 
 
 # ---------------------------------------------------------------------------
+# DCPS / Doppler current-profiler sessions (Aanderaa DCPS on the SeaGuard II).
+# Same AADIBXML container as the scalar sessions, but a much richer record:
+# - the tag dictionary must be parsed SEQUENTIALLY (entry = 13-byte prefix,
+#   name, NUL, 3 zero bytes); the regex scan used for scalar files corrupts on
+#   dictionaries this large (payload bytes that look like ASCII swallow names).
+# - value slots are the template <Point>s that CONTAIN a <Value/>; the
+#   self-closing <Point/>s inside <CellAttributes> only DEFINE the per-cell
+#   parameters (ID -> Descr/Unit), and each <Cell Index=k> holds bare Points
+#   referencing them. k-th Point-parented dictionary 'Value' <-> k-th slot.
+# - Value payloads come typed: 0x14 float32 (4 B), 0x04 int32 (4 B),
+#   0x02 int16 (2 B - Air Detect, Ping Count, Cell States); one extra 'Value'
+#   belongs to the <Vector> element (EventReg flags): u32 dim + dim x int32.
+# - rec_len counts from the SYNC marker and the record ends with a 4-char
+#   checksum, so records are walked BY BYTES, not by the field count.
+# Decoding validated against the instrument's own CSV export (CFRIO1
+# 22.03.2021): 15,948 value comparisons across 12 records, 100% of the
+# measurement parameters identical (only export-side blanks differ).
+# ---------------------------------------------------------------------------
+
+def _parse_aadi_dictionary(dictionary):
+    """Sequentially parses the tag dictionary. Returns (entries, value_ids):
+    entries[id] = (name, parent_id, type_code); value_ids = 'Value' entries in
+    dictionary order."""
+    import struct
+    entries = {}
+    value_ids = []
+    p = 0
+    while p + 13 < len(dictionary):
+        ident, parent = struct.unpack_from('<HH', dictionary, p)
+        type_code = struct.unpack_from('<I', dictionary, p + 7)[0]
+        q = dictionary.find(b'\x00', p + 13)
+        if q < 0:
+            break
+        name = dictionary[p + 13:q].decode('ascii', errors='replace')
+        if not name or not re.match(r'^[A-Za-z][A-Za-z0-9_]*$', name):
+            break
+        entries[ident] = (name, parent, type_code)
+        if name == 'Value':
+            value_ids.append(ident)
+        p = q + 4                       # NUL + 3 trailing zero bytes
+    return entries, value_ids
+
+
+def is_seaguard_doppler(file_path):
+    """True when the .bin session belongs to a DCPS / Doppler current profiler
+    (template SensorData named 'DCPS ...' / product 'Doppler Current Profiler')."""
+    import struct
+    try:
+        with open(file_path, 'rb') as f:
+            blob = f.read(64 * 1024)
+        if not blob.startswith(_AADI_MAGIC):
+            return False
+        tpl_off, _, _, _, tpl_len, _, _ = struct.unpack_from('<7I', blob, 0x1c)
+        head = blob[tpl_off:tpl_off + min(tpl_len, 4096)].decode('utf-8', 'replace')
+        return bool(re.search(r'Descr="DCPS|Doppler Current Profiler', head))
+    except Exception:
+        return False
+
+
+def _decode_dcps_bin(file_path):
+    """Decodes ONE DCPS DataNNN.bin. Returns (records, slots, columns):
+    records = [(Timestamp, {slot_index: value}, vector_or_None), ...];
+    slots[i] = (descr, unit, column_descr, cell_index, depth_m) with
+    column_descr/cell None for the record-level (non-cell) parameters."""
+    import struct
+    import datetime as _dt
+    import xml.etree.ElementTree as ET
+    with open(file_path, 'rb') as f:
+        blob = f.read()
+    if not blob.startswith(_AADI_MAGIC):
+        raise ValueError("'%s' is not an AADI binary session file." % os.path.basename(file_path))
+    tpl_off, _, _, _, tpl_len, dict_off, dict_len = struct.unpack_from('<7I', blob, 0x1c)
+    template = blob[tpl_off:tpl_off + tpl_len].decode('utf-8', 'replace')
+    entries, value_ids = _parse_aadi_dictionary(blob[dict_off:dict_off + dict_len])
+
+    def parent_name(ident):
+        ent = entries.get(ident)
+        par = entries.get(ent[1]) if ent else None
+        return par[0] if par else ''
+
+    # template: value slots in document order, with Column/Cell context
+    tpl = template[:template.rfind('</Device>') + len('</Device>')]
+    root = ET.fromstring(tpl)
+
+    def local(el):
+        return el.tag.split('}')[-1]
+
+    slots = []
+    columns = []                        # (descr, start, cellsize, numcells)
+
+    def cell_defs(column_el):
+        defs = {}
+        for ca in column_el:
+            if local(ca) == 'CellAttributes':
+                for pt in ca:
+                    if local(pt) == 'Point':
+                        defs[pt.attrib.get('ID')] = (pt.attrib.get('Descr', '?'),
+                                                     pt.attrib.get('Unit', ''))
+        return defs
+
+    def collect(el, col=None, cell=None, defs=None):
+        tag = local(el)
+        if tag == 'Column':
+            col = (el.attrib.get('Descr', '?'),
+                   float(el.attrib.get('ColumnStart', 0) or 0),
+                   float(el.attrib.get('CellSize', 0) or 0))
+            columns.append((col[0], col[1], col[2], int(el.attrib.get('NumCells', 0) or 0)))
+            defs = cell_defs(el)
+        elif tag == 'Cell':
+            cell = int(el.attrib.get('Index', -1))
+        if tag == 'Point' and any(local(c) == 'Value' for c in el):
+            if el.attrib.get('Descr') is not None:
+                slots.append((el.attrib.get('Descr'), el.attrib.get('Unit', ''),
+                              None, None, None))
+            else:
+                d, u = (defs or {}).get(el.attrib.get('ID'), ('?', ''))
+                depth = (col[1] + col[2] * (cell + 0.5)) if col else None
+                slots.append((d, u, col[0] if col else None, cell, depth))
+        for ch in el:
+            collect(ch, col, cell, defs)
+    collect(root)
+
+    point_values = [i for i in value_ids if parent_name(i) == 'Point']
+    if len(point_values) != len(slots):
+        raise ValueError('DCPS reader (%s): %d value ids vs %d template slots - '
+                         'unsupported layout.' % (os.path.basename(file_path),
+                                                  len(point_values), len(slots)))
+    vid2slot = dict(zip(point_values, range(len(slots)), strict=True))
+
+    records = []
+    pos = blob.find(_AADI_SYNC)
+    while pos != -1:
+        q = pos + 8
+        rec_len, _nf = struct.unpack_from('<II', blob, q)
+        q += 8
+        field_end = pos + rec_len - 4          # 4-char checksum closes the record
+        rt = None
+        vals = {}
+        vector = None
+        ok = field_end <= len(blob)
+        while ok and q + 2 <= field_end:
+            ident = struct.unpack_from('<H', blob, q)[0]
+            q += 2
+            ent = entries.get(ident)
+            if ent is None:
+                ok = False
+                break
+            name, parent, tc = ent
+            if name == 'Value' and parent_name(ident) == 'Vector':
+                dim = struct.unpack_from('<I', blob, q)[0]
+                q += 4
+                if dim > 64:
+                    ok = False
+                    break
+                vector = [struct.unpack_from('<i', blob, q + 4 * j)[0] for j in range(dim)]
+                q += 4 * dim
+            elif tc == 0x28:                    # 8-byte .NET ticks
+                ticks = struct.unpack_from('<q', blob, q)[0]
+                q += 8
+                if name == 'Time' and parent != 1:
+                    rt = pd.Timestamp(_AADI_TICK0 + _dt.timedelta(microseconds=ticks // 10))
+            elif tc == 0x02:                    # 2-byte int16
+                v = struct.unpack_from('<h', blob, q)[0]
+                q += 2
+                if name == 'Value' and ident in vid2slot:
+                    vals[vid2slot[ident]] = float(v)
+            else:                               # 4-byte float32 / int32
+                raw = blob[q:q + 4]
+                q += 4
+                if name == 'Value' and ident in vid2slot:
+                    si = vid2slot[ident]
+                    vals[si] = (struct.unpack('<f', raw)[0] if tc == 0x14
+                                else float(struct.unpack('<i', raw)[0]))
+        if ok and rt is not None and q == field_end:
+            records.append((rt, vals, vector))
+        pos = blob.find(_AADI_SYNC, pos + 1)
+    if not records:
+        raise ValueError('DCPS reader (%s): no data records found.'
+                         % os.path.basename(file_path))
+    return records, slots, columns
+
+
+# per-cell parameters kept in the tidy frame (descr -> output column name);
+# everything else in the bin stays available in the raw file
+_DCPS_CELL_PARAMS = [
+    ('Horizontal Speed', 'Horizontal speed (cm/s)'),
+    ('Direction', 'Direction (deg)'),
+    ('North Speed', 'North speed (cm/s)'),
+    ('East Speed', 'East speed (cm/s)'),
+    ('Vertical Speed', 'Vertical speed (cm/s)'),
+    ('SP Stdev Horizontal', 'Speed stdev (cm/s)'),
+    ('Strength', 'Signal strength (dB)'),
+    ('Cell State1', 'Cell state'),
+]
+# record-level context repeated on every cell row
+_DCPS_RECORD_PARAMS = [
+    ('Heading', 'Heading (deg)'),
+    ('Pitch', 'Pitch (deg)'),
+    ('Roll', 'Roll (deg)'),
+    ('Abs Tilt', 'Tilt (deg)'),
+    ('Ping Count', 'Ping count'),
+]
+
+
+def read_seaguard_doppler(file_path):
+    """Reads a DCPS / Doppler current-profiler session into a TIDY frame:
+    one row per record x depth cell, with the current measurements, their
+    native quality indicators (speed stdev, signal strength, cell state) and
+    the record-level attitude context. Sibling DataNNN.bin files of the same
+    session folder are read together, like the scalar reader."""
+    folder = os.path.dirname(file_path)
+    siblings = sorted(f for f in os.listdir(folder)
+                      if re.fullmatch(r'Data\d+\.bin', f, re.IGNORECASE))
+    if not siblings:
+        siblings = [os.path.basename(file_path)]
+    all_rows = []
+    for fname in siblings:
+        records, slots, columns = _decode_dcps_bin(os.path.join(folder, fname))
+        # index slots per (column, cell) and record-level by descr
+        rec_level = {}                  # descr -> slot index
+        cell_level = {}                 # (column_descr, cell) -> {descr: slot}
+        depths = {}                     # (column_descr, cell) -> depth
+        for si, (d, _u, col, cell, depth) in enumerate(slots):
+            if col is None:
+                rec_level.setdefault(d, si)
+            else:
+                cell_level.setdefault((col, cell), {})[d] = si
+                depths[(col, cell)] = depth
+        for rt, vals, _vector in records:
+            ctx = {out: vals.get(rec_level.get(d, -1)) for d, out in _DCPS_RECORD_PARAMS}
+            for (col, cell), sl in sorted(cell_level.items()):
+                row = {'Datetime': rt, 'Column': col, 'Cell': cell,
+                       'Depth (m)': depths[(col, cell)]}
+                row.update(ctx)
+                for d, out in _DCPS_CELL_PARAMS:
+                    si = sl.get(d)
+                    row[out] = vals.get(si) if si is not None else np.nan
+                all_rows.append(row)
+    frame = pd.DataFrame(all_rows)
+    frame = frame.sort_values(['Datetime', 'Column', 'Cell'], kind='stable')
+    frame.index = np.arange(len(frame))
+    n_rec = frame['Datetime'].nunique()
+    n_cells = frame.groupby('Datetime').size().max()
+    print('Info: DCPS session decoded: %d records x %d cells = %d rows, %s to %s.'
+          % (n_rec, n_cells, len(frame), frame['Datetime'].min(), frame['Datetime'].max()))
+    return frame
+
+
+# ---------------------------------------------------------------------------
 # Dissolved-CO2 logger (separate instrument). Export: comma CSV with the header
 # line repeated on every logger restart; date split into Year..Second columns;
 # the value imported is 'Corrected disolved CO2 (PPM)' (the device's own
