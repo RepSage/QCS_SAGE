@@ -502,10 +502,12 @@ def doppler_qc(frame, settings=None):
         # 1) current range: impossible magnitude
         f += '%d' % (QC_flags.BAD_DATA if (speed[i] < 0 or speed[i] > s['max_speed'])
                      else QC_flags.GOOD_DATA)
-        # 2) signal quality: cell state != 0 (out of range / no echo) or
-        #    return strength below the noise floor
+        # 2) signal quality: cell state != 0 (out of range / no echo), return
+        #    strength below the noise floor, or strength >= 0 dB - genuine
+        #    echoes are always negative dB; 0.0 is the 'no ping' placeholder
         bad_sig = (not np.isnan(state[i]) and state[i] != 0) or \
-                  (not np.isnan(strength[i]) and strength[i] < s['min_strength'])
+                  (not np.isnan(strength[i]) and
+                   (strength[i] < s['min_strength'] or strength[i] >= 0.0))
         f += '%d' % (QC_flags.BAD_DATA if bad_sig else QC_flags.GOOD_DATA)
         # 3) noisy measurement: single-ping stdev too high
         f += '%d' % (QC_flags.SUSPECT if (not np.isnan(stdev[i]) and stdev[i] > s['max_stdev'])
