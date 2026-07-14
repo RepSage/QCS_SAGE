@@ -217,17 +217,36 @@ def read_seaguard_deployment(file_path):
     m = pat.match(os.path.basename(group_folder))
     if not m:
         return read_seaguard_bin(file_path)
-    serial, sel_start = m.group(1), _dt.datetime.strptime(m.group(3), '%Y-%m-%dT%H-%M-%S')
-    siblings = []
-    for name in sorted(os.listdir(parent)):
+    serial = m.group(1)
+    sel_name = os.path.basename(group_folder)
+    # every same-serial session folder in the parent, with its start time
+    sessions = []
+    for name in os.listdir(parent):
         mm = pat.match(name)
         if not mm or mm.group(1) != serial:
             continue
-        st = _dt.datetime.strptime(mm.group(3), '%Y-%m-%dT%H-%M-%S')
-        if abs((st - sel_start).total_seconds()) <= 90:        # same cast window
-            data000 = os.path.join(parent, name, 'Data000.bin')
-            if os.path.exists(data000):
-                siblings.append((name, data000))
+        if os.path.exists(os.path.join(parent, name, 'Data000.bin')):
+            sessions.append((_dt.datetime.strptime(mm.group(3), '%Y-%m-%dT%H-%M-%S'), name))
+    sessions.sort()
+    # Cluster into CASTS. The sensor groups of one cast start close together
+    # (seconds to a couple of minutes apart - each group's logging begins at a
+    # slightly different instant, and the Doppler group can start a few minutes
+    # off), while different casts in the same folder are far apart. A start-time
+    # gap larger than CAST_GAP opens a new cast. Anchoring on the SELECTED group's
+    # own start (the old 90 s window) missed groups when the selected one was the
+    # time outlier - e.g. picking the Doppler group made its sensor siblings
+    # invisible and the whole cast was lost.
+    CAST_GAP = 15 * 60
+    clusters, cur = [], []
+    for st, name in sessions:
+        if cur and (st - cur[-1][0]).total_seconds() > CAST_GAP:
+            clusters.append(cur)
+            cur = []
+        cur.append((st, name))
+    if cur:
+        clusters.append(cur)
+    cast = next((c for c in clusters if any(n == sel_name for _, n in c)), None)
+    siblings = [(name, os.path.join(parent, name, 'Data000.bin')) for _, name in (cast or [])]
     if len(siblings) <= 1:
         return read_seaguard_bin(file_path)
     groups, skipped = [], []
