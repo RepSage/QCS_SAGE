@@ -400,30 +400,36 @@ def _decode_dcps_bin(file_path):
     vid2slot = dict(zip(point_values, range(len(slots)), strict=True))
 
     records = []
-    pos = blob.find(_AADI_SYNC)
-    while pos != -1:
+    def walk_record(pos, vec_dim_size):
+        """Walks one record. Returns (rt, vals, vector) when the fields land
+        EXACTLY on the checksum boundary, else None."""
         q = pos + 8
         rec_len, _nf = struct.unpack_from('<II', blob, q)
         q += 8
         field_end = pos + rec_len - 4          # 4-char checksum closes the record
+        if field_end > len(blob):
+            return None
         rt = None
         vals = {}
         vector = None
-        ok = field_end <= len(blob)
-        while ok and q + 2 <= field_end:
+        while q + 2 <= field_end:
             ident = struct.unpack_from('<H', blob, q)[0]
             q += 2
             ent = entries.get(ident)
             if ent is None:
-                ok = False
-                break
+                return None
             name, parent, tc = ent
             if name == 'Value' and parent_name(ident) == 'Vector':
-                dim = struct.unpack_from('<I', blob, q)[0]
-                q += 4
+                # the element-count prefix is u32 on most deployments but u16
+                # on some (same type code) - the size is detected per file by
+                # requiring the walk to land exactly on the record boundary
+                if vec_dim_size == 2:
+                    dim = struct.unpack_from('<H', blob, q)[0]
+                else:
+                    dim = struct.unpack_from('<I', blob, q)[0]
+                q += vec_dim_size
                 if dim > 64:
-                    ok = False
-                    break
+                    return None
                 vector = [struct.unpack_from('<i', blob, q + 4 * j)[0] for j in range(dim)]
                 q += 4 * dim
             elif tc == 0x28:                    # 8-byte .NET ticks
@@ -443,8 +449,25 @@ def _decode_dcps_bin(file_path):
                     si = vid2slot[ident]
                     vals[si] = (struct.unpack('<f', raw)[0] if tc == 0x14
                                 else float(struct.unpack('<i', raw)[0]))
-        if ok and rt is not None and q == field_end:
-            records.append((rt, vals, vector))
+        if rt is None or q != field_end:
+            return None
+        return rt, vals, vector
+
+    vec_dim_size = None                        # detected on the first record
+    pos = blob.find(_AADI_SYNC)
+    while pos != -1:
+        if vec_dim_size is None:
+            got = walk_record(pos, 4)
+            if got is not None:
+                vec_dim_size = 4
+            else:
+                got = walk_record(pos, 2)
+                if got is not None:
+                    vec_dim_size = 2
+        else:
+            got = walk_record(pos, vec_dim_size)
+        if got is not None:
+            records.append(got)
         pos = blob.find(_AADI_SYNC, pos + 1)
     if not records:
         raise ValueError('DCPS reader (%s): no data records found.'
@@ -508,6 +531,11 @@ def read_seaguard_doppler(file_path):
                     si = sl.get(d)
                     row[out] = vals.get(si) if si is not None else np.nan
                 all_rows.append(row)
+    if not all_rows:
+        raise ValueError('DCPS session %r has no current cells - the profile '
+                         'output was disabled in this configuration (only '
+                         'attitude/housekeeping parameters were logged).'
+                         % os.path.basename(folder))
     frame = pd.DataFrame(all_rows)
     frame = frame.sort_values(['Datetime', 'Column', 'Cell'], kind='stable')
     frame.index = np.arange(len(frame))
