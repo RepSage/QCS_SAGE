@@ -922,9 +922,19 @@ def plot_database_panel3(database, dataViewSettings):
             x_list, cParam, bcParam, parameter_names = setParam(dataViewSettings, db, semester, site)
             rParam = renameParameters(parameter_names)
             if len(x_list) > 0:
-                figHeight = 500
-                fig, ax1 = plt.subplots(figsize=(980 / 100, figHeight / 100))
-                plt.subplots_adjust(left=0.050, right=0.840, top=0.950, bottom=0.500)
+                # The parameter x-axes stack DOWNWARD from the plot (25 pts each).
+                # Size the figure so they ALL fit: with a fixed 500 px height the
+                # lower axes overflowed off the bottom and were silently hidden
+                # once many parameters were selected (Chlorophyll/pH/DOM/... just
+                # vanished). Give the stacked axes exactly the room they need.
+                n_ax = len(x_list)
+                below_in = (25 * max(n_ax - 1, 0) + 55) / 72.0   # stacked axes + last labels
+                plot_in, top_in = 3.0, 0.45
+                fig_h_in = plot_in + below_in + top_in
+                fig, ax1 = plt.subplots(figsize=(980 / 100, fig_h_in))
+                plt.subplots_adjust(left=0.050, right=0.840,
+                                    top=1 - top_in / fig_h_in,
+                                    bottom=below_in / fig_h_in)
                 ax1.invert_yaxis()
                 plt.grid(True, axis='y', linestyle='dotted', linewidth=0.5)
                 
