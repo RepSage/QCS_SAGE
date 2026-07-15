@@ -1008,7 +1008,7 @@ def build_step1(parent):
     restore_entry(outputPath_entry, USER_PREFS.get('dbv_output_path', ''))
     restore_entry(inputPath_entry, USER_PREFS.get('dbv_input_path', ''))
     restore_entry(outputName_entry, USER_PREFS.get('dbv_output_name', ''))
-    if USER_PREFS.get('dbv_instrument') in ('Seaguard', 'HOBO'):
+    if USER_PREFS.get('dbv_instrument') in ('Seaguard', 'HOBO', 'Doppler'):
         instrument_combobox.set(USER_PREFS['dbv_instrument'])
     sort.set(USER_PREFS.get('dbv_sort_by_time', False))
     toggle_input_mode()  # set the initial enabled/blank state (Output Name off)
@@ -1032,6 +1032,27 @@ def load_database():
             if not file_paths:
                 messagebox.showerror("Error", "Select a database file or provide a valid input folder.")
                 return None
+            # the FILE is the truth: if the selected instrument does not match
+            # the first file's layout, auto-correct it instead of refusing
+            # (the mix-refusal inside build_database still guards mixed lists)
+            try:
+                if file_paths[0].lower().endswith('.csv'):
+                    head = pd.read_csv(file_paths[0], nrows=1)
+                else:
+                    head = pd.read_excel(file_paths[0], nrows=1)
+                lay = data.detect_qualified_layout(head)
+                inst_for_layout = {'hobo': 'HOBO', 'doppler': 'Doppler', 'tscp': 'Seaguard'}[lay]
+                if inst_for_layout != instrument:
+                    print('Info: instrument auto-corrected to %s (the selected file is a '
+                          '%s spreadsheet).' % (inst_for_layout, lay.upper()))
+                    instrument = inst_for_layout
+                    inputSettings['instrument'] = instrument
+                    try:
+                        instrument_combobox.set(instrument)
+                    except Exception:
+                        pass
+            except Exception:
+                pass          # unreadable head: let build_database report it
             database, db_build_messages = data.build_database(instrument, file_list=file_paths)
     except ValueError as e:
         # the engine messages are already self-labeled ('build_database: ...')
@@ -1786,7 +1807,7 @@ def _apply_recent(event=None):
     join.set(False)
     toggle_input_mode()
     restore_entry(fileNames_entry, entry['files'])
-    if entry.get('instrument') in ('Seaguard', 'HOBO'):
+    if entry.get('instrument') in ('Seaguard', 'HOBO', 'Doppler'):
         instrument_combobox.set(entry['instrument'])
 
 def apply_pending_prefill(info):
@@ -1805,7 +1826,7 @@ def apply_pending_prefill(info):
     # remember an output name for the folder-build mode; the visible field stays
     # blank/disabled in single-file mode (handled by toggle_input_mode)
     USER_PREFS['dbv_output_name'] = os.path.splitext(os.path.basename(info.get('file', '')))[0]
-    if info.get('instrument') in ('Seaguard', 'HOBO'):
+    if info.get('instrument') in ('Seaguard', 'HOBO', 'Doppler'):
         instrument_combobox.set(info['instrument'])
     # stash the data type + coordinates for build_step2 (the file lacks them)
     global _pending_step2
