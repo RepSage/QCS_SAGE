@@ -184,7 +184,9 @@ TOOLTIPS = {
     'region': "Region within the selected macroregion.\nSets a representative latitude/longitude used only to run the\nqualification (pressure->depth and density inversion). Small\nvariations do not change the results. Not used for HOBO.",
     'config_file': "OPTIONAL: Select the configuration file (.json)\ncontaining quality test parameters",
     'input_type': "Type of instrument that generated the data\nSeaguard: Standard CTD\nHOBO: Autonomous logger",
-    'data_type': "Data collection type\nProfile: Vertical data (cast)\nMooring: Fixed-point temporal data",
+    'data_type': ("Data collection type\nProfile: Vertical data (cast)\n"
+                  "Mooring: Fixed-point temporal data\n"
+                  "Doppler: DCPS current profiler (auto-detected from the .bin)"),
     'pressure_unit': "Pressure unit of raw data\nAutomatic conversion to decibar",
     'conductivity_unit': "Conductivity unit of raw data\nAutomatic conversion to mS/cm",
     'gmt_correction': "Applies GMT-3 hour correction for data\ncollected in Brazilian timezone",
@@ -415,6 +417,19 @@ def selectFiles():
     elif len(names) > 1:
         print('Info: %d files selected - each will be qualified independently, '
               'in sequence (one _QLF output per file).' % len(names))
+    # Data type follows the selected binary: a DCPS current-profiler session
+    # sets 'TSCP Doppler'; a scalar session picked while the type still says
+    # Doppler falls back to Mooring (the combobox stays editable either way)
+    if inputType_combobox.get() == 'Seaguard' and first.lower().endswith('.bin'):
+        if data.is_seaguard_doppler(first):
+            if dType_combobox.get() != 'TSCP Doppler':
+                dType_combobox.set('TSCP Doppler')
+                dType_combobox.event_generate('<<ComboboxSelected>>')
+                print("Info: DCPS current profiler detected - Data type set to 'TSCP Doppler'.")
+        elif dType_combobox.get() == 'TSCP Doppler':
+            dType_combobox.set('TSCP Mooring')
+            dType_combobox.event_generate('<<ComboboxSelected>>')
+            print("Info: scalar SeaGuard session selected - Data type reset to 'TSCP Mooring'.")
     # auto-fill the output folder from the first file; the name follows the
     # selection (single / combined replicates / batch)
     outputPath_entry.delete(0, END)
@@ -585,7 +600,7 @@ def collect_input_settings():
         messagebox.showwarning("Warning", "Select the instrument type\n('Input Type' field).")
         return False
     # HOBO has no TSCP collection type (it is a time series): Data Type stays empty
-    if inputType_combobox.get() != 'HOBO' and dType_combobox.get() not in ('TSCP Profile', 'TSCP Mooring'):
+    if inputType_combobox.get() != 'HOBO' and dType_combobox.get() not in ('TSCP Profile', 'TSCP Mooring', 'TSCP Doppler'):
         messagebox.showwarning("Warning", "Select the data collection type\n('Data Type' field).")
         return False
     out_dir = outputPath_entry.get().strip()
@@ -781,6 +796,7 @@ def start_qualification():
             OUTPUT['last_qualified_file'] = None
             OUTPUT['last_output_root'] = None
             OUTPUT['last_qualified_df'] = None
+            OUTPUT['doppler_run'] = False
             if batch:
                 # each batch file names its own output automatically
                 OUTPUT['output_file_name'] = (_output_base_for(fpath) + '_QLF'
@@ -841,10 +857,12 @@ def start_qualification():
             PENDING_VIZ_PREFILL = {
                 'file': OUTPUT['last_qualified_file'],
                 'out_root': OUTPUT.get('last_output_root', ''),
-                'instrument': 'HOBO' if INPUT.get('input_type') == 'HOBO' else 'Seaguard',
+                'instrument': ('HOBO' if INPUT.get('input_type') == 'HOBO'
+                               else 'Doppler' if OUTPUT.get('doppler_run') else 'Seaguard'),
                 # the qualified file does not store profile/mooring or the
                 # coordinates, so pass them along for the Visualization tab
                 'data_type': ('hobo' if INPUT.get('input_type') == 'HOBO'
+                              else 'TSCP Doppler' if OUTPUT.get('doppler_run')
                               else ('TSCP Profile' if INPUT.get('profile') else 'TSCP Mooring')),
                 'latitude': INPUT.get('latitude'),
                 'longitude': INPUT.get('longitude')}
@@ -1412,7 +1430,7 @@ def build_qualification_tab(container, root, shared_log=None):
     ToolTip(inputType_combobox, TOOLTIPS['input_type'])
 
     ttk.Label(type_row, text="Data type:", style='Header.TLabel').grid(row=0, column=1, sticky='w', padx=(12, 0), pady=(0,2))
-    dType_combobox = ttk.Combobox(type_row, values=["TSCP Profile", "TSCP Mooring"], width=15, state='readonly')
+    dType_combobox = ttk.Combobox(type_row, values=["TSCP Profile", "TSCP Mooring", "TSCP Doppler"], width=15, state='readonly')
     dType_combobox.grid(row=1, column=1, sticky='w', padx=(12, 0))
     ToolTip(dType_combobox, TOOLTIPS['data_type'])
 
@@ -1804,6 +1822,9 @@ def build_qualification_tab(container, root, shared_log=None):
             log_line('Info: GMT-3 correction applied to the record times.')
         log_line('Stage 2/4: running current quality tests (%d cell samples)...' % len(frame))
         flags, rollup = QC.doppler_qc(frame, CONFIG.get('dopplerSettings'))
+        # Site right after Datetime: build_database requires Datetime+Site, so
+        # the qualified current table is stackable/searchable like the others
+        frame.insert(1, 'Site', INPUT.get('site') or _output_base_for(bin_path))
         frame['Flag'] = flags
         frame['Flag_cur'] = rollup
         frame['QCS version'] = data.QCS_VERSION
@@ -1821,7 +1842,9 @@ def build_qualification_tab(container, root, shared_log=None):
         if fmt == '.xlsx':
             frame.to_excel(table_path, index=False)
         else:
-            frame.to_csv(table_path, index=False, sep=';')
+            # comma-separated like every other QCS qualified sheet, so the
+            # Visualization tab and build_database read it unchanged
+            frame.to_csv(table_path, index=False)
         legend = os.path.join(table_dir, 'QCS_current_flag_legend.txt')
         with open(legend, 'w', encoding='utf-8') as f:
             f.write('QCS Doppler current qualification - flag string positions\n')
@@ -1830,13 +1853,14 @@ def build_qualification_tab(container, root, shared_log=None):
             f.write('\nFlag codes: 1 good, 2 not evaluated, 3 suspect, 4 bad, 9 missing.\n')
             f.write('Flag_cur = worst flag of the row (4 > 3 > 9 > 1).\n')
         log_line('Stage 4/4: rendering the current panels...')
-        panel_dir = os.path.join(root_out, 'QCS current panels')
+        panel_dir = os.path.join(root_out, 'QCS DataView (current)')
         site = INPUT.get('site') or base
         files = view.plot_doppler_panels(frame, panel_dir, label=site)
         log_line('Info: %d current panel(s) saved.' % len(files))
         OUTPUT['last_qualified_df'] = frame
         OUTPUT['last_qualified_file'] = table_path
         OUTPUT['last_output_root'] = root_out
+        OUTPUT['doppler_run'] = True
         log_line('Done: Doppler qualification finished. Results saved to: %s' % root_out)
 
     def run_full_qualification():
@@ -1847,11 +1871,23 @@ def build_qualification_tab(container, root, shared_log=None):
         # change to folder containing raw data
         os.chdir(INPUT['raw_data_path'])
 
-        # DCPS / Doppler current-profiler session: its own pipeline (v8.0)
+        # DCPS / Doppler current-profiler session: its own pipeline (v8.0).
+        # Runs when the Data type says 'TSCP Doppler' OR when the selected .bin
+        # is auto-detected as a DCPS group (the type is a display/choice; the
+        # binary itself is the truth).
         _bin_path = os.path.join(INPUT['raw_data_path'], INPUT['file_name'])
-        if (INPUT['input_type'] == 'Seaguard'
-                and INPUT['file_name'].lower().endswith('.bin')
-                and data.is_seaguard_doppler(_bin_path)):
+        _is_bin = INPUT['file_name'].lower().endswith('.bin')
+        _is_dcps = (INPUT['input_type'] == 'Seaguard' and _is_bin
+                    and data.is_seaguard_doppler(_bin_path))
+        if INPUT.get('data_type') == 'TSCP Doppler' and not _is_dcps:
+            raise ValueError(
+                "Data type is 'TSCP Doppler' but the selected file is not a DCPS "
+                "current-profiler session (%s). Select the Doppler group's "
+                "Data000.bin, or change the Data type." % INPUT['file_name'])
+        if _is_dcps:
+            if INPUT.get('data_type') != 'TSCP Doppler':
+                log_line("Info: DCPS session detected - treating the Data type as "
+                         "'TSCP Doppler'.")
             run_doppler_qualification(_bin_path)
             return
 

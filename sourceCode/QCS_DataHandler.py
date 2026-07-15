@@ -1733,13 +1733,17 @@ def trim_selected_variable(data, name, tk_root=None, locked=None, progress=None)
 QUALIFIED_SUBFOLDERS = {
     'tscp': ('QCS qualified tscp data',),
     'hobo': ('QCS qualified hobo data',),
+    'doppler': ('QCS qualified current data',),
 }
 
 
 def detect_qualified_layout(df):
-    """'hobo' = only temperature+light (has Luminosity, no Salinity);
+    """'doppler' = qualified current-profiler table (per-cell rows with
+    Flag_cur); 'hobo' = only temperature+light (has Luminosity, no Salinity);
     any other qualified spreadsheet is 'tscp' (Seaguard)."""
     cols = set(str(c) for c in df.columns)
+    if 'Flag_cur' in cols or 'Horizontal speed (cm/s)' in cols:
+        return 'doppler'
     if 'Luminosity (lux)' in cols and 'Salinity (PSU)' not in cols:
         return 'hobo'
     return 'tscp'
@@ -1765,7 +1769,9 @@ def build_database(instrument, file_list=None, input_path=None):
     Returns (database, messages). Problems raise a ValueError with a
     self-localizing message ('build_database: ...').
     """
-    expected_layout = 'hobo' if str(instrument).strip().upper() == 'HOBO' else 'tscp'
+    _inst = str(instrument).strip().upper()
+    expected_layout = ('hobo' if _inst == 'HOBO'
+                       else 'doppler' if _inst == 'DOPPLER' else 'tscp')
     messages = []
 
     if file_list:
@@ -1806,8 +1812,9 @@ def build_database(instrument, file_list=None, input_path=None):
         layout = detect_qualified_layout(df)
         if layout != expected_layout:
             raise ValueError("build_database: %s looks like a %s spreadsheet, but the selected "
-                             "instrument is %s. HOBO and Seaguard qualified files are never "
-                             "stackable - unify them into separate databases." % (base, layout.upper(), instrument))
+                             "instrument is %s. HOBO, Seaguard and Doppler qualified files are "
+                             "never stackable - unify them into separate databases."
+                             % (base, layout.upper(), instrument))
         df['Source file'] = base
         frames.append(df)
         messages.append('Info: %s: %d rows' % (base, len(df)))

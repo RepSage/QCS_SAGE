@@ -28,7 +28,9 @@ TOOLTIPS = {
     'output_name': "Name for processed database file",
     'input_path': "Folder containing input files",
     'output_path': "Folder where results will be saved",
-    'data_type': "Type of data: TSCP Mooring or TSCP Profile\n(same naming as the qualification Data Type);\na HOBO database is shown as HOBO",
+    'data_type': ("Type of data: TSCP Mooring, TSCP Profile or TSCP Doppler\n"
+                  "(same naming as the qualification Data Type);\n"
+                  "a HOBO database is shown as HOBO"),
     'filter_year': "Check the year(s) to visualize\nPanels are generated once per selected year",
     'time_start': "OPTIONAL: start of the X axis in mooring plots\nFormat: DD/MM/YYYY HH:MM (e.g. 15/04/2019 09:00)\nLeave empty to fit the data automatically\nCross-site panels standardize the TIME OF DAY: the window's\nday offset + clock time apply to each site's own days",
     'time_end': "OPTIONAL: end of the X axis in mooring plots\nFormat: DD/MM/YYYY HH:MM (e.g. 16/04/2019 09:00)\nLeave empty to fit the data automatically\nCross-site panels standardize the TIME OF DAY: the window's\nday offset + clock time apply to each site's own days",
@@ -112,6 +114,10 @@ def set_enabled_style(widget):
 def is_hobo_input():
     """The Step 2 window panels change according to the Step 1 instrument."""
     return inputSettings.get('instrument', 'Seaguard') == 'HOBO'
+
+def is_doppler_input():
+    """Doppler current-profiler database: Step 2 renders the 4 current panels."""
+    return inputSettings.get('instrument', 'Seaguard') == 'Doppler'
 
 def toggle_all_controls(enabled=False):
     """Enables or disables all controls depending on the selected Data Type"""
@@ -419,6 +425,26 @@ def toggle_data_type():
         _stash_disable(time_end_entry, 'time_end')
         _restore_or_default_depth(depth_min_entry, 'depth_min', 'min')   # depth range applies
         _restore_or_default_depth(depth_max_entry, 'depth_max', 'max')
+    elif data_type == 'TSCP Doppler':
+        # Doppler current profiler: the 4 current panels are fixed (time x depth
+        # heatmaps, stick plot, U/V components, progressive vector) - the scalar
+        # panel/parameter/display choices do not apply
+        panel1.set(False)
+        panel2.set(False)
+        panel3.set(False)
+        set_disabled_style(panel1_cb)
+        set_disabled_style(panel2_cb)
+        set_disabled_style(panel3_cb)
+        tsDiagram.set(False)
+        set_disabled_style(ts_cb)
+        tendency.set(False)
+        tendency_cb.config(state='disabled')
+        points_cb.config(state='disabled')
+        fixed_scale_cb.config(state='disabled')
+        _stash_disable(depth_min_entry, 'depth_min')
+        _stash_disable(depth_max_entry, 'depth_max')
+        _reset_time_default(time_start_entry, 'start')   # X-axis window applies
+        _reset_time_default(time_end_entry, 'end')
 
     toggle_panel_dependent_controls()
     toggle_parameter_checkboxes()
@@ -469,7 +495,8 @@ def autodetect_instrument(path):
         else:
             head = pd.read_excel(path, nrows=1)
         layout = data.detect_qualified_layout(head)
-        detected = 'HOBO' if layout == 'hobo' else 'Seaguard'
+        detected = ('HOBO' if layout == 'hobo'
+                    else 'Doppler' if layout == 'doppler' else 'Seaguard')
         instrument_combobox.set(detected)
         print('Info: instrument auto-detected as %s (from %s).'
               % (detected, os.path.basename(path)))
@@ -747,8 +774,33 @@ def generatePanels():
                     except Exception as e:
                         error_logger.log("Error generating HOBO across-sites panel: %s" % e)
 
+        if is_doppler_input():
+            # Doppler: the 4 current panels per selected site, spanning every
+            # selected year in one set (like HOBO, deployments are not split)
+            selected_sites = dataViewSettings.get('siteList', [])
+            if not selected_sites:
+                error_logger.log("Error: no site selected - check at least one site in 'Filter by Site'")
+            else:
+                sub = database[database['Datetime'].dt.year.isin(selected_years)]
+                out_dir = os.path.join(inputSettings.get('outputPath', ''), 'DatabaseView')
+                for site in selected_sites:
+                    site_df = sub[sub['Site'] == site]
+                    if not len(site_df):
+                        error_logger.log("Warning: no rows for site %s in the selected years." % site)
+                        continue
+                    try:
+                        files = view.plot_doppler_panels(
+                            site_df, os.path.join(out_dir, '%s (current)' % site), label=site)
+                        if files:
+                            error_logger.log("Info: %d current panel(s) generated for %s." % (len(files), site))
+                            n_ok += len(files)
+                        else:
+                            error_logger.log("Warning: %s has no non-BAD current rows - nothing to plot." % site)
+                    except Exception as e:
+                        error_logger.log("Error generating current panels for %s: %s" % (site, e))
+
         # Seaguard panels are generated once for each selected year
-        for year in (selected_years if not is_hobo_input() else []):
+        for year in (selected_years if not (is_hobo_input() or is_doppler_input()) else []):
             dataViewSettings['filterByYear'] = year
 
             if dataViewSettings['dataType'] == 'TSCP Mooring':
@@ -901,7 +953,7 @@ def build_step1(parent):
     # database is built for one instrument at a time (.csv and .xlsx both read).
     # Auto-set from the selected files (detect_qualified_layout); still editable.
     ttk.Label(input_frame, text="Instrument:", style='Header.TLabel').grid(row=6, column=0, sticky='w', pady=(5,2))
-    instrument_combobox = ttk.Combobox(input_frame, values=["Seaguard", "HOBO"], width=15, state='readonly')
+    instrument_combobox = ttk.Combobox(input_frame, values=["Seaguard", "HOBO", "Doppler"], width=15, state='readonly')
     instrument_combobox.set("Seaguard")
     instrument_combobox.grid(row=7, column=0, sticky='w', pady=(0,5))
     ToolTip(instrument_combobox, TOOLTIPS['instrument'])
@@ -1094,7 +1146,9 @@ def build_step2(parent):
     # Data type (HOBO only has a time series: profile does not apply)
     ttk.Label(data_frame, text="Data type:").grid(row=0, column=0, sticky='w', pady=2)
     # same names and order as the qualification Data Type, for consistency
-    dType_values = ["HOBO"] if is_hobo_input() else ["TSCP Mooring", "TSCP Profile"]
+    dType_values = (["HOBO"] if is_hobo_input()
+                    else ["TSCP Doppler"] if is_doppler_input()
+                    else ["TSCP Mooring", "TSCP Profile"])
     dType_combobox = ttk.Combobox(data_frame, values=dType_values, width=25, state='readonly')
     dType_combobox.grid(row=1, column=0, sticky='w', pady=2)
     dType_combobox.bind("<<ComboboxSelected>>", lambda e: toggle_data_type())
@@ -1348,6 +1402,11 @@ def build_step2(parent):
         # HOBO only measures temperature and light
         main_params = ['Temperature (degC)', 'Luminosity (lux)']
         secondary_params = []
+    elif is_doppler_input():
+        # the 4 current panels have a fixed content - the parameter selection
+        # does not apply (kept for the row-height/layout machinery only)
+        main_params = ['Horizontal speed (cm/s)', 'Direction (deg)']
+        secondary_params = []
     else:
         # NOTE: 'CO2 Level (ppm)' (capital L) is the qualified sheet's column name
         main_params = ['Temperature (degC)', 'Salinity (PSU)', 'CO2 Level (ppm)',
@@ -1514,7 +1573,8 @@ def build_step2(parent):
     panel2.set(USER_PREFS.get('dbv_panel2', False))
     panel3.set(USER_PREFS.get('dbv_panel3', False))
     # T-S does not exist for HOBO (no salinity): never restore it checked
-    tsDiagram.set(False if is_hobo_input() else USER_PREFS.get('dbv_ts_diagram', False))
+    tsDiagram.set(False if (is_hobo_input() or is_doppler_input())
+                  else USER_PREFS.get('dbv_ts_diagram', False))
     tendency.set(USER_PREFS.get('dbv_tendency', False))
     dataPoints.set(USER_PREFS.get('dbv_data_points', False))
     fixedScale.set(USER_PREFS.get('dbv_fixed_scale', False))
