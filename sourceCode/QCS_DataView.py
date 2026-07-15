@@ -1371,7 +1371,9 @@ def plot_TS_diagram (database, dataViewSettings):
             fig = plt.figure(figsize=(980 / 100, 500 / 100))  # Create figure with specified resolution
             ax = fig.add_subplot(111)  # Create axes
             # selecting semester
-            tspSemesterData = db[semester][['Pressure (dbar)', 'Depth (m)', 'Temperature (degC)', 'Salinity (PSU)', 'Site']].copy()
+            _ts_cols = ['Pressure (dbar)', 'Depth (m)', 'Temperature (degC)', 'Salinity (PSU)', 'Site']
+            _ts_cols += [c for c in ('Flag_S', 'Flag_T') if c in db[semester].columns]
+            tspSemesterData = db[semester][_ts_cols].copy()
             # Convert temperature, salinity, and pressure data to arrays
             salt = np.asarray(tspSemesterData['Salinity (PSU)'].copy())
             temp = np.asarray(tspSemesterData['Temperature (degC)'].copy())
@@ -1387,18 +1389,38 @@ def plot_TS_diagram (database, dataViewSettings):
             tspSemesterData['Absolute Salinity (PSU)'] = SA
             tspSemesterData['Conservative Temperature (degC)'] = CT
             tspSemesterData['Potential Temperature (degC)'] = pt
+            # Robust S/T envelope for the axis + contour grid: drive it from
+            # GOOD-flagged rows only (plus a 0.5% tail trim), so out-of-water
+            # spikes (salinity crashing toward 0 when a pool logger is exposed
+            # - all flagged suspect/bad) cannot stretch the axis to 0-36 and
+            # squash the real cluster into a vertical line. Plain nanmin/nanmax
+            # let a single artifact drive it. Suspect/bad points are still
+            # plotted; they just do not set the view.
+            keep = np.isfinite(SA) & np.isfinite(CT)
+            _has_flags = any(_fc in tspSemesterData.columns for _fc in ('Flag_S', 'Flag_T'))
+            for _fc in ('Flag_S', 'Flag_T'):
+                if _fc in tspSemesterData.columns:
+                    keep &= (tspSemesterData[_fc].to_numpy() == 1)
+            if _has_flags and not keep.any():   # no good rows: fall back to all finite
+                keep = np.isfinite(SA) & np.isfinite(CT)
+
+            def _ts_bounds(arr, frac, keep=keep):
+                a = arr[keep] if keep.any() else arr
+                a = a[np.isfinite(a)]
+                if a.size == 0:
+                    return 0.0, 1.0
+                lo, hi = np.nanpercentile(a, [0.5, 99.5])
+                pad = frac * ((hi - lo) if hi > lo else (abs(hi) or 1.0))
+                return lo - pad, hi + pad
+
             # Figure out boundaries (mins and maxs)
             if re.search('conservative', tsParam, re.IGNORECASE):
-                smin = np.nanmin(SA) - (0.01 * np.nanmin(SA)/2)
-                smax = np.nanmax(SA) + (0.01 * np.nanmax(SA)/2)
-                tmin = np.nanmin(CT) - (0.1 * np.nanmax(CT)/2)
-                tmax = np.nanmax(CT) + (0.1 * np.nanmax(CT)/2)
+                smin, smax = _ts_bounds(SA, 0.05)
+                tmin, tmax = _ts_bounds(CT, 0.10)
 
             elif re.search('potential', tsParam, re.IGNORECASE):
-                smin = np.nanmin(salt) - (0.01 * np.nanmin(SA)/2)
-                smax = np.nanmax(salt) + (0.01 * np.nanmax(SA)/2)
-                tmin = np.nanmin(pt) - (0.1 * np.nanmax(CT)/2)
-                tmax = np.nanmax(pt) + (0.1 * np.nanmax(CT)/2)
+                smin, smax = _ts_bounds(salt, 0.05)
+                tmin, tmax = _ts_bounds(pt, 0.10)
 
             dmin = np.nanmin(depth)
             dmax = np.nanmax(depth)
@@ -1454,6 +1476,8 @@ def plot_TS_diagram (database, dataViewSettings):
             for a in range(len(site_names)):
                 custom_handles.append(Line2D([0], [0], linestyle='None', marker=markerList[a], label=site_names[a], markeredgecolor='black', markerfacecolor='black', markersize=6))
             plt.legend(handles=custom_handles)  # Draw legend
+            ax.set_xlim(smin, smax)   # hold the view on the robust envelope
+            ax.set_ylim(tmin, tmax)
             plt.savefig('TS_Diagram_%s_%s_%d.svg'%(sites_label, semester, year))
             enable_scroll_zoom(fig)
             plt.show()
@@ -1497,13 +1521,23 @@ def plot_doppler_panels(frame, out_dir, label=''):
     rep_depth = ok.groupby('Depth (m)').size().idxmax()
     rep = ok[ok['Depth (m)'] == rep_depth].sort_values('Datetime')
 
-    # 2) stick plot (vectors at the representative depth)
+    # 2) stick plot: current vectors rooted on the time axis, angle-true. A
+    # plain scale=1 quiver mixes cm/s with the date x-units and blows the
+    # sticks across the whole axis; scale_units='width' makes the arrow length
+    # proportional to speed and independent of the date axis, and the
+    # reference key carries the magnitude scale (so the y-axis carries none).
     fig, ax = plt.subplots(figsize=(11, 4))
-    tnum = mdates.date2num(rep['Datetime'])
-    ax.quiver(tnum, np.zeros(len(rep)), rep['East speed (cm/s)'], rep['North speed (cm/s)'],
-              angles='uv', scale_units='y', scale=1, width=0.002)
+    tnum = mdates.date2num(rep['Datetime'].to_numpy())
+    u = rep['East speed (cm/s)'].to_numpy()
+    v = rep['North speed (cm/s)'].to_numpy()
+    vmax = float(np.hypot(u, v).max()) or 1.0
+    q = ax.quiver(tnum, np.zeros(len(rep)), u, v, angles='uv',
+                  scale_units='width', scale=vmax * 12.5, width=0.003, color='tab:blue')
+    ref = max(10, int(round(vmax / 2 / 10)) * 10)
+    ax.quiverkey(q, 0.88, 0.9, ref, '%d cm/s' % ref, labelpos='E', coordinates='axes')
     ax.axhline(0, color='0.6', lw=0.8)
-    ax.set_ylabel('North component (cm/s)')
+    ax.set_ylim(-1, 1)
+    ax.set_yticks([])
     ax.set_title('Current sticks at %.1f m - %s' % (rep_depth, label))
     ax.xaxis_date(); ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
     fig.autofmt_xdate()
