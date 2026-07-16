@@ -862,6 +862,37 @@ def _hobo_error(file_name, message):
     return ValueError('HOBO reader (%s): %s' % (file_name, message))
 
 
+# pt-locale HOBOware clock, e.g. '04h0min0s' instead of '04:00:00'
+_HOBO_PT_CLOCK = r'(?i)(\d{1,2})h(\d{1,2})min(\d{1,2})s'
+
+
+def _hobo_datetimes(series, say):
+    """Parses a HOBOware time column.
+
+    Exports mix locales: the clock may come as '04h0min0s' (pt HOBOware)
+    instead of '04:00:00', and the date may be day-first ('17/03/18') or
+    month-first ('03/17/18') - roughly half of the corpus is month-first, and a
+    plain dayfirst=True parse turns EVERY row of those files into NaT ('no rows
+    with valid timestamps'). So: normalize the clock, then let the data itself
+    prove the day/month order. Day-first stays the default when the file is
+    ambiguous, which is how every already-readable export was parsed."""
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return pd.to_datetime(series, errors='coerce')
+    txt = series.astype(str).str.strip()
+    if txt.str.contains(_HOBO_PT_CLOCK, regex=True).any():
+        txt = txt.str.replace(_HOBO_PT_CLOCK, r'\1:\2:\3', regex=True)
+        say("Info: clock exported as 'HHhMMminSSs'; normalized to HH:MM:SS.")
+    parts = txt.str.extract(r'^\s*(\d{1,2})\s*[/-]\s*(\d{1,2})\s*[/-]')
+    first = pd.to_numeric(parts[0], errors='coerce')
+    second = pd.to_numeric(parts[1], errors='coerce')
+    dayfirst = True
+    if not (first > 12).any() and (second > 12).any():
+        dayfirst = False           # a second field > 12 can only be the day
+        say('Info: dates are month-first (a value > 12 in the second field '
+            'proves it); parsed accordingly.')
+    return pd.to_datetime(txt, errors='coerce', dayfirst=dayfirst)
+
+
 def read_hobo(INPUT, tsSettings):
     """Reads HOBOware exports (.xlsx/.csv) from Pendant Temp/Light sensors.
 
@@ -929,6 +960,32 @@ def read_hobo(INPUT, tsSettings):
             light_col = c
         elif re.search(_HOBO_EVENT_PATTERN, low):
             event_cols.append(c)
+    # Some exports split the stamp into TWO columns ('Data' + 'Hora, GMT-03:00')
+    # instead of one 'Data Hora'. Resolve it to a single stamp, keeping the hour
+    # column's label so the GMT tag below is still picked up.
+    if time_col is None:
+        date_c = next((c for c in df.columns
+                       if re.fullmatch(r'\s*(data|date)\s*', str(c), re.IGNORECASE)), None)
+        hour_c = next((c for c in df.columns
+                       if re.match(r'\s*(hora|time|hour)\b', str(c), re.IGNORECASE)), None)
+        if date_c is not None and hour_c is not None:
+            d, h = df[date_c], df[hour_c]
+            d_dt = pd.api.types.is_datetime64_any_dtype(d)
+            h_dt = pd.api.types.is_datetime64_any_dtype(h)
+            if h_dt and h.dt.date.nunique() > 1:
+                # several exports repeat the WHOLE stamp in both columns
+                time_col = hour_c
+                say('Info: %r already carries the full date+time; used directly.' % str(hour_c))
+            else:
+                time_col = 'Data Hora %s' % str(hour_c)
+                if d_dt and h_dt:      # date + time-of-day, both as datetimes
+                    df[time_col] = d.dt.normalize() + (h - h.dt.normalize())
+                else:
+                    df[time_col] = (d.astype(str).str.strip() + ' '
+                                    + h.astype(str).str.strip())
+                say('Info: date and time came in separate columns (%r + %r); joined.'
+                    % (str(date_c), str(hour_c)))
+
     found = 'columns found: %s' % ', '.join(repr(str(c)) for c in df.columns)
     if time_col is None:
         raise _hobo_error(file_name, 'no time column found (expected "Data Hora"/"Date Time"). ' + found)
@@ -954,7 +1011,7 @@ def read_hobo(INPUT, tsSettings):
             'option would subtract 3 MORE hours - only use it if the export is in GMT+00.' % gmt.group(1))
 
     # ---------- types ----------
-    df[time_col] = pd.to_datetime(df[time_col], errors='coerce', dayfirst=True)
+    df[time_col] = _hobo_datetimes(df[time_col], say)
     n_bad_ts = int(df[time_col].isna().sum())
     if n_bad_ts:
         say('Warning: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
@@ -966,7 +1023,6 @@ def read_hobo(INPUT, tsSettings):
 
     # ---------- deployment window from the logger events ----------
     if event_cols:
-        ev_mask = df[event_cols].notna().any(axis=1)
         detach_cols = [c for c in event_cols if re.search(_HOBO_DETACH_PATTERN, str(c).lower())]
         end_cols = [c for c in event_cols if re.search(_HOBO_END_PATTERN, str(c).lower())]
         start_t = df.loc[df[detach_cols].notna().any(axis=1), time_col].min() if detach_cols else pd.NaT
@@ -976,15 +1032,34 @@ def read_hobo(INPUT, tsSettings):
             if pd.notna(start_t):
                 end_times = end_times[end_times > start_t]
             end_t = end_times.min() if not end_times.empty else pd.NaT
-        before = len(df)
+        # The coupler events delimit the deployment ONLY when they were recorded
+        # at LAUNCH. In many exports the coupler was first touched at READOUT, so
+        # every event sits at the very end of the record and the window they
+        # imply would throw the whole deployment away (13 months of good data ->
+        # 'no measurement rows left'). Trust the window only when it keeps most
+        # of the measurements; otherwise say so and keep the series (the
+        # out-of-water edge trim below still applies).
+        n_meas = int(df[temp_col].notna().sum())
+        in_win = pd.Series(True, index=df.index)
         if pd.notna(start_t):
-            df = df[df[time_col] >= start_t]
+            in_win &= (df[time_col] >= start_t)
         if pd.notna(end_t):
-            df = df[df[time_col] < end_t]
-        n_window = before - len(df)
-        if n_window:
-            say('Info: %d sample(s) outside the logger deployment window '
-                '(%s to %s) discarded.' % (n_window, start_t, end_t))
+            in_win &= (df[time_col] < end_t)
+        kept = int((in_win & df[temp_col].notna()).sum())
+        if n_meas and kept < 0.5 * n_meas:
+            say('Warning: the logger coupler/host events sit at the end of the record - '
+                'they look like readout artifacts, not the launch. The deployment window '
+                'they imply (%s to %s) would drop %d of %d measurement(s), so it was NOT '
+                'applied; the whole series was kept. The out-of-water edge trim still '
+                'applies - check the file edges.'
+                % (start_t, end_t, n_meas - kept, n_meas))
+        else:
+            before = len(df)
+            df = df[in_win]
+            n_window = before - len(df)
+            if n_window:
+                say('Info: %d sample(s) outside the logger deployment window '
+                    '(%s to %s) discarded.' % (n_window, start_t, end_t))
         # event-only rows (no measurement) are removed
         ev_mask = df[event_cols].notna().any(axis=1) & df[temp_col].isna()
         n_ev = int(ev_mask.sum())

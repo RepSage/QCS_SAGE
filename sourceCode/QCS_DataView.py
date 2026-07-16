@@ -1419,29 +1419,37 @@ def plot_TS_diagram (database, dataViewSettings):
             if _has_flags and not keep.any():   # no good rows: fall back to all finite
                 keep = np.isfinite(SA) & np.isfinite(CT)
 
-            def _ts_bounds(arr, frac, keep=keep):
+            def _ts_bounds(arr, frac, min_span, keep=keep):
                 a = arr[keep] if keep.any() else arr
                 a = a[np.isfinite(a)]
                 if a.size == 0:
-                    return 0.0, 1.0
+                    return 0.0, min_span
                 lo, hi = np.nanpercentile(a, [0.5, 99.5])
-                pad = frac * ((hi - lo) if hi > lo else (abs(hi) or 1.0))
+                # a mooring sits at one depth, so its S (and sometimes T) can be
+                # nearly constant: open a minimum window, else the contour grid
+                # collapses to a single row/column and contour() rejects it
+                if (hi - lo) < min_span:
+                    mid = 0.5 * (lo + hi)
+                    lo, hi = mid - min_span / 2.0, mid + min_span / 2.0
+                pad = frac * (hi - lo)
                 return lo - pad, hi + pad
 
             # Figure out boundaries (mins and maxs)
             if re.search('conservative', tsParam, re.IGNORECASE):
-                smin, smax = _ts_bounds(SA, 0.05)
-                tmin, tmax = _ts_bounds(CT, 0.10)
+                smin, smax = _ts_bounds(SA, 0.05, 0.30)
+                tmin, tmax = _ts_bounds(CT, 0.10, 1.50)
 
             elif re.search('potential', tsParam, re.IGNORECASE):
-                smin, smax = _ts_bounds(salt, 0.05)
-                tmin, tmax = _ts_bounds(pt, 0.10)
+                smin, smax = _ts_bounds(salt, 0.05, 0.30)
+                tmin, tmax = _ts_bounds(pt, 0.10, 1.50)
 
             dmin = np.nanmin(depth)
             dmax = np.nanmax(depth)
             # Calculate the number of grid cells in the x and y dimensions
-            xdim = int(round((smax - smin) / 0.1 + 1, 0))
-            ydim = int(round((tmax - tmin) + 1, 0))
+            # (never below 3: contour() needs a >= 2x2 grid, and the linspace
+            # below only yields distinct values from 3 cells up)
+            xdim = max(3, int(round((smax - smin) / 0.1 + 1, 0)))
+            ydim = max(3, int(round((tmax - tmin) + 1, 0)))
             # Create an empty grid of zeros
             rho = np.zeros((ydim, xdim))
             # Create temperature and salinity vectors of appropriate dimensions
