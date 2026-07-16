@@ -1589,19 +1589,32 @@ def plot_doppler_panels(frame, out_dir, label=''):
     p = os.path.join(out_dir, 'Current components (U-V).svg')
     fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
 
-    # 4) progressive vector diagram at the representative depth
+    # 4) progressive vector diagram at the representative depth.
+    # The series is NOT continuous: BAD cells are dropped, and a database can
+    # hold several visits to the site. Integrating speed x elapsed-time across
+    # such a gap invents displacement (one sample after a 30-day gap adds
+    # ~130 km), so a gap is never integrated - it breaks the trajectory.
     if not len(rep):
         return files
     fig, ax = plt.subplots(figsize=(7, 7))
-    dt_s = rep['Datetime'].diff().dt.total_seconds().fillna(0).to_numpy()
-    x_km = np.cumsum(rep['East speed (cm/s)'].to_numpy() / 100.0 * dt_s) / 1000.0
-    y_km = np.cumsum(rep['North speed (cm/s)'].to_numpy() / 100.0 * dt_s) / 1000.0
-    ax.plot(x_km, y_km, '-', lw=1.2)
+    dt_s = rep['Datetime'].diff().dt.total_seconds().fillna(0.0).to_numpy()
+    step = np.median(dt_s[dt_s > 0]) if (dt_s > 0).any() else 0.0
+    gap = (dt_s > 3 * step) if step > 0 else np.zeros(len(dt_s), dtype=bool)
+    dt_eff = np.where(gap, 0.0, dt_s)            # no displacement across a gap
+    x_km = np.cumsum(rep['East speed (cm/s)'].to_numpy() / 100.0 * dt_eff) / 1000.0
+    y_km = np.cumsum(rep['North speed (cm/s)'].to_numpy() / 100.0 * dt_eff) / 1000.0
+    x_plot, y_plot = x_km.astype(float).copy(), y_km.astype(float).copy()
+    x_plot[gap] = np.nan                          # break the line at each gap
+    y_plot[gap] = np.nan
+    ax.plot(x_plot, y_plot, '-', lw=1.2)
     ax.plot([0], [0], 'o', ms=6)
-    ax.set_xlabel('East displacement (km)'); ax.set_ylabel('North displacement (km)')
-    ax.set_title('Progressive vector at %.1f m - %s\n(%s to %s)'
-                 % (rep_depth, label, t0.strftime('%d/%m %H:%M'),
-                    ok['Datetime'].max().strftime('%d/%m %H:%M')))
+    ax.set_xlabel('East displacement (km)')
+    ax.set_ylabel('North displacement (km)')
+    n_gap = int(gap.sum())
+    ax.set_title('Progressive vector at %.1f m - %s\n(%s to %s%s)'
+                 % (rep_depth, label, t0.strftime('%d/%m/%Y %H:%M'),
+                    ok['Datetime'].max().strftime('%d/%m/%Y %H:%M'),
+                    '; %d gap(s) not integrated' % n_gap if n_gap else ''))
     ax.set_aspect('equal', adjustable='datalim'); ax.grid(alpha=0.3)
     p = os.path.join(out_dir, 'Progressive vector diagram.svg')
     fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)

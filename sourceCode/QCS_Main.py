@@ -1894,6 +1894,13 @@ def build_qualification_tab(container, root, shared_log=None):
             if INPUT.get('data_type') != 'TSCP Doppler':
                 log_line("Info: DCPS session detected - treating the Data type as "
                          "'TSCP Doppler'.")
+            if INPUT.get('co2_file'):
+                # the current pipeline has no scalar series to merge CO2 onto,
+                # so say it is being dropped instead of ignoring it in silence
+                log_line("Warning: the CO2 file (%s) does NOT apply to a current "
+                         "profiler and was ignored - CO2 merges into a scalar "
+                         "Seaguard qualification only."
+                         % os.path.basename(INPUT['co2_file']))
             run_doppler_qualification(_bin_path)
             return
 

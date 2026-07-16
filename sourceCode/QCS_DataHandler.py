@@ -886,10 +886,20 @@ def _hobo_datetimes(series, say):
     first = pd.to_numeric(parts[0], errors='coerce')
     second = pd.to_numeric(parts[1], errors='coerce')
     dayfirst = True
-    if not (first > 12).any() and (second > 12).any():
+    if (first > 12).any():
+        pass                       # a first field > 12 can only be the day
+    elif (second > 12).any():
         dayfirst = False           # a second field > 12 can only be the day
         say('Info: dates are month-first (a value > 12 in the second field '
             'proves it); parsed accordingly.')
+    elif first.notna().any():
+        # Neither field ever exceeds 12, so nothing in the file proves the
+        # order and day-first is only an assumption. Say so: a wrong guess
+        # silently moves every sample to another month instead of failing.
+        say('Warning: this export never shows a day above 12, so the file does '
+            'not prove whether its dates are day-first or month-first; '
+            'day-first was assumed. Check the dates - if the deployment is '
+            'month-first, every timestamp is in the wrong month.')
     return pd.to_datetime(txt, errors='coerce', dayfirst=dayfirst)
 
 
@@ -981,8 +991,14 @@ def read_hobo(INPUT, tsSettings):
                 if d_dt and h_dt:      # date + time-of-day, both as datetimes
                     df[time_col] = d.dt.normalize() + (h - h.dt.normalize())
                 else:
-                    df[time_col] = (d.astype(str).str.strip() + ' '
-                                    + h.astype(str).str.strip())
+                    # Render each side explicitly. A datetime column stringified
+                    # with astype(str) keeps its own date ('1899-12-31 04:00:00'
+                    # for a time-only cell), which would poison the joined stamp.
+                    d_txt = (d.dt.strftime('%Y-%m-%d') if d_dt
+                             else d.astype(str).str.strip())
+                    h_txt = (h.dt.strftime('%H:%M:%S') if h_dt
+                             else h.astype(str).str.strip())
+                    df[time_col] = d_txt + ' ' + h_txt
                 say('Info: date and time came in separate columns (%r + %r); joined.'
                     % (str(date_c), str(hour_c)))
 
