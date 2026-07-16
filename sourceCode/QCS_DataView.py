@@ -1540,32 +1540,39 @@ def plot_doppler_panels(frame, out_dir, label=''):
     p = os.path.join(out_dir, 'Current profile (time x depth).svg')
     fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
 
-    # representative depth = the GOOD cell with most samples
+    # representative depth = the GOOD cell with most samples. Rows can carry a
+    # NaN east/north pair even when not flagged BAD (partial records) - they
+    # cannot enter the vector panels: a single NaN would poison the arrow
+    # scale (int(NaN) crash) and the progressive-vector cumsum.
     rep_depth = ok.groupby('Depth (m)').size().idxmax()
     rep = ok[ok['Depth (m)'] == rep_depth].sort_values('Datetime')
+    rep = rep.dropna(subset=['East speed (cm/s)', 'North speed (cm/s)'])
 
     # 2) stick plot: current vectors rooted on the time axis, angle-true. A
     # plain scale=1 quiver mixes cm/s with the date x-units and blows the
     # sticks across the whole axis; scale_units='width' makes the arrow length
     # proportional to speed and independent of the date axis, and the
     # reference key carries the magnitude scale (so the y-axis carries none).
-    fig, ax = plt.subplots(figsize=(11, 4))
-    tnum = mdates.date2num(rep['Datetime'].to_numpy())
-    u = rep['East speed (cm/s)'].to_numpy()
-    v = rep['North speed (cm/s)'].to_numpy()
-    vmax = float(np.hypot(u, v).max()) or 1.0
-    q = ax.quiver(tnum, np.zeros(len(rep)), u, v, angles='uv',
-                  scale_units='width', scale=vmax * 12.5, width=0.003, color='tab:blue')
-    ref = max(10, int(round(vmax / 2 / 10)) * 10)
-    ax.quiverkey(q, 0.88, 0.9, ref, '%d cm/s' % ref, labelpos='E', coordinates='axes')
-    ax.axhline(0, color='0.6', lw=0.8)
-    ax.set_ylim(-1, 1)
-    ax.set_yticks([])
-    ax.set_title('Current sticks at %.1f m - %s' % (rep_depth, label))
-    ax.xaxis_date(); ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
-    fig.autofmt_xdate()
-    p = os.path.join(out_dir, 'Current stick plot.svg')
-    fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+    if len(rep):
+        fig, ax = plt.subplots(figsize=(11, 4))
+        tnum = mdates.date2num(rep['Datetime'].to_numpy())
+        u = rep['East speed (cm/s)'].to_numpy()
+        v = rep['North speed (cm/s)'].to_numpy()
+        vmax = float(np.nanmax(np.hypot(u, v)))
+        if not np.isfinite(vmax) or vmax <= 0:
+            vmax = 1.0
+        q = ax.quiver(tnum, np.zeros(len(rep)), u, v, angles='uv',
+                      scale_units='width', scale=vmax * 12.5, width=0.003, color='tab:blue')
+        ref = max(10, int(round(vmax / 2 / 10)) * 10)
+        ax.quiverkey(q, 0.88, 0.9, ref, '%d cm/s' % ref, labelpos='E', coordinates='axes')
+        ax.axhline(0, color='0.6', lw=0.8)
+        ax.set_ylim(-1, 1)
+        ax.set_yticks([])
+        ax.set_title('Current sticks at %.1f m - %s' % (rep_depth, label))
+        ax.xaxis_date(); ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+        fig.autofmt_xdate()
+        p = os.path.join(out_dir, 'Current stick plot.svg')
+        fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
 
     # 3) U/V component series at up to 4 depths
     depths = sorted(ok['Depth (m)'].dropna().unique())
@@ -1583,6 +1590,8 @@ def plot_doppler_panels(frame, out_dir, label=''):
     fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
 
     # 4) progressive vector diagram at the representative depth
+    if not len(rep):
+        return files
     fig, ax = plt.subplots(figsize=(7, 7))
     dt_s = rep['Datetime'].diff().dt.total_seconds().fillna(0).to_numpy()
     x_km = np.cumsum(rep['East speed (cm/s)'].to_numpy() / 100.0 * dt_s) / 1000.0
