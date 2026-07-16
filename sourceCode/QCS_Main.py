@@ -29,6 +29,11 @@ from QCS_Theme import ToolTip
 _out = theme.install_output_redirect()
 theme.install_crash_handler('QCS Data Qualification', _out)
 
+# Longest accepted Site Code. The descriptive site names the corpus uses for
+# the pool/transect deployments (PISCINA_PLES_DENTRO, BORDA_SUL_ABROLHOS, ...)
+# do not fit the original 10, and the code is only a label in the Site column.
+SITE_CODE_MAX = 20
+
 # Global configuration
 CONFIG = {
     'tsQualityTests': {
@@ -197,7 +202,7 @@ TOOLTIPS = {
     'output_format': "Output format for the qualified data\n.csv: Delimited text\n.xlsx: Excel\n(the automatic report files are always .xlsx)",
     'remove_bad': "Automatically removes data flagged\nas BAD (flag 4) in output",
     'remove_suspect': "Automatically removes data flagged\nas SUSPECT (flag 3) in output",
-    'site_code': "Identification code for the\ncollection site (max 10 characters)",
+    'site_code': "Identification code for the\ncollection site (max %d characters)" % SITE_CODE_MAX,
     'run_button': "Runs the qualification process\nwith configured parameters",
     'settings_button': "Opens test configuration window\nand quality parameters",
     'export_button': "Exports current settings\nto a JSON file"
@@ -642,8 +647,9 @@ def collect_input_settings():
     INPUT['co2_file'] = _co2_file or None
 
     INPUT['site'] = siteSelect_entry.get().strip().upper()
-    if len(INPUT['site']) > 10:
-        messagebox.showwarning("Warning", "Site Code must have at most 10 characters\n('Site Code' field).")
+    if len(INPUT['site']) > SITE_CODE_MAX:
+        messagebox.showwarning("Warning", "Site Code must have at most %d characters\n"
+                               "('Site Code' field)." % SITE_CODE_MAX)
         return False
 
     # The selected coastal region provides a representative latitude/longitude,
