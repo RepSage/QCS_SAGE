@@ -80,6 +80,11 @@ def _time_of_day_axis(ax, h0, h1):
     ax.set_xlabel("Time of day (00:00 = midnight of each site's first day; dashed lines = day boundaries)")
 
 
+# display labels for the internal semester keys (titles/log lines only; file
+# names keep the compact space-less key)
+_SEM_LABEL = {'1stSemester': '1st semester', '2ndSemester': '2nd semester'}
+
+
 def _floor_fit(fitted):
     """Every variable in this software is physically >= 0 (values <= 0 are
     discarded or clamped at qualification), so a fitted tendency must not dip
@@ -682,7 +687,7 @@ def plot_database_panel1 (database, dataViewSettings):
                 # set y label
                 ax1.set_ylabel(rParam[0], color=bcParam[y_list[0].name], fontsize=10 * fscale)
                 # set title
-                ax1.set_title('Parameters for %s over %s during %s'%(site, semester, year))
+                ax1.set_title('Parameters for %s over %s during %s'%(site, _SEM_LABEL.get(semester, semester), year))
                 # set y axis color and position
                 ax1.spines['left'].set_color(bcParam[y_list[0].name])
                 ax1.spines['left'].set_position(('outward', 1))
@@ -810,7 +815,7 @@ def plot_database_panel2(database, dataViewSettings):
         for parameter in parameter_names:
             display_param = rParam[parameter_names.index(parameter)]
             fig, ax1 = plt.subplots(figsize=(980/100, 500/100))
-            plt.title(f'{display_param} on {semester} for each site - {year}')
+            plt.title(f'{display_param} on {_SEM_LABEL.get(semester, semester)} for each site - {year}')
             plt.grid(True, linestyle='dotted', linewidth=0.5)
             ax1.set_ylabel(display_param)
             control = 0
@@ -922,9 +927,19 @@ def plot_database_panel3(database, dataViewSettings):
             x_list, cParam, bcParam, parameter_names = setParam(dataViewSettings, db, semester, site)
             rParam = renameParameters(parameter_names)
             if len(x_list) > 0:
-                figHeight = 500
-                fig, ax1 = plt.subplots(figsize=(980 / 100, figHeight / 100))
-                plt.subplots_adjust(left=0.050, right=0.840, top=0.950, bottom=0.500)
+                # The parameter x-axes stack DOWNWARD from the plot (25 pts each).
+                # Size the figure so they ALL fit: with a fixed 500 px height the
+                # lower axes overflowed off the bottom and were silently hidden
+                # once many parameters were selected (Chlorophyll/pH/DOM/... just
+                # vanished). Give the stacked axes exactly the room they need.
+                n_ax = len(x_list)
+                below_in = (25 * max(n_ax - 1, 0) + 55) / 72.0   # stacked axes + last labels
+                plot_in, top_in = 3.0, 0.45
+                fig_h_in = plot_in + below_in + top_in
+                fig, ax1 = plt.subplots(figsize=(980 / 100, fig_h_in))
+                plt.subplots_adjust(left=0.050, right=0.840,
+                                    top=1 - top_in / fig_h_in,
+                                    bottom=below_in / fig_h_in)
                 ax1.invert_yaxis()
                 plt.grid(True, axis='y', linestyle='dotted', linewidth=0.5)
                 
@@ -956,7 +971,7 @@ def plot_database_panel3(database, dataViewSettings):
                 # Configure first axis
                 ax1.set_xlabel('')  # Remove x-axis label but keep ticks
                 ax1.set_ylabel('Depth (m)')
-                ax1.set_title('Parameters for %s over %s during %s'%(site, semester, year))
+                ax1.set_title('Parameters for %s over %s during %s'%(site, _SEM_LABEL.get(semester, semester), year))
                 # optional fixed depth axis (shallow at top, deep at bottom)
                 if dataViewSettings.get('depthAxisMin') is not None and dataViewSettings.get('depthAxisMax') is not None:
                     ax1.set_ylim(dataViewSettings['depthAxisMax'], dataViewSettings['depthAxisMin'])
@@ -1371,7 +1386,9 @@ def plot_TS_diagram (database, dataViewSettings):
             fig = plt.figure(figsize=(980 / 100, 500 / 100))  # Create figure with specified resolution
             ax = fig.add_subplot(111)  # Create axes
             # selecting semester
-            tspSemesterData = db[semester][['Pressure (dbar)', 'Depth (m)', 'Temperature (degC)', 'Salinity (PSU)', 'Site']].copy()
+            _ts_cols = ['Pressure (dbar)', 'Depth (m)', 'Temperature (degC)', 'Salinity (PSU)', 'Site']
+            _ts_cols += [c for c in ('Flag_S', 'Flag_T') if c in db[semester].columns]
+            tspSemesterData = db[semester][_ts_cols].copy()
             # Convert temperature, salinity, and pressure data to arrays
             salt = np.asarray(tspSemesterData['Salinity (PSU)'].copy())
             temp = np.asarray(tspSemesterData['Temperature (degC)'].copy())
@@ -1387,24 +1404,52 @@ def plot_TS_diagram (database, dataViewSettings):
             tspSemesterData['Absolute Salinity (PSU)'] = SA
             tspSemesterData['Conservative Temperature (degC)'] = CT
             tspSemesterData['Potential Temperature (degC)'] = pt
+            # Robust S/T envelope for the axis + contour grid: drive it from
+            # GOOD-flagged rows only (plus a 0.5% tail trim), so out-of-water
+            # spikes (salinity crashing toward 0 when a pool logger is exposed
+            # - all flagged suspect/bad) cannot stretch the axis to 0-36 and
+            # squash the real cluster into a vertical line. Plain nanmin/nanmax
+            # let a single artifact drive it. Suspect/bad points are still
+            # plotted; they just do not set the view.
+            keep = np.isfinite(SA) & np.isfinite(CT)
+            _has_flags = any(_fc in tspSemesterData.columns for _fc in ('Flag_S', 'Flag_T'))
+            for _fc in ('Flag_S', 'Flag_T'):
+                if _fc in tspSemesterData.columns:
+                    keep &= (tspSemesterData[_fc].to_numpy() == 1)
+            if _has_flags and not keep.any():   # no good rows: fall back to all finite
+                keep = np.isfinite(SA) & np.isfinite(CT)
+
+            def _ts_bounds(arr, frac, min_span, keep=keep):
+                a = arr[keep] if keep.any() else arr
+                a = a[np.isfinite(a)]
+                if a.size == 0:
+                    return 0.0, min_span
+                lo, hi = np.nanpercentile(a, [0.5, 99.5])
+                # a mooring sits at one depth, so its S (and sometimes T) can be
+                # nearly constant: open a minimum window, else the contour grid
+                # collapses to a single row/column and contour() rejects it
+                if (hi - lo) < min_span:
+                    mid = 0.5 * (lo + hi)
+                    lo, hi = mid - min_span / 2.0, mid + min_span / 2.0
+                pad = frac * (hi - lo)
+                return lo - pad, hi + pad
+
             # Figure out boundaries (mins and maxs)
             if re.search('conservative', tsParam, re.IGNORECASE):
-                smin = np.nanmin(SA) - (0.01 * np.nanmin(SA)/2)
-                smax = np.nanmax(SA) + (0.01 * np.nanmax(SA)/2)
-                tmin = np.nanmin(CT) - (0.1 * np.nanmax(CT)/2)
-                tmax = np.nanmax(CT) + (0.1 * np.nanmax(CT)/2)
+                smin, smax = _ts_bounds(SA, 0.05, 0.30)
+                tmin, tmax = _ts_bounds(CT, 0.10, 1.50)
 
             elif re.search('potential', tsParam, re.IGNORECASE):
-                smin = np.nanmin(salt) - (0.01 * np.nanmin(SA)/2)
-                smax = np.nanmax(salt) + (0.01 * np.nanmax(SA)/2)
-                tmin = np.nanmin(pt) - (0.1 * np.nanmax(CT)/2)
-                tmax = np.nanmax(pt) + (0.1 * np.nanmax(CT)/2)
+                smin, smax = _ts_bounds(salt, 0.05, 0.30)
+                tmin, tmax = _ts_bounds(pt, 0.10, 1.50)
 
             dmin = np.nanmin(depth)
             dmax = np.nanmax(depth)
             # Calculate the number of grid cells in the x and y dimensions
-            xdim = int(round((smax - smin) / 0.1 + 1, 0))
-            ydim = int(round((tmax - tmin) + 1, 0))
+            # (never below 3: contour() needs a >= 2x2 grid, and the linspace
+            # below only yields distinct values from 3 cells up)
+            xdim = max(3, int(round((smax - smin) / 0.1 + 1, 0)))
+            ydim = max(3, int(round((tmax - tmin) + 1, 0)))
             # Create an empty grid of zeros
             rho = np.zeros((ydim, xdim))
             # Create temperature and salinity vectors of appropriate dimensions
@@ -1449,13 +1494,128 @@ def plot_TS_diagram (database, dataViewSettings):
                     a += 1
             # title and file name list every plotted site, not only the last one
             sites_label = '-'.join(site_names)
-            ax.set_title('T-S Diagram for %s over %s during %s'%(sites_label, semester, year))
+            ax.set_title('T-S Diagram for %s over %s during %s'%(sites_label, _SEM_LABEL.get(semester, semester), year))
             custom_handles = []
             for a in range(len(site_names)):
                 custom_handles.append(Line2D([0], [0], linestyle='None', marker=markerList[a], label=site_names[a], markeredgecolor='black', markerfacecolor='black', markersize=6))
             plt.legend(handles=custom_handles)  # Draw legend
+            ax.set_xlim(smin, smax)   # hold the view on the robust envelope
+            ax.set_ylim(tmin, tmax)
             plt.savefig('TS_Diagram_%s_%s_%d.svg'%(sites_label, semester, year))
             enable_scroll_zoom(fig)
             plt.show()
 
 
+
+
+# ---------------------------------------------------------------------------
+# DCPS / Doppler current-profiler panels (v8.0). Four figures rendered from
+# the QUALIFIED tidy frame (needs 'Flag_cur'): rows flagged BAD are excluded.
+# ---------------------------------------------------------------------------
+
+def plot_doppler_panels(frame, out_dir, label=''):
+    """Saves the 4 current panels as SVGs into out_dir. Returns file list."""
+    import os
+    import matplotlib.dates as mdates
+    os.makedirs(out_dir, exist_ok=True)
+    ok = frame[frame['Flag_cur'] != 4].copy()
+    if not len(ok):
+        return []
+    files = []
+    t0 = ok['Datetime'].min()
+
+    # 1) time x depth heatmaps: speed + direction
+    fig, axes = plt.subplots(2, 1, figsize=(11, 7), sharex=True)
+    for ax, col, cmap, unit in ((axes[0], 'Horizontal speed (cm/s)', 'viridis', 'cm/s'),
+                                (axes[1], 'Direction (deg)', 'twilight', 'deg')):
+        piv = ok.pivot_table(index='Depth (m)', columns='Datetime', values=col)
+        if piv.size:
+            m = ax.pcolormesh(piv.columns, piv.index, piv.values, cmap=cmap, shading='nearest')
+            fig.colorbar(m, ax=ax, label='%s [%s]' % (col.split(' (')[0], unit))
+        ax.invert_yaxis()
+        ax.set_ylabel('Depth (m)')
+    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+    fig.suptitle('Current profile - %s' % label)
+    fig.autofmt_xdate()
+    p = os.path.join(out_dir, 'Current profile (time x depth).svg')
+    fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+
+    # representative depth = the GOOD cell with most samples. Rows can carry a
+    # NaN east/north pair even when not flagged BAD (partial records) - they
+    # cannot enter the vector panels: a single NaN would poison the arrow
+    # scale (int(NaN) crash) and the progressive-vector cumsum.
+    rep_depth = ok.groupby('Depth (m)').size().idxmax()
+    rep = ok[ok['Depth (m)'] == rep_depth].sort_values('Datetime')
+    rep = rep.dropna(subset=['East speed (cm/s)', 'North speed (cm/s)'])
+
+    # 2) stick plot: current vectors rooted on the time axis, angle-true. A
+    # plain scale=1 quiver mixes cm/s with the date x-units and blows the
+    # sticks across the whole axis; scale_units='width' makes the arrow length
+    # proportional to speed and independent of the date axis, and the
+    # reference key carries the magnitude scale (so the y-axis carries none).
+    if len(rep):
+        fig, ax = plt.subplots(figsize=(11, 4))
+        tnum = mdates.date2num(rep['Datetime'].to_numpy())
+        u = rep['East speed (cm/s)'].to_numpy()
+        v = rep['North speed (cm/s)'].to_numpy()
+        vmax = float(np.nanmax(np.hypot(u, v)))
+        if not np.isfinite(vmax) or vmax <= 0:
+            vmax = 1.0
+        q = ax.quiver(tnum, np.zeros(len(rep)), u, v, angles='uv',
+                      scale_units='width', scale=vmax * 12.5, width=0.003, color='tab:blue')
+        ref = max(10, int(round(vmax / 2 / 10)) * 10)
+        ax.quiverkey(q, 0.88, 0.9, ref, '%d cm/s' % ref, labelpos='E', coordinates='axes')
+        ax.axhline(0, color='0.6', lw=0.8)
+        ax.set_ylim(-1, 1)
+        ax.set_yticks([])
+        ax.set_title('Current sticks at %.1f m - %s' % (rep_depth, label))
+        ax.xaxis_date(); ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+        fig.autofmt_xdate()
+        p = os.path.join(out_dir, 'Current stick plot.svg')
+        fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+
+    # 3) U/V component series at up to 4 depths
+    depths = sorted(ok['Depth (m)'].dropna().unique())
+    sel = depths[:: max(1, len(depths) // 4)][:4]
+    fig, axes = plt.subplots(2, 1, figsize=(11, 6), sharex=True)
+    for d in sel:
+        sub = ok[ok['Depth (m)'] == d].sort_values('Datetime')
+        axes[0].plot(sub['Datetime'], sub['East speed (cm/s)'], lw=0.9, label='%.1f m' % d)
+        axes[1].plot(sub['Datetime'], sub['North speed (cm/s)'], lw=0.9, label='%.1f m' % d)
+    axes[0].set_ylabel('East U (cm/s)'); axes[1].set_ylabel('North V (cm/s)')
+    axes[0].legend(fontsize=8, ncol=len(sel)); axes[0].set_title('Current components - %s' % label)
+    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+    fig.autofmt_xdate()
+    p = os.path.join(out_dir, 'Current components (U-V).svg')
+    fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+
+    # 4) progressive vector diagram at the representative depth.
+    # The series is NOT continuous: BAD cells are dropped, and a database can
+    # hold several visits to the site. Integrating speed x elapsed-time across
+    # such a gap invents displacement (one sample after a 30-day gap adds
+    # ~130 km), so a gap is never integrated - it breaks the trajectory.
+    if not len(rep):
+        return files
+    fig, ax = plt.subplots(figsize=(7, 7))
+    dt_s = rep['Datetime'].diff().dt.total_seconds().fillna(0.0).to_numpy()
+    step = np.median(dt_s[dt_s > 0]) if (dt_s > 0).any() else 0.0
+    gap = (dt_s > 3 * step) if step > 0 else np.zeros(len(dt_s), dtype=bool)
+    dt_eff = np.where(gap, 0.0, dt_s)            # no displacement across a gap
+    x_km = np.cumsum(rep['East speed (cm/s)'].to_numpy() / 100.0 * dt_eff) / 1000.0
+    y_km = np.cumsum(rep['North speed (cm/s)'].to_numpy() / 100.0 * dt_eff) / 1000.0
+    x_plot, y_plot = x_km.astype(float).copy(), y_km.astype(float).copy()
+    x_plot[gap] = np.nan                          # break the line at each gap
+    y_plot[gap] = np.nan
+    ax.plot(x_plot, y_plot, '-', lw=1.2)
+    ax.plot([0], [0], 'o', ms=6)
+    ax.set_xlabel('East displacement (km)')
+    ax.set_ylabel('North displacement (km)')
+    n_gap = int(gap.sum())
+    ax.set_title('Progressive vector at %.1f m - %s\n(%s to %s%s)'
+                 % (rep_depth, label, t0.strftime('%d/%m/%Y %H:%M'),
+                    ok['Datetime'].max().strftime('%d/%m/%Y %H:%M'),
+                    '; %d gap(s) not integrated' % n_gap if n_gap else ''))
+    ax.set_aspect('equal', adjustable='datalim'); ax.grid(alpha=0.3)
+    p = os.path.join(out_dir, 'Progressive vector diagram.svg')
+    fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+    return files

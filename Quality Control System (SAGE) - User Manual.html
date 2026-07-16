@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v7.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v8.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -233,8 +233,20 @@
             turbidity group, PAR); selecting any group's <code>Data000.bin</code> reads the
             <strong>whole deployment</strong> &mdash; all sensor groups merged onto one time axis
             (groups sampled at different rates are interpolated onto the finest one), so every
-            variable is qualified together. Doppler current-profiler groups are archived but not
-            qualified. Selecting SEVERAL Seaguard files creates a <strong>batch</strong>: each file
+            variable is qualified together. Selecting a <strong>Doppler current-profiler
+            (DCPS)</strong> group's <code>Data000.bin</code> auto-sets the Data type to
+            <strong>TSCP Doppler</strong> and runs the CURRENT pipeline instead (since v8.0):
+            one row per record &times; depth cell, four current quality tests (speed range;
+            signal quality &mdash; cell state, return strength, 'no ping' placeholders; speed
+            standard deviation; instrument tilt), output in
+            <code>&lt;session&gt;_DOPPLER_QLF</code> (qualified current table with a Site
+            column + flag legend + the 4 current panels in <code>QCS DataView (current)</code>:
+            time&times;depth heatmaps, stick plot, U/V components, progressive vector). In the
+            Visualization tab, the same qualified table is auto-detected as Instrument
+            <strong>Doppler</strong> / Data type <strong>TSCP Doppler</strong>, and 'Generate
+            panels' renders the current panels into <code>DatabaseView\&lt;site&gt;
+            (current)</code> per selected site. Selecting SEVERAL Seaguard files creates a
+            <strong>batch</strong>: each file
             is qualified independently, in sequence, with its own automatic
             <code>&lt;file&gt;_QLF</code> output. For HOBO, several files are the redundant
             replicates of one deployment.</td>
@@ -354,7 +366,7 @@
         </tr>
         <tr>
             <td>Site code</td>
-            <td>Field to enter the site identification code (up to 10 characters).</td>
+            <td>Field to enter the site identification code (up to 20 characters).</td>
         </tr>
     </table>
 

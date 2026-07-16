@@ -451,3 +451,82 @@ def density_inversion_test(data, flags, tolerance, lat, lon):
         else:
             out.append(flags[i] + "%d" % QC_flags.GOOD_DATA)
     return out
+
+
+# ---------------------------------------------------------------------------
+# DCPS / Doppler current-profiler qualification (v8.0). Runs on the tidy frame
+# produced by data.read_seaguard_doppler (one row per record x depth cell).
+# Four tests, one flag character per test in this order (same architecture as
+# the scalar flag string): current range, signal quality, speed stdev, tilt.
+# ---------------------------------------------------------------------------
+
+DOPPLER_TEST_SEQUENCE = [
+    ('cur_range', 'Current speed range'),
+    ('cur_signal', 'Signal quality (strength + cell state)'),
+    ('cur_stdev', 'Speed standard deviation'),
+    ('cur_tilt', 'Instrument tilt'),
+]
+
+DOPPLER_DEFAULTS = {
+    'max_speed': 300.0,       # cm/s - physical cap for coastal reef currents
+    'min_strength': -60.0,    # dB   - below the acoustic noise floor -> BAD
+    'max_stdev': 50.0,        # cm/s - single-ping stdev above this -> SUSPECT
+    'tilt_suspect': 15.0,     # deg  - manual: compensation degrades over this
+    'tilt_bad': 35.0,         # deg
+}
+
+
+def doppler_qc(frame, settings=None):
+    """Qualifies a Doppler current frame. Returns (flags, Flag_cur):
+    flags = list of 4-char strings (one per row, DOPPLER_TEST_SEQUENCE order);
+    Flag_cur = per-row rollup with the scalar priority (4 > 3 > 9 > 1)."""
+    s = dict(DOPPLER_DEFAULTS)
+    if settings:
+        s.update({k: v for k, v in settings.items() if k in DOPPLER_DEFAULTS})
+    speed = frame['Horizontal speed (cm/s)'].to_numpy(float)
+    strength = frame['Signal strength (dB)'].to_numpy(float)
+    state = frame['Cell state'].to_numpy(float)
+    stdev = frame['Speed stdev (cm/s)'].to_numpy(float)
+    tilt = frame['Tilt (deg)'].to_numpy(float)
+    missing = np.isnan(speed)
+
+    n = len(frame)
+    flags = []
+    rollup = np.ones(n, dtype=int)
+    for i in range(n):
+        if missing[i]:
+            flags.append('%d' % QC_flags.MISSING * 4)
+            rollup[i] = QC_flags.MISSING
+            continue
+        f = ''
+        # 1) current range: impossible magnitude
+        f += '%d' % (QC_flags.BAD_DATA if (speed[i] < 0 or speed[i] > s['max_speed'])
+                     else QC_flags.GOOD_DATA)
+        # 2) signal quality: cell state != 0 (out of range / no echo), return
+        #    strength below the noise floor, or strength >= 0 dB - genuine
+        #    echoes are always negative dB; 0.0 is the 'no ping' placeholder
+        bad_sig = (not np.isnan(state[i]) and state[i] != 0) or \
+                  (not np.isnan(strength[i]) and
+                   (strength[i] < s['min_strength'] or strength[i] >= 0.0))
+        f += '%d' % (QC_flags.BAD_DATA if bad_sig else QC_flags.GOOD_DATA)
+        # 3) noisy measurement: single-ping stdev too high
+        f += '%d' % (QC_flags.SUSPECT if (not np.isnan(stdev[i]) and stdev[i] > s['max_stdev'])
+                     else QC_flags.GOOD_DATA)
+        # 4) instrument attitude: tilt compromises the whole record
+        if np.isnan(tilt[i]):
+            f += '%d' % QC_flags.UNKNOWN
+        elif tilt[i] > s['tilt_bad']:
+            f += '%d' % QC_flags.BAD_DATA
+        elif tilt[i] > s['tilt_suspect']:
+            f += '%d' % QC_flags.SUSPECT
+        else:
+            f += '%d' % QC_flags.GOOD_DATA
+        flags.append(f)
+        chars = [int(c) for c in f]
+        if QC_flags.BAD_DATA in chars:
+            rollup[i] = QC_flags.BAD_DATA
+        elif QC_flags.SUSPECT in chars:
+            rollup[i] = QC_flags.SUSPECT
+        else:
+            rollup[i] = QC_flags.GOOD_DATA
+    return flags, rollup

@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v7.0'
+QCS_VERSION = 'v8.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -267,6 +267,283 @@ def read_seaguard_deployment(file_path):
     print('Info: %d sensor groups merged onto the finest time axis: %d records, '
           '%d columns.' % (len(groups), len(merged), merged.shape[1]))
     return merged
+
+
+# ---------------------------------------------------------------------------
+# DCPS / Doppler current-profiler sessions (Aanderaa DCPS on the SeaGuard II).
+# Same AADIBXML container as the scalar sessions, but a much richer record:
+# - the tag dictionary must be parsed SEQUENTIALLY (entry = 13-byte prefix,
+#   name, NUL, 3 zero bytes); the regex scan used for scalar files corrupts on
+#   dictionaries this large (payload bytes that look like ASCII swallow names).
+# - value slots are the template <Point>s that CONTAIN a <Value/>; the
+#   self-closing <Point/>s inside <CellAttributes> only DEFINE the per-cell
+#   parameters (ID -> Descr/Unit), and each <Cell Index=k> holds bare Points
+#   referencing them. k-th Point-parented dictionary 'Value' <-> k-th slot.
+# - Value payloads come typed: 0x14 float32 (4 B), 0x04 int32 (4 B),
+#   0x02 int16 (2 B - Air Detect, Ping Count, Cell States); one extra 'Value'
+#   belongs to the <Vector> element (EventReg flags): u32 dim + dim x int32.
+# - rec_len counts from the SYNC marker and the record ends with a 4-char
+#   checksum, so records are walked BY BYTES, not by the field count.
+# Decoding validated against the instrument's own CSV export (CFRIO1
+# 22.03.2021): 15,948 value comparisons across 12 records, 100% of the
+# measurement parameters identical (only export-side blanks differ).
+# ---------------------------------------------------------------------------
+
+def _parse_aadi_dictionary(dictionary):
+    """Sequentially parses the tag dictionary. Returns (entries, value_ids):
+    entries[id] = (name, parent_id, type_code); value_ids = 'Value' entries in
+    dictionary order."""
+    import struct
+    entries = {}
+    value_ids = []
+    p = 0
+    while p + 13 < len(dictionary):
+        ident, parent = struct.unpack_from('<HH', dictionary, p)
+        type_code = struct.unpack_from('<I', dictionary, p + 7)[0]
+        q = dictionary.find(b'\x00', p + 13)
+        if q < 0:
+            break
+        name = dictionary[p + 13:q].decode('ascii', errors='replace')
+        if not name or not re.match(r'^[A-Za-z][A-Za-z0-9_]*$', name):
+            break
+        entries[ident] = (name, parent, type_code)
+        if name == 'Value':
+            value_ids.append(ident)
+        p = q + 4                       # NUL + 3 trailing zero bytes
+    return entries, value_ids
+
+
+def is_seaguard_doppler(file_path):
+    """True when the .bin session belongs to a DCPS / Doppler current profiler
+    (template SensorData named 'DCPS ...' / product 'Doppler Current Profiler')."""
+    import struct
+    try:
+        with open(file_path, 'rb') as f:
+            blob = f.read(64 * 1024)
+        if not blob.startswith(_AADI_MAGIC):
+            return False
+        tpl_off, _, _, _, tpl_len, _, _ = struct.unpack_from('<7I', blob, 0x1c)
+        head = blob[tpl_off:tpl_off + min(tpl_len, 4096)].decode('utf-8', 'replace')
+        return bool(re.search(r'Descr="DCPS|Doppler Current Profiler', head))
+    except Exception:
+        return False
+
+
+def _decode_dcps_bin(file_path):
+    """Decodes ONE DCPS DataNNN.bin. Returns (records, slots, columns):
+    records = [(Timestamp, {slot_index: value}, vector_or_None), ...];
+    slots[i] = (descr, unit, column_descr, cell_index, depth_m) with
+    column_descr/cell None for the record-level (non-cell) parameters."""
+    import struct
+    import datetime as _dt
+    import xml.etree.ElementTree as ET
+    with open(file_path, 'rb') as f:
+        blob = f.read()
+    if not blob.startswith(_AADI_MAGIC):
+        raise ValueError("'%s' is not an AADI binary session file." % os.path.basename(file_path))
+    tpl_off, _, _, _, tpl_len, dict_off, dict_len = struct.unpack_from('<7I', blob, 0x1c)
+    template = blob[tpl_off:tpl_off + tpl_len].decode('utf-8', 'replace')
+    entries, value_ids = _parse_aadi_dictionary(blob[dict_off:dict_off + dict_len])
+
+    def parent_name(ident):
+        ent = entries.get(ident)
+        par = entries.get(ent[1]) if ent else None
+        return par[0] if par else ''
+
+    # template: value slots in document order, with Column/Cell context
+    tpl = template[:template.rfind('</Device>') + len('</Device>')]
+    root = ET.fromstring(tpl)
+
+    def local(el):
+        return el.tag.split('}')[-1]
+
+    slots = []
+    columns = []                        # (descr, start, cellsize, numcells)
+
+    def cell_defs(column_el):
+        defs = {}
+        for ca in column_el:
+            if local(ca) == 'CellAttributes':
+                for pt in ca:
+                    if local(pt) == 'Point':
+                        defs[pt.attrib.get('ID')] = (pt.attrib.get('Descr', '?'),
+                                                     pt.attrib.get('Unit', ''))
+        return defs
+
+    def collect(el, col=None, cell=None, defs=None):
+        tag = local(el)
+        if tag == 'Column':
+            col = (el.attrib.get('Descr', '?'),
+                   float(el.attrib.get('ColumnStart', 0) or 0),
+                   float(el.attrib.get('CellSize', 0) or 0))
+            columns.append((col[0], col[1], col[2], int(el.attrib.get('NumCells', 0) or 0)))
+            defs = cell_defs(el)
+        elif tag == 'Cell':
+            cell = int(el.attrib.get('Index', -1))
+        if tag == 'Point' and any(local(c) == 'Value' for c in el):
+            if el.attrib.get('Descr') is not None:
+                slots.append((el.attrib.get('Descr'), el.attrib.get('Unit', ''),
+                              None, None, None))
+            else:
+                d, u = (defs or {}).get(el.attrib.get('ID'), ('?', ''))
+                depth = (col[1] + col[2] * (cell + 0.5)) if col else None
+                slots.append((d, u, col[0] if col else None, cell, depth))
+        for ch in el:
+            collect(ch, col, cell, defs)
+    collect(root)
+
+    point_values = [i for i in value_ids if parent_name(i) == 'Point']
+    if len(point_values) != len(slots):
+        raise ValueError('DCPS reader (%s): %d value ids vs %d template slots - '
+                         'unsupported layout.' % (os.path.basename(file_path),
+                                                  len(point_values), len(slots)))
+    vid2slot = dict(zip(point_values, range(len(slots)), strict=True))
+
+    records = []
+    def walk_record(pos, vec_dim_size):
+        """Walks one record. Returns (rt, vals, vector) when the fields land
+        EXACTLY on the checksum boundary, else None."""
+        q = pos + 8
+        rec_len, _nf = struct.unpack_from('<II', blob, q)
+        q += 8
+        field_end = pos + rec_len - 4          # 4-char checksum closes the record
+        if field_end > len(blob):
+            return None
+        rt = None
+        vals = {}
+        vector = None
+        while q + 2 <= field_end:
+            ident = struct.unpack_from('<H', blob, q)[0]
+            q += 2
+            ent = entries.get(ident)
+            if ent is None:
+                return None
+            name, parent, tc = ent
+            if name == 'Value' and parent_name(ident) == 'Vector':
+                # the element-count prefix is u32 on most deployments but u16
+                # on some (same type code) - the size is detected per file by
+                # requiring the walk to land exactly on the record boundary
+                if vec_dim_size == 2:
+                    dim = struct.unpack_from('<H', blob, q)[0]
+                else:
+                    dim = struct.unpack_from('<I', blob, q)[0]
+                q += vec_dim_size
+                if dim > 64:
+                    return None
+                vector = [struct.unpack_from('<i', blob, q + 4 * j)[0] for j in range(dim)]
+                q += 4 * dim
+            elif tc == 0x28:                    # 8-byte .NET ticks
+                ticks = struct.unpack_from('<q', blob, q)[0]
+                q += 8
+                if name == 'Time' and parent != 1:
+                    rt = pd.Timestamp(_AADI_TICK0 + _dt.timedelta(microseconds=ticks // 10))
+            elif tc == 0x02:                    # 2-byte int16
+                v = struct.unpack_from('<h', blob, q)[0]
+                q += 2
+                if name == 'Value' and ident in vid2slot:
+                    vals[vid2slot[ident]] = float(v)
+            else:                               # 4-byte float32 / int32
+                raw = blob[q:q + 4]
+                q += 4
+                if name == 'Value' and ident in vid2slot:
+                    si = vid2slot[ident]
+                    vals[si] = (struct.unpack('<f', raw)[0] if tc == 0x14
+                                else float(struct.unpack('<i', raw)[0]))
+        if rt is None or q != field_end:
+            return None
+        return rt, vals, vector
+
+    vec_dim_size = None                        # detected on the first record
+    pos = blob.find(_AADI_SYNC)
+    while pos != -1:
+        if vec_dim_size is None:
+            got = walk_record(pos, 4)
+            if got is not None:
+                vec_dim_size = 4
+            else:
+                got = walk_record(pos, 2)
+                if got is not None:
+                    vec_dim_size = 2
+        else:
+            got = walk_record(pos, vec_dim_size)
+        if got is not None:
+            records.append(got)
+        pos = blob.find(_AADI_SYNC, pos + 1)
+    if not records:
+        raise ValueError('DCPS reader (%s): no data records found.'
+                         % os.path.basename(file_path))
+    return records, slots, columns
+
+
+# per-cell parameters kept in the tidy frame (descr -> output column name);
+# everything else in the bin stays available in the raw file
+_DCPS_CELL_PARAMS = [
+    ('Horizontal Speed', 'Horizontal speed (cm/s)'),
+    ('Direction', 'Direction (deg)'),
+    ('North Speed', 'North speed (cm/s)'),
+    ('East Speed', 'East speed (cm/s)'),
+    ('Vertical Speed', 'Vertical speed (cm/s)'),
+    ('SP Stdev Horizontal', 'Speed stdev (cm/s)'),
+    ('Strength', 'Signal strength (dB)'),
+    ('Cell State1', 'Cell state'),
+]
+# record-level context repeated on every cell row
+_DCPS_RECORD_PARAMS = [
+    ('Heading', 'Heading (deg)'),
+    ('Pitch', 'Pitch (deg)'),
+    ('Roll', 'Roll (deg)'),
+    ('Abs Tilt', 'Tilt (deg)'),
+    ('Ping Count', 'Ping count'),
+]
+
+
+def read_seaguard_doppler(file_path):
+    """Reads a DCPS / Doppler current-profiler session into a TIDY frame:
+    one row per record x depth cell, with the current measurements, their
+    native quality indicators (speed stdev, signal strength, cell state) and
+    the record-level attitude context. Sibling DataNNN.bin files of the same
+    session folder are read together, like the scalar reader."""
+    folder = os.path.dirname(file_path)
+    siblings = sorted(f for f in os.listdir(folder)
+                      if re.fullmatch(r'Data\d+\.bin', f, re.IGNORECASE))
+    if not siblings:
+        siblings = [os.path.basename(file_path)]
+    all_rows = []
+    for fname in siblings:
+        records, slots, columns = _decode_dcps_bin(os.path.join(folder, fname))
+        # index slots per (column, cell) and record-level by descr
+        rec_level = {}                  # descr -> slot index
+        cell_level = {}                 # (column_descr, cell) -> {descr: slot}
+        depths = {}                     # (column_descr, cell) -> depth
+        for si, (d, _u, col, cell, depth) in enumerate(slots):
+            if col is None:
+                rec_level.setdefault(d, si)
+            else:
+                cell_level.setdefault((col, cell), {})[d] = si
+                depths[(col, cell)] = depth
+        for rt, vals, _vector in records:
+            ctx = {out: vals.get(rec_level.get(d, -1)) for d, out in _DCPS_RECORD_PARAMS}
+            for (col, cell), sl in sorted(cell_level.items()):
+                row = {'Datetime': rt, 'Column': col, 'Cell': cell,
+                       'Depth (m)': depths[(col, cell)]}
+                row.update(ctx)
+                for d, out in _DCPS_CELL_PARAMS:
+                    si = sl.get(d)
+                    row[out] = vals.get(si) if si is not None else np.nan
+                all_rows.append(row)
+    if not all_rows:
+        raise ValueError('DCPS session %r has no current cells - the profile '
+                         'output was disabled in this configuration (only '
+                         'attitude/housekeeping parameters were logged).'
+                         % os.path.basename(folder))
+    frame = pd.DataFrame(all_rows)
+    frame = frame.sort_values(['Datetime', 'Column', 'Cell'], kind='stable')
+    frame.index = np.arange(len(frame))
+    n_rec = frame['Datetime'].nunique()
+    n_cells = frame.groupby('Datetime').size().max()
+    print('Info: DCPS session decoded: %d records x %d cells = %d rows, %s to %s.'
+          % (n_rec, n_cells, len(frame), frame['Datetime'].min(), frame['Datetime'].max()))
+    return frame
 
 
 # ---------------------------------------------------------------------------
@@ -585,6 +862,47 @@ def _hobo_error(file_name, message):
     return ValueError('HOBO reader (%s): %s' % (file_name, message))
 
 
+# pt-locale HOBOware clock, e.g. '04h0min0s' instead of '04:00:00'
+_HOBO_PT_CLOCK = r'(?i)(\d{1,2})h(\d{1,2})min(\d{1,2})s'
+
+
+def _hobo_datetimes(series, say):
+    """Parses a HOBOware time column.
+
+    Exports mix locales: the clock may come as '04h0min0s' (pt HOBOware)
+    instead of '04:00:00', and the date may be day-first ('17/03/18') or
+    month-first ('03/17/18') - roughly half of the corpus is month-first, and a
+    plain dayfirst=True parse turns EVERY row of those files into NaT ('no rows
+    with valid timestamps'). So: normalize the clock, then let the data itself
+    prove the day/month order. Day-first stays the default when the file is
+    ambiguous, which is how every already-readable export was parsed."""
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return pd.to_datetime(series, errors='coerce')
+    txt = series.astype(str).str.strip()
+    if txt.str.contains(_HOBO_PT_CLOCK, regex=True).any():
+        txt = txt.str.replace(_HOBO_PT_CLOCK, r'\1:\2:\3', regex=True)
+        say("Info: clock exported as 'HHhMMminSSs'; normalized to HH:MM:SS.")
+    parts = txt.str.extract(r'^\s*(\d{1,2})\s*[/-]\s*(\d{1,2})\s*[/-]')
+    first = pd.to_numeric(parts[0], errors='coerce')
+    second = pd.to_numeric(parts[1], errors='coerce')
+    dayfirst = True
+    if (first > 12).any():
+        pass                       # a first field > 12 can only be the day
+    elif (second > 12).any():
+        dayfirst = False           # a second field > 12 can only be the day
+        say('Info: dates are month-first (a value > 12 in the second field '
+            'proves it); parsed accordingly.')
+    elif first.notna().any():
+        # Neither field ever exceeds 12, so nothing in the file proves the
+        # order and day-first is only an assumption. Say so: a wrong guess
+        # silently moves every sample to another month instead of failing.
+        say('Warning: this export never shows a day above 12, so the file does '
+            'not prove whether its dates are day-first or month-first; '
+            'day-first was assumed. Check the dates - if the deployment is '
+            'month-first, every timestamp is in the wrong month.')
+    return pd.to_datetime(txt, errors='coerce', dayfirst=dayfirst)
+
+
 def read_hobo(INPUT, tsSettings):
     """Reads HOBOware exports (.xlsx/.csv) from Pendant Temp/Light sensors.
 
@@ -652,24 +970,62 @@ def read_hobo(INPUT, tsSettings):
             light_col = c
         elif re.search(_HOBO_EVENT_PATTERN, low):
             event_cols.append(c)
+    # Some exports split the stamp into TWO columns ('Data' + 'Hora, GMT-03:00')
+    # instead of one 'Data Hora'. Resolve it to a single stamp, keeping the hour
+    # column's label so the GMT tag below is still picked up.
+    if time_col is None:
+        date_c = next((c for c in df.columns
+                       if re.fullmatch(r'\s*(data|date)\s*', str(c), re.IGNORECASE)), None)
+        hour_c = next((c for c in df.columns
+                       if re.match(r'\s*(hora|time|hour)\b', str(c), re.IGNORECASE)), None)
+        if date_c is not None and hour_c is not None:
+            d, h = df[date_c], df[hour_c]
+            d_dt = pd.api.types.is_datetime64_any_dtype(d)
+            h_dt = pd.api.types.is_datetime64_any_dtype(h)
+            if h_dt and h.dt.date.nunique() > 1:
+                # several exports repeat the WHOLE stamp in both columns
+                time_col = hour_c
+                say('Info: %r already carries the full date+time; used directly.' % str(hour_c))
+            else:
+                time_col = 'Data Hora %s' % str(hour_c)
+                if d_dt and h_dt:      # date + time-of-day, both as datetimes
+                    df[time_col] = d.dt.normalize() + (h - h.dt.normalize())
+                else:
+                    # Render each side explicitly. A datetime column stringified
+                    # with astype(str) keeps its own date ('1899-12-31 04:00:00'
+                    # for a time-only cell), which would poison the joined stamp.
+                    d_txt = (d.dt.strftime('%Y-%m-%d') if d_dt
+                             else d.astype(str).str.strip())
+                    h_txt = (h.dt.strftime('%H:%M:%S') if h_dt
+                             else h.astype(str).str.strip())
+                    df[time_col] = d_txt + ' ' + h_txt
+                say('Info: date and time came in separate columns (%r + %r); joined.'
+                    % (str(date_c), str(hour_c)))
+
     found = 'columns found: %s' % ', '.join(repr(str(c)) for c in df.columns)
     if time_col is None:
         raise _hobo_error(file_name, 'no time column found (expected "Data Hora"/"Date Time"). ' + found)
     if temp_col is None:
         raise _hobo_error(file_name, 'no temperature column found (expected "Temp"). ' + found)
-    if light_col is None:
-        raise _hobo_error(file_name, 'no light column found (expected "Intensidade"/"Intensity"). ' + found)
 
-    # light unit from the channel label
-    light_label = str(light_col).lower()
-    if re.search(r'lum/?\s*ft|lumen', light_label):
-        light_factor = LUMEN_FT2_TO_LUX
-        say('Info: light channel is in lum/ft2; converted to lux (x%.4f).' % LUMEN_FT2_TO_LUX)
-    elif re.search(r'lux', light_label):
-        light_factor = 1.0
+    # Light is OPTIONAL: some Pendant loggers only record temperature. Their
+    # temperature is perfectly usable, so a missing light channel must not
+    # reject the file - Luminosity is left empty and its tests are simply not
+    # evaluated (the column still exists, which is what marks a HOBO layout).
+    light_factor = 1.0
+    if light_col is None:
+        say('Warning: no light column in this export - temperature-only logger. '
+            'Luminosity will be empty and the light tests are not evaluated.')
     else:
-        raise _hobo_error(file_name, 'light column %r has no recognizable unit '
-                          '(expected Lux or lum/ft2 in the header).' % str(light_col))
+        light_label = str(light_col).lower()
+        if re.search(r'lum/?\s*ft|lumen', light_label):
+            light_factor = LUMEN_FT2_TO_LUX
+            say('Info: light channel is in lum/ft2; converted to lux (x%.4f).' % LUMEN_FT2_TO_LUX)
+        elif re.search(r'lux', light_label):
+            light_factor = 1.0
+        else:
+            raise _hobo_error(file_name, 'light column %r has no recognizable unit '
+                              '(expected Lux or lum/ft2 in the header).' % str(light_col))
 
     gmt = re.search(r'GMT\s*([+-]\d{1,2}):?(\d{2})?', str(time_col))
     if gmt:
@@ -677,7 +1033,7 @@ def read_hobo(INPUT, tsSettings):
             'option would subtract 3 MORE hours - only use it if the export is in GMT+00.' % gmt.group(1))
 
     # ---------- types ----------
-    df[time_col] = pd.to_datetime(df[time_col], errors='coerce', dayfirst=True)
+    df[time_col] = _hobo_datetimes(df[time_col], say)
     n_bad_ts = int(df[time_col].isna().sum())
     if n_bad_ts:
         say('Warning: %d row(s) without a valid timestamp discarded.' % n_bad_ts)
@@ -685,11 +1041,14 @@ def read_hobo(INPUT, tsSettings):
     if df.empty:
         raise _hobo_error(file_name, 'no rows with valid timestamps after reading.')
     df[temp_col] = pd.to_numeric(df[temp_col], errors='coerce')
-    df[light_col] = pd.to_numeric(df[light_col], errors='coerce') * light_factor
+    if light_col is None:                     # temperature-only logger
+        light_col = 'Intensidade, Lux (absent)'
+        df[light_col] = np.nan
+    else:
+        df[light_col] = pd.to_numeric(df[light_col], errors='coerce') * light_factor
 
     # ---------- deployment window from the logger events ----------
     if event_cols:
-        ev_mask = df[event_cols].notna().any(axis=1)
         detach_cols = [c for c in event_cols if re.search(_HOBO_DETACH_PATTERN, str(c).lower())]
         end_cols = [c for c in event_cols if re.search(_HOBO_END_PATTERN, str(c).lower())]
         start_t = df.loc[df[detach_cols].notna().any(axis=1), time_col].min() if detach_cols else pd.NaT
@@ -699,15 +1058,34 @@ def read_hobo(INPUT, tsSettings):
             if pd.notna(start_t):
                 end_times = end_times[end_times > start_t]
             end_t = end_times.min() if not end_times.empty else pd.NaT
-        before = len(df)
+        # The coupler events delimit the deployment ONLY when they were recorded
+        # at LAUNCH. In many exports the coupler was first touched at READOUT, so
+        # every event sits at the very end of the record and the window they
+        # imply would throw the whole deployment away (13 months of good data ->
+        # 'no measurement rows left'). Trust the window only when it keeps most
+        # of the measurements; otherwise say so and keep the series (the
+        # out-of-water edge trim below still applies).
+        n_meas = int(df[temp_col].notna().sum())
+        in_win = pd.Series(True, index=df.index)
         if pd.notna(start_t):
-            df = df[df[time_col] >= start_t]
+            in_win &= (df[time_col] >= start_t)
         if pd.notna(end_t):
-            df = df[df[time_col] < end_t]
-        n_window = before - len(df)
-        if n_window:
-            say('Info: %d sample(s) outside the logger deployment window '
-                '(%s to %s) discarded.' % (n_window, start_t, end_t))
+            in_win &= (df[time_col] < end_t)
+        kept = int((in_win & df[temp_col].notna()).sum())
+        if n_meas and kept < 0.5 * n_meas:
+            say('Warning: the logger coupler/host events sit at the end of the record - '
+                'they look like readout artifacts, not the launch. The deployment window '
+                'they imply (%s to %s) would drop %d of %d measurement(s), so it was NOT '
+                'applied; the whole series was kept. The out-of-water edge trim still '
+                'applies - check the file edges.'
+                % (start_t, end_t, n_meas - kept, n_meas))
+        else:
+            before = len(df)
+            df = df[in_win]
+            n_window = before - len(df)
+            if n_window:
+                say('Info: %d sample(s) outside the logger deployment window '
+                    '(%s to %s) discarded.' % (n_window, start_t, end_t))
         # event-only rows (no measurement) are removed
         ev_mask = df[event_cols].notna().any(axis=1) & df[temp_col].isna()
         n_ev = int(ev_mask.sum())
@@ -1456,13 +1834,17 @@ def trim_selected_variable(data, name, tk_root=None, locked=None, progress=None)
 QUALIFIED_SUBFOLDERS = {
     'tscp': ('QCS qualified tscp data',),
     'hobo': ('QCS qualified hobo data',),
+    'doppler': ('QCS qualified current data',),
 }
 
 
 def detect_qualified_layout(df):
-    """'hobo' = only temperature+light (has Luminosity, no Salinity);
+    """'doppler' = qualified current-profiler table (per-cell rows with
+    Flag_cur); 'hobo' = only temperature+light (has Luminosity, no Salinity);
     any other qualified spreadsheet is 'tscp' (Seaguard)."""
     cols = set(str(c) for c in df.columns)
+    if 'Flag_cur' in cols or 'Horizontal speed (cm/s)' in cols:
+        return 'doppler'
     if 'Luminosity (lux)' in cols and 'Salinity (PSU)' not in cols:
         return 'hobo'
     return 'tscp'
@@ -1488,7 +1870,9 @@ def build_database(instrument, file_list=None, input_path=None):
     Returns (database, messages). Problems raise a ValueError with a
     self-localizing message ('build_database: ...').
     """
-    expected_layout = 'hobo' if str(instrument).strip().upper() == 'HOBO' else 'tscp'
+    _inst = str(instrument).strip().upper()
+    expected_layout = ('hobo' if _inst == 'HOBO'
+                       else 'doppler' if _inst == 'DOPPLER' else 'tscp')
     messages = []
 
     if file_list:
@@ -1529,8 +1913,9 @@ def build_database(instrument, file_list=None, input_path=None):
         layout = detect_qualified_layout(df)
         if layout != expected_layout:
             raise ValueError("build_database: %s looks like a %s spreadsheet, but the selected "
-                             "instrument is %s. HOBO and Seaguard qualified files are never "
-                             "stackable - unify them into separate databases." % (base, layout.upper(), instrument))
+                             "instrument is %s. HOBO, Seaguard and Doppler qualified files are "
+                             "never stackable - unify them into separate databases."
+                             % (base, layout.upper(), instrument))
         df['Source file'] = base
         frames.append(df)
         messages.append('Info: %s: %d rows' % (base, len(df)))
