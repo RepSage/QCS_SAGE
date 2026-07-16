@@ -991,19 +991,25 @@ def read_hobo(INPUT, tsSettings):
         raise _hobo_error(file_name, 'no time column found (expected "Data Hora"/"Date Time"). ' + found)
     if temp_col is None:
         raise _hobo_error(file_name, 'no temperature column found (expected "Temp"). ' + found)
-    if light_col is None:
-        raise _hobo_error(file_name, 'no light column found (expected "Intensidade"/"Intensity"). ' + found)
 
-    # light unit from the channel label
-    light_label = str(light_col).lower()
-    if re.search(r'lum/?\s*ft|lumen', light_label):
-        light_factor = LUMEN_FT2_TO_LUX
-        say('Info: light channel is in lum/ft2; converted to lux (x%.4f).' % LUMEN_FT2_TO_LUX)
-    elif re.search(r'lux', light_label):
-        light_factor = 1.0
+    # Light is OPTIONAL: some Pendant loggers only record temperature. Their
+    # temperature is perfectly usable, so a missing light channel must not
+    # reject the file - Luminosity is left empty and its tests are simply not
+    # evaluated (the column still exists, which is what marks a HOBO layout).
+    light_factor = 1.0
+    if light_col is None:
+        say('Warning: no light column in this export - temperature-only logger. '
+            'Luminosity will be empty and the light tests are not evaluated.')
     else:
-        raise _hobo_error(file_name, 'light column %r has no recognizable unit '
-                          '(expected Lux or lum/ft2 in the header).' % str(light_col))
+        light_label = str(light_col).lower()
+        if re.search(r'lum/?\s*ft|lumen', light_label):
+            light_factor = LUMEN_FT2_TO_LUX
+            say('Info: light channel is in lum/ft2; converted to lux (x%.4f).' % LUMEN_FT2_TO_LUX)
+        elif re.search(r'lux', light_label):
+            light_factor = 1.0
+        else:
+            raise _hobo_error(file_name, 'light column %r has no recognizable unit '
+                              '(expected Lux or lum/ft2 in the header).' % str(light_col))
 
     gmt = re.search(r'GMT\s*([+-]\d{1,2}):?(\d{2})?', str(time_col))
     if gmt:
@@ -1019,7 +1025,11 @@ def read_hobo(INPUT, tsSettings):
     if df.empty:
         raise _hobo_error(file_name, 'no rows with valid timestamps after reading.')
     df[temp_col] = pd.to_numeric(df[temp_col], errors='coerce')
-    df[light_col] = pd.to_numeric(df[light_col], errors='coerce') * light_factor
+    if light_col is None:                     # temperature-only logger
+        light_col = 'Intensidade, Lux (absent)'
+        df[light_col] = np.nan
+    else:
+        df[light_col] = pd.to_numeric(df[light_col], errors='coerce') * light_factor
 
     # ---------- deployment window from the logger events ----------
     if event_cols:
