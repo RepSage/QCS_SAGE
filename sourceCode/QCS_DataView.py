@@ -80,6 +80,11 @@ def _time_of_day_axis(ax, h0, h1):
     ax.set_xlabel("Time of day (00:00 = midnight of each site's first day; dashed lines = day boundaries)")
 
 
+# display labels for the internal semester keys (titles/log lines only; file
+# names keep the compact space-less key)
+_SEM_LABEL = {'1stSemester': '1st semester', '2ndSemester': '2nd semester'}
+
+
 def _floor_fit(fitted):
     """Every variable in this software is physically >= 0 (values <= 0 are
     discarded or clamped at qualification), so a fitted tendency must not dip
@@ -682,7 +687,7 @@ def plot_database_panel1 (database, dataViewSettings):
                 # set y label
                 ax1.set_ylabel(rParam[0], color=bcParam[y_list[0].name], fontsize=10 * fscale)
                 # set title
-                ax1.set_title('Parameters for %s over %s during %s'%(site, semester, year))
+                ax1.set_title('Parameters for %s over %s during %s'%(site, _SEM_LABEL.get(semester, semester), year))
                 # set y axis color and position
                 ax1.spines['left'].set_color(bcParam[y_list[0].name])
                 ax1.spines['left'].set_position(('outward', 1))
@@ -810,7 +815,7 @@ def plot_database_panel2(database, dataViewSettings):
         for parameter in parameter_names:
             display_param = rParam[parameter_names.index(parameter)]
             fig, ax1 = plt.subplots(figsize=(980/100, 500/100))
-            plt.title(f'{display_param} on {semester} for each site - {year}')
+            plt.title(f'{display_param} on {_SEM_LABEL.get(semester, semester)} for each site - {year}')
             plt.grid(True, linestyle='dotted', linewidth=0.5)
             ax1.set_ylabel(display_param)
             control = 0
@@ -966,7 +971,7 @@ def plot_database_panel3(database, dataViewSettings):
                 # Configure first axis
                 ax1.set_xlabel('')  # Remove x-axis label but keep ticks
                 ax1.set_ylabel('Depth (m)')
-                ax1.set_title('Parameters for %s over %s during %s'%(site, semester, year))
+                ax1.set_title('Parameters for %s over %s during %s'%(site, _SEM_LABEL.get(semester, semester), year))
                 # optional fixed depth axis (shallow at top, deep at bottom)
                 if dataViewSettings.get('depthAxisMin') is not None and dataViewSettings.get('depthAxisMax') is not None:
                     ax1.set_ylim(dataViewSettings['depthAxisMax'], dataViewSettings['depthAxisMin'])
@@ -1481,7 +1486,7 @@ def plot_TS_diagram (database, dataViewSettings):
                     a += 1
             # title and file name list every plotted site, not only the last one
             sites_label = '-'.join(site_names)
-            ax.set_title('T-S Diagram for %s over %s during %s'%(sites_label, semester, year))
+            ax.set_title('T-S Diagram for %s over %s during %s'%(sites_label, _SEM_LABEL.get(semester, semester), year))
             custom_handles = []
             for a in range(len(site_names)):
                 custom_handles.append(Line2D([0], [0], linestyle='None', marker=markerList[a], label=site_names[a], markeredgecolor='black', markerfacecolor='black', markersize=6))
