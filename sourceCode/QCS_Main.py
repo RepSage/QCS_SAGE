@@ -142,6 +142,14 @@ CONFIG = {
         # out-of-water readings at the ends of the HOBO file: trim while the
         # temperature deviates more than this (degC) from the neighboring stable segment
         'hobo_edge_temp_tol': 1.5,
+        # ---- Doppler current profiler (DCPS) criteria ----
+        # mirror QCS_Tests.DOPPLER_DEFAULTS; run_doppler_qualification maps these
+        # onto doppler_qc's settings, so editing them here changes the current QC
+        'doppler_max_speed': 300.0,
+        'doppler_min_strength': -60.0,
+        'doppler_max_stdev': 50.0,
+        'doppler_tilt_suspect': 15.0,
+        'doppler_tilt_bad': 35.0,
         #'eps': 'AUTO',
     },
     # Per-variable factors for the spike, rate-of-change and vertical-gradient tests
@@ -257,6 +265,11 @@ TS_SETTINGS_TOOLTIPS = {
     'lux_cutoff_frac': "HOBO light fouling: fraction of the clean-sensor baseline\nbelow which light becomes BAD (0.5 = 50%)\nThe applied cutoff is shown in the review plot and saved with the results",
     'lux_sustain_days': "HOBO light fouling: the daily peak must stay below the\nthreshold for this many CONSECUTIVE days before cutting\n(avoids cutting on a cloudy spell)",
     'hobo_edge_temp_tol': "HOBO edge trim: leading/trailing samples are discarded while\ntemperature deviates more than this (degC) from the nearby\nstable segment (out-of-water readings at deployment/recovery)",
+    'doppler_max_speed': "Current speed range test: horizontal speed above this (cm/s)\nis physically impossible for the site -> BAD\n(negative speed is always BAD)",
+    'doppler_min_strength': "Signal quality test: return strength below this (dB) is under\nthe noise floor -> BAD. Genuine echoes are NEGATIVE dB; a\nstrength of 0 or above is the instrument's 'no ping'\nplaceholder and is always BAD",
+    'doppler_max_stdev': "Speed standard deviation test: single-ping stdev above this\n(cm/s) means a noisy cell -> SUSPECT",
+    'doppler_tilt_suspect': "Instrument tilt test: tilt above this (degrees) -> SUSPECT\n(tilt compromises the whole record, not just one cell)",
+    'doppler_tilt_bad': "Instrument tilt test: tilt above this (degrees) -> BAD",
     #'eps': "Epsilon value for flat line detection\nMinimum difference to consider values different",
 }
 
@@ -1133,6 +1146,25 @@ _OTHER_UNIT = {'rep_cnt_fail': 'samples', 'rep_cnt_susp': 'samples',
                'lux_baseline_days': 'days', 'lux_sustain_days': 'days',
                'lux_cutoff_frac': 'fraction'}
 
+# Doppler criteria get their own section in the Parameters tab (label, unit),
+# instead of being scattered among the scalar 'Other parameters'
+_DOPPLER_PARAMS = [
+    ('doppler_max_speed', 'Max current speed', 'cm/s'),
+    ('doppler_min_strength', 'Min signal strength', 'dB'),
+    ('doppler_max_stdev', 'Max speed stdev', 'cm/s'),
+    ('doppler_tilt_suspect', 'Tilt - suspect above', '°'),
+    ('doppler_tilt_bad', 'Tilt - bad above', '°'),
+]
+
+
+def doppler_settings():
+    """The current-QC criteria as doppler_qc expects them, taken from the
+    Settings ('doppler_<name>' in tsSettings -> '<name>'). Before v8.1 the
+    pipeline asked for a CONFIG['dopplerSettings'] that nothing ever wrote, so
+    the Settings window could not reach the current tests at all."""
+    return {k[len('doppler_'):]: v for k, v in CONFIG['tsSettings'].items()
+            if k.startswith('doppler_')}
+
 def create_params_tab(parent):
     canvas = Canvas(parent, bg=theme.surface_color(), highlightthickness=0)
     scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
@@ -1181,12 +1213,24 @@ def create_params_tab(parent):
                 ttk.Label(scrollable_frame, text=unit).grid(row=row, column=3, sticky='w', padx=5)
             row += 1
 
+    # Current profiler (Doppler): its own section, so the current criteria are
+    # not scattered among the scalar ones
+    ttk.Label(scrollable_frame, text='Current profiler (Doppler)', font=theme.FONT_BOLD).grid(
+        row=row, column=0, sticky='w', pady=(10, 3), columnspan=4)
+    row += 1
+    for key, label, unit in _DOPPLER_PARAMS:
+        ttk.Label(scrollable_frame, text=label + ':').grid(
+            row=row, column=0, sticky='e', padx=5, pady=2)
+        add_entry(key, row, 1)
+        ttk.Label(scrollable_frame, text=unit).grid(row=row, column=2, sticky='w', padx=5)
+        row += 1
+
     # Other parameters: a single value each
     ttk.Label(scrollable_frame, text='Other parameters', font=theme.FONT_BOLD).grid(
         row=row, column=0, sticky='w', pady=(10, 3), columnspan=4)
     row += 1
     for key in CONFIG['tsSettings']:
-        if 'sensor_' in key or 'env_' in key:
+        if 'sensor_' in key or 'env_' in key or key.startswith('doppler_'):
             continue
         ttk.Label(scrollable_frame, text=key.replace('_', ' ').title() + ':').grid(
             row=row, column=0, sticky='e', padx=5, pady=2)
@@ -1827,7 +1871,7 @@ def build_qualification_tab(container, root, shared_log=None):
             frame['Datetime'] = frame['Datetime'] - timedelta(hours=3)
             log_line('Info: GMT-3 correction applied to the record times.')
         log_line('Stage 2/4: running current quality tests (%d cell samples)...' % len(frame))
-        flags, rollup = QC.doppler_qc(frame, CONFIG.get('dopplerSettings'))
+        flags, rollup = QC.doppler_qc(frame, doppler_settings())
         # Site right after Datetime: build_database requires Datetime+Site, so
         # the qualified current table is stackable/searchable like the others
         frame.insert(1, 'Site', INPUT.get('site') or _output_base_for(bin_path))

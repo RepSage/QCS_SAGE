@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v8.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v8.1</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -245,7 +245,14 @@
             Visualization tab, the same qualified table is auto-detected as Instrument
             <strong>Doppler</strong> / Data type <strong>TSCP Doppler</strong>, and 'Generate
             panels' renders the current panels into <code>DatabaseView\&lt;site&gt;
-            (current)</code> per selected site. Selecting SEVERAL Seaguard files creates a
+            (current)</code> per selected site. Since v8.1 the current panels honour the
+            <strong>time window</strong> and the <strong>depth range</strong> (which also sets
+            the stick/vector reference depth to the band's centre); <strong>Fixed scale</strong>
+            gives every heatmap one shared speed colour scale so sites/years compare 1:1; and
+            selecting two or more sites adds a cross-site <em>"Current mean speed across
+            sites"</em> panel. The four current QC thresholds (max speed, min signal strength,
+            max speed stdev, tilt) are editable under Settings &rarr; Parameters &rarr;
+            <em>Current profiler (Doppler)</em>. Selecting SEVERAL Seaguard files creates a
             <strong>batch</strong>: each file
             is qualified independently, in sequence, with its own automatic
             <code>&lt;file&gt;_QLF</code> output. For HOBO, several files are the redundant

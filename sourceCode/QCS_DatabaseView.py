@@ -427,8 +427,10 @@ def toggle_data_type():
         _restore_or_default_depth(depth_max_entry, 'depth_max', 'max')
     elif data_type == 'TSCP Doppler':
         # Doppler current profiler: the 4 current panels are fixed (time x depth
-        # heatmaps, stick plot, U/V components, progressive vector) - the scalar
-        # panel/parameter/display choices do not apply
+        # heatmaps, stick plot, U/V components, progressive vector), so the
+        # panel/parameter/tendency choices do not apply - but the TIME WINDOW
+        # and the DEPTH BAND both crop the current data, and 'fixed scale' fixes
+        # the heatmap speed colour scale so sites/years compare 1:1.
         panel1.set(False)
         panel2.set(False)
         panel3.set(False)
@@ -440,9 +442,9 @@ def toggle_data_type():
         tendency.set(False)
         tendency_cb.config(state='disabled')
         points_cb.config(state='disabled')
-        fixed_scale_cb.config(state='disabled')
-        _stash_disable(depth_min_entry, 'depth_min')
-        _stash_disable(depth_max_entry, 'depth_max')
+        fixed_scale_cb.config(state='normal')            # -> heatmap speed scale
+        _restore_or_default_depth(depth_min_entry, 'depth_min', 'min')  # depth band applies
+        _restore_or_default_depth(depth_max_entry, 'depth_max', 'max')
         _reset_time_default(time_start_entry, 'start')   # X-axis window applies
         _reset_time_default(time_end_entry, 'end')
 
@@ -783,6 +785,23 @@ def generatePanels():
             else:
                 sub = database[database['Datetime'].dt.year.isin(selected_years)]
                 out_dir = os.path.join(inputSettings.get('outputPath', ''), 'DatabaseView')
+                # the current panels honour the time window and the depth band.
+                # 'Fixed scale' ON = every heatmap shares one speed colour scale
+                # (the max GOOD speed over the whole selection) so different
+                # sites/years compare 1:1; OFF = each panel autoscales.
+                speed_max = None
+                if dataViewSettings.get('fixedScale') and 'Horizontal speed (cm/s)' in sub.columns:
+                    good = sub[sub.get('Flag_cur', 1) == 1]['Horizontal speed (cm/s)']
+                    good = pd.to_numeric(good, errors='coerce').dropna()
+                    if len(good):
+                        speed_max = float(good.max()) * 1.05
+                dop_settings = {
+                    'xAxisStart': dataViewSettings.get('xAxisStart'),
+                    'xAxisEnd': dataViewSettings.get('xAxisEnd'),
+                    'depthAxisMin': dataViewSettings.get('depthAxisMin'),
+                    'depthAxisMax': dataViewSettings.get('depthAxisMax'),
+                    'currentSpeedMax': speed_max,
+                }
                 for site in selected_sites:
                     site_df = sub[sub['Site'] == site]
                     if not len(site_df):
@@ -790,7 +809,8 @@ def generatePanels():
                         continue
                     try:
                         files = view.plot_doppler_panels(
-                            site_df, os.path.join(out_dir, '%s (current)' % site), label=site)
+                            site_df, os.path.join(out_dir, '%s (current)' % site),
+                            label=site, settings=dop_settings)
                         if files:
                             error_logger.log("Info: %d current panel(s) generated for %s." % (len(files), site))
                             n_ok += len(files)
@@ -798,6 +818,20 @@ def generatePanels():
                             error_logger.log("Warning: %s has no non-BAD current rows - nothing to plot." % site)
                     except Exception as e:
                         error_logger.log("Error generating current panels for %s: %s" % (site, e))
+                # cross-site comparison (mean speed by depth) when >= 2 sites
+                if len(selected_sites) > 1:
+                    try:
+                        xfiles = view.plot_doppler_across_sites(
+                            sub, out_dir, selected_sites, settings=dop_settings)
+                        if xfiles:
+                            error_logger.log("Info: cross-site current comparison generated "
+                                             "(%d site(s))." % len(selected_sites))
+                            n_ok += len(xfiles)
+                        else:
+                            error_logger.log("Warning: cross-site current panel needs 2+ sites "
+                                             "with data - skipped.")
+                    except Exception as e:
+                        error_logger.log("Error generating cross-site current panel: %s" % e)
 
         # Seaguard panels are generated once for each selected year
         for year in (selected_years if not (is_hobo_input() or is_doppler_input()) else []):
