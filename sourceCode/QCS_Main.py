@@ -202,7 +202,11 @@ TOOLTIPS = {
                   "Doppler: DCPS current profiler (auto-detected from the .bin)"),
     'pressure_unit': "Pressure unit of raw data\nAutomatic conversion to decibar",
     'conductivity_unit': "Conductivity unit of raw data\nAutomatic conversion to mS/cm",
-    'gmt_correction': "Applies GMT-3 hour correction for data\ncollected in Brazilian timezone",
+    'gmt_correction': ("GMT-3 correction. The Seaguard clock records GMT, so EVERY\n"
+                       "Seaguard qualification needs this ON (it converts to local time).\n"
+                       "HOBO exports and the CO2 logger are already local: HOBO never\n"
+                       "needs it, and the CO2 file is merged as-is (bypasses this\n"
+                       "correction) even when it is enabled for the Seaguard."),
     'profile_selection': "Allows selecting only descent or ascent\nfor profile data (removes inversion)",
     'variable_check': "Opens a per-variable point-cut panel to manually DISMISS\nspurious points; you pick which variables to review.\nDismissed points get flag 5 and are kept for traceability.\n(The mooring Depth review runs on its own, without this.)",
     'output_folder': "Folder where qualification results\nwill be saved",
@@ -1679,7 +1683,11 @@ def build_qualification_tab(container, root, shared_log=None):
             pressure_unit_combobox.config(state='readonly')
             conductivity_unit_combobox.config(state='readonly')
             gmt_check.config(state='normal')
-            correct_gmt3h.set(_last_seaguard.get('gmt', True))   # default ON for Seaguard
+            # ALWAYS back ON for Seaguard: its clock is GMT, and both the CO2
+            # logger and the HOBO exports are local - every Seaguard
+            # qualification needs the correction (the CO2 merge bypasses it by
+            # design, so CO2 is never double-shifted)
+            correct_gmt3h.set(True)
             macroregion_label.config(state='normal')
             macroregion_combobox.config(state='readonly')
             region_label.config(state='normal')
@@ -1870,6 +1878,10 @@ def build_qualification_tab(container, root, shared_log=None):
         if INPUT['correct_gmt3h']:
             frame['Datetime'] = frame['Datetime'] - timedelta(hours=3)
             log_line('Info: GMT-3 correction applied to the record times.')
+        else:
+            log_line("Warning: 'Correct GMT-3' is OFF - the DCPS clock is GMT like "
+                     "every Seaguard, so the current timestamps will stay 3 h ahead "
+                     "of local time.")
         log_line('Stage 2/4: running current quality tests (%d cell samples)...' % len(frame))
         flags, rollup = QC.doppler_qc(frame, doppler_settings())
         # Site right after Datetime: build_database requires Datetime+Site, so
@@ -2010,6 +2022,12 @@ def build_qualification_tab(container, root, shared_log=None):
         if INPUT['correct_gmt3h'] == True:
             raw_data['Datetime'] = raw_data['Datetime'] - timedelta(hours=3)
             start_time = start_time - timedelta(hours=3)
+        elif INPUT['input_type'] == 'Seaguard':
+            log_line("Warning: 'Correct GMT-3' is OFF for a Seaguard file - its clock "
+                     "is GMT, so every Seaguard qualification needs the correction. "
+                     "Timestamps will stay 3 h ahead of local time"
+                     + (", and the CO2 merge WILL MISALIGN (the CO2 logger clock is "
+                        "local and is used as-is)." if INPUT.get('co2_file') else "."))
             end_time = end_time - timedelta(hours=3)
 
         # optional dissolved-CO2 import (separate logger): merged AFTER the GMT
