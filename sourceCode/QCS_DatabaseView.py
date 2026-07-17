@@ -1059,6 +1059,28 @@ def load_database():
 
     try:
         if inputSettings.get('joinFiles', False) == True:
+            # Folder mode gets the same the-data-is-the-truth treatment as the
+            # file picker: the scan looks for the instrument's own 'QCS
+            # qualified ... data' subfolders, so a stale Instrument selection
+            # finds nothing (or the wrong layout). When the folder holds
+            # exactly ONE instrument's subfolders, correct the selection to it.
+            found = set()
+            for _root, _dirs, _names in os.walk(inputSettings['inputPath']):
+                for lay, subs in data.QUALIFIED_SUBFOLDERS.items():
+                    if os.path.basename(_root) in subs:
+                        found.add(lay)
+            lay2inst = {'hobo': 'HOBO', 'doppler': 'Doppler', 'tscp': 'Seaguard'}
+            if len(found) == 1:
+                inst_for_layout = lay2inst[next(iter(found))]
+                if inst_for_layout != instrument:
+                    print('Info: instrument auto-corrected to %s (the folder holds '
+                          '%s qualified data).' % (inst_for_layout, next(iter(found)).upper()))
+                    instrument = inst_for_layout
+                    inputSettings['instrument'] = instrument
+                    try:
+                        instrument_combobox.set(instrument)
+                    except Exception:
+                        pass
             database, db_build_messages = data.build_database(instrument,
                                                               input_path=inputSettings['inputPath'])
         else:
@@ -1347,7 +1369,8 @@ def build_step2(parent):
     ToolTip(fixed_scale_cb, TOOLTIPS['fixed_scale'])
 
     # X-axis time window (time-series plots; label says which family applies)
-    _x_kind = 'HOBO' if is_hobo_input() else 'mooring'
+    _x_kind = ('HOBO' if is_hobo_input()
+               else 'current' if is_doppler_input() else 'mooring')
     ttk.Label(vis_frame, text="X-axis start (%s):" % _x_kind).grid(row=6, column=1, sticky='w', pady=(8,2))
     time_start_entry = ttk.Entry(vis_frame, width=28)
     time_start_entry.grid(row=7, column=1, sticky='w', pady=2)

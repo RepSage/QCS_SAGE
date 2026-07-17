@@ -682,5 +682,33 @@ with _tempfile.TemporaryDirectory() as tmp:
     assert data.is_seaguard_doppler(p_scalar) is False
 ok.append('is_seaguard_doppler (DCPS template detected; scalar session rejected)')
 
+# 22) Settings -> current QC plumbing (v8.1). Before v8.1 the pipeline read a
+# CONFIG['dopplerSettings'] that nothing ever wrote, so the Settings window
+# could not reach the current tests at all - this guards the whole path:
+# every DOPPLER_DEFAULTS key is editable, the defaults agree, and an edited
+# criterion really changes the flags.
+import QCS_Theme as _thm
+_orig_rdr, _orig_crash = _thm.install_output_redirect, _thm.install_crash_handler
+_thm.install_output_redirect = lambda *a, **k: type(
+    'S', (), {'history': [], 'set_sink': lambda *a, **k: None,
+              'write': lambda *a, **k: None, 'flush': lambda *a, **k: None})()
+_thm.install_crash_handler = lambda *a, **k: None
+try:
+    import QCS_Main as _QM
+finally:
+    _thm.install_output_redirect, _thm.install_crash_handler = _orig_rdr, _orig_crash
+assert set(_QM.doppler_settings().keys()) == set(_QCT.DOPPLER_DEFAULTS.keys()), \
+    (sorted(_QM.doppler_settings()), sorted(_QCT.DOPPLER_DEFAULTS))
+assert _QM.doppler_settings() == _QCT.DOPPLER_DEFAULTS, \
+    'Settings defaults diverge from DOPPLER_DEFAULTS'
+_old_max = _QM.CONFIG['tsSettings']['doppler_max_speed']
+try:
+    _QM.CONFIG['tsSettings']['doppler_max_speed'] = 5.0
+    dflags3, droll3 = _QCT.doppler_qc(dop, _QM.doppler_settings())
+    assert dflags3[0][0] == '4' and droll3[0] == 4, dflags3[0]   # 10 cm/s > 5 -> BAD
+finally:
+    _QM.CONFIG['tsSettings']['doppler_max_speed'] = _old_max
+ok.append('doppler_settings (Settings keys == DOPPLER_DEFAULTS; edited criterion reaches doppler_qc)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

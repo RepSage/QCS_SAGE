@@ -1556,7 +1556,9 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None):
             fig.colorbar(m, ax=ax, label='%s [%s]' % (col.split(' (')[0], unit))
         ax.invert_yaxis()
         ax.set_ylabel('Depth (m)')
-    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+    # ticks carry the year: a Doppler set can span several years/visits, and
+    # '%d/%m' alone cannot say which one a tick belongs to
+    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
     fig.suptitle('Current profile - %s' % label)
     fig.autofmt_xdate()
     p = os.path.join(out_dir, 'Current profile (time x depth).svg')
@@ -1599,7 +1601,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None):
         ax.set_ylim(-1, 1)
         ax.set_yticks([])
         ax.set_title('Current sticks at %.1f m - %s' % (rep_depth, label))
-        ax.xaxis_date(); ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+        ax.xaxis_date(); ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
         fig.autofmt_xdate()
         p = os.path.join(out_dir, 'Current stick plot.svg')
         fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
@@ -1614,7 +1616,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None):
         axes[1].plot(sub['Datetime'], sub['North speed (cm/s)'], lw=0.9, label='%.1f m' % d)
     axes[0].set_ylabel('East U (cm/s)'); axes[1].set_ylabel('North V (cm/s)')
     axes[0].legend(fontsize=8, ncol=len(sel)); axes[0].set_title('Current components - %s' % label)
-    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
     fig.autofmt_xdate()
     p = os.path.join(out_dir, 'Current components (U-V).svg')
     fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
