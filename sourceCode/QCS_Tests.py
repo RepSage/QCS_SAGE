@@ -530,3 +530,145 @@ def doppler_qc(frame, settings=None):
         else:
             rollup[i] = QC_flags.GOOD_DATA
     return flags, rollup
+
+
+# ---------------------------------------------------------------------------
+# Redundant-replicate referee (v9.0)
+# ---------------------------------------------------------------------------
+# Redundant HOBO replicates only help while BOTH loggers work. When one drifts,
+# combine_hobo_replicates averages a sound and a faulty sensor: the disagreement
+# is flagged SUSPECT, but a suspect flag does not fix the value, and dropping
+# the suspect rows would throw away the sound replicate too.
+#
+# The individual QC cannot catch this - a sensor stuck on a PLAUSIBLE value
+# passes every single-series test (sensor/environmental range, spike, rate of
+# change, flat line). Only a comparison decides which replicate is sound, and
+# it must be against an INDEPENDENT reference rather than an expected seasonal
+# shape: requiring "temperature must fall in winter" would select the data that
+# confirms the expectation, and a genuine marine heatwave would be condemned as
+# sensor failure. Contemporaneous loggers at OTHER sites share the regional
+# forcing and settle it empirically - if a heatwave warms the region, the
+# reference warms with it and nobody is misjudged.
+
+REPLICATE_REFEREE_DEFAULTS = {
+    'temp_tol': 0.5,      # degC of spread that counts as disagreement
+    'min_frac': 0.20,     # fraction of the record in disagreement to act on
+    'min_points': 4,      # reference points needed to arbitrate at all
+    'min_margin': 0.30,   # change-correlation lead needed to name a replicate
+}
+
+
+def _referee_cadence(index):
+    """Resampling step giving a handful of comparison points for this
+    deployment (monthly for seasonal records, weekly/daily for short ones)."""
+    span_days = (index.max() - index.min()).total_seconds() / 86400.0
+    if span_days > 150:
+        return 'MS'
+    if span_days > 30:
+        return 'W'
+    return 'D'
+
+
+def replicate_referee(replicates, reference=None, settings=None):
+    """Diagnoses sustained disagreement between redundant replicates and, when a
+    reference is available, says WHICH replicate is sound.
+
+    replicates: list of qualified HOBO frames ('Datetime', 'Temperature (degC)',
+        optionally 'Flag_T' - only samples flagged <= 2 are compared).
+    reference: optional temperature Series indexed by time, from INDEPENDENT
+        contemporaneous loggers (other sites). Without it the disagreement is
+        still reported, but no replicate is named.
+
+    Returns a dict with 'disagrees', 'frac_over', 'max_spread', 'scores'
+    (per replicate: change_corr, bias, amplitude, amplitude_ratio),
+    'recommended' (index or None), 'verdict' and 'warnings'.
+    """
+    s = dict(REPLICATE_REFEREE_DEFAULTS)
+    if settings:
+        s.update({k: v for k, v in settings.items() if k in REPLICATE_REFEREE_DEFAULTS})
+    out = {'disagrees': False, 'frac_over': 0.0, 'max_spread': 0.0, 'scores': [],
+           'recommended': None, 'verdict': '', 'warnings': []}
+    if len(replicates) < 2:
+        out['verdict'] = 'single replicate - nothing to arbitrate'
+        return out
+
+    series = []
+    for r in replicates:
+        t = pd.DatetimeIndex(pd.to_datetime(r['Datetime']))
+        v = pd.to_numeric(r['Temperature (degC)'], errors='coerce')
+        if 'Flag_T' in r.columns:
+            v = v.where(pd.to_numeric(r['Flag_T'], errors='coerce') <= 2)
+        series.append(pd.Series(v.to_numpy(), index=t).sort_index())
+    grid = series[0].index
+    aligned = [x.reindex(grid, method='nearest', tolerance=pd.Timedelta(minutes=30))
+               for x in series]
+    M = pd.concat(aligned, axis=1)
+    spread = (M.max(axis=1) - M.min(axis=1)).where(M.notna().sum(axis=1) >= 2)
+    over = spread > s['temp_tol']
+    out['frac_over'] = float(over.mean()) if len(over) else 0.0
+    out['max_spread'] = float(spread.max()) if spread.notna().any() else 0.0
+    out['disagrees'] = out['frac_over'] >= s['min_frac']
+    if not out['disagrees']:
+        out['verdict'] = ('replicates agree (%.0f%% of the record above %.1f degC)'
+                          % (100 * out['frac_over'], s['temp_tol']))
+        return out
+
+    if reference is None or not len(reference):
+        out['warnings'].append(
+            'Replicate referee: the replicates disagree on %.0f%% of the record '
+            '(up to %.2f degC), but no independent reference was supplied, so '
+            'neither can be named - both were kept and combined. Provide '
+            'contemporaneous data from other sites to arbitrate.'
+            % (100 * out['frac_over'], out['max_spread']))
+        out['verdict'] = 'disagreement, no reference to arbitrate'
+        return out
+
+    freq = _referee_cadence(grid)
+    ref = pd.Series(reference).sort_index().resample(freq).mean()
+    d_ref = ref.diff().dropna()
+    if len(d_ref) < s['min_points']:
+        out['warnings'].append(
+            'Replicate referee: only %d reference point(s) at %s cadence - too '
+            'short to arbitrate; both replicates kept.' % (len(d_ref), freq))
+        out['verdict'] = 'disagreement, reference too short'
+        return out
+    ref_amp = float(ref.max() - ref.min())
+
+    for i, x in enumerate(aligned):
+        m = x.resample(freq).mean()
+        d = m.diff().dropna()
+        common = d_ref.index.intersection(d.index)
+        corr = (float(np.corrcoef(d_ref[common], d[common])[0, 1])
+                if len(common) >= 2 else np.nan)
+        bias = float((m.reindex(ref.index) - ref).mean())
+        amp = float(m.max() - m.min())
+        out['scores'].append({'replicate': i, 'change_corr': corr, 'bias': bias,
+                              'amplitude': amp,
+                              'amplitude_ratio': (amp / ref_amp) if ref_amp else np.nan})
+
+    ranked = sorted([sc for sc in out['scores'] if np.isfinite(sc['change_corr'])],
+                    key=lambda sc: sc['change_corr'], reverse=True)
+    if len(ranked) < 2:
+        out['verdict'] = 'disagreement, not enough comparable replicates'
+        return out
+    lead = ranked[0]['change_corr'] - ranked[1]['change_corr']
+    if lead < s['min_margin']:
+        out['warnings'].append(
+            'Replicate referee: the replicates disagree (up to %.2f degC) but '
+            'track the reference equally well (correlation lead only %.2f) - no '
+            'replicate named; review manually.' % (out['max_spread'], lead))
+        out['verdict'] = 'disagreement, replicates score too close to separate'
+        return out
+
+    best, worst = ranked[0], ranked[-1]
+    out['recommended'] = best['replicate']
+    out['verdict'] = (
+        'replicate %d tracks the independent reference (change-correlation '
+        '%+.2f, bias %+.2f degC, seasonal amplitude %.2fx the reference) while '
+        'replicate %d does not (%+.2f, %+.2f degC, %.2fx) - replicate %d looks '
+        'faulty'
+        % (best['replicate'] + 1, best['change_corr'], best['bias'],
+           best['amplitude_ratio'], worst['replicate'] + 1, worst['change_corr'],
+           worst['bias'], worst['amplitude_ratio'], worst['replicate'] + 1))
+    out['warnings'].append('Replicate referee: ' + out['verdict'] + '.')
+    return out

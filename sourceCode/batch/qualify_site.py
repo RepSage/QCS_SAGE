@@ -209,9 +209,12 @@ def plan(site, sem):
             # a site's planilha folder can hold SEVERAL deployments, not just
             # the replicates of one (PAB3 8a = a reef-top logger AND a wall
             # logger spanning 2016-2018) - group them from the data
-            for grp, span in _group_replicates(_sheets(os.path.join(sdir, camp, 'planilha'))):
+            pl = os.path.join(sdir, camp, 'planilha')
+            dropped = _excluded_in(pl)
+            for grp, span in _group_replicates(_sheets(pl)):
                 items.append({'kind': 'HOBO', 'tipo': None, 'campaign': camp,
-                              'start': span[0] if span else camp, 'files': grp, 'co2': None})
+                              'start': span[0] if span else camp, 'files': grp,
+                              'co2': None, 'excluded': dropped})
     # SEAGUARD / DOPPLER
     for camp in sorted(os.listdir(SG_RAW)):
         cdir = os.path.join(SG_RAW, camp, site)
@@ -246,13 +249,40 @@ def plan(site, sem):
 
 
 # ---------------- the two HOBO-only buckets (_PISCINAS / _EXPERIMENTOS) -------
+# Replicates excluded as FAULTY after diagnosis. A redundant pair only helps
+# when both loggers work: the combine averages them, so a drifting sensor
+# contaminates the mean (the QC flags the disagreement SUSPECT, but a suspect
+# flag does not fix the value, and dropping the suspect rows would throw away
+# the sound replicate too). Each entry must carry the evidence.
+EXCLUDED_REPLICATES = {
+    'HOBO1_PLES_A1_17032022_22092022.xlsx':
+        'faulty sensor: from ~2022-05-01 it loses the seasonal signal (flat '
+        '28.5-29.8 degC, even rising to 29.79 in September) while its twin and '
+        'SEVEN contemporaneous loggers at other sites all cool 28.5->24.4 degC. '
+        'Change-correlation with the regional signal 0.25 (twin: 0.95), bias '
+        '+2.50 degC, own seasonal amplitude 1.30 vs 4.09 regional. Its own '
+        'individual QC passed it as GOOD - no single-series test catches a '
+        'sensor stuck on a plausible value.',
+}
+
+
+def _excluded_in(pl):
+    """[(file, reason)] excluded from this planilha folder."""
+    return [(os.path.basename(f), EXCLUDED_REPLICATES[os.path.basename(f)])
+            for f in glob.glob(os.path.join(pl, '*.*'))
+            if os.path.basename(f) in EXCLUDED_REPLICATES]
+
+
 def _sheets(pl):
     """The exports of a planilha folder, ONE per logger: the corpus rule is
     '.xlsx, falling back to .csv only when that logger has no xlsx', so a plain
     'all xlsx else all csv' silently drops a replicate exported as csv next to a
-    sibling exported as xlsx."""
+    sibling exported as xlsx. Faulty replicates (EXCLUDED_REPLICATES) are
+    dropped here, so every path that lists sheets honours the exclusion."""
     by_logger = {}
     for f in sorted(glob.glob(os.path.join(pl, '*.xlsx'))) + sorted(glob.glob(os.path.join(pl, '*.csv'))):
+        if os.path.basename(f) in EXCLUDED_REPLICATES:
+            continue
         # EXACT stem: one logger's xlsx and csv share it, while HOBO1 and HOBO2
         # (which ARE separate loggers) must stay apart
         by_logger.setdefault(os.path.splitext(os.path.basename(f))[0], []).append(f)
@@ -553,12 +583,14 @@ def do_site(site, sem):
             labels = [os.path.basename(os.path.dirname(x))
                       if os.path.basename(x).lower().startswith('data') else os.path.basename(x)
                       for x in srcs]
-            write_provenance(dest, name,
-                             '%s\n    campaign : %s\n    tipo     : %s\n    cast     : %s\n'
-                             '    inputs   : %s\n    co2      : %s'
-                             % (name, it['campaign'], it['tipo'] or '-', it['start'],
-                                ' | '.join(labels),
-                                os.path.basename(it['co2']) if it['co2'] else '-'))
+            block = ('%s\n    campaign : %s\n    tipo     : %s\n    cast     : %s\n'
+                     '    inputs   : %s\n    co2      : %s'
+                     % (name, it['campaign'], it['tipo'] or '-', it['start'],
+                        ' | '.join(labels),
+                        os.path.basename(it['co2']) if it['co2'] else '-'))
+            for fn, why in it.get('excluded') or []:
+                block += '\n    EXCLUDED : %s\n               (%s)' % (fn, why)
+            write_provenance(dest, name, block)
         except Exception as e:
             import traceback; traceback.print_exc()
             log('    EXC: %s' % str(e)[:90])
