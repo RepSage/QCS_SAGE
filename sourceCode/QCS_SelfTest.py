@@ -742,6 +742,13 @@ assert _r['scores'][1]['change_corr'] > _r['scores'][0]['change_corr'], _r['scor
 _r = _QCT.replicate_referee([_rep(_stuck), _rep(_season)], reference=None)
 assert _r['disagrees'] is True and _r['recommended'] is None, _r
 assert any('no independent reference' in w for w in _r['warnings']), _r['warnings']
+
+# (d) duplicated timestamps must not break it: these exports really do carry
+# them (one file has 8833), and reindex refuses a duplicated axis
+_dup = _rep(_stuck)
+_dup = pd.concat([_dup, _dup.iloc[:20]], ignore_index=True)
+_r = _QCT.replicate_referee([_dup, _rep(_season)], reference=_ref)
+assert _r['recommended'] == 1, _r
 ok.append('replicate_referee (agreement / names the sound replicate / refuses without a reference)')
 
 print('\n'.join('OK: ' + t for t in ok))

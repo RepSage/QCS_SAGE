@@ -598,7 +598,10 @@ def replicate_referee(replicates, reference=None, settings=None):
         v = pd.to_numeric(r['Temperature (degC)'], errors='coerce')
         if 'Flag_T' in r.columns:
             v = v.where(pd.to_numeric(r['Flag_T'], errors='coerce') <= 2)
-        series.append(pd.Series(v.to_numpy(), index=t).sort_index())
+        x = pd.Series(v.to_numpy(), index=t).sort_index()
+        # duplicated timestamps DO occur in these exports (one file carries
+        # 8833 of them) and reindex refuses to work on a duplicated axis
+        series.append(x[~x.index.duplicated(keep='first')])
     grid = series[0].index
     aligned = [x.reindex(grid, method='nearest', tolerance=pd.Timedelta(minutes=30))
                for x in series]
