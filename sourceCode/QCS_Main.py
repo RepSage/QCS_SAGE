@@ -29,6 +29,20 @@ from QCS_Theme import ToolTip
 _out = theme.install_output_redirect()
 theme.install_crash_handler('QCS Data Qualification', _out)
 
+# Independent reference for the redundant-replicate referee: a temperature
+# Series (indexed by time) from contemporaneous loggers at OTHER sites. The
+# batch driver fills it from the qualified corpus; in the GUI it stays empty,
+# and the referee then reports the disagreement without naming a replicate
+# (it never guesses). set_replicate_reference() is the single entry point.
+REPLICATE_REFERENCE = {'series': None}
+
+
+def set_replicate_reference(series):
+    """Supply (or clear, with None) the independent reference used to arbitrate
+    disagreeing HOBO replicates."""
+    REPLICATE_REFERENCE['series'] = series
+
+
 # Longest accepted Site Code. The descriptive site names the corpus uses for
 # the pool/transect deployments (PISCINA_PLES_DENTRO, BORDA_SUL_ABROLHOS, ...)
 # do not fit the original 10, and the code is only a label in the Site column.
@@ -855,6 +869,19 @@ def start_qualification():
         if combine_hobo:
             log_line('Combining %d replicates...' % n)
             window.update_idletasks()
+            # Before averaging them: do the replicates actually agree? A logger
+            # stuck on a plausible value passes its OWN tests, so only this
+            # comparison can catch it - and the mean of a sound and a faulty
+            # sensor is wrong, not merely uncertain.
+            referee = QC.replicate_referee(qualified_dfs,
+                                           reference=REPLICATE_REFERENCE.get('series'))
+            for m in referee['warnings']:
+                log_line('Warning: ' + m if not m.startswith('Replicate referee') else m)
+            if referee['recommended'] is not None:
+                log_line('Info: qualify this deployment from replicate %d alone if you '
+                         'accept the diagnosis - the combined series averages every '
+                         'replicate, so a faulty one shifts the result.'
+                         % (referee['recommended'] + 1))
             combined, cmsgs = data.combine_hobo_replicates(qualified_dfs)
             for m in cmsgs:
                 log_line(m)

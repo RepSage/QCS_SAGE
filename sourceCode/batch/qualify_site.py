@@ -74,6 +74,38 @@ def _se(w, v):
     w.delete(0, 'end'); w.insert(0, v)
 
 
+_REF_CACHE = {}
+
+
+def replicate_reference(site, t0, t1):
+    """Independent reference for the replicate referee: the mean daily
+    temperature of every ALREADY-QUALIFIED HOBO product of OTHER sites in the
+    same window. Other sites share the regional forcing but not this site's
+    logger, so they arbitrate empirically - no assumption about what the season
+    'should' do. Returns None when nothing contemporaneous exists."""
+    key = (site, str(t0)[:10], str(t1)[:10])
+    if key in _REF_CACHE:
+        return _REF_CACHE[key]
+    cols = []
+    for p in glob.glob(os.path.join(H_QLF, '*', '**', '*_HOBO*_QLF.csv'), recursive=True):
+        if os.path.basename(p).startswith(site + '_'):
+            continue                       # never let the site arbitrate itself
+        try:
+            d = pd.read_csv(p, usecols=lambda c: c in ('Datetime', 'Temperature (degC)', 'Flag_T'))
+        except Exception:
+            continue
+        d['Datetime'] = pd.to_datetime(d['Datetime'], errors='coerce')
+        d = d[(d['Datetime'] >= t0) & (d['Datetime'] <= t1)]
+        if 'Flag_T' in d.columns:
+            d = d[pd.to_numeric(d['Flag_T'], errors='coerce') <= 2]
+        if len(d) < 200:
+            continue
+        cols.append(d.set_index('Datetime')['Temperature (degC)'].resample('D').mean())
+    ref = pd.concat(cols, axis=1).mean(axis=1) if cols else None
+    _REF_CACHE[key] = ref
+    return ref
+
+
 def run_qualification(files, input_type, data_type, site, out_name, co2=None):
     DIALOGS.clear()
     outdir = tempfile.mkdtemp(prefix='q_')
@@ -567,6 +599,16 @@ def do_site(site, sem):
         # one product must never take the whole site down with it
         try:
             files = it['files'] if kind == 'HOBO' else it['files'][0]
+            # arm the replicate referee for multi-replicate HOBO deployments
+            if kind == 'HOBO' and isinstance(files, list) and len(files) > 1:
+                span = it.get('start')
+                t0 = pd.Timestamp(span) if span and not isinstance(span, str) else None
+                if t0 is not None:
+                    qm.set_replicate_reference(
+                        replicate_reference(site, t0 - pd.Timedelta(days=1),
+                                            t0 + pd.Timedelta(days=400)))
+            else:
+                qm.set_replicate_reference(None)
             csv, root, err = run_qualification(files, 'HOBO' if kind == 'HOBO' else 'Seaguard',
                                                dtype, site, name, co2=it['co2'])
             if not csv:
