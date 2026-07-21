@@ -1513,6 +1513,39 @@ def plot_TS_diagram (database, dataViewSettings):
 # the QUALIFIED tidy frame (needs 'Flag_cur'): rows flagged BAD are excluded.
 # ---------------------------------------------------------------------------
 
+def plot_replicate_review(replicates, referee, reference=None, label=''):
+    """Figure for the redundant-replicate review (v9.0): every replicate's
+    temperature, the independent reference, and the referee's scores - so the
+    operator sees WHY a replicate is being called faulty before accepting it.
+    Returns (fig, ax)."""
+    fig, ax = plt.subplots(figsize=(11.5, 6))
+    colors = ['#d62728', '#1f77b4', '#2ca02c', '#9467bd']
+    for i, r in enumerate(replicates):
+        t = pd.to_datetime(r['Datetime'])
+        v = pd.to_numeric(r['Temperature (degC)'], errors='coerce')
+        sc = next((s for s in referee.get('scores', []) if s['replicate'] == i), None)
+        tag = 'replicate %d' % (i + 1)
+        if sc and np.isfinite(sc.get('change_corr', np.nan)):
+            tag += ' (corr %+.2f, offset %+.2f, swing %.2fx)' % (
+                sc['change_corr'], sc['bias'], sc['amplitude_ratio'])
+        if referee.get('recommended') == i:
+            tag += '  <- SOUND'
+        ax.plot(t, v, lw=0.7, color=colors[i % len(colors)], label=tag,
+                zorder=3 if referee.get('recommended') == i else 2)
+    if reference is not None and len(reference):
+        ref = pd.Series(reference).sort_index()
+        ax.plot(ref.index, ref.values, lw=2.0, color='0.25', linestyle='--',
+                label='independent reference (other sites)', zorder=4)
+    ax.set_ylabel('Temperature (°C)')
+    ax.set_title('Replicate review - %s\n%s' % (label, referee.get('verdict', '')),
+                 fontsize=10)
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=8, loc='best')
+    ax.xaxis.set_major_formatter(_mdates.DateFormatter('%d/%m/%y'))
+    fig.autofmt_xdate()
+    return fig, ax
+
+
 def plot_doppler_panels(frame, out_dir, label='', settings=None):
     """Saves the 4 current panels as SVGs into out_dir. Returns file list.
 

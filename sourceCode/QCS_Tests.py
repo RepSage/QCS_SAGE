@@ -551,10 +551,23 @@ def doppler_qc(frame, settings=None):
 # reference warms with it and nobody is misjudged.
 
 REPLICATE_REFEREE_DEFAULTS = {
-    'temp_tol': 0.5,      # degC of spread that counts as disagreement
-    'min_frac': 0.20,     # fraction of the record in disagreement to act on
-    'min_points': 4,      # reference points needed to arbitrate at all
-    'min_margin': 0.30,   # change-correlation lead needed to name a replicate
+    'temp_tol': 0.5,        # degC of spread that counts as disagreement
+    'min_frac': 0.20,       # fraction of the record in disagreement to act on
+    'min_points': 4,        # reference points needed to arbitrate at all
+    'min_margin': 0.30,     # change-correlation lead needed to name a replicate
+    # the reference must describe THIS site before it may judge it: a tide-pool
+    # deployment is not arbitrated by reef loggers (different thermal regime)
+    'min_ref_corr': 0.50,
+    # offset-drift criterion: a replicate whose offset from the reference SHIFTS
+    # between the agreement and the disagreement window is the one that moved.
+    # (Absolute bias cannot decide - the site may genuinely sit warmer than the
+    # region; what a sound logger keeps is a STABLE offset.)
+    'min_bias_shift': 1.00,     # degC of shift to act on
+    'bias_shift_ratio': 2.00,   # how many times the runner-up's shift
+    # amplitude criterion: a damped or exaggerated seasonal swing is faulty even
+    # when the shape still correlates
+    'amp_bad': 2.00,        # factor away from the reference that is faulty
+    'amp_good': 1.50,       # factor within which a replicate is acceptable
 }
 
 
@@ -637,41 +650,89 @@ def replicate_referee(replicates, reference=None, settings=None):
         return out
     ref_amp = float(ref.max() - ref.min())
 
+    # which periods are the replicates in disagreement? (same cadence as ref)
+    dis = over.resample(freq).mean() > 0.5
+
     for i, x in enumerate(aligned):
         m = x.resample(freq).mean()
         d = m.diff().dropna()
         common = d_ref.index.intersection(d.index)
         corr = (float(np.corrcoef(d_ref[common], d[common])[0, 1])
                 if len(common) >= 2 else np.nan)
-        bias = float((m.reindex(ref.index) - ref).mean())
+        dev = m.reindex(ref.index) - ref            # offset from the reference
+        bias = float(dev.mean())
+        # offset BEFORE vs DURING the disagreement: a sound logger keeps the
+        # site's own offset, a drifting one moves away from it
+        dmask = dis.reindex(ref.index).fillna(False)
+        before, during = dev[~dmask].dropna(), dev[dmask].dropna()
+        shift = (float(during.mean() - before.mean())
+                 if len(before) and len(during) else np.nan)
         amp = float(m.max() - m.min())
         out['scores'].append({'replicate': i, 'change_corr': corr, 'bias': bias,
-                              'amplitude': amp,
+                              'bias_shift': shift, 'amplitude': amp,
                               'amplitude_ratio': (amp / ref_amp) if ref_amp else np.nan})
 
-    ranked = sorted([sc for sc in out['scores'] if np.isfinite(sc['change_corr'])],
-                    key=lambda sc: sc['change_corr'], reverse=True)
-    if len(ranked) < 2:
+    usable = [sc for sc in out['scores'] if np.isfinite(sc['change_corr'])]
+    if len(usable) < 2:
         out['verdict'] = 'disagreement, not enough comparable replicates'
         return out
-    lead = ranked[0]['change_corr'] - ranked[1]['change_corr']
-    if lead < s['min_margin']:
+
+    # Does the reference describe this site at all? A tide pool is not
+    # arbitrated by reef loggers - refuse rather than judge on a bad yardstick.
+    if max(sc['change_corr'] for sc in usable) < s['min_ref_corr']:
         out['warnings'].append(
-            'Replicate referee: the replicates disagree (up to %.2f degC) but '
-            'track the reference equally well (correlation lead only %.2f) - no '
-            'replicate named; review manually.' % (out['max_spread'], lead))
+            'Replicate referee: the replicates disagree (up to %.2f degC) but NO '
+            'replicate tracks the reference (best correlation %.2f) - the '
+            'reference does not describe this site (a pool judged by reef '
+            'loggers?), so nobody was named.'
+            % (out['max_spread'], max(sc['change_corr'] for sc in usable)))
+        out['verdict'] = 'disagreement, reference does not describe this site'
+        return out
+
+    # Criteria in order, each with its own margin; the first that separates the
+    # replicates decides, and the verdict says which one did.
+    best = worst = None
+    ranked = sorted(usable, key=lambda sc: sc['change_corr'], reverse=True)
+    if ranked[0]['change_corr'] - ranked[1]['change_corr'] >= s['min_margin']:
+        best, worst, why = ranked[0], ranked[-1], 'it tracks the reference'
+    if best is None:
+        shifts = [sc for sc in usable if np.isfinite(sc.get('bias_shift', np.nan))]
+        if len(shifts) >= 2:
+            by_shift = sorted(shifts, key=lambda sc: abs(sc['bias_shift']))
+            drift, steady = by_shift[-1], by_shift[0]
+            if (abs(drift['bias_shift']) >= s['min_bias_shift'] and
+                    abs(drift['bias_shift']) >= s['bias_shift_ratio'] * max(abs(steady['bias_shift']), 1e-6)):
+                best, worst = steady, drift
+                why = 'its offset from the reference stayed put'
+    if best is None:
+        rated = [sc for sc in usable if np.isfinite(sc['amplitude_ratio'])]
+
+        def _off(sc):                       # how far from the reference swing
+            r = sc['amplitude_ratio']
+            return max(r, 1.0 / r) if r > 0 else np.inf
+        if len(rated) >= 2:
+            by_amp = sorted(rated, key=_off)
+            if _off(by_amp[-1]) >= s['amp_bad'] and _off(by_amp[0]) <= s['amp_good']:
+                best, worst = by_amp[0], by_amp[-1]
+                why = 'its seasonal swing matches the reference'
+    if best is None:
+        out['warnings'].append(
+            'Replicate referee: the replicates disagree (up to %.2f degC) but no '
+            'criterion separates them (correlation, offset drift, seasonal '
+            'amplitude) - no replicate named; review manually.' % out['max_spread'])
         out['verdict'] = 'disagreement, replicates score too close to separate'
         return out
 
-    best, worst = ranked[0], ranked[-1]
     out['recommended'] = best['replicate']
     out['verdict'] = (
-        'replicate %d tracks the independent reference (change-correlation '
-        '%+.2f, bias %+.2f degC, seasonal amplitude %.2fx the reference) while '
-        'replicate %d does not (%+.2f, %+.2f degC, %.2fx) - replicate %d looks '
+        'replicate %d is the sound one - %s (change-correlation %+.2f, offset '
+        '%+.2f degC, offset drift %+.2f, swing %.2fx the reference), while '
+        'replicate %d does not (%+.2f, %+.2f, %+.2f, %.2fx) - replicate %d looks '
         'faulty'
-        % (best['replicate'] + 1, best['change_corr'], best['bias'],
-           best['amplitude_ratio'], worst['replicate'] + 1, worst['change_corr'],
-           worst['bias'], worst['amplitude_ratio'], worst['replicate'] + 1))
+        % (best['replicate'] + 1, why, best['change_corr'], best['bias'],
+           best.get('bias_shift', float('nan')), best['amplitude_ratio'],
+           worst['replicate'] + 1, worst['change_corr'], worst['bias'],
+           worst.get('bias_shift', float('nan')), worst['amplitude_ratio'],
+           worst['replicate'] + 1))
     out['warnings'].append('Replicate referee: ' + out['verdict'] + '.')
     return out

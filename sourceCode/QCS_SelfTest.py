@@ -749,6 +749,29 @@ _dup = _rep(_stuck)
 _dup = pd.concat([_dup, _dup.iloc[:20]], ignore_index=True)
 _r = _QCT.replicate_referee([_dup, _rep(_season)], reference=_ref)
 assert _r['recommended'] == 1, _r
+
+# (e) OFFSET DRIFT: replicate 0 keeps the seasonal shape (so the correlation
+# cannot separate them) but its offset walks away mid-record. The site's own
+# offset is legitimate; a CHANGE in it is not.
+_drift = _season + 2.0                       # site genuinely 2 degC warmer
+_drift[90:] = _season[90:] + 5.0             # ... then it walks off
+_r = _QCT.replicate_referee([_rep(_drift), _rep(_season + 2.0)], reference=_ref)
+assert _r['recommended'] == 1, _r
+assert 'offset' in _r['verdict'], _r['verdict']
+
+# (f) AMPLITUDE: replicate 1 swings three times the reference while tracking its
+# shape - correlation ties, the swing does not.
+_wild = _season.mean() + 3.0 * (_season - _season.mean())
+_r = _QCT.replicate_referee([_rep(_season), _rep(_wild)], reference=_ref)
+assert _r['recommended'] == 0, _r
+assert 'swing' in _r['verdict'], _r['verdict']
+
+# (g) a reference that does NOT describe the site (a pool judged by reef
+# loggers) must disqualify itself instead of judging on a bad yardstick
+_noise = np.resize([26.0, 31.0, 24.0, 33.0, 27.0], len(_days))   # pool-like swings
+_r = _QCT.replicate_referee([_rep(_noise), _rep(_noise + 3.0)], reference=_ref)
+assert _r['disagrees'] is True and _r['recommended'] is None, _r
+assert 'does not describe this site' in _r['verdict'], _r['verdict']
 ok.append('replicate_referee (agreement / names the sound replicate / refuses without a reference)')
 
 print('\n'.join('OK: ' + t for t in ok))

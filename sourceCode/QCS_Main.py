@@ -822,6 +822,7 @@ def start_qualification():
     batch = n > 1 and not combine_hobo
     try:
         qualified_dfs = []
+        replicate_roots = []
         light_plots = []
         batch_failures = []
         for idx, fpath in enumerate(files, start=1):
@@ -864,6 +865,9 @@ def start_qualification():
                 run_full_qualification()
             if combine_hobo:
                 qualified_dfs.append(OUTPUT['last_qualified_df'])
+                # the replicate's OWN output folder, so a deployment reduced to a
+                # single sound replicate can point at it instead of re-writing
+                replicate_roots.append(OUTPUT.get('last_output_root'))
                 if OUTPUT.get('last_light_plot'):
                     light_plots.append(OUTPUT['last_light_plot'])
         if combine_hobo:
@@ -873,20 +877,46 @@ def start_qualification():
             # stuck on a plausible value passes its OWN tests, so only this
             # comparison can catch it - and the mean of a sound and a faulty
             # sensor is wrong, not merely uncertain.
-            referee = QC.replicate_referee(qualified_dfs,
-                                           reference=REPLICATE_REFERENCE.get('series'))
+            reference = REPLICATE_REFERENCE.get('series')
+            referee = QC.replicate_referee(qualified_dfs, reference=reference)
             for m in referee['warnings']:
                 log_line('Warning: ' + m if not m.startswith('Replicate referee') else m)
+            keep = None
             if referee['recommended'] is not None:
-                log_line('Info: qualify this deployment from replicate %d alone if you '
-                         'accept the diagnosis - the combined series averages every '
-                         'replicate, so a faulty one shifts the result.'
-                         % (referee['recommended'] + 1))
-            combined, cmsgs = data.combine_hobo_replicates(qualified_dfs)
-            for m in cmsgs:
-                log_line(m)
-            OUTPUT['last_output_root'] = write_combined_replicates(combined, light_plots)
-            log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
+                keep = review_replicates(qualified_dfs, referee, reference,
+                                         INPUT.get('site') or '')
+            if keep is not None:
+                # A deployment reduced to ONE sound replicate has nothing to
+                # average, but the product must still carry the deployment's
+                # output name and column layout - so write the kept replicate
+                # through the same writer, in the combined schema (spread = 0:
+                # a single replicate has no between-replicate spread).
+                log_line('Info: replicate %d accepted as the only sound one - the other(s) '
+                         'were DROPPED (the combined series is a MEAN, so a faulty '
+                         'replicate would shift it).' % (keep + 1))
+                only = qualified_dfs[keep]
+                single = pd.DataFrame({
+                    'Datetime': pd.to_datetime(only['Datetime']),
+                    'Temperature (degC)': pd.to_numeric(only['Temperature (degC)'], errors='coerce'),
+                    'Temperature spread (degC)': 0.0,
+                    'Luminosity (lux)': pd.to_numeric(only['Luminosity (lux)'], errors='coerce'),
+                    'Flag_T': pd.to_numeric(only['Flag_T'], errors='coerce').astype(int),
+                    'Flag_lux': pd.to_numeric(only['Flag_lux'], errors='coerce').astype(int),
+                })
+                if 'Site' in only.columns and len(only):
+                    single.insert(1, 'Site', only['Site'].iloc[0])
+                OUTPUT['last_qualified_df'] = single
+                OUTPUT['last_output_root'] = write_combined_replicates(
+                    single, [light_plots[keep]] if keep < len(light_plots) else [])
+                log_line('Single sound replicate saved to: %s' % OUTPUT['last_output_root'])
+            else:
+                if referee['recommended'] is not None:
+                    log_line('Info: diagnosis declined - all replicates kept and combined.')
+                combined, cmsgs = data.combine_hobo_replicates(qualified_dfs)
+                for m in cmsgs:
+                    log_line(m)
+                OUTPUT['last_output_root'] = write_combined_replicates(combined, light_plots)
+                log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
         if batch:
             n_done = n - len(batch_failures)
             msg = ('Done: batch finished - %d of %d files qualified (one _QLF output per file).'
@@ -1458,7 +1488,7 @@ def build_qualification_tab(container, root, shared_log=None):
     global outputFilesFormat_combobox, filter_frame, remove_bad, bad_check, remove_suspect, suspect_check
     global siteSelect_entry, macroregion_label, macroregion_combobox, region_label, region_combobox, update_regions
     global _last_seaguard, update_inputtype_state, action_frame, settings_btn, run_button
-    global log_console, log_line, _error_location, review_light_window
+    global log_console, log_line, _error_location, review_light_window, review_replicates
     global run_full_qualification
     window = root
     # Main container
@@ -1772,6 +1802,100 @@ def build_qualification_tab(container, root, shared_log=None):
         qcs_frames = [f for f in frames if os.path.basename(f.filename).startswith('QCS_')]
         f = (qcs_frames or frames)[-1]
         return '%s, line %d, in %s()' % (os.path.basename(f.filename), f.lineno, f.name)
+
+    def review_replicates(replicates, referee, reference, site):
+        """Interactive review of the replicate diagnosis (v9.0). Shows every
+        replicate against the independent reference with the referee's scores,
+        and asks the operator to confirm. Returns the index of the replicate to
+        KEEP, or None to keep them all (the software never silently discards
+        half a redundant pair - that is a scientific decision).
+
+        Same convention as the light-window review: buttons + keys, and closing
+        the window keeps the current choice."""
+        fig, ax = view.plot_replicate_review(replicates, referee, reference, site)
+        ax.set_title(ax.get_title() +
+                     '\nA = accept (use only the sound one)  |  K = keep all  |  '
+                     'Enter = Done  |  Esc = keep all')
+        fig.subplots_adjust(bottom=0.26)
+        state = {'keep': referee['recommended']}      # start on the recommendation
+        banner = {'txt': None}
+
+        def redraw():
+            if banner['txt'] is not None:
+                banner['txt'].remove()
+            msg = ('DECISION: use only replicate %d' % (state['keep'] + 1)
+                   if state['keep'] is not None else
+                   'DECISION: keep ALL replicates (they will be averaged)')
+            banner['txt'] = fig.text(0.5, 0.135, msg, ha='center', fontsize=10,
+                                     color=('#1f7a1f' if state['keep'] is not None
+                                            else '#b30000'))
+            fig.canvas.draw_idle()
+
+        def accept(*_e):
+            state['keep'] = referee['recommended']
+            redraw()
+
+        def keep_all(*_e):
+            state['keep'] = None
+            redraw()
+
+        def show_help(*_e):
+            messagebox.showinfo(
+                "Replicate review - help",
+                "REDUNDANT REPLICATE REVIEW\n\n"
+                "Why: redundant replicates only help while BOTH loggers work. The\n"
+                "combined series is their MEAN, so a drifting sensor shifts the\n"
+                "result - and its own tests cannot catch it, because a sensor stuck\n"
+                "on a PLAUSIBLE value passes every single-series check.\n\n"
+                "How the sound replicate is chosen: each one is compared with an\n"
+                "INDEPENDENT reference (contemporaneous loggers at OTHER sites,\n"
+                "which share the regional forcing), by\n"
+                "  - the correlation of its period-to-period CHANGES,\n"
+                "  - whether its offset from the reference stayed put, and\n"
+                "  - whether its seasonal swing matches.\n"
+                "No expected seasonal shape is assumed: a real marine heatwave warms\n"
+                "the reference too, so nobody is condemned for it. When no criterion\n"
+                "separates the replicates, or the reference does not describe this\n"
+                "site, nothing is proposed.\n\n"
+                "Controls:\n"
+                "  - 'Accept' (key A): qualify from the sound replicate alone\n"
+                "  - 'Keep all' (key K, or Esc): average every replicate as before\n"
+                "  - 'Done' (Enter, or closing the window): confirm what is shown",
+                parent=getattr(getattr(fig.canvas, 'manager', None), 'window', None))
+
+        def confirm(*_e):
+            plt.close(fig)
+
+        def on_key(event):
+            if event.key in ('a', 'A'):
+                accept()
+            elif event.key in ('k', 'K'):
+                keep_all()
+            elif event.key == 'enter':
+                confirm()
+            elif event.key == 'escape':
+                keep_all()
+                confirm()
+
+        accept_btn = Button(fig.add_axes([0.20, 0.035, 0.16, 0.055]), 'Accept')
+        keep_btn = Button(fig.add_axes([0.38, 0.035, 0.16, 0.055]), 'Keep all')
+        help_btn = Button(fig.add_axes([0.56, 0.035, 0.10, 0.055]), 'Help')
+        done_btn = Button(fig.add_axes([0.68, 0.035, 0.12, 0.055]), 'Done')
+        accept_btn.on_clicked(accept)
+        keep_btn.on_clicked(keep_all)
+        help_btn.on_clicked(show_help)
+        done_btn.on_clicked(confirm)
+        state['buttons'] = (accept_btn, keep_btn, help_btn, done_btn)
+        fig.canvas.mpl_connect('key_press_event', on_key)
+        redraw()
+        theme.style_plot_window(fig, 'Replicate review - %s' % site)
+        # waits on the Tk loop, exactly like the light-window review
+        # (never plt.show(block=True) inside the RUN callback)
+        done = BooleanVar(window, value=False)
+        fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
+        fig.show()
+        window.wait_variable(done)
+        return state['keep']
 
     def review_light_window(lux_info, site):
         """Interactive review of the light usage window (HOBO): clicking the plot
