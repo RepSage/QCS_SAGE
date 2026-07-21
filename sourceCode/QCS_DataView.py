@@ -1513,38 +1513,70 @@ def plot_TS_diagram (database, dataViewSettings):
 # the QUALIFIED tidy frame (needs 'Flag_cur'): rows flagged BAD are excluded.
 # ---------------------------------------------------------------------------
 
-def plot_doppler_panels(frame, out_dir, label=''):
-    """Saves the 4 current panels as SVGs into out_dir. Returns file list."""
+def plot_doppler_panels(frame, out_dir, label='', settings=None):
+    """Saves the 4 current panels as SVGs into out_dir. Returns file list.
+
+    settings (all optional; None -> the v8.0 behaviour) lets the Visualization
+    tab steer the panels:
+      xAxisStart / xAxisEnd  keep only this datetime window (also on the X axis)
+      depthAxisMin / Max     keep only cells in this depth band (m)
+      currentRepDepth        force the stick/progressive-vector depth (m); the
+                             default is still the best-covered cell
+      currentSpeedMax        fix the heatmap speed colour scale (cm/s), so
+                             several sites/years compare 1:1; None -> autoscale
+    """
     import os
     import matplotlib.dates as mdates
+    s = settings or {}
     os.makedirs(out_dir, exist_ok=True)
     ok = frame[frame['Flag_cur'] != 4].copy()
+    # time window + depth band (no-ops when the bounds are None)
+    xs, xe = s.get('xAxisStart'), s.get('xAxisEnd')
+    if xs is not None and xe is not None:
+        ok = ok[(ok['Datetime'] >= pd.Timestamp(xs)) & (ok['Datetime'] <= pd.Timestamp(xe))]
+    dmin, dmax = s.get('depthAxisMin'), s.get('depthAxisMax')
+    if dmin is not None and dmax is not None:
+        ok = ok[(ok['Depth (m)'] >= float(dmin)) & (ok['Depth (m)'] <= float(dmax))]
     if not len(ok):
         return []
     files = []
     t0 = ok['Datetime'].min()
+    speed_max = s.get('currentSpeedMax')
 
     # 1) time x depth heatmaps: speed + direction
     fig, axes = plt.subplots(2, 1, figsize=(11, 7), sharex=True)
-    for ax, col, cmap, unit in ((axes[0], 'Horizontal speed (cm/s)', 'viridis', 'cm/s'),
-                                (axes[1], 'Direction (deg)', 'twilight', 'deg')):
+    for ax, col, cmap, unit, vmx in (
+            (axes[0], 'Horizontal speed (cm/s)', 'viridis', 'cm/s', speed_max),
+            (axes[1], 'Direction (deg)', 'twilight', 'deg', 360)):
         piv = ok.pivot_table(index='Depth (m)', columns='Datetime', values=col)
         if piv.size:
-            m = ax.pcolormesh(piv.columns, piv.index, piv.values, cmap=cmap, shading='nearest')
+            kw = {'vmin': 0, 'vmax': float(vmx)} if vmx else {}
+            m = ax.pcolormesh(piv.columns, piv.index, piv.values, cmap=cmap,
+                              shading='nearest', **kw)
             fig.colorbar(m, ax=ax, label='%s [%s]' % (col.split(' (')[0], unit))
         ax.invert_yaxis()
         ax.set_ylabel('Depth (m)')
-    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+    # ticks carry the year: a Doppler set can span several years/visits, and
+    # '%d/%m' alone cannot say which one a tick belongs to
+    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
     fig.suptitle('Current profile - %s' % label)
     fig.autofmt_xdate()
     p = os.path.join(out_dir, 'Current profile (time x depth).svg')
     fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
 
-    # representative depth = the GOOD cell with most samples. Rows can carry a
-    # NaN east/north pair even when not flagged BAD (partial records) - they
-    # cannot enter the vector panels: a single NaN would poison the arrow
-    # scale (int(NaN) crash) and the progressive-vector cumsum.
-    rep_depth = ok.groupby('Depth (m)').size().idxmax()
+    # representative depth: the user's choice (nearest available cell) or the
+    # GOOD cell with most samples. Rows can carry a NaN east/north pair even
+    # when not flagged BAD (partial records) - they cannot enter the vector
+    # panels: a single NaN would poison the arrow scale (int(NaN) crash) and
+    # the progressive-vector cumsum.
+    avail = ok['Depth (m)'].dropna()
+    want = s.get('currentRepDepth')
+    if want is None and dmin is not None and dmax is not None:
+        want = (float(dmin) + float(dmax)) / 2.0   # centre of the chosen band
+    if want is not None and len(avail):
+        rep_depth = float(avail.iloc[(avail - float(want)).abs().argmin()])
+    else:
+        rep_depth = ok.groupby('Depth (m)').size().idxmax()
     rep = ok[ok['Depth (m)'] == rep_depth].sort_values('Datetime')
     rep = rep.dropna(subset=['East speed (cm/s)', 'North speed (cm/s)'])
 
@@ -1569,7 +1601,7 @@ def plot_doppler_panels(frame, out_dir, label=''):
         ax.set_ylim(-1, 1)
         ax.set_yticks([])
         ax.set_title('Current sticks at %.1f m - %s' % (rep_depth, label))
-        ax.xaxis_date(); ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+        ax.xaxis_date(); ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
         fig.autofmt_xdate()
         p = os.path.join(out_dir, 'Current stick plot.svg')
         fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
@@ -1584,7 +1616,7 @@ def plot_doppler_panels(frame, out_dir, label=''):
         axes[1].plot(sub['Datetime'], sub['North speed (cm/s)'], lw=0.9, label='%.1f m' % d)
     axes[0].set_ylabel('East U (cm/s)'); axes[1].set_ylabel('North V (cm/s)')
     axes[0].legend(fontsize=8, ncol=len(sel)); axes[0].set_title('Current components - %s' % label)
-    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m %H:%M'))
+    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
     fig.autofmt_xdate()
     p = os.path.join(out_dir, 'Current components (U-V).svg')
     fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
@@ -1619,3 +1651,48 @@ def plot_doppler_panels(frame, out_dir, label=''):
     p = os.path.join(out_dir, 'Progressive vector diagram.svg')
     fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
     return files
+
+
+def plot_doppler_across_sites(database, out_dir, sites, settings=None):
+    """Cross-site current comparison (the current analogue of the scalar
+    'parameter across sites'): mean horizontal speed vs depth, one line per
+    site, over GOOD cells. Returns the file list ([] if <2 sites have data).
+    Honours the same time-window / depth-band settings as the per-site panels.
+    """
+    import os
+    s = settings or {}
+    os.makedirs(out_dir, exist_ok=True)
+    df = database[database['Flag_cur'] != 4].copy()
+    xs, xe = s.get('xAxisStart'), s.get('xAxisEnd')
+    if xs is not None and xe is not None:
+        df = df[(df['Datetime'] >= pd.Timestamp(xs)) & (df['Datetime'] <= pd.Timestamp(xe))]
+    dmin, dmax = s.get('depthAxisMin'), s.get('depthAxisMax')
+    if dmin is not None and dmax is not None:
+        df = df[(df['Depth (m)'] >= float(dmin)) & (df['Depth (m)'] <= float(dmax))]
+    df = df.dropna(subset=['Depth (m)', 'Horizontal speed (cm/s)'])
+
+    colors = getSiteColors(sites)
+    fig, ax = plt.subplots(figsize=(6.5, 8))
+    n = 0
+    for site in sites:
+        sd = df[df['Site'] == site]
+        if not len(sd):
+            continue
+        prof = sd.groupby('Depth (m)')['Horizontal speed (cm/s)'].mean().sort_index()
+        if len(prof) < 2:
+            continue
+        ax.plot(prof.to_numpy(), prof.index.to_numpy(), '-o', ms=3, lw=1.2,
+                color=colors.get(site), label=site)
+        n += 1
+    if n < 2:
+        plt.close(fig)
+        return []
+    ax.invert_yaxis()
+    ax.set_xlabel('Mean horizontal speed (cm/s)')
+    ax.set_ylabel('Depth (m)')
+    ax.set_title('Mean current speed by depth - across sites')
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=8)
+    p = os.path.join(out_dir, 'Current mean speed across sites.svg')
+    fig.savefig(p, bbox_inches='tight'); plt.close(fig)
+    return [p]

@@ -1,0 +1,76 @@
+# Batch qualification of the CLAUDE corpus
+
+Reproducible drivers for qualifying the whole staged archive
+(`\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE\{SEAGUARD|HOBO}\raw`) through the
+REAL QCS pipeline (no GUI), organizing the products under
+`CLAUDE\{SEAGUARD|HOBO}\qualified\<YEAR>S<1|2>\<SITE>\`. These scripts produced
+the 315-product corpus of 2026-07 (v8.0/v8.1 era).
+
+Run them with Anaconda's Python from this folder's parent (`sourceCode\`):
+
+```
+python batch\run_semester.py 2019S1        # one whole semester (all sites + buckets)
+python batch\qualify_site.py PAB3 --sem 2019S1   # one site of one semester
+python batch\build_index.py                # rebuild CLAUDE\qualified_index.csv
+```
+
+`QCS_SG_ONLY=1` (environment variable) restricts a run to the Seaguard side
+(scalar + Doppler), leaving HOBO products untouched — used for timebase reruns.
+
+## What the drivers encode (the hard-won rules)
+
+- **Semester naming** `<SITE>_<YEAR>S<n>_<INSTRUMENT>[_<TIPO>][_k]_QLF` — the
+  semester tag unifies the two corpora (the same expedition is labelled
+  "ABRIL 2019" by Seaguard and "MAI 2019" by HOBO). `_k` numbers multiple
+  casts chronologically; a semester can span two expeditions.
+- **Timebase** (see the tooltip of "Correct GMT-3" and memory `timebase-rules`):
+  Seaguard clocks record GMT → the correction is ALWAYS applied
+  (`correct_gmt3h = input_type == 'Seaguard'`); HOBO exports and the CO2
+  logger are already local. Getting this wrong once shifted the whole corpus
+  by 3 h and misaligned every CO2 merge.
+- **Casts** are clusters of sibling `-N-` sessions whose starts are ≤ 15 min
+  apart (the reader's own rule); the QCS merges a cast's sensor groups itself,
+  so only the first session of a cluster is passed in.
+- **HOBO replicates are grouped by DATA, not names**: replicates are deployed
+  and recovered together (both ends within 1 day). One folder can hold several
+  deployments (PAB3 8a = reef-top AND wall loggers) and names lie
+  ('ExpIncubacaoMacroalgas' vs 'Expincubacaorodolito').
+- **CO2 pairs by time overlap**: each cast attaches the CO2 txt whose own time
+  range (local, read from its Year..Second columns) covers the cast's local
+  start (±1 h); among several covering exports the SHORTEST wins (the per-cast
+  trim, not the overnight file); no match → no CO2, never guessed.
+- **Sheets rule** (`_sheets`): one export per logger — `.xlsx`, falling back
+  to `.csv` only when that logger has no xlsx (exact-stem grouping so
+  HOBO1/HOBO2 stay apart).
+- **Byte-identical re-archives are skipped** (the field archive stores some
+  pool exports twice, in per-person folders): MD5 over each product's inputs,
+  the explicit DENTRO/FORA copy wins over `_NA`.
+- **Provenance**: every product appends an idempotent block to its folder's
+  `provenance.txt` — campaign label (the semester tag drops it), cast start,
+  exact input sessions, CO2 file, and (C/D transect legs) the per-station
+  time slices from `FASE_1_PLANILHA_SEAGUARD_PERFIS.xlsx`.
+
+## Layout per product
+
+```
+qualified\<YEAR>S<n>\[<bucket>\]<SITE>\
+    <NAME>_QLF.csv          qualified table
+    DataView\<NAME>\        every applicable panel (one folder PER product -
+                            panels are auto-named by site/semester/year and
+                            several casts would overwrite each other)
+    reports\<NAME>__QCS_*   the QCS report files
+    provenance.txt          one block per product
+```
+
+Panels by product type: FUNDEIO → panel1 + panel2 (per parameter) + T-S;
+PERFIL → panel3 + T-S (when T/S exist); DOPPLER → the 4 current panels;
+HOBO → the temperature/light panel.
+
+## Known limits
+
+- Failures are printed per product and never abort a site; the known
+  non-qualifying deployments are raw-data realities (single-record casts,
+  empty/attitude-only DCPS sessions, malformed HOBO exports).
+- The drivers monkeypatch the GUI layer (messageboxes, the light-window
+  review accepts the proposed cutoff, prefs are not saved) — the QC itself is
+  the real pipeline.
