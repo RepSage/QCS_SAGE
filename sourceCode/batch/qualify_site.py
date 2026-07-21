@@ -16,7 +16,7 @@
 
    Usage: qualify_site.py <SITE> --sem 2019S1
 """
-import sys, os, re, glob, shutil, tempfile
+import sys, os, re, glob, shutil, tempfile, time
 import datetime as _dt
 
 # QCS modules live one level up (sourceCode\) from this batch\ folder
@@ -246,7 +246,7 @@ def plan(site, sem):
             for grp, span in _group_replicates(_sheets(pl)):
                 items.append({'kind': 'HOBO', 'tipo': None, 'campaign': camp,
                               'start': span[0] if span else camp, 'files': grp,
-                              'co2': None, 'excluded': dropped})
+                              'co2': None, 'excluded': _exclusions_for(dropped, span)})
     # SEAGUARD / DOPPLER
     for camp in sorted(os.listdir(SG_RAW)):
         cdir = os.path.join(SG_RAW, camp, site)
@@ -323,10 +323,31 @@ EXCLUDED_REPLICATES = {
 
 
 def _excluded_in(pl):
-    """[(file, reason)] excluded from this planilha folder."""
-    return [(os.path.basename(f), EXCLUDED_REPLICATES[os.path.basename(f)])
-            for f in glob.glob(os.path.join(pl, '*.*'))
-            if os.path.basename(f) in EXCLUDED_REPLICATES]
+    """[(file, reason, span)] excluded from this planilha folder. The span lets
+    the caller give the exclusion to the DEPLOYMENT it belonged to: a folder can
+    hold several unrelated deployments, and stamping 'EXCLUDED x' on the
+    provenance of a product that never contained x is simply false."""
+    out = []
+    for f in sorted(glob.glob(os.path.join(pl, '*.*'))):
+        base = os.path.basename(f)
+        if base in EXCLUDED_REPLICATES:
+            out.append((base, EXCLUDED_REPLICATES[base], _span(f)))
+    return out
+
+
+def _exclusions_for(dropped, span):
+    """The entries of `dropped` that belong to the deployment covering `span`.
+    An excluded file whose own span is unreadable cannot be placed, so it is
+    reported on every product of the folder WITH that caveat - silence would
+    hide it entirely."""
+    out = []
+    for base, why, xspan in dropped:
+        if xspan is None:
+            out.append((base, why + ' [its own span is unreadable, so it could '
+                                    'not be tied to one deployment of this folder]'))
+        elif span and abs(xspan[0] - span[0]) <= _REPL_TOL and abs(xspan[1] - span[1]) <= _REPL_TOL:
+            out.append((base, why))
+    return out
 
 
 def _sheets(pl):
@@ -577,7 +598,10 @@ def render(final_csv, dest, kind, tipo, name):
     db['Datetime'] = pd.to_datetime(db['Datetime'])
     site = str(db['Site'].iloc[0])
     year = int(db['Datetime'].dt.year.mode().iloc[0])
-    before = set(glob.glob(os.path.join(dv, '*.svg')))
+    # count what this render WROTE, not what is new on disk: a re-qualification
+    # overwrites the panels under the same names, so a set difference reports
+    # 0 panel(s) and makes a perfectly good re-run look broken
+    t0 = time.time()
     cwd = os.getcwd(); os.chdir(dv)
     try:
         if kind == 'DOPPLER':
@@ -603,7 +627,8 @@ def render(final_csv, dest, kind, tipo, name):
         log('      RENDER EXC: %s' % str(e)[:80])
     finally:
         os.chdir(cwd); view.plt.close('all')
-    return len(set(glob.glob(os.path.join(dv, '*.svg'))) - before)
+    return len([f for f in glob.glob(os.path.join(dv, '*.svg'))
+                if os.path.getmtime(f) >= t0 - 1])
 
 
 def do_site(site, sem):

@@ -889,8 +889,11 @@ def start_qualification():
                 # A deployment reduced to ONE sound replicate has nothing to
                 # average, but the product must still carry the deployment's
                 # output name and column layout - so write the kept replicate
-                # through the same writer, in the combined schema (spread = 0:
-                # a single replicate has no between-replicate spread).
+                # through the same writer, in the combined schema. The spread
+                # column is left EMPTY, not 0: there is no between-replicate
+                # spread to report, and a 0 would read as 'two loggers agreed
+                # perfectly' - the opposite of what happened here. Empty is also
+                # what every single-logger product already carries.
                 log_line('Info: replicate %d accepted as the only sound one - the other(s) '
                          'were DROPPED (the combined series is a MEAN, so a faulty '
                          'replicate would shift it).' % (keep + 1))
@@ -898,7 +901,7 @@ def start_qualification():
                 single = pd.DataFrame({
                     'Datetime': pd.to_datetime(only['Datetime']),
                     'Temperature (degC)': pd.to_numeric(only['Temperature (degC)'], errors='coerce'),
-                    'Temperature spread (degC)': 0.0,
+                    'Temperature spread (degC)': float('nan'),
                     'Luminosity (lux)': pd.to_numeric(only['Luminosity (lux)'], errors='coerce'),
                     'Flag_T': pd.to_numeric(only['Flag_T'], errors='coerce').astype(int),
                     'Flag_lux': pd.to_numeric(only['Flag_lux'], errors='coerce').astype(int),
