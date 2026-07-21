@@ -558,6 +558,11 @@ REPLICATE_REFEREE_DEFAULTS = {
     # the reference must describe THIS site before it may judge it: a tide-pool
     # deployment is not arbitrated by reef loggers (different thermal regime)
     'min_ref_corr': 0.50,
+    # the offset-drift and swing criteria MEASURE a replicate against the
+    # reference, so they are only meaningful when the reference genuinely
+    # tracks this site - a weak match may still allow the correlation lead to
+    # decide, but not those two
+    'min_ref_corr_secondary': 0.70,
     # offset-drift criterion: a replicate whose offset from the reference SHIFTS
     # between the agreement and the disagreement window is the one that moved.
     # (Absolute bias cannot decide - the site may genuinely sit warmer than the
@@ -695,7 +700,11 @@ def replicate_referee(replicates, reference=None, settings=None):
     ranked = sorted(usable, key=lambda sc: sc['change_corr'], reverse=True)
     if ranked[0]['change_corr'] - ranked[1]['change_corr'] >= s['min_margin']:
         best, worst, why = ranked[0], ranked[-1], 'it tracks the reference'
-    if best is None:
+    # the secondary criteria compare each replicate WITH the reference, so they
+    # need it to actually describe the site (a weak match may still let the
+    # correlation lead above decide, but not these)
+    secondary_ok = max(sc['change_corr'] for sc in usable) >= s['min_ref_corr_secondary']
+    if best is None and secondary_ok:
         shifts = [sc for sc in usable if np.isfinite(sc.get('bias_shift', np.nan))]
         if len(shifts) >= 2:
             by_shift = sorted(shifts, key=lambda sc: abs(sc['bias_shift']))
@@ -704,7 +713,7 @@ def replicate_referee(replicates, reference=None, settings=None):
                     abs(drift['bias_shift']) >= s['bias_shift_ratio'] * max(abs(steady['bias_shift']), 1e-6)):
                 best, worst = steady, drift
                 why = 'its offset from the reference stayed put'
-    if best is None:
+    if best is None and secondary_ok:
         rated = [sc for sc in usable if np.isfinite(sc['amplitude_ratio'])]
 
         def _off(sc):                       # how far from the reference swing

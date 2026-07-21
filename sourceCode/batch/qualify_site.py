@@ -291,10 +291,34 @@ EXCLUDED_REPLICATES = {
         'faulty sensor: from ~2022-05-01 it loses the seasonal signal (flat '
         '28.5-29.8 degC, even rising to 29.79 in September) while its twin and '
         'SEVEN contemporaneous loggers at other sites all cool 28.5->24.4 degC. '
-        'Change-correlation with the regional signal 0.25 (twin: 0.95), bias '
-        '+2.50 degC, own seasonal amplitude 1.30 vs 4.09 regional. Its own '
-        'individual QC passed it as GOOD - no single-series test catches a '
-        'sensor stuck on a plausible value.',
+        'Change-correlation with the regional signal 0.10 (twin: 0.92), bias '
+        '+2.42 degC, own seasonal amplitude 0.35x regional. Its own individual '
+        'QC passed it as GOOD - no single-series test catches a sensor stuck '
+        'on a plausible value.',
+    'PAB_RRDM_290120_110521.csv':
+        'replicate referee (v9.0): change-correlation with the independent '
+        'reference -0.24 (twin +0.91), bias +1.07 degC - it does not follow the '
+        'regional signal at all.',
+    'HOBO2_PAB3_A3_181023_220324.xlsx':
+        'replicate referee (v9.0): change-correlation +0.35 (twin +0.94), bias '
+        '+0.90 degC.',
+    'HOBO1_PLES_A1_181023_300324_duvidoso.xlsx':
+        'replicate referee (v9.0): seasonal swing 3.76x the reference (twin '
+        '1.48x) with correlation +0.92 vs +1.00 - an exaggerated amplitude. The '
+        'field name already reads "duvidoso" (doubtful).',
+    'HOBO1_ESQNORTE_B2_290824_180325 (ERRO).xlsx':
+        'replicate referee (v9.0): change-correlation +0.47 (twin +0.88), bias '
+        '+4.81 degC - the largest offset in the corpus. The field name already '
+        'reads "(ERRO)".',
+    'HOBO1_ESQRODO_B1_160325_110925.xlsx':
+        'replicate referee (v9.0): change-correlation -0.20 (twin +0.89), bias '
+        '+3.15 degC - it moves against the regional signal.',
+    # NOT excluded, deliberately: ESQCENTRAL 2024S1
+    # (HOBO1_ESQCENTRAL_B3_281023_050424.xlsx). The referee names replicate 1 on
+    # the seasonal-swing criterion (the other replicate swings only 0.48x the
+    # reference, i.e. damped), but that replicate has the SLIGHTLY HIGHER
+    # correlation (+0.90 vs +0.88) - the two criteria point opposite ways, so
+    # this one is left for the operator to review rather than auto-dropped.
 }
 
 
