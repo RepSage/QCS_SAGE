@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v8.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v9.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -985,6 +985,43 @@
         replicate is fouled — the usable window is <strong>extended to the last replicate to
         foul</strong>. Light is not averaged (that would mix clean and fouled sensors).</li>
     </ul>
+
+    <h3>The replicate referee (since v9.0)</h3>
+    <p>Averaging is the right answer only while <strong>both</strong> loggers work. When one
+    sensor is broken, the mean is contaminated and the SUSPECT spread flag does not repair it —
+    and discarding the suspect rows would throw away the sound replicate too. Worse, a sensor
+    stuck on a <em>plausible</em> temperature passes every test that looks at one series in
+    isolation.</p>
+    <p>So, before combining, QCS runs a <strong>referee</strong>. It first checks whether the
+    replicates genuinely disagree (more than 0.5&nbsp;°C over at least 20&nbsp;% of the overlap).
+    If they agree, nothing changes — they are averaged as before. If they disagree, the referee
+    calls an <strong>independent witness</strong>: the contemporaneous loggers at
+    <em>other sites</em>. Regional temperature moves together, so a sound logger follows that
+    signal and a broken one does not. Each replicate is scored on three criteria:</p>
+    <ol>
+        <li><strong>Change-correlation</strong> with the reference — correlation of day-to-day
+        <em>changes</em>, not absolute values, so a legitimate depth offset does not decide it.
+        This is the primary criterion.</li>
+        <li><strong>Offset drift</strong> — a bias against the reference that <em>shifts</em>
+        during the deployment indicates a drifting sensor; a real site offset stays put.</li>
+        <li><strong>Seasonal amplitude</strong> — the replicate's swing versus the reference's:
+        far too damped, or far too exaggerated, is wrong.</li>
+    </ol>
+    <p>Criteria 2 and 3 measure a replicate <em>against</em> the reference, so they only apply
+    when the reference genuinely tracks this site (change-correlation ≥ 0.70). Otherwise the
+    referee <strong>abstains</strong> rather than arbitrate with a bad yardstick.</p>
+    <p>The referee does <strong>not</strong> apply a fixed seasonal rule such as "warmer in
+    summer". Encoding the expected answer and then keeping the data that matches it is
+    confirmation bias, and it would silently erase genuine anomalies such as a marine heatwave.
+    The reference is measured, contemporaneous and independent; the expectation is never
+    hardcoded.</p>
+    <p>When a replicate is named, the run <strong>pauses and shows the evidence</strong> — both
+    replicates plotted against the reference, the score table, and the verdict in words. You
+    choose <strong>Accept</strong> (qualify from the named replicate alone; the dropped one is
+    recorded in the product's provenance with the full reason) or <strong>Keep all</strong>
+    (average both, the pre-v9.0 behaviour). Nothing is ever dropped silently: with no reference
+    available, or with the replicates too close to separate, the referee reports that it cannot
+    decide and the run averages as usual.</p>
 
     <h2 id="generated_outputs">10. Generated Outputs</h2>
     <h3>Folder Structure</h3>

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Builds the master index of the qualified corpus.
+r"""Builds the master index of the qualified corpus.
 
 Walks CLAUDE\{SEAGUARD|HOBO}\qualified\, reads every <NAME>_QLF.csv and its
 provenance.txt entry, and writes ONE row per product to

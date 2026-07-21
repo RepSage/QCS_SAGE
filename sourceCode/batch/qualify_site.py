@@ -16,7 +16,7 @@
 
    Usage: qualify_site.py <SITE> --sem 2019S1
 """
-import sys, os, re, glob, shutil, tempfile
+import sys, os, re, glob, shutil, tempfile, time
 import datetime as _dt
 
 # QCS modules live one level up (sourceCode\) from this batch\ folder
@@ -72,6 +72,38 @@ qm.log_line = lambda m: None
 
 def _se(w, v):
     w.delete(0, 'end'); w.insert(0, v)
+
+
+_REF_CACHE = {}
+
+
+def replicate_reference(site, t0, t1):
+    """Independent reference for the replicate referee: the mean daily
+    temperature of every ALREADY-QUALIFIED HOBO product of OTHER sites in the
+    same window. Other sites share the regional forcing but not this site's
+    logger, so they arbitrate empirically - no assumption about what the season
+    'should' do. Returns None when nothing contemporaneous exists."""
+    key = (site, str(t0)[:10], str(t1)[:10])
+    if key in _REF_CACHE:
+        return _REF_CACHE[key]
+    cols = []
+    for p in glob.glob(os.path.join(H_QLF, '*', '**', '*_HOBO*_QLF.csv'), recursive=True):
+        if os.path.basename(p).startswith(site + '_'):
+            continue                       # never let the site arbitrate itself
+        try:
+            d = pd.read_csv(p, usecols=lambda c: c in ('Datetime', 'Temperature (degC)', 'Flag_T'))
+        except Exception:
+            continue
+        d['Datetime'] = pd.to_datetime(d['Datetime'], errors='coerce')
+        d = d[(d['Datetime'] >= t0) & (d['Datetime'] <= t1)]
+        if 'Flag_T' in d.columns:
+            d = d[pd.to_numeric(d['Flag_T'], errors='coerce') <= 2]
+        if len(d) < 200:
+            continue
+        cols.append(d.set_index('Datetime')['Temperature (degC)'].resample('D').mean())
+    ref = pd.concat(cols, axis=1).mean(axis=1) if cols else None
+    _REF_CACHE[key] = ref
+    return ref
 
 
 def run_qualification(files, input_type, data_type, site, out_name, co2=None):
@@ -209,9 +241,12 @@ def plan(site, sem):
             # a site's planilha folder can hold SEVERAL deployments, not just
             # the replicates of one (PAB3 8a = a reef-top logger AND a wall
             # logger spanning 2016-2018) - group them from the data
-            for grp, span in _group_replicates(_sheets(os.path.join(sdir, camp, 'planilha'))):
+            pl = os.path.join(sdir, camp, 'planilha')
+            dropped = _excluded_in(pl)
+            for grp, span in _group_replicates(_sheets(pl)):
                 items.append({'kind': 'HOBO', 'tipo': None, 'campaign': camp,
-                              'start': span[0] if span else camp, 'files': grp, 'co2': None})
+                              'start': span[0] if span else camp, 'files': grp,
+                              'co2': None, 'excluded': _exclusions_for(dropped, span)})
     # SEAGUARD / DOPPLER
     for camp in sorted(os.listdir(SG_RAW)):
         cdir = os.path.join(SG_RAW, camp, site)
@@ -246,13 +281,85 @@ def plan(site, sem):
 
 
 # ---------------- the two HOBO-only buckets (_PISCINAS / _EXPERIMENTOS) -------
+# Replicates excluded as FAULTY after diagnosis. A redundant pair only helps
+# when both loggers work: the combine averages them, so a drifting sensor
+# contaminates the mean (the QC flags the disagreement SUSPECT, but a suspect
+# flag does not fix the value, and dropping the suspect rows would throw away
+# the sound replicate too). Each entry must carry the evidence.
+EXCLUDED_REPLICATES = {
+    'HOBO1_PLES_A1_17032022_22092022.xlsx':
+        'faulty sensor: from ~2022-05-01 it loses the seasonal signal (flat '
+        '28.5-29.8 degC, even rising to 29.79 in September) while its twin and '
+        'SEVEN contemporaneous loggers at other sites all cool 28.5->24.4 degC. '
+        'Change-correlation with the regional signal 0.10 (twin: 0.92), bias '
+        '+2.42 degC, own seasonal amplitude 0.35x regional. Its own individual '
+        'QC passed it as GOOD - no single-series test catches a sensor stuck '
+        'on a plausible value.',
+    'PAB_RRDM_290120_110521.csv':
+        'replicate referee (v9.0): change-correlation with the independent '
+        'reference -0.24 (twin +0.91), bias +1.07 degC - it does not follow the '
+        'regional signal at all.',
+    'HOBO2_PAB3_A3_181023_220324.xlsx':
+        'replicate referee (v9.0): change-correlation +0.35 (twin +0.94), bias '
+        '+0.90 degC.',
+    'HOBO1_PLES_A1_181023_300324_duvidoso.xlsx':
+        'replicate referee (v9.0): seasonal swing 3.76x the reference (twin '
+        '1.48x) with correlation +0.92 vs +1.00 - an exaggerated amplitude. The '
+        'field name already reads "duvidoso" (doubtful).',
+    'HOBO1_ESQNORTE_B2_290824_180325 (ERRO).xlsx':
+        'replicate referee (v9.0): change-correlation +0.47 (twin +0.88), bias '
+        '+4.81 degC - the largest offset in the corpus. The field name already '
+        'reads "(ERRO)".',
+    'HOBO1_ESQRODO_B1_160325_110925.xlsx':
+        'replicate referee (v9.0): change-correlation -0.20 (twin +0.89), bias '
+        '+3.15 degC - it moves against the regional signal.',
+    # NOT excluded, deliberately: ESQCENTRAL 2024S1
+    # (HOBO1_ESQCENTRAL_B3_281023_050424.xlsx). The referee names replicate 1 on
+    # the seasonal-swing criterion (the other replicate swings only 0.48x the
+    # reference, i.e. damped), but that replicate has the SLIGHTLY HIGHER
+    # correlation (+0.90 vs +0.88) - the two criteria point opposite ways, so
+    # this one is left for the operator to review rather than auto-dropped.
+}
+
+
+def _excluded_in(pl):
+    """[(file, reason, span)] excluded from this planilha folder. The span lets
+    the caller give the exclusion to the DEPLOYMENT it belonged to: a folder can
+    hold several unrelated deployments, and stamping 'EXCLUDED x' on the
+    provenance of a product that never contained x is simply false."""
+    out = []
+    for f in sorted(glob.glob(os.path.join(pl, '*.*'))):
+        base = os.path.basename(f)
+        if base in EXCLUDED_REPLICATES:
+            out.append((base, EXCLUDED_REPLICATES[base], _span(f)))
+    return out
+
+
+def _exclusions_for(dropped, span):
+    """The entries of `dropped` that belong to the deployment covering `span`.
+    An excluded file whose own span is unreadable cannot be placed, so it is
+    reported on every product of the folder WITH that caveat - silence would
+    hide it entirely."""
+    out = []
+    for base, why, xspan in dropped:
+        if xspan is None:
+            out.append((base, why + ' [its own span is unreadable, so it could '
+                                    'not be tied to one deployment of this folder]'))
+        elif span and abs(xspan[0] - span[0]) <= _REPL_TOL and abs(xspan[1] - span[1]) <= _REPL_TOL:
+            out.append((base, why))
+    return out
+
+
 def _sheets(pl):
     """The exports of a planilha folder, ONE per logger: the corpus rule is
     '.xlsx, falling back to .csv only when that logger has no xlsx', so a plain
     'all xlsx else all csv' silently drops a replicate exported as csv next to a
-    sibling exported as xlsx."""
+    sibling exported as xlsx. Faulty replicates (EXCLUDED_REPLICATES) are
+    dropped here, so every path that lists sheets honours the exclusion."""
     by_logger = {}
     for f in sorted(glob.glob(os.path.join(pl, '*.xlsx'))) + sorted(glob.glob(os.path.join(pl, '*.csv'))):
+        if os.path.basename(f) in EXCLUDED_REPLICATES:
+            continue
         # EXACT stem: one logger's xlsx and csv share it, while HOBO1 and HOBO2
         # (which ARE separate loggers) must stay apart
         by_logger.setdefault(os.path.splitext(os.path.basename(f))[0], []).append(f)
@@ -491,7 +598,10 @@ def render(final_csv, dest, kind, tipo, name):
     db['Datetime'] = pd.to_datetime(db['Datetime'])
     site = str(db['Site'].iloc[0])
     year = int(db['Datetime'].dt.year.mode().iloc[0])
-    before = set(glob.glob(os.path.join(dv, '*.svg')))
+    # count what this render WROTE, not what is new on disk: a re-qualification
+    # overwrites the panels under the same names, so a set difference reports
+    # 0 panel(s) and makes a perfectly good re-run look broken
+    t0 = time.time()
     cwd = os.getcwd(); os.chdir(dv)
     try:
         if kind == 'DOPPLER':
@@ -517,7 +627,8 @@ def render(final_csv, dest, kind, tipo, name):
         log('      RENDER EXC: %s' % str(e)[:80])
     finally:
         os.chdir(cwd); view.plt.close('all')
-    return len(set(glob.glob(os.path.join(dv, '*.svg'))) - before)
+    return len([f for f in glob.glob(os.path.join(dv, '*.svg'))
+                if os.path.getmtime(f) >= t0 - 1])
 
 
 def do_site(site, sem):
@@ -537,6 +648,16 @@ def do_site(site, sem):
         # one product must never take the whole site down with it
         try:
             files = it['files'] if kind == 'HOBO' else it['files'][0]
+            # arm the replicate referee for multi-replicate HOBO deployments
+            if kind == 'HOBO' and isinstance(files, list) and len(files) > 1:
+                span = it.get('start')
+                t0 = pd.Timestamp(span) if span and not isinstance(span, str) else None
+                if t0 is not None:
+                    qm.set_replicate_reference(
+                        replicate_reference(site, t0 - pd.Timedelta(days=1),
+                                            t0 + pd.Timedelta(days=400)))
+            else:
+                qm.set_replicate_reference(None)
             csv, root, err = run_qualification(files, 'HOBO' if kind == 'HOBO' else 'Seaguard',
                                                dtype, site, name, co2=it['co2'])
             if not csv:
@@ -553,12 +674,14 @@ def do_site(site, sem):
             labels = [os.path.basename(os.path.dirname(x))
                       if os.path.basename(x).lower().startswith('data') else os.path.basename(x)
                       for x in srcs]
-            write_provenance(dest, name,
-                             '%s\n    campaign : %s\n    tipo     : %s\n    cast     : %s\n'
-                             '    inputs   : %s\n    co2      : %s'
-                             % (name, it['campaign'], it['tipo'] or '-', it['start'],
-                                ' | '.join(labels),
-                                os.path.basename(it['co2']) if it['co2'] else '-'))
+            block = ('%s\n    campaign : %s\n    tipo     : %s\n    cast     : %s\n'
+                     '    inputs   : %s\n    co2      : %s'
+                     % (name, it['campaign'], it['tipo'] or '-', it['start'],
+                        ' | '.join(labels),
+                        os.path.basename(it['co2']) if it['co2'] else '-'))
+            for fn, why in it.get('excluded') or []:
+                block += '\n    EXCLUDED : %s\n               (%s)' % (fn, why)
+            write_provenance(dest, name, block)
         except Exception as e:
             import traceback; traceback.print_exc()
             log('    EXC: %s' % str(e)[:90])
