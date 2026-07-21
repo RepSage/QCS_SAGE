@@ -313,13 +313,53 @@ EXCLUDED_REPLICATES = {
     'HOBO1_ESQRODO_B1_160325_110925.xlsx':
         'replicate referee (v9.0): change-correlation -0.20 (twin +0.89), bias '
         '+3.15 degC - it moves against the regional signal.',
-    # NOT excluded, deliberately: ESQCENTRAL 2024S1
+    # NOT excluded, deliberately: ESQCENTRAL 2024S1 (see the note below the dict)
     # (HOBO1_ESQCENTRAL_B3_281023_050424.xlsx). The referee names replicate 1 on
     # the seasonal-swing criterion (the other replicate swings only 0.48x the
     # reference, i.e. damped), but that replicate has the SLIGHTLY HIGHER
     # correlation (+0.90 vs +0.88) - the two criteria point opposite ways, so
     # this one is left for the operator to review rather than auto-dropped.
 }
+
+
+# Loggers whose CLOCK was launched out of phase: the export carries a correct
+# AM/PM marker, but the instrument's own clock was 12 h wrong, so the whole
+# series (light AND temperature) sits on the wrong half of the day. Evidence for
+# each: with the shift applied, the light peak moves onto local noon and the
+# daylight share onto ~100%, matching the sound loggers of the same semester
+# (PAB3 11.6 h / 99.9%, PNOR 11.8 h / 99.9%, ESQRODO 11.7 h / 100%).
+# The value is the shift in hours ADDED to every timestamp.
+CLOCK_CORRECTIONS = {
+    'HOBO1_PLeste_210821.csv':      -12,   # peak 23.2 h, 0.8% daylight -> 11.2 h, 99.2%
+    'HOBO1_PLeste_210821_0.csv':    -12,
+    'HOBO2_PLeste_210821_0.csv':    -12,
+    'HOBO1_SGomes_200821_0.csv':    -12,   # peak 23.5 h, 0.0% daylight -> 11.5 h, 100%
+    'HOBO1_SGomes_200821_0_0.csv':  -12,
+    'HOBO2_SGomes_200821.csv':      -12,
+    'HOBO1_TIM2_250821.csv':        -12,   # peak 23.6 h, 0.0% daylight -> 11.6 h, 100%
+    'HOBO2_TIM2_250821.csv':        -12,
+}
+# 12 h exactly, never the measured 11.2/11.5/11.6: an AM/PM mistake is exact
+# antiphase, and the centroid lands off noon only because cloud and fouling are
+# not symmetric about it.
+
+_orig_read_hobo = dh.read_hobo
+
+
+def _read_hobo_corrected(INPUT, tsSettings):
+    """read_hobo + the CLOCK_CORRECTIONS override. Patched onto the handler so
+    every path (qualification, _span, replicate grouping) sees the same, single
+    corrected time axis - a correction applied in one place and not the others
+    would silently split the corpus into two timebases."""
+    frame, info = _orig_read_hobo(INPUT, tsSettings)
+    shift = CLOCK_CORRECTIONS.get(os.path.basename(str(INPUT.get('file_name', ''))))
+    if shift and frame is not None and 'Datetime' in frame.columns:
+        frame = frame.copy()
+        frame['Datetime'] = pd.to_datetime(frame['Datetime']) + pd.Timedelta(hours=shift)
+    return frame, info
+
+
+dh.read_hobo = _read_hobo_corrected
 
 
 def _excluded_in(pl):

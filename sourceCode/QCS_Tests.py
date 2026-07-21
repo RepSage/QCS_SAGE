@@ -291,6 +291,109 @@ def vertical_gradient_test(values, depth, flags, grad_fail, grad_susp, min_dz=0.
     return out
 
 
+def light_clock_phase(datetimes, light, warn_offset_h=4.0, bad_offset_h=8.0):
+    """Checks the DIURNAL PHASE of a light series: is the logger's clock right?
+
+    A submerged light sensor must peak near local noon. If it peaks near
+    midnight, the sensor is fine and the CLOCK is wrong - the classic failure is
+    a logger launched with AM/PM swapped, which puts the whole series 12 h out
+    of phase. Three loggers of the RRDM 14a MAR 2022 campaign (PLES, SGOM and
+    TIM2) recorded tens of thousands of lux at 21-23 h that way, and the fouling
+    analysis run on top of that time axis was meaningless: no daily light decay
+    can be measured on a scrambled clock.
+
+    This is a property of the WHOLE SERIES, not of individual samples, so it
+    emits a warning and a measurement rather than a flag character - exactly
+    like the fouling baseline. Correcting it changes the data, so the decision
+    stays with the operator.
+
+    `peak_hour` is the CIRCULAR mean hour-of-day weighted by light (24 h is a
+    circle: a plain mean would place a peak spanning midnight at noon).
+    `offset_h` is its distance from local noon, and `daylight_frac` the share of
+    the light energy recorded between 06:00 and 18:00 - the blunt, decisive
+    number, since a sound logger scores ~1.0 and a 12 h-shifted one ~0.0.
+
+    A SECOND, different 12-hour failure is caught first, because it makes the
+    phase measurement meaningless: some HOBOware exports (pt-BR locale, times
+    written '04h0min0s') carry a 12-hour clock with NO AM/PM marker at all, so
+    every afternoon reading lands on top of its morning twin. Its signature is
+    unmistakable - no sample after 12:59 and about half the timestamps
+    duplicated - and it is reported as 'collapsed', not as a phase shift, since
+    the remedy is different (reconstruct from row order, not shift the series).
+
+    Returns dict: 'evaluable', 'peak_hour', 'offset_h', 'daylight_frac',
+    'suspect_shift_h' (the whole-hour shift that would restore noon, or None),
+    'collapsed' (bool) and 'warnings'.
+    """
+    out = {'evaluable': False, 'peak_hour': np.nan, 'offset_h': np.nan,
+           'daylight_frac': np.nan, 'suspect_shift_h': None, 'collapsed': False,
+           'warnings': []}
+
+    t = pd.DatetimeIndex(pd.to_datetime(pd.Series(datetimes), errors='coerce'))
+    v = pd.to_numeric(pd.Series(np.asarray(light, dtype=float)), errors='coerce')
+
+    # --- collapsed 12-hour clock (checked on ALL timestamps, lit or not) ------
+    tv = t[t.notna()]
+    if len(tv) >= 50:
+        dup_frac = float(pd.Series(tv).duplicated().mean())
+        if int(tv.hour.max()) <= 12 and dup_frac > 0.10:
+            out['collapsed'] = True
+            out['warnings'].append(
+                'WARNING: no sample falls after 12:59 and %.0f%% of the timestamps are '
+                'duplicated. This export carries a 12-HOUR clock with the AM/PM marker '
+                'MISSING (the pt-BR HOBOware format writes "04h0min0s"), so every '
+                'afternoon reading has landed on top of its morning twin. Half of this '
+                'series is on the wrong timestamp and the two readings cannot be told '
+                'apart by time alone. Do NOT trust any time-based result from this file - '
+                'it needs the afternoon half reconstructed from the row order first.'
+                % (100 * dup_frac))
+
+    ok = t.notna() & v.notna().to_numpy() & (v.to_numpy() > 0)
+    if ok.sum() < 50:
+        out['warnings'].append('Light clock check: fewer than 50 lit samples - '
+                               'the diurnal phase cannot be established; not evaluated.')
+        return out
+    if out['collapsed']:
+        return out          # the phase of a collapsed clock is meaningless
+    t, w = t[ok], v.to_numpy()[ok]
+
+    hour = t.hour.to_numpy() + t.minute.to_numpy() / 60.0
+    ang = 2 * np.pi * hour / 24.0
+    x, y = float(np.sum(w * np.cos(ang))), float(np.sum(w * np.sin(ang)))
+    if x == 0 and y == 0:
+        out['warnings'].append('Light clock check: light sums to zero - not evaluated.')
+        return out
+    peak = (np.arctan2(y, x) * 24.0 / (2 * np.pi)) % 24.0
+    offset = abs((peak - 12.0 + 12.0) % 24.0 - 12.0)      # distance from noon, on the circle
+    day = (t.hour >= 6) & (t.hour < 18)
+    out.update({'evaluable': True, 'peak_hour': float(peak), 'offset_h': float(offset),
+                'daylight_frac': float(w[day].sum() / w.sum())})
+
+    if offset >= bad_offset_h:
+        # An AM/PM mistake is EXACT antiphase, so the remedy is exactly 12 h. The
+        # measured centroid lands a little off noon (23.2 h here, 23.6 h there)
+        # because cloud and fouling are not symmetric about noon - rounding that
+        # centroid would prescribe an 11 h shift and leave the series an hour
+        # wrong. 12 h is the physical answer; +12 and -12 are the same shift.
+        shift = 12
+        out['suspect_shift_h'] = shift
+        out['warnings'].append(
+            'WARNING: the light peaks at %.1f h and only %.0f%% of the light energy falls '
+            'between 06:00 and 18:00 - a submerged sensor cannot do that. The CLOCK is '
+            'almost certainly wrong (a logger launched with AM/PM swapped is %+d h out of '
+            'phase), not the sensor. The fouling analysis below is computed on this time '
+            'axis and is NOT trustworthy until the clock is fixed; the temperature '
+            'timestamps are equally affected.'
+            % (peak, 100 * out['daylight_frac'], shift))
+    elif offset >= warn_offset_h:
+        out['warnings'].append(
+            'Note: the light peaks at %.1f h, %.1f h away from local noon (%.0f%% of the '
+            'light energy between 06:00 and 18:00). Heavy fouling or a shaded emplacement '
+            'can do this, but so can a wrong clock - worth a look.'
+            % (peak, offset, 100 * out['daylight_frac']))
+    return out
+
+
 def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
                            sustain_days=3, recovery_day_frac=0.2):
     """Light sensor fouling analysis (HOBO): the light "usage window".

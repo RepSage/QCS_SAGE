@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v9.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v9.1</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -985,6 +985,34 @@
         replicate is fouled — the usable window is <strong>extended to the last replicate to
         foul</strong>. Light is not averaged (that would mix clean and fouled sensors).</li>
     </ul>
+
+    <h3>The clock check (since v9.1)</h3>
+    <p>A submerged light sensor <strong>must</strong> peak near local noon. Before the fouling
+    analysis runs, QCS measures the diurnal phase of the light — the light-weighted mean
+    hour of day, computed on the 24 h <em>circle</em>, and the share of light energy recorded
+    between 06:00 and 18:00. A sound logger scores ~100% on that share; a logger whose clock
+    is 12 h out scores ~0%.</p>
+    <p>The check runs <strong>first</strong> because a wrong clock makes every daily light
+    statistic below it meaningless: you cannot measure a light decay on a scrambled time axis.
+    It is a property of the whole series, so it produces a warning and a measurement, not a
+    flag character.</p>
+    <p>Two distinct failures are named:</p>
+    <ul>
+        <li><strong>A 12 h phase shift</strong> — the logger was launched with AM/PM swapped, so
+        light and temperature both sit on the wrong half of the day. The prescribed correction is
+        <strong>exactly 12 h</strong>: an AM/PM mistake is exact antiphase, and the measured peak
+        lands slightly off noon only because cloud and fouling are not symmetric about it. Three
+        loggers of the RRDM 14a MAR 2022 campaign (PLES, SGOM, TIM2) recorded tens of thousands
+        of lux at 21–23 h this way.</li>
+        <li><strong>A collapsed 12-hour clock</strong> — some HOBOware exports (pt-BR locale,
+        times written <code>04h0min0s</code>) carry a 12-hour clock with <em>no AM/PM marker at
+        all</em>, so every afternoon reading lands on top of its morning twin. The signature is
+        no sample after 12:59 plus about half the timestamps duplicated. QCS reports this
+        <em>without</em> prescribing a shift, because the remedy is different: the afternoon half
+        must be reconstructed from the row order, not moved.</li>
+    </ul>
+    <p>A heavily fouled logger is <strong>not</strong> accused: fouling attenuates the light, it
+    does not move the peak.</p>
 
     <h3>The replicate referee (since v9.0)</h3>
     <p>Averaging is the right answer only while <strong>both</strong> loggers work. When one

@@ -774,5 +774,57 @@ assert _r['disagrees'] is True and _r['recommended'] is None, _r
 assert 'does not describe this site' in _r['verdict'], _r['verdict']
 ok.append('replicate_referee (agreement / names the sound replicate / refuses without a reference)')
 
+# ---------------------------------------------------------------- 24. clock phase
+# A submerged light sensor peaks near local noon. The failure this guards is a
+# logger launched with AM/PM swapped: three loggers of RRDM 14a MAR 2022 wrote
+# tens of thousands of lux at 21-23 h, and the fouling analysis on that time
+# axis was meaningless.
+_t24 = pd.date_range('2021-08-20', periods=24 * 40, freq='h')      # 40 days, hourly
+# a clean diurnal cycle: a half-sine over daylight, zero at night
+_h24 = _t24.hour.to_numpy()
+_clean = np.where((_h24 >= 6) & (_h24 < 18),
+                  40000.0 * np.sin(np.pi * (_h24 - 6) / 12.0), 0.0)
+
+# (a) a sound logger: peak at noon, essentially all energy in daylight, no warning
+_c = _QCT.light_clock_phase(_t24, _clean)
+assert _c['evaluable'] and abs(_c['peak_hour'] - 12.0) < 0.5, _c
+assert _c['daylight_frac'] > 0.99 and _c['suspect_shift_h'] is None, _c
+assert not _c['warnings'], _c['warnings']
+
+# (b) the SAME data with the clock 12 h out (what the three loggers recorded):
+# detected, and the shift it reports must be the one that restores noon
+_c = _QCT.light_clock_phase(_t24 + pd.Timedelta(hours=12), _clean)
+assert _c['suspect_shift_h'] == 12, _c
+assert _c['daylight_frac'] < 0.01, _c
+assert any('CLOCK is' in w for w in _c['warnings']), _c['warnings']
+_back = _QCT.light_clock_phase(_t24 + pd.Timedelta(hours=12) - pd.Timedelta(hours=_c['suspect_shift_h']), _clean)
+assert _back['suspect_shift_h'] is None and _back['daylight_frac'] > 0.99, _back
+
+# (c) a HEAVILY FOULED but correctly-clocked logger (1% of the light, plus a
+# constant dark-current offset) must NOT be accused: fouling attenuates, it does
+# not move the peak
+_c = _QCT.light_clock_phase(_t24, _clean * 0.01 + 5.0)
+assert _c['suspect_shift_h'] is None, _c
+assert abs(_c['peak_hour'] - 12.0) < 2.0, _c
+
+# (d) too few lit samples: refuse instead of guessing a phase from noise
+_c = _QCT.light_clock_phase(_t24[:40], np.zeros(40))
+assert not _c['evaluable'] and _c['suspect_shift_h'] is None, _c
+
+# (e) the COLLAPSED 12-hour clock (pt-BR export with no AM/PM marker): every
+# afternoon reading lands on its morning twin. 53 of the 116 qualified HOBO
+# products carry this. It must be named as 'collapsed', NOT as a phase shift -
+# the remedy is to reconstruct from row order, not to shift the series.
+_tcol = pd.DatetimeIndex([x - pd.Timedelta(hours=12) if x.hour >= 13 else x for x in _t24])
+_c = _QCT.light_clock_phase(_tcol, _clean)
+assert _c['collapsed'] is True, _c
+assert _c['suspect_shift_h'] is None, _c        # must NOT prescribe a shift
+assert any('MISSING' in w for w in _c['warnings']), _c['warnings']
+
+# (f) a sound series must never be called collapsed
+_c = _QCT.light_clock_phase(_t24, _clean)
+assert _c['collapsed'] is False, _c
+ok.append('light_clock_phase (noon / AM-PM swap = exactly 12 h / collapsed 12 h clock / fouled logger not accused)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

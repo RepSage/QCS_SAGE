@@ -2578,6 +2578,34 @@ def build_qualification_tab(container, root, shared_log=None):
             ti = time.time()
             lux_col = 'Luminosity (lux)'
             if tsQualityTests.get('light fouling window', 'OFF') == 'ON' and lux_col in raw_data.columns:
+                # The clock check comes FIRST: a series 12 h out of phase makes
+                # every daily light statistic below meaningless, so the operator
+                # must see that before being asked to approve a cutoff.
+                clock = QC.light_clock_phase(raw_data['Datetime'], raw_data[lux_col])
+                for message in clock['warnings']:
+                    log_line(message)
+                if clock['suspect_shift_h'] is not None:
+                    messagebox.showwarning(
+                        'Light clock out of phase',
+                        'The light peaks at %.1f h and only %.0f%% of its energy falls in '
+                        'daylight hours.\n\nThis logger\'s clock looks %+d h out of phase '
+                        '(AM/PM swapped at launch). The fouling cutoff proposed next is '
+                        'computed on this time axis and is NOT trustworthy, and the '
+                        'temperature timestamps carry the same error.\n\nFix the clock and '
+                        're-run rather than trusting this qualification.'
+                        % (clock['peak_hour'], 100 * clock['daylight_frac'],
+                           clock['suspect_shift_h']))
+                elif clock['collapsed']:
+                    messagebox.showwarning(
+                        'Light clock collapsed onto 12 hours',
+                        'No sample in this file falls after 12:59, and about half the '
+                        'timestamps are duplicated.\n\nThe export carries a 12-HOUR clock '
+                        'with the AM/PM marker MISSING (the pt-BR HOBOware format writes '
+                        '"04h0min0s"), so every afternoon reading has landed on top of its '
+                        'morning twin. HALF of this series is on the wrong timestamp, and '
+                        'the two readings cannot be told apart by time alone.\n\nRe-export '
+                        'the file with an AM/PM marker (or a 24-hour clock) rather than '
+                        'trusting any time-based result from this one.')
                 lux_result = QC.light_fouling_baseline(
                     raw_data['Datetime'], raw_data[lux_col],
                     baseline_days=int(tsSettings.get('lux_baseline_days', 7)),
