@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v9.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v10.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -1025,9 +1025,16 @@
     <p>The <strong>Light cutoff</strong> choice in the Qualification tab (HOBO only) offers the
     deliberate alternative:</p>
     <ul>
-        <li><strong>Reviewed (adaptive)</strong> — the default, and the behavior of every version
-        so far: the fouling decline is detected from the light and the proposed cutoff is
-        reviewed on a plot (drag to adjust, N for no cutoff).</li>
+        <li><strong>Reviewed (adaptive)</strong> — the default: the fouling decline is detected
+        from the light and the proposed cutoff is reviewed on a plot (drag to adjust, N for no
+        cutoff). Since v10.0 each daily peak is first divided by the <strong>astronomical
+        clear-sky curve</strong> for the run's latitude (taken from the region selection, which
+        is therefore enabled for HOBO too), so the decision runs on "fraction of the seasonal
+        ceiling" rather than raw lux — a deployment walking into winter is no longer read as
+        fouling, and one walking into summer no longer hides it. On the review plot the baseline
+        and threshold appear as curves that follow the season. The correction removes only the
+        deterministic part of the confound (winter cloud and turbidity remain), which is why the
+        fixed window below exists.</li>
         <li><strong>Fixed window</strong> — light becomes <strong>BAD</strong> a fixed number of
         days after deployment (<code>lux_fixed_days</code> in Settings → Parameters, default
         60), with no data-driven decision and no review. Fouling on these reefs is well advanced

@@ -419,8 +419,39 @@ def light_fixed_cutoff(datetimes, days=60):
     return cutoff if (t >= cutoff).any() else None
 
 
+def clear_sky_factor(dates, latitude, transmittance=0.75):
+    """Relative clear-sky ceiling of the DAILY LIGHT PEAK for each date, at
+    `latitude` (degrees, south negative): sin of the noon solar elevation with
+    a standard atmospheric attenuation transmittance**airmass. Normalized to
+    the annual maximum at that latitude, so the factor is 1.0 at the brightest
+    time of year and e.g. ~0.69 at the austral-winter solstice at 18 S.
+
+    The daily peak is a NOON quantity, so noon elevation is the right physics -
+    not the daily-integrated insolation, whose day-length term affects the
+    total but not the peak (measured on the corpus: both remove the same
+    seasonal asymmetry; this one is the defensible choice). The transmittance
+    is the textbook clear-sky 0.75 and deliberately NOT tuned to the data: the
+    corpus result is flat from T=0.75 to 0.55, and fitting the correction to
+    the archive it will then judge would be circular.
+    """
+    doy = pd.DatetimeIndex(dates).dayofyear.to_numpy(dtype=float)
+    lat = np.radians(latitude)
+
+    def _noon_sin(d):
+        dec = np.radians(23.44) * -np.cos(2 * np.pi * (d + 10) / 365.25)
+        h = np.pi / 2 - np.abs(lat - dec)
+        return np.maximum(np.sin(h), 0.05)      # floor: never divide by ~0 at polar latitudes
+
+    def _f(d):
+        s = _noon_sin(d)
+        return s * transmittance ** (1.0 / s)
+
+    year = _f(np.arange(1.0, 366.0))
+    return _f(doy) / year.max()
+
+
 def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
-                           sustain_days=3, recovery_day_frac=0.2):
+                           sustain_days=3, recovery_day_frac=0.2, latitude=None):
     """Light sensor fouling analysis (HOBO): the light "usage window".
 
     Logic: the daily light peak of the unfouled sensor (baseline = highest peak
@@ -432,21 +463,37 @@ def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
     light never permanently drops (it still reaches the threshold at the end, or
     the final dip is shorter than `sustain_days`), no cutoff is proposed.
 
+    With `latitude` given, every daily peak is first divided by the
+    astronomical clear-sky factor for its day of year (`clear_sky_factor`), so
+    the decision runs on "fraction of the seasonal ceiling" instead of raw lux.
+    A deployment walking into winter loses ambient light for purely
+    astronomical reasons (at 18 S the ceiling falls to ~0.69 of summer), which
+    the raw rule reads as fouling; a deployment walking into summer gains it,
+    which masks real fouling. Measured on the corpus, the correction removes
+    the deterministic part of that asymmetry (over-cutting 37%->34% on
+    falling-light deployments, spurious keeps 20%->15%) - the remaining
+    seasonal signal is cloud and winter turbidity, which no deterministic
+    curve can remove. `latitude=None` reproduces the uncorrected rule exactly.
+
     It does NOT assume monotonic decay. If the daily peak dips below the threshold
     and later recovers above it, it issues a WARNING: the signal is not clean
     biofouling - likely sensor cleaning/redeployment or patchy fouling - and the
     file may span more than one deployment. The operator confirms/adjusts the
     cutoff during review.
 
-    Returns dict: 'evaluable' (bool), 'baseline', 'threshold', 'daily_peak'
-    (Series), 'proposed_cutoff' (Timestamp|None), 'recovers' (bool),
-    'recovery_day_frac_after' (float) and 'warnings' (list[str]).
+    Returns dict: 'evaluable' (bool), 'baseline', 'threshold' (both in
+    season-corrected lux when `latitude` is given), 'daily_peak' (Series, raw),
+    'threshold_curve' (Series in RAW lux - the threshold mapped back through
+    the seasonal factor; None when uncorrected), 'proposed_cutoff'
+    (Timestamp|None), 'recovers' (bool), 'recovery_day_frac_after' (float) and
+    'warnings' (list[str]).
     """
     out = {'evaluable': False, 'baseline': np.nan, 'threshold': np.nan,
-           'daily_peak': pd.Series(dtype=float), 'proposed_cutoff': None,
+           'daily_peak': pd.Series(dtype=float), 'threshold_curve': None,
+           'proposed_cutoff': None,
            'recovers': False, 'recovery_day_frac_after': 0.0, 'warnings': [],
            'params': {'baseline_days': baseline_days, 'cutoff_frac': cutoff_frac,
-                      'sustain_days': sustain_days}}
+                      'sustain_days': sustain_days, 'latitude': latitude}}
 
     s = pd.Series(np.asarray(light, dtype=float), index=pd.DatetimeIndex(datetimes))
     s = s.dropna()
@@ -462,7 +509,16 @@ def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
                                % (len(daily_peak), baseline_days))
         return out
 
-    baseline = daily_peak.iloc[:baseline_days].max()
+    # the decision series: raw daily peaks, or peaks over the seasonal ceiling
+    if latitude is not None:
+        factor = pd.Series(clear_sky_factor(daily_peak.index, latitude),
+                           index=daily_peak.index)
+        work = daily_peak / factor
+    else:
+        factor = None
+        work = daily_peak
+
+    baseline = work.iloc[:baseline_days].max()
     if not np.isfinite(baseline) or baseline <= 0:
         out['warnings'].append('Light fouling test: clean-sensor baseline is zero (sensor dark or '
                                'buried from the start?) - test not evaluated.')
@@ -470,8 +526,11 @@ def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
 
     threshold = cutoff_frac * baseline
     out.update({'evaluable': True, 'baseline': float(baseline), 'threshold': float(threshold)})
+    if factor is not None:
+        # the threshold mapped back to RAW lux, for plotting over the raw peaks
+        out['threshold_curve'] = threshold * factor
 
-    below_arr = (daily_peak < threshold).to_numpy()
+    below_arr = (work < threshold).to_numpy()
     ge_positions = np.where(~below_arr)[0]      # days whose peak still reaches the threshold
     below_positions = np.where(below_arr)[0]
 
@@ -481,12 +540,12 @@ def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
     cutoff = None
     if len(below_positions) > 0:
         if len(ge_positions) == 0:
-            cutoff = daily_peak.index[0]            # never reaches threshold: fouled from day 1
+            cutoff = work.index[0]                  # never reaches threshold: fouled from day 1
         else:
             last_ge = int(ge_positions[-1])
-            tail_len = len(daily_peak) - 1 - last_ge   # below-threshold days after the last crossing
+            tail_len = len(work) - 1 - last_ge      # below-threshold days after the last crossing
             if tail_len >= sustain_days:
-                cutoff = daily_peak.index[last_ge + 1]
+                cutoff = work.index[last_ge + 1]
             # else: only a short dip at the very end (likely clouds) -> no cutoff
     out['proposed_cutoff'] = cutoff
 
@@ -494,7 +553,7 @@ def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
     # back above it (recovery). Warn - likely cleaning/redeployment or patchy
     # fouling; the file may span more than one deployment.
     if len(below_positions) > 0 and len(ge_positions) > 0 and below_positions.min() < ge_positions.max():
-        after = daily_peak.iloc[int(below_positions.min()):]
+        after = work.iloc[int(below_positions.min()):]
         frac = float((after >= threshold).mean())
         out['recovery_day_frac_after'] = frac
         if frac > recovery_day_frac:

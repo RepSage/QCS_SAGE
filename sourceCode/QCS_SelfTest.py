@@ -848,5 +848,64 @@ assert _QCT.light_fixed_cutoff(_t100[:24 * 30], days=60) is None
 assert _QCT.light_fixed_cutoff(pd.Series([], dtype=object), days=60) is None
 ok.append('light_fixed_cutoff (start+60d / flags split at the cutoff / short deployment uncut)')
 
+# ------------------------------------------------- 26. seasonal normalization
+# The adaptive rule compares daily peaks against a first-week baseline, so a
+# deployment walking into winter loses ambient light for purely astronomical
+# reasons and gets read as fouling. With `latitude`, the peaks are divided by
+# the clear-sky curve first. Chosen curve: noon solar elevation with standard
+# atmospheric attenuation (T=0.75) - measured against the corpus, see v10.0.
+_LAT = -17.96
+
+# (a) the factor itself: ~1 at the summer ceiling, ~0.68 at the austral winter
+# solstice at 18 S; hemispheres mirror (day 172 is the NORTHERN summer)
+_days_yr = pd.date_range('2023-01-01', periods=365, freq='D')
+_f_yr = _QCT.clear_sky_factor(_days_yr, _LAT)
+assert 0.99 < _f_yr.max() <= 1.0 + 1e-9, _f_yr.max()
+_winter = _f_yr[_days_yr.dayofyear == 172][0]
+assert 0.62 < _winter < 0.74, _winter
+_north = _QCT.clear_sky_factor(_days_yr, +40.0)
+assert _north[_days_yr.dayofyear == 172][0] > 0.95, 'day 172 is summer at +40'
+
+# (b) a SEASON-SHAPED decline (no fouling): install mid-February at 18 S,
+# 150 days into July, peaks tracking the seasonal curve steepened by the
+# underwater response (factor^2.5 - deep enough to cross the 50% threshold).
+# The raw rule reads it as fouling; the corrected rule must NOT.
+_t26 = pd.date_range('2023-02-15', periods=150, freq='D') + pd.Timedelta(hours=12)
+_fac = _QCT.clear_sky_factor(_t26, _LAT)
+_seasonal = 40000.0 * _fac ** 2.5
+_raw = _QCT.light_fouling_baseline(_t26, _seasonal)
+_cor = _QCT.light_fouling_baseline(_t26, _seasonal, latitude=_LAT)
+assert _raw['proposed_cutoff'] is not None, 'the uncorrected rule must fire on the seasonal decline'
+assert _cor['proposed_cutoff'] is None, _cor['proposed_cutoff']
+# the curve's VALUES matter, not just its presence: an inverted back-mapping
+# (threshold/factor instead of threshold*factor) would draw the winter
+# threshold ~2x too high on every review plot while the suite stayed green
+# (found by mutation testing)
+assert _cor['threshold_curve'] is not None and len(_cor['threshold_curve']) == 150
+assert np.allclose(_cor['threshold_curve'].values,
+                   _cor['threshold'] * _QCT.clear_sky_factor(_cor['daily_peak'].index, _LAT)), \
+    'threshold_curve must be threshold * factor, mapped back to raw lux'
+
+# (c) GENUINE fouling on top of the season (exponential decay, tau = 40 d):
+# the corrected rule must still catch it, at the decay's own crossing (~day 28),
+# not at the season's
+_fouled = 40000.0 * _fac * np.exp(-np.arange(150.0) / 40.0)
+_cor2 = _QCT.light_fouling_baseline(_t26, _fouled, latitude=_LAT)
+assert _cor2['proposed_cutoff'] is not None
+_lag = (_cor2['proposed_cutoff'] - _t26[0]).days
+assert 24 <= _lag <= 34, _lag
+# the corrected baseline must come from the CORRECTED peaks: in this fixture
+# the day-0 corrected peak is exactly 40000 (decay 1, factor cancels), while a
+# baseline mistakenly taken from the raw peaks lands at ~39835 - a mutant that
+# corrects the crossings but not the baseline passed the whole suite before
+# this assertion (found by mutation testing)
+assert abs(_cor2['baseline'] - 40000.0) < 1.0, _cor2['baseline']
+
+# (d) latitude=None is byte-compatible with the pre-v10.0 rule: no curve in the
+# output and the same decision surface (every earlier test in this suite runs
+# through that path)
+assert _raw['threshold_curve'] is None and _raw['params']['latitude'] is None
+ok.append('light seasonal normalization (winter decline not read as fouling / real fouling still caught / None = old rule)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

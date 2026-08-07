@@ -135,6 +135,13 @@ def run_qualification(files, input_type, data_type, site, out_name, co2=None):
     # timebase and the CO2 merge aligns (proven on PAB1: the txt is named
     # 1525-1555 and the uncorrected cast sat at 18:13-19:07).
     qm.correct_gmt3h.set(input_type == 'Seaguard')
+    # PIN the region: the GUI restores it from the gitignored user prefs, so
+    # whatever the researcher last selected by hand would silently become this
+    # run's latitude (v10.0 uses it for the seasonal light correction). The
+    # whole corpus is Abrolhos; a batch must not depend on GUI leftovers.
+    qm.macroregion_combobox.set(qm.DEFAULT_MACROREGION)
+    qm.update_regions()
+    qm.region_combobox.set(qm.DEFAULT_REGION)
     # Corpus standard since 2026-08 (user decision): the FIXED light window -
     # light BAD from lux_fixed_days (60) after deployment, no adaptive decision.
     # The adaptive threshold is entangled with season (ambient light falls

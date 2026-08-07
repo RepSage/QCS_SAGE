@@ -1066,7 +1066,21 @@ def plot_light_window(lux_info, site=''):
     fig, ax = plt.subplots(figsize=(11, 5.5))
     ax.plot(daily_peak.index, daily_peak.values, '-', marker='.', ms=4,
             color='#b38f00', lw=1.2, label='Daily light peak')
-    if np.isfinite(lux_info.get('baseline', np.nan)):
+    thr_curve = lux_info.get('threshold_curve')
+    if thr_curve is not None and len(thr_curve):
+        # season-corrected rule (v10.0): the decision runs on peaks divided by
+        # the astronomical clear-sky factor, so in RAW lux space the baseline
+        # and threshold are CURVES that breathe with the season - a flat line
+        # here would misrepresent the rule that was applied
+        frac = lux_info['params']['cutoff_frac']
+        base_curve = thr_curve / frac if frac else thr_curve
+        ax.plot(base_curve.index, base_curve.values, color='#1f7a1f', lw=1.2,
+                linestyle='--', label='Clean-sensor baseline (season-adjusted, lat %.1f)'
+                % lux_info['params']['latitude'])
+        ax.plot(thr_curve.index, thr_curve.values, color='#b30000', lw=1.2,
+                linestyle=':', label='Fouling threshold (%.0f%% of baseline, season-adjusted)'
+                % (100 * frac))
+    elif np.isfinite(lux_info.get('baseline', np.nan)):
         ax.axhline(lux_info['baseline'], color='#1f7a1f', lw=1.2, linestyle='--',
                    label='Clean-sensor baseline (%.0f lux)' % lux_info['baseline'])
         ax.axhline(lux_info['threshold'], color='#b30000', lw=1.2, linestyle=':',
@@ -1085,11 +1099,16 @@ def plot_light_window(lux_info, site=''):
                      'shown for context only).  [Settings: lux_fixed_days]'
                      % lux_info['fixed_days'])
     else:
+        season = ('' if params.get('latitude') is None else
+                  ' Peaks are first divided by the clear-sky seasonal curve for latitude %.1f, '
+                  'so a winter decline in ambient light is not read as fouling.'
+                  % params['latitude'])
         rule_text = ('Rule: baseline = max daily peak of the first %d day(s); light becomes BAD '
                      'from the start of the FINAL run (>= %d day(s)) where the daily peak stays below '
-                     '%.0f%% of the baseline and never recovers to it.  '
+                     '%.0f%% of the baseline and never recovers to it.%s  '
                      '[Settings: lux_baseline_days / lux_cutoff_frac / lux_sustain_days]'
-                     % (params['baseline_days'], params['sustain_days'], 100 * params['cutoff_frac']))
+                     % (params['baseline_days'], params['sustain_days'],
+                        100 * params['cutoff_frac'], season))
     fig.text(0.5, 0.015, rule_text, ha='center', fontsize=7.5, color='#444444', wrap=True)
     fig.subplots_adjust(bottom=0.17)
     return fig, ax

@@ -51,14 +51,11 @@ root, so run it from there:
 & "C:\Users\LAMB\anaconda3\python.exe" -m ruff check .
 ```
 
-**Passing the suite is necessary, not sufficient.** In this project every
-non-trivial defect in new analysis code was found by sweeping the **real
-corpus**, never by the synthetic tests — real data carries duplicated timestamps
-(one export has 8,833), unreadable exports, folders that break the naming
-convention, and re-runs over existing outputs, none of which a hand-written
-fixture reproduces. After the tests pass, run the routine over the archive and
-diff the counts against the previous `qualified_index.csv` instead of trusting
-that it ran without error.
+**Passing the suite is necessary, not sufficient** — the global rule, with
+force here: every non-trivial defect in new analysis code was found by sweeping
+the **real corpus**, never by the synthetic tests (one export alone carries
+8,833 duplicated timestamps). After the tests pass, run the routine over the
+archive and diff the counts against the previous `qualified_index.csv`.
 
 ## Architecture — easy to get wrong
 

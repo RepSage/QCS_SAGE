@@ -211,7 +211,7 @@ TOOLTIPS = {
     'latitude': "Latitude of the collection site (decimal degrees, -90 to 90)\nSouthern hemisphere is negative (e.g. -17.5)\nUsed to convert pressure to depth",
     'longitude': "Longitude of the collection site (decimal degrees, -180 to 180)\nWestern hemisphere is negative (e.g. -40.0)\nUsed by the density inversion test",
     'macroregion': "Broad region of the world (currently only Brazil).\nStructured to add other regions in the future.",
-    'region': "Region within the selected macroregion.\nSets a representative latitude/longitude used only to run the\nqualification (pressure->depth and density inversion). Small\nvariations do not change the results. Not used for HOBO.",
+    'region': "Region within the selected macroregion.\nSets a representative latitude/longitude used only to run the\nqualification: pressure->depth and density inversion (Seaguard),\nand the seasonal correction of the light fouling analysis (HOBO).\nSmall variations do not change the results.",
     'config_file': "OPTIONAL: Select the configuration file (.json)\ncontaining quality test parameters",
     'input_type': "Type of instrument that generated the data\nSeaguard: Standard CTD\nHOBO: Autonomous logger",
     'data_type': ("Data collection type\nProfile: Vertical data (cast)\n"
@@ -689,9 +689,10 @@ def collect_input_settings():
         return False
 
     # The selected coastal region provides a representative latitude/longitude,
-    # used ONLY to run the qualification (pressure->depth and the density
-    # inversion test) and never written to the output. Small lat/long variations
-    # do not affect these results meaningfully. Irrelevant for HOBO (no pressure).
+    # used ONLY to run the qualification and never written to the output:
+    # pressure->depth and the density inversion test (Seaguard), and the
+    # seasonal correction of the light fouling analysis (HOBO). Small lat/long
+    # variations do not affect these results meaningfully.
     macroregion = macroregion_combobox.get()
     region = region_combobox.get()
     INPUT['macroregion'] = macroregion
@@ -703,7 +704,9 @@ def collect_input_settings():
                                "conversion and density inversion)"
                                % (macroregion, region, INPUT['latitude'], INPUT['longitude'])]
     else:
-        INPUT['coord_msgs'] = []
+        INPUT['coord_msgs'] = ["region '%s / %s' -> lat %.1f (used for the seasonal "
+                               "correction of the light fouling analysis)"
+                               % (macroregion, region, INPUT['latitude'])]
 
     if INPUT['data_type'] == 'TSCP Profile':
         INPUT['profile'] = True
@@ -1037,7 +1040,7 @@ def restore_user_prefs():
     remove_bad.set(p.get('remove_bad', False))
     remove_suspect.set(p.get('remove_suspect', False))
     update_profile_checkbox_state()
-    update_inputtype_state()  # reapplies the HOBO state (disables fields) if applicable
+    update_inputtype_state()  # reapplies the input-type field states if applicable
     # Restore the quality CRITERIA only if they were saved by the SAME program
     # version. On a version change, keep the new code defaults (so criteria
     # improvements take effect) instead of the user's old saved criteria.
@@ -1696,10 +1699,11 @@ def build_qualification_tab(container, root, shared_log=None):
     ToolTip(siteSelect_entry, TOOLTIPS['site_code'])
 
     # Macroregion + region of collection: provide a representative latitude/longitude
-    # used only to RUN the qualification (pressure->depth and density inversion). More
-    # intuitive than typing coordinates and enough given the low sensitivity to small
-    # lat/long changes. The macroregion box is structured to add other parts of the
-    # world in the future. Both are disabled for HOBO (no pressure).
+    # used only to RUN the qualification - pressure->depth and density inversion
+    # (Seaguard), and the seasonal correction of the light fouling analysis (HOBO,
+    # since v10.0). More intuitive than typing coordinates and enough given the low
+    # sensitivity to small lat/long changes. The macroregion box is structured to
+    # add other parts of the world in the future.
     macroregion_label = ttk.Label(input_frame, text="Macroregion:", style='Header.TLabel')
     macroregion_label.grid(row=6, column=0, columnspan=2, sticky='w', pady=(5,2))
     macroregion_combobox = ttk.Combobox(input_frame, values=list(REGIONS.keys()),
@@ -1733,9 +1737,11 @@ def build_qualification_tab(container, root, shared_log=None):
 
     def update_inputtype_state(event=None):
         """HOBO only measures temperature and light: Data Type, units (pressure/conductivity),
-        GMT-3 correction, profile selection and the region (macro + region) do not apply and
-        stay disabled and empty. Data Type and the units keep the last Seaguard selection
-        and restore it when coming back. HOBO is a time series (treated as non-profile)."""
+        GMT-3 correction and profile selection do not apply and stay disabled and empty.
+        The region (macro + region) stays ENABLED for HOBO since v10.0 - its latitude
+        drives the seasonal correction of the light fouling analysis. Data Type and the
+        units keep the last Seaguard selection and restore it when coming back. HOBO is a
+        time series (treated as non-profile)."""
         if inputType_combobox.get() == 'HOBO':
             # store the non-empty values before clearing
             if dType_combobox.get():
@@ -1757,10 +1763,12 @@ def build_qualification_tab(container, root, shared_log=None):
             gmt_check.config(state='disabled')
             select_profile_data.set(False)
             profile_check.config(state='disabled')
-            macroregion_label.config(state='disabled')
-            macroregion_combobox.config(state='disabled')
-            region_label.config(state='disabled')
-            region_combobox.config(state='disabled')
+            # region stays ENABLED for HOBO since v10.0: its latitude drives
+            # the seasonal correction of the light fouling analysis
+            macroregion_label.config(state='normal')
+            macroregion_combobox.config(state='readonly')
+            region_label.config(state='normal')
+            region_combobox.config(state='readonly')
             if not replicate_combobox.get():               # count not known until files are selected
                 replicate_var.set('1')
             replicate_combobox.config(state='disabled')    # display-only: follows the file selection
@@ -1981,6 +1989,7 @@ def build_qualification_tab(container, root, shared_log=None):
                 "  - 'Done' (Enter, or closing the window): confirm the current cutoff\n"
                 "  - 'Cancel' (Esc): abort the whole qualification (nothing is written)\n\n"
                 "Method:\n"
+                "%s"
                 "  - Baseline = highest daily light peak of the first %d day(s)\n"
                 "    (the unfouled sensor's clean-state light).\n"
                 "  - Fouling threshold = %.0f%% of the baseline.\n"
@@ -1991,7 +2000,13 @@ def build_qualification_tab(container, root, shared_log=None):
                 "    the values stay in the sheet until removed with 'Remove Bad Data'.\n\n"
                 "Parameters (lux_baseline_days / lux_cutoff_frac / lux_sustain_days) live in\n"
                 "Settings > Parameters, and are printed on the saved QCS_light_window.svg."
-                % (p['baseline_days'], 100 * p['cutoff_frac'], p['sustain_days']),
+                % (("  - Each daily peak is FIRST divided by the clear-sky seasonal curve\n"
+                    "    for latitude %.1f (the region selection), so a seasonal change in\n"
+                    "    ambient light is not read as fouling. On the plot the baseline and\n"
+                    "    threshold therefore appear as CURVES; the rule below runs on the\n"
+                    "    season-corrected peaks.\n" % p['latitude'])
+                   if p.get('latitude') is not None else '',
+                   p['baseline_days'], 100 * p['cutoff_frac'], p['sustain_days']),
                 # parent the dialog to the PLOT window so it pops over the plot
                 # instead of raising the main program window behind it
                 parent=getattr(getattr(fig.canvas, 'manager', None), 'window', None))
@@ -2646,11 +2661,17 @@ def build_qualification_tab(container, root, shared_log=None):
                         'the two readings cannot be told apart by time alone.\n\nRe-export '
                         'the file with an AM/PM marker (or a 24-hour clock) rather than '
                         'trusting any time-based result from this one.')
+                # since v10.0 the daily peaks are compared against the
+                # astronomical clear-sky curve for the run's latitude (from the
+                # region selection), so a deployment walking into winter is not
+                # read as fouling. The latitude is always resolvable (the
+                # region combobox has a default), so the correction is always on.
                 lux_result = QC.light_fouling_baseline(
                     raw_data['Datetime'], raw_data[lux_col],
                     baseline_days=int(tsSettings.get('lux_baseline_days', 7)),
                     cutoff_frac=float(tsSettings.get('lux_cutoff_frac', 0.5)),
-                    sustain_days=int(tsSettings.get('lux_sustain_days', 3)))
+                    sustain_days=int(tsSettings.get('lux_sustain_days', 3)),
+                    latitude=INPUT.get('latitude'))
                 # The warnings are logged in EVERY mode: 'baseline is zero
                 # (sensor dark or buried?)' and 'dips and then recovers (file
                 # may span two deployments?)' are about the DATA, not about the
@@ -2683,10 +2704,13 @@ def build_qualification_tab(container, root, shared_log=None):
                                                   final_cutoff, evaluable=True)
                 elif lux_result['evaluable']:
                     log_line('Light fouling: clean-sensor baseline %.0f lux (first %d days); '
-                             'threshold %.0f lux (%.0f%% sustained %d days); proposed cutoff: %s'
+                             'threshold %.0f lux (%.0f%% sustained %d days)%s; proposed cutoff: %s'
                              % (lux_result['baseline'], lux_result['params']['baseline_days'],
                                 lux_result['threshold'], 100 * lux_result['params']['cutoff_frac'],
                                 lux_result['params']['sustain_days'],
+                                ('; season-corrected for latitude %.1f (values in lux at the '
+                                 'seasonal ceiling)' % lux_result['params']['latitude'])
+                                if lux_result['params'].get('latitude') is not None else '',
                                 lux_result['proposed_cutoff'].date() if lux_result['proposed_cutoff'] is not None else 'none'))
                     # label carries the FILE NAME so the user knows which device
                     # (replicate) is being reviewed

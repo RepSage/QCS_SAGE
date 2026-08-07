@@ -2,6 +2,36 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-07 — v10.0: seasonal normalization of the adaptive light rule
+
+Stacked on the unreleased v9.1, same branch (`improvements-v9.1`), one PR for
+both (precedent: v2.2 + v2.2.1). **MAJOR**: adaptive-mode `Flag_lux` can change;
+the corpus (fixed-60d mode) is unaffected — one product requalified under v10.0
+came out byte-identical (verified).
+
+- `clear_sky_factor(dates, latitude)` in `QCS_Tests.py`: noon solar elevation
+  with standard atmospheric attenuation (T=0.75), normalized to the annual max.
+  `light_fouling_baseline(..., latitude=...)` divides each daily peak by it, so
+  the adaptive decision runs on "fraction of the seasonal ceiling";
+  `latitude=None` = the old rule exactly. Latitude comes from the region
+  selection, now ENABLED for HOBO. The review plot draws baseline/threshold as
+  seasonal CURVES.
+- **The curve was chosen against the corpus** (111 series): noon+airmass beats
+  raw noon and ties daily-H0 on numbers (asymmetry 25 → 19 p.p., over-cut on
+  falling-light installs 37% → 34%, spurious keeps 20% → 15%) and wins on
+  physics (the daily peak is a noon quantity). T is textbook 0.75, deliberately
+  NOT tuned — results are flat T=0.75–0.55, and tuning would be circular.
+- **Honest limit, measured**: the correction removes only the deterministic
+  part of the seasonal confound; winter cloud/turbidity dominate the deep
+  declines. The fixed-60d window remains the corpus standard.
+- 44/44 self-tests (new #26), ruff clean. `QCS_VERSION = 'v10.0'`,
+  `changelog/v10.0.md`, manual updated to v10.0.
+
+### To close v9.1 + v10.0
+
+One PR from `improvements-v9.1` to `master`; after merge, tag `v9.1` at
+`b497c7e` and `v10.0` at the final commit, delete the branch, return to master.
+
 ## 2026-08-07 — v9.1 grew into "the light release"; corpus on the fixed 60-day window
 
 All of this is committed on `improvements-v9.1` (still unreleased — no tag, no
