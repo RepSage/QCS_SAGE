@@ -826,5 +826,27 @@ _c = _QCT.light_clock_phase(_t24, _clean)
 assert _c['collapsed'] is False, _c
 ok.append('light_clock_phase (noon / AM-PM swap = exactly 12 h / collapsed 12 h clock / fouled logger not accused)')
 
+# ------------------------------------------------------------ 25. fixed cutoff
+# The FIXED light window (v9.1): BAD from `days` after deployment, no
+# data-driven decision - the deliberate alternative to the adaptive rule, which
+# is entangled with season (light rises toward summer, falls toward winter).
+_t100 = pd.date_range('2023-08-01', periods=24 * 100, freq='h')       # 100 days
+_cut = _QCT.light_fixed_cutoff(_t100, days=60)
+assert _cut == _t100[0] + pd.Timedelta(days=60), _cut
+
+# applied through the SAME flag writer as the adaptive mode: before the cutoff
+# GOOD, from the cutoff BAD
+_lux100 = np.full(len(_t100), 500.0)
+_f = _QCT.apply_light_window(_t100, _lux100, [''] * len(_t100), _cut, evaluable=True)
+_before = [x for x, t in zip(_f, _t100, strict=True) if t < _cut]
+_after = [x for x, t in zip(_f, _t100, strict=True) if t >= _cut]
+assert set(_before) == {'1'} and set(_after) == {'4'}, (set(_before), set(_after))
+
+# a deployment shorter than the window has nothing to cut
+assert _QCT.light_fixed_cutoff(_t100[:24 * 30], days=60) is None
+# and an empty/unparseable series refuses instead of crashing
+assert _QCT.light_fixed_cutoff(pd.Series([], dtype=object), days=60) is None
+ok.append('light_fixed_cutoff (start+60d / flags split at the cutoff / short deployment uncut)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

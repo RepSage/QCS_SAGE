@@ -153,6 +153,9 @@ CONFIG = {
         'lux_baseline_days': 7,
         'lux_cutoff_frac': 0.5,
         'lux_sustain_days': 3,
+        # fixed light window (the alternative cutoff mode chosen per run in the
+        # Qualification tab): light is BAD from this many days after deployment
+        'lux_fixed_days': 60,
         # out-of-water readings at the ends of the HOBO file: trim while the
         # temperature deviates more than this (degC) from the neighboring stable segment
         'hobo_edge_temp_tol': 1.5,
@@ -223,6 +226,7 @@ TOOLTIPS = {
                        "correction) even when it is enabled for the Seaguard."),
     'profile_selection': "Allows selecting only descent or ascent\nfor profile data (removes inversion)",
     'variable_check': "Opens a per-variable point-cut panel to manually DISMISS\nspurious points; you pick which variables to review.\nDismissed points get flag 5 and are kept for traceability.\n(The mooring Depth review runs on its own, without this.)",
+    'light_cutoff_mode': "HOBO only - how the light usage window is decided.\nReviewed (adaptive): the fouling decline is read out of the light itself\nand the proposed cutoff is reviewed on a plot (drag to adjust).\nFixed window: light becomes BAD a fixed number of days after deployment\n(lux_fixed_days in Settings > Parameters, default 60), no review.\nThe fixed window avoids the seasonal confound: ambient light rises\ntoward summer and falls toward winter, which the adaptive rule\ncan mistake for (or mask as) fouling.",
     'output_folder': "Folder where qualification results\nwill be saved",
     'output_name': "Base name for output files\n(without extension)",
     'output_format': "Output format for the qualified data\n.csv: Delimited text\n.xlsx: Excel\n(the automatic report files are always .xlsx)",
@@ -282,6 +286,7 @@ TS_SETTINGS_TOOLTIPS = {
     'lux_baseline_days': "HOBO light fouling: clean-sensor baseline =\nmax daily light peak of the FIRST N days after deployment\n(max, so a cloudy install day does not lower it)",
     'lux_cutoff_frac': "HOBO light fouling: fraction of the clean-sensor baseline\nbelow which light becomes BAD (0.5 = 50%)\nThe applied cutoff is shown in the review plot and saved with the results",
     'lux_sustain_days': "HOBO light fouling: the daily peak must stay below the\nthreshold for this many CONSECUTIVE days before cutting\n(avoids cutting on a cloudy spell)",
+    'lux_fixed_days': "HOBO light, FIXED cutoff mode: light becomes BAD this many\ndays after deployment, with no data-driven decision\n(fouling is well advanced by then; the mode is chosen per run\nin the Qualification tab)",
     'hobo_edge_temp_tol': "HOBO edge trim: leading/trailing samples are discarded while\ntemperature deviates more than this (degC) from the nearby\nstable segment (out-of-water readings at deployment/recovery)",
     'doppler_max_speed': "Current speed range test: horizontal speed above this (cm/s)\nis physically impossible for the site -> BAD\n(negative speed is always BAD)",
     'doppler_min_strength': "Signal quality test: return strength below this (dB) is under\nthe noise floor -> BAD. Genuine echoes are NEGATIVE dB; a\nstrength of 0 or above is the instrument's 'no ping'\nplaceholder and is always BAD",
@@ -816,6 +821,11 @@ def start_qualification():
         return
     run_button.config(state='disabled')
     window.config(cursor='watch')
+    # one entry per qualified file: (file_name, light_clock_phase result). The
+    # batch driver reads this to stamp the clock verdict into provenance - its
+    # log_line is a no-op and it only inspects dialogs on FAILURE, so without
+    # this a product qualified from a wrong-clock file succeeds silently.
+    OUTPUT['clock_checks'] = []
     files = INPUT.get('replicate_files') or [None]
     n = len(files)
     combine_hobo = n > 1 and INPUT.get('input_type') == 'HOBO'
@@ -868,8 +878,11 @@ def start_qualification():
                 # the replicate's OWN output folder, so a deployment reduced to a
                 # single sound replicate can point at it instead of re-writing
                 replicate_roots.append(OUTPUT.get('last_output_root'))
-                if OUTPUT.get('last_light_plot'):
-                    light_plots.append(OUTPUT['last_light_plot'])
+                # ALWAYS append (None when this replicate saved no plot): the
+                # list must stay index-aligned with the replicates, or
+                # light_plots[keep] below hands the kept replicate the plot of
+                # a DIFFERENT logger whenever an earlier one was plot-less
+                light_plots.append(OUTPUT.get('last_light_plot'))
         if combine_hobo:
             log_line('Combining %d replicates...' % n)
             window.update_idletasks()
@@ -910,7 +923,8 @@ def start_qualification():
                     single.insert(1, 'Site', only['Site'].iloc[0])
                 OUTPUT['last_qualified_df'] = single
                 OUTPUT['last_output_root'] = write_combined_replicates(
-                    single, [light_plots[keep]] if keep < len(light_plots) else [])
+                    single, [p for p in ([light_plots[keep]] if keep < len(light_plots) else [])
+                             if p])
                 log_line('Single sound replicate saved to: %s' % OUTPUT['last_output_root'])
             else:
                 if referee['recommended'] is not None:
@@ -918,7 +932,8 @@ def start_qualification():
                 combined, cmsgs = data.combine_hobo_replicates(qualified_dfs)
                 for m in cmsgs:
                     log_line(m)
-                OUTPUT['last_output_root'] = write_combined_replicates(combined, light_plots)
+                OUTPUT['last_output_root'] = write_combined_replicates(
+                    combined, [p for p in light_plots if p])
                 log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
         if batch:
             n_done = n - len(batch_failures)
@@ -1208,7 +1223,7 @@ _PARAM_UNIT = {'temp': '°C', 'sal': 'PSU', 'cond': 'mS/cm', 'pres': 'dbar', 'pH
 _OTHER_UNIT = {'rep_cnt_fail': 'samples', 'rep_cnt_susp': 'samples',
                'dens_inv_tolerance': 'kg/m³', 'hobo_edge_temp_tol': '°C',
                'lux_baseline_days': 'days', 'lux_sustain_days': 'days',
-               'lux_cutoff_frac': 'fraction'}
+               'lux_cutoff_frac': 'fraction', 'lux_fixed_days': 'days'}
 
 # Doppler criteria get their own section in the Parameters tab (label, unit),
 # instead of being scattered among the scalar 'Other parameters'
@@ -1487,6 +1502,7 @@ def build_qualification_tab(container, root, shared_log=None):
     global co2_btn, co2_label, co2_clear_btn
     global inputType_combobox, dType_combobox, replicate_label, replicate_combobox, replicate_var, update_profile_checkbox_state, units_frame
     global pressure_unit_combobox, conductivity_unit_combobox, options_frame, correct_gmt3h, gmt_check, select_profile_data
+    global light_cutoff_mode, light_mode_label, light_mode_adaptive, light_mode_fixed
     global profile_check, check_variables, var_check, outputPath_entry, browse_output_btn, outputName_entry
     global outputFilesFormat_combobox, filter_frame, remove_bad, bad_check, remove_suspect, suspect_check
     global siteSelect_entry, macroregion_label, macroregion_combobox, region_label, region_combobox, update_regions
@@ -1619,6 +1635,23 @@ def build_qualification_tab(container, root, shared_log=None):
     var_check.pack(anchor='w', pady=2)
     ToolTip(var_check, TOOLTIPS['variable_check'])
 
+    # HOBO light cutoff mode: the adaptive rule reads the fouling decline out of
+    # the light itself and asks for a review; the fixed window simply discards
+    # everything after lux_fixed_days (Settings > Parameters) with no decision.
+    # Per-run choice, HOBO-only; 'adaptive' is the default (pre-v9.1 behavior).
+    light_cutoff_mode = StringVar(value='adaptive')
+    light_mode_row = ttk.Frame(options_frame)
+    light_mode_row.pack(anchor='w', pady=2)
+    light_mode_label = ttk.Label(light_mode_row, text="Light cutoff:")
+    light_mode_label.pack(side='left')
+    light_mode_adaptive = ttk.Radiobutton(light_mode_row, text="Reviewed (adaptive)",
+                                          variable=light_cutoff_mode, value='adaptive')
+    light_mode_adaptive.pack(side='left', padx=(6, 0))
+    light_mode_fixed = ttk.Radiobutton(light_mode_row, text="Fixed window",
+                                       variable=light_cutoff_mode, value='fixed')
+    light_mode_fixed.pack(side='left', padx=(6, 0))
+    ToolTip(light_mode_row, TOOLTIPS['light_cutoff_mode'])
+
     # --- Output Section ---
     # Output folder
     ttk.Label(output_frame, text="Output folder:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
@@ -1731,6 +1764,9 @@ def build_qualification_tab(container, root, shared_log=None):
             if not replicate_combobox.get():               # count not known until files are selected
                 replicate_var.set('1')
             replicate_combobox.config(state='disabled')    # display-only: follows the file selection
+            light_mode_label.config(state='normal')        # light cutoff mode is HOBO-only
+            light_mode_adaptive.config(state='normal')
+            light_mode_fixed.config(state='normal')
         else:
             # restore the last stored Seaguard selection (if any)
             if _last_seaguard.get('data_type'):
@@ -1754,6 +1790,9 @@ def build_qualification_tab(container, root, shared_log=None):
             region_combobox.config(state='readonly')
             replicate_var.set('')                          # replicates are HOBO-only: leave empty for Seaguard
             replicate_combobox.config(state='disabled')
+            light_mode_label.config(state='disabled')      # light cutoff mode is HOBO-only
+            light_mode_adaptive.config(state='disabled')
+            light_mode_fixed.config(state='disabled')
             update_profile_checkbox_state()
         apply_output_name()  # keep the Output File Name in sync (single vs combined)
         update_co2_controls()  # CO2 import is Seaguard-only (single file)
@@ -2582,6 +2621,7 @@ def build_qualification_tab(container, root, shared_log=None):
                 # every daily light statistic below meaningless, so the operator
                 # must see that before being asked to approve a cutoff.
                 clock = QC.light_clock_phase(raw_data['Datetime'], raw_data[lux_col])
+                OUTPUT.setdefault('clock_checks', []).append((INPUT.get('file_name', ''), clock))
                 for message in clock['warnings']:
                     log_line(message)
                 if clock['suspect_shift_h'] is not None:
@@ -2611,9 +2651,37 @@ def build_qualification_tab(container, root, shared_log=None):
                     baseline_days=int(tsSettings.get('lux_baseline_days', 7)),
                     cutoff_frac=float(tsSettings.get('lux_cutoff_frac', 0.5)),
                     sustain_days=int(tsSettings.get('lux_sustain_days', 3)))
+                # The warnings are logged in EVERY mode: 'baseline is zero
+                # (sensor dark or buried?)' and 'dips and then recovers (file
+                # may span two deployments?)' are about the DATA, not about the
+                # adaptive rule, and the fixed mode must not silence them.
                 for message in lux_result['warnings']:
                     log_line(message)
-                if lux_result['evaluable']:
+                if light_cutoff_mode.get() == 'fixed':
+                    # FIXED window: light is BAD from lux_fixed_days after
+                    # deployment, no data-driven decision and no review. The
+                    # adaptive analysis above still runs, but only to document
+                    # on the saved plot what it WOULD have proposed - the
+                    # decision comes from the calendar. This deliberately
+                    # sidesteps the seasonal confound: ambient light rises
+                    # toward summer and falls toward winter, which the adaptive
+                    # threshold can mistake for (or mask as) fouling.
+                    fixed_days = int(tsSettings.get('lux_fixed_days', 60))
+                    final_cutoff = QC.light_fixed_cutoff(raw_data['Datetime'], days=fixed_days)
+                    lux_result['final_cutoff'] = final_cutoff
+                    lux_result['fixed_days'] = fixed_days
+                    log_line('Light cutoff mode: FIXED window - light BAD from %s (%d days '
+                             'after deployment)%s.'
+                             % (pd.Timestamp(final_cutoff).date() if final_cutoff is not None
+                                else 'never (the series ends before day %d)' % fixed_days,
+                                fixed_days,
+                                '; the adaptive rule would have proposed %s (not applied)'
+                                % (lux_result['proposed_cutoff'].date()
+                                   if lux_result['proposed_cutoff'] is not None else 'none')
+                                if lux_result['evaluable'] else ''))
+                    flags = QC.apply_light_window(raw_data['Datetime'], raw_data[lux_col], flags,
+                                                  final_cutoff, evaluable=True)
+                elif lux_result['evaluable']:
                     log_line('Light fouling: clean-sensor baseline %.0f lux (first %d days); '
                              'threshold %.0f lux (%.0f%% sustained %d days); proposed cutoff: %s'
                              % (lux_result['baseline'], lux_result['params']['baseline_days'],
@@ -2780,9 +2848,15 @@ def build_qualification_tab(container, root, shared_log=None):
         data.save_excel_autofit(QCS_report, path + '/QCS_report.xlsx')
 
         # HOBO: saves the light usage window plot with the applied cutoff and parameters
-        # - the permanent documentation of WHERE and WHY the light was cut
+        # - the permanent documentation of WHERE and WHY the light was cut.
+        # In FIXED mode a real cutoff is applied even when the adaptive analysis
+        # is not evaluable (e.g. a sensor dark from the start), so the gate must
+        # not be 'evaluable' alone - that would leave exactly the product whose
+        # light cannot explain the cut with no plot documenting it.
         OUTPUT['last_light_plot'] = None
-        if lux_result is not None and lux_result['evaluable']:
+        if lux_result is not None and (
+                lux_result['evaluable']
+                or (lux_result.get('fixed_days') is not None and len(lux_result['daily_peak']))):
             plot_label = ('%s (%s)' % (INPUT['site'], INPUT['file_name'])
                           if INPUT.get('site') else INPUT['file_name'])
             fig_lux, ax_lux = view.plot_light_window(lux_result, plot_label)

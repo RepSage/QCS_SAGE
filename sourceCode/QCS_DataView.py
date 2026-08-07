@@ -1076,12 +1076,20 @@ def plot_light_window(lux_info, site=''):
     ax.grid(alpha=0.3)
     ax.legend(loc='lower left', fontsize=8)
     ax.set_title('%s - light usable window (fouling)' % (site or 'HOBO'))
-    # cutoff parameters visible on the plot itself
-    rule_text = ('Rule: baseline = max daily peak of the first %d day(s); light becomes BAD '
-                 'from the start of the FINAL run (>= %d day(s)) where the daily peak stays below '
-                 '%.0f%% of the baseline and never recovers to it.  '
-                 '[Settings: lux_baseline_days / lux_cutoff_frac / lux_sustain_days]'
-                 % (params['baseline_days'], params['sustain_days'], 100 * params['cutoff_frac']))
+    # cutoff parameters visible on the plot itself - they must describe the rule
+    # that was ACTUALLY applied (fixed mode still draws the adaptive baseline
+    # and threshold, but only as context)
+    if lux_info.get('fixed_days') is not None:
+        rule_text = ('Rule: FIXED window - light becomes BAD %d day(s) after deployment, '
+                     'regardless of the measured light (the baseline and threshold above are '
+                     'shown for context only).  [Settings: lux_fixed_days]'
+                     % lux_info['fixed_days'])
+    else:
+        rule_text = ('Rule: baseline = max daily peak of the first %d day(s); light becomes BAD '
+                     'from the start of the FINAL run (>= %d day(s)) where the daily peak stays below '
+                     '%.0f%% of the baseline and never recovers to it.  '
+                     '[Settings: lux_baseline_days / lux_cutoff_frac / lux_sustain_days]'
+                     % (params['baseline_days'], params['sustain_days'], 100 * params['cutoff_frac']))
     fig.text(0.5, 0.015, rule_text, ha='center', fontsize=7.5, color='#444444', wrap=True)
     fig.subplots_adjust(bottom=0.17)
     return fig, ax

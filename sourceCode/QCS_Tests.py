@@ -394,6 +394,31 @@ def light_clock_phase(datetimes, light, warn_offset_h=4.0, bad_offset_h=8.0):
     return out
 
 
+def light_fixed_cutoff(datetimes, days=60):
+    """The FIXED light usage window: light is BAD from `days` after deployment,
+    with no data-driven decision at all.
+
+    This is the deliberate alternative to `light_fouling_baseline`. The adaptive
+    rule reads the decline out of the light itself, which entangles it with
+    everything else that moves light on those timescales - season above all: a
+    logger installed in March walks into winter and its ambient light falls, a
+    logger installed in September walks into summer and its ambient light rises,
+    so the same 50%-of-baseline threshold over-cuts the first and under-cuts the
+    second. The fixed window trades that precision for uniformity: fouling on
+    these reefs is well advanced after two months in the water, so everything
+    after the cutoff is discarded regardless of what the light says, and
+    everything before it is kept on the sensor's word.
+
+    Returns the cutoff Timestamp, or None when the series ends before reaching
+    it (a short deployment has nothing to cut).
+    """
+    t = pd.to_datetime(pd.Series(datetimes), errors='coerce').dropna()
+    if t.empty:
+        return None
+    cutoff = t.min() + pd.Timedelta(days=days)
+    return cutoff if (t >= cutoff).any() else None
+
+
 def light_fouling_baseline(datetimes, light, baseline_days=7, cutoff_frac=0.5,
                            sustain_days=3, recovery_day_frac=0.2):
     """Light sensor fouling analysis (HOBO): the light "usage window".

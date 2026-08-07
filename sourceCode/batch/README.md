@@ -6,16 +6,19 @@ REAL QCS pipeline (no GUI), organizing the products under
 `CLAUDE\{SEAGUARD|HOBO}\qualified\<YEAR>S<1|2>\<SITE>\`. These scripts produced
 the 315-product corpus of 2026-07 (v8.0/v8.1 era).
 
-Run them with Anaconda's Python from this folder's parent (`sourceCode\`):
+Run them from this folder's parent (`sourceCode\`), calling Anaconda's Python by
+absolute path — a bare `python` resolves to the Microsoft Store stub and fails:
 
 ```
-python batch\run_semester.py 2019S1        # one whole semester (all sites + buckets)
-python batch\qualify_site.py PAB3 --sem 2019S1   # one site of one semester
-python batch\build_index.py                # rebuild CLAUDE\qualified_index.csv
+& "C:\Users\LAMB\anaconda3\python.exe" batch\run_semester.py 2019S1        # one whole semester (all sites + buckets)
+& "C:\Users\LAMB\anaconda3\python.exe" batch\qualify_site.py PAB3 --sem 2019S1   # one site of one semester
+& "C:\Users\LAMB\anaconda3\python.exe" batch\build_index.py                # rebuild CLAUDE\qualified_index.csv
 ```
 
 `QCS_SG_ONLY=1` (environment variable) restricts a run to the Seaguard side
 (scalar + Doppler), leaving HOBO products untouched — used for timebase reruns.
+`QCS_HOBO_ONLY=1` is the mirror image: HOBO products only, Seaguard/Doppler
+untouched — used for light-mode reruns.
 
 ## What the drivers encode (the hard-won rules)
 
@@ -23,7 +26,8 @@ python batch\build_index.py                # rebuild CLAUDE\qualified_index.csv
   semester tag unifies the two corpora (the same expedition is labelled
   "ABRIL 2019" by Seaguard and "MAI 2019" by HOBO). `_k` numbers multiple
   casts chronologically; a semester can span two expeditions.
-- **Timebase** (see the tooltip of "Correct GMT-3" and memory `timebase-rules`):
+- **Timebase** (see the tooltip of "Correct GMT-3" and the Timebase section of
+  the repo's `CLAUDE.md`):
   Seaguard clocks record GMT → the correction is ALWAYS applied
   (`correct_gmt3h = input_type == 'Seaguard'`); HOBO exports and the CO2
   logger are already local. Getting this wrong once shifted the whole corpus
@@ -41,7 +45,19 @@ python batch\build_index.py                # rebuild CLAUDE\qualified_index.csv
   trim, not the overnight file); no match → no CO2, never guessed.
 - **Sheets rule** (`_sheets`): one export per logger — `.xlsx`, falling back
   to `.csv` only when that logger has no xlsx (exact-stem grouping so
-  HOBO1/HOBO2 stay apart).
+  HOBO1/HOBO2 stay apart). A **clock-corrected twin outranks the format
+  rule**: `correct_clock.py` writes −12 h copies of the AM/PM-swapped exports
+  to `CLAUDE\HOBO\corrected\` (raw never touched, validated before the share
+  is written); the driver prefers the twin, stamps `[clock-corrected]` in
+  provenance, and REFUSES to qualify a known-bad file from raw
+  (`_require_corrected`).
+- **Light cutoff mode** (`LIGHT_MODE`, since 2026-08): the corpus standard is
+  the FIXED 60-day window (`light : fixed-60d window` in provenance) — the
+  adaptive threshold is entangled with season. The replicate-review
+  recommendation is DECLINED in batch (nobody is present to ratify it);
+  replicates the corpus has decided to drop go through `EXCLUDED_REPLICATES`.
+  Each product's provenance also carries a per-file `clock :` verdict from
+  `light_clock_phase`.
 - **Byte-identical re-archives are skipped** (the field archive stores some
   pool exports twice, in per-person folders): MD5 over each product's inputs,
   the explicit DENTRO/FORA copy wins over `_NA`.
