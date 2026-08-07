@@ -19,8 +19,11 @@
 import sys, os, re, glob, shutil, tempfile, time
 import datetime as _dt
 
-# QCS modules live one level up (sourceCode\) from this batch\ folder
+# QCS modules live one level up (sourceCode\) from this batch\ folder; this
+# folder itself must also be importable (correct_clock) even when qualify_site
+# is loaded via importlib rather than run as a script
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import matplotlib; matplotlib.use('Agg')
 import QCS_Theme as _t
 _t.install_output_redirect = lambda *a, **k: type('S', (), {'history': [], 'set_sink': lambda *a, **k: None, 'write': lambda *a, **k: None, 'flush': lambda *a, **k: None})()
@@ -33,6 +36,9 @@ import pandas as pd
 ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE"
 SG_RAW, SG_QLF = os.path.join(ROOT, 'SEAGUARD', 'raw'), os.path.join(ROOT, 'SEAGUARD', 'qualified')
 H_RAW, H_QLF = os.path.join(ROOT, 'HOBO', 'raw'), os.path.join(ROOT, 'HOBO', 'qualified')
+# HOBO light cutoff mode for the corpus: 'fixed' (BAD from lux_fixed_days = 60
+# days after deployment) since 2026-08; 'adaptive' was the pre-v9.1 standard
+LIGHT_MODE = 'fixed'
 PT2NUM = {'JAN': 1, 'FEV': 2, 'MAR': 3, 'ABR': 4, 'MAI': 5, 'JUN': 6, 'JUL': 7, 'AGO': 8,
           'SET': 9, 'OUT': 10, 'NOV': 11, 'DEZ': 12, 'JANEIRO': 1, 'FEVEREIRO': 2,
           'MARÇO': 3, 'ABRIL': 4, 'MAIO': 5, 'JUNHO': 6, 'JULHO': 7, 'AGOSTO': 8,
@@ -65,6 +71,13 @@ qm.messagebox.showwarning = lambda *a, **k: DIALOGS.append(('warn', a))
 qm.messagebox.showerror = lambda *a, **k: DIALOGS.append(('error', a))
 qm.messagebox.askyesno = lambda *a, **k: True
 qm.review_light_window = lambda lux, label: lux.get('proposed_cutoff')
+# The replicate-review window is interactive; in batch nobody is there to
+# click, so the referee's recommendation is DECLINED (None -> keep all,
+# average) and the log records it. Replicates the corpus HAS decided to drop
+# are excluded via EXCLUDED_REPLICATES before qualification ever starts -
+# auto-accepting here would silently apply verdicts the operator never
+# ratified (ESQCENTRAL 2024S1 is named by the referee yet deliberately kept).
+qm.review_replicates = lambda *a, **k: None
 qm.data._show_and_wait = lambda *a, **k: None
 qm.save_user_prefs = lambda *a, **k: None
 qm.log_line = lambda m: None
@@ -122,6 +135,19 @@ def run_qualification(files, input_type, data_type, site, out_name, co2=None):
     # timebase and the CO2 merge aligns (proven on PAB1: the txt is named
     # 1525-1555 and the uncorrected cast sat at 18:13-19:07).
     qm.correct_gmt3h.set(input_type == 'Seaguard')
+    # PIN the region: the GUI restores it from the gitignored user prefs, so
+    # whatever the researcher last selected by hand would silently become this
+    # run's latitude (v10.0 uses it for the seasonal light correction). The
+    # whole corpus is Abrolhos; a batch must not depend on GUI leftovers.
+    qm.macroregion_combobox.set(qm.DEFAULT_MACROREGION)
+    qm.update_regions()
+    qm.region_combobox.set(qm.DEFAULT_REGION)
+    # Corpus standard since 2026-08 (user decision): the FIXED light window -
+    # light BAD from lux_fixed_days (60) after deployment, no adaptive decision.
+    # The adaptive threshold is entangled with season (ambient light falls
+    # toward winter and rises toward summer), which over-cut S1 deployments and
+    # masked fouling on S2 ones. LIGHT_MODE below is the one switch.
+    qm.light_cutoff_mode.set(LIGHT_MODE)
     qm.remove_bad.set(False); qm.remove_suspect.set(False)
     qm.select_profile_data.set(False); qm.check_variables.set(False)
     _se(qm.siteSelect_entry, site)
@@ -136,6 +162,29 @@ def run_qualification(files, input_type, data_type, site, out_name, co2=None):
     if not hits:
         return None, None, _dialog_reason(DIALOGS)
     return hits[0], outdir, None
+
+
+def _clock_lines():
+    """Provenance lines with the light-clock verdict of each file of the run
+    just finished. In the GUI the clock check speaks through log_line and a
+    warning dialog; here log_line is a no-op and dialogs are only read on
+    FAILURE, so without this line a product qualified from a wrong-clock file
+    would succeed with zero trace."""
+    out = ''
+    for fname, c in qm.OUTPUT.get('clock_checks', []):
+        # collapsed comes FIRST: a collapsed clock is also 'not evaluable' (its
+        # phase means nothing), and the generic label would hide the diagnosis
+        if c.get('collapsed'):
+            verdict = 'COLLAPSED 12-h EXPORT (no AM/PM marker; half the rows share a timestamp)'
+        elif not c.get('evaluable'):
+            verdict = 'not evaluable (too little light)'
+        elif c.get('suspect_shift_h') is not None:
+            verdict = 'SUSPECT %+dh PHASE (peak %.1f h, %.0f%% daylight)' % (
+                c['suspect_shift_h'], c['peak_hour'], 100 * c['daylight_frac'])
+        else:
+            verdict = 'OK (peak %.1f h, %.0f%% daylight)' % (c['peak_hour'], 100 * c['daylight_frac'])
+        out += '\n    clock    : %s: %s' % (fname, verdict)
+    return out
 
 
 def _dialog_reason(dialogs):
@@ -313,13 +362,47 @@ EXCLUDED_REPLICATES = {
     'HOBO1_ESQRODO_B1_160325_110925.xlsx':
         'replicate referee (v9.0): change-correlation -0.20 (twin +0.89), bias '
         '+3.15 degC - it moves against the regional signal.',
-    # NOT excluded, deliberately: ESQCENTRAL 2024S1
+    # NOT excluded, deliberately: ESQCENTRAL 2024S1 (see the note below the dict)
     # (HOBO1_ESQCENTRAL_B3_281023_050424.xlsx). The referee names replicate 1 on
     # the seasonal-swing criterion (the other replicate swings only 0.48x the
     # reference, i.e. damped), but that replicate has the SLIGHTLY HIGHER
     # correlation (+0.90 vs +0.88) - the two criteria point opposite ways, so
     # this one is left for the operator to review rather than auto-dropped.
 }
+
+
+# Clock repairs are DATA, not driver logic: correct_clock.py (same folder)
+# writes corrected copies of the affected raw exports under HOBO\corrected\,
+# mirroring the raw layout, with the evidence in its own header and README.
+# Here the corrected twin merely takes precedence over the raw file, so every
+# path (qualification, span probing, replicate grouping) sees one time axis.
+H_COR = os.path.join(ROOT, 'HOBO', 'corrected')
+# the list of files that MUST resolve to a corrected twin - _require_corrected
+# below refuses to qualify from the wrong-clock raw when corrected\ is missing
+# (e.g. a fresh rebuild before correct_clock.py was re-run)
+from correct_clock import CLOCK_CORRECTIONS as _CLOCK_FIX_LIST      # noqa: E402
+_CLOCK_FIX_BASENAMES = {f for (_s, _c, f) in _CLOCK_FIX_LIST}
+
+
+def _prefer_corrected(path):
+    """The clock-corrected twin of a raw export, when one exists."""
+    rel = os.path.relpath(path, H_RAW)
+    if rel.startswith('..'):
+        return path                      # not under raw\ (e.g. already corrected)
+    twin = os.path.join(H_COR, rel)
+    return twin if os.path.isfile(twin) else path
+
+
+def _require_corrected(files):
+    """Raises when a file KNOWN to need a clock correction is about to be used
+    raw. Silence here would requalify the product on the 12 h-wrong axis and
+    nothing downstream would notice - qualification succeeds either way."""
+    for f in files if isinstance(files, list) else [files]:
+        if (os.path.basename(str(f)) in _CLOCK_FIX_BASENAMES
+                and os.sep + 'corrected' + os.sep not in str(f)):
+            raise RuntimeError(
+                '%s needs its clock-corrected twin, which is missing under %s - '
+                'run correct_clock.py first' % (os.path.basename(str(f)), H_COR))
 
 
 def _excluded_in(pl):
@@ -365,6 +448,17 @@ def _sheets(pl):
         by_logger.setdefault(os.path.splitext(os.path.basename(f))[0], []).append(f)
     out = []
     for _k, fs in by_logger.items():
+        # a clock-corrected twin of ANY variant outranks the xlsx-over-csv
+        # preference: the format rule is about export richness, the corrected
+        # twin is about a wrong TIME AXIS - correctness beats format (else an
+        # xlsx re-export of a corrected logger would silently revert the
+        # deployment to the 12 h-wrong clock)
+        cor = [c for c in (_prefer_corrected(f) for f in fs)
+               if os.sep + 'corrected' + os.sep in c]
+        if cor:
+            xlc = [c for c in cor if c.lower().endswith('.xlsx')]
+            out.append(xlc[0] if xlc else cor[0])
+            continue
         xl = [f for f in fs if f.lower().endswith('.xlsx')]
         out.append(xl[0] if xl else fs[0])
     return sorted(out)
@@ -530,6 +624,7 @@ def do_buckets(sem):
             % (it['bucket'], name, it['campaign'],
                '/' + it['subpath'] if it['subpath'] else '', len(it['files'])))
         try:
+            _require_corrected(it['files'])
             csv, root, err = run_qualification(it['files'], 'HOBO', None, site, name)
             if not csv:
                 log('    FAILED: %s' % err); out.append((name, None, 0, err)); continue
@@ -542,7 +637,13 @@ def do_buckets(sem):
                              '%s\n    bucket   : %s\n    campaign : %s\n    subpath  : %s\n'
                              '    inputs   : %s'
                              % (name, it['bucket'], it['campaign'], it['subpath'] or '-',
-                                ' | '.join(os.path.basename(x) for x in it['files'])))
+                                ' | '.join(os.path.basename(x)
+                                           + (' [clock-corrected]' if os.sep + 'corrected' + os.sep in x else '')
+                                           for x in it['files']))
+                             + '\n    light    : %s' % (
+                                 'fixed-%dd window' % int(qm.CONFIG['tsSettings'].get('lux_fixed_days', 60))
+                                 if LIGHT_MODE == 'fixed' else 'adaptive (reviewed)')
+                             + _clock_lines())
         except Exception as e:
             import traceback; traceback.print_exc()
             log('    EXC: %s' % str(e)[:90])
@@ -635,6 +736,8 @@ def do_site(site, sem):
     items = plan(site, sem)
     if os.environ.get('QCS_SG_ONLY'):     # timebase re-run: HOBO is already local
         items = [i for i in items if i['kind'] != 'HOBO']
+    if os.environ.get('QCS_HOBO_ONLY'):   # light-mode re-run: Seaguard/Doppler untouched
+        items = [i for i in items if i['kind'] == 'HOBO']
     if not items:
         log('%s / %s : nothing to qualify' % (site, sem)); return []
     done = []
@@ -648,6 +751,8 @@ def do_site(site, sem):
         # one product must never take the whole site down with it
         try:
             files = it['files'] if kind == 'HOBO' else it['files'][0]
+            if kind == 'HOBO':
+                _require_corrected(files)
             # arm the replicate referee for multi-replicate HOBO deployments
             if kind == 'HOBO' and isinstance(files, list) and len(files) > 1:
                 span = it.get('start')
@@ -671,14 +776,20 @@ def do_site(site, sem):
             # A Seaguard input is always '<session folder>\Data000.bin': name the
             # SESSION (the file name alone identifies nothing).
             srcs = it['files'] if isinstance(it['files'], list) else [it['files']]
-            labels = [os.path.basename(os.path.dirname(x))
-                      if os.path.basename(x).lower().startswith('data') else os.path.basename(x)
+            labels = [(os.path.basename(os.path.dirname(x))
+                       if os.path.basename(x).lower().startswith('data') else os.path.basename(x))
+                      + (' [clock-corrected]' if os.sep + 'corrected' + os.sep in x else '')
                       for x in srcs]
             block = ('%s\n    campaign : %s\n    tipo     : %s\n    cast     : %s\n'
                      '    inputs   : %s\n    co2      : %s'
                      % (name, it['campaign'], it['tipo'] or '-', it['start'],
                         ' | '.join(labels),
                         os.path.basename(it['co2']) if it['co2'] else '-'))
+            if kind == 'HOBO':
+                block += '\n    light    : %s' % (
+                    'fixed-%dd window' % int(qm.CONFIG['tsSettings'].get('lux_fixed_days', 60))
+                    if LIGHT_MODE == 'fixed' else 'adaptive (reviewed)')
+                block += _clock_lines()
             for fn, why in it.get('excluded') or []:
                 block += '\n    EXCLUDED : %s\n               (%s)' % (fn, why)
             write_provenance(dest, name, block)

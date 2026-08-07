@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v9.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v10.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -984,6 +984,65 @@
         one</strong> replicate is unfouled and becomes BAD (4) only once <strong>every</strong>
         replicate is fouled — the usable window is <strong>extended to the last replicate to
         foul</strong>. Light is not averaged (that would mix clean and fouled sensors).</li>
+    </ul>
+
+    <h3>The clock check (since v9.1)</h3>
+    <p>A submerged light sensor <strong>must</strong> peak near local noon. Before the fouling
+    analysis runs, QCS measures the diurnal phase of the light — the light-weighted mean
+    hour of day, computed on the 24 h <em>circle</em>, and the share of light energy recorded
+    between 06:00 and 18:00. A sound logger scores ~100% on that share; a logger whose clock
+    is 12 h out scores ~0%.</p>
+    <p>The check runs <strong>first</strong> because a wrong clock makes every daily light
+    statistic below it meaningless: you cannot measure a light decay on a scrambled time axis.
+    It is a property of the whole series, so it produces a warning and a measurement, not a
+    flag character.</p>
+    <p>Two distinct failures are named:</p>
+    <ul>
+        <li><strong>A 12 h phase shift</strong> — the logger was launched with AM/PM swapped, so
+        light and temperature both sit on the wrong half of the day. The prescribed correction is
+        <strong>exactly 12 h</strong>: an AM/PM mistake is exact antiphase, and the measured peak
+        lands slightly off noon only because cloud and fouling are not symmetric about it. Three
+        loggers of the RRDM 14a MAR 2022 campaign (PLES, SGOM, TIM2) recorded tens of thousands
+        of lux at 21–23 h this way.</li>
+        <li><strong>A collapsed 12-hour clock</strong> — some HOBOware exports (pt-BR locale,
+        times written <code>04h0min0s</code>) carry a 12-hour clock with <em>no AM/PM marker at
+        all</em>, so every afternoon reading lands on top of its morning twin. The signature is
+        no sample after 12:59 plus about half the timestamps duplicated. QCS reports this
+        <em>without</em> prescribing a shift, because the remedy is different: the afternoon half
+        must be reconstructed from the row order, not moved.</li>
+    </ul>
+    <p>A heavily fouled logger is <strong>not</strong> accused: fouling attenuates the light, it
+    does not move the peak.</p>
+
+    <h3>The fixed light-cutoff mode (since v9.1)</h3>
+    <p>The adaptive fouling rule reads the decline out of the light itself — which entangles it
+    with everything else that moves light on those timescales, <strong>season above all</strong>.
+    At the Abrolhos latitude the clear-sky ceiling falls to ~60% of its summer value in winter,
+    uncomfortably close to the 50% fouling threshold: a logger installed in March walks into
+    winter and its falling ambient light can masquerade as fouling (over-cutting), while a logger
+    installed in September walks into summer and the rising light can mask real fouling
+    (under-cutting).</p>
+    <p>The <strong>Light cutoff</strong> choice in the Qualification tab (HOBO only) offers the
+    deliberate alternative:</p>
+    <ul>
+        <li><strong>Reviewed (adaptive)</strong> — the default: the fouling decline is detected
+        from the light and the proposed cutoff is reviewed on a plot (drag to adjust, N for no
+        cutoff). Since v10.0 each daily peak is first divided by the <strong>astronomical
+        clear-sky curve</strong> for the run's latitude (taken from the region selection, which
+        is therefore enabled for HOBO too), so the decision runs on "fraction of the seasonal
+        ceiling" rather than raw lux — a deployment walking into winter is no longer read as
+        fouling, and one walking into summer no longer hides it. On the review plot the baseline
+        and threshold appear as curves that follow the season. The correction removes only the
+        deterministic part of the confound (winter cloud and turbidity remain), which is why the
+        fixed window below exists.</li>
+        <li><strong>Fixed window</strong> — light becomes <strong>BAD</strong> a fixed number of
+        days after deployment (<code>lux_fixed_days</code> in Settings → Parameters, default
+        60), with no data-driven decision and no review. Fouling on these reefs is well advanced
+        after two months in the water; the fixed window trades the adaptive rule's precision for
+        uniformity and immunity to the seasonal confound. A deployment shorter than the window
+        has nothing to cut. The saved <code>QCS_light_window.svg</code> still shows the daily
+        light peaks and what the adaptive rule would have proposed, and states the fixed rule
+        that was actually applied.</li>
     </ul>
 
     <h3>The replicate referee (since v9.0)</h3>

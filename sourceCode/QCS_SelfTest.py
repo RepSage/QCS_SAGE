@@ -774,5 +774,138 @@ assert _r['disagrees'] is True and _r['recommended'] is None, _r
 assert 'does not describe this site' in _r['verdict'], _r['verdict']
 ok.append('replicate_referee (agreement / names the sound replicate / refuses without a reference)')
 
+# ---------------------------------------------------------------- 24. clock phase
+# A submerged light sensor peaks near local noon. The failure this guards is a
+# logger launched with AM/PM swapped: three loggers of RRDM 14a MAR 2022 wrote
+# tens of thousands of lux at 21-23 h, and the fouling analysis on that time
+# axis was meaningless.
+_t24 = pd.date_range('2021-08-20', periods=24 * 40, freq='h')      # 40 days, hourly
+# a clean diurnal cycle: a half-sine over daylight, zero at night
+_h24 = _t24.hour.to_numpy()
+_clean = np.where((_h24 >= 6) & (_h24 < 18),
+                  40000.0 * np.sin(np.pi * (_h24 - 6) / 12.0), 0.0)
+
+# (a) a sound logger: peak at noon, essentially all energy in daylight, no warning
+_c = _QCT.light_clock_phase(_t24, _clean)
+assert _c['evaluable'] and abs(_c['peak_hour'] - 12.0) < 0.5, _c
+assert _c['daylight_frac'] > 0.99 and _c['suspect_shift_h'] is None, _c
+assert not _c['warnings'], _c['warnings']
+
+# (b) the SAME data with the clock 12 h out (what the three loggers recorded):
+# detected, and the shift it reports must be the one that restores noon
+_c = _QCT.light_clock_phase(_t24 + pd.Timedelta(hours=12), _clean)
+assert _c['suspect_shift_h'] == 12, _c
+assert _c['daylight_frac'] < 0.01, _c
+assert any('CLOCK is' in w for w in _c['warnings']), _c['warnings']
+_back = _QCT.light_clock_phase(_t24 + pd.Timedelta(hours=12) - pd.Timedelta(hours=_c['suspect_shift_h']), _clean)
+assert _back['suspect_shift_h'] is None and _back['daylight_frac'] > 0.99, _back
+
+# (c) a HEAVILY FOULED but correctly-clocked logger (1% of the light, plus a
+# constant dark-current offset) must NOT be accused: fouling attenuates, it does
+# not move the peak
+_c = _QCT.light_clock_phase(_t24, _clean * 0.01 + 5.0)
+assert _c['suspect_shift_h'] is None, _c
+assert abs(_c['peak_hour'] - 12.0) < 2.0, _c
+
+# (d) too few lit samples: refuse instead of guessing a phase from noise
+_c = _QCT.light_clock_phase(_t24[:40], np.zeros(40))
+assert not _c['evaluable'] and _c['suspect_shift_h'] is None, _c
+
+# (e) the COLLAPSED 12-hour clock (pt-BR export with no AM/PM marker): every
+# afternoon reading lands on its morning twin. 53 of the 116 qualified HOBO
+# products carry this. It must be named as 'collapsed', NOT as a phase shift -
+# the remedy is to reconstruct from row order, not to shift the series.
+_tcol = pd.DatetimeIndex([x - pd.Timedelta(hours=12) if x.hour >= 13 else x for x in _t24])
+_c = _QCT.light_clock_phase(_tcol, _clean)
+assert _c['collapsed'] is True, _c
+assert _c['suspect_shift_h'] is None, _c        # must NOT prescribe a shift
+assert any('MISSING' in w for w in _c['warnings']), _c['warnings']
+
+# (f) a sound series must never be called collapsed
+_c = _QCT.light_clock_phase(_t24, _clean)
+assert _c['collapsed'] is False, _c
+ok.append('light_clock_phase (noon / AM-PM swap = exactly 12 h / collapsed 12 h clock / fouled logger not accused)')
+
+# ------------------------------------------------------------ 25. fixed cutoff
+# The FIXED light window (v9.1): BAD from `days` after deployment, no
+# data-driven decision - the deliberate alternative to the adaptive rule, which
+# is entangled with season (light rises toward summer, falls toward winter).
+_t100 = pd.date_range('2023-08-01', periods=24 * 100, freq='h')       # 100 days
+_cut = _QCT.light_fixed_cutoff(_t100, days=60)
+assert _cut == _t100[0] + pd.Timedelta(days=60), _cut
+
+# applied through the SAME flag writer as the adaptive mode: before the cutoff
+# GOOD, from the cutoff BAD
+_lux100 = np.full(len(_t100), 500.0)
+_f = _QCT.apply_light_window(_t100, _lux100, [''] * len(_t100), _cut, evaluable=True)
+_before = [x for x, t in zip(_f, _t100, strict=True) if t < _cut]
+_after = [x for x, t in zip(_f, _t100, strict=True) if t >= _cut]
+assert set(_before) == {'1'} and set(_after) == {'4'}, (set(_before), set(_after))
+
+# a deployment shorter than the window has nothing to cut
+assert _QCT.light_fixed_cutoff(_t100[:24 * 30], days=60) is None
+# and an empty/unparseable series refuses instead of crashing
+assert _QCT.light_fixed_cutoff(pd.Series([], dtype=object), days=60) is None
+ok.append('light_fixed_cutoff (start+60d / flags split at the cutoff / short deployment uncut)')
+
+# ------------------------------------------------- 26. seasonal normalization
+# The adaptive rule compares daily peaks against a first-week baseline, so a
+# deployment walking into winter loses ambient light for purely astronomical
+# reasons and gets read as fouling. With `latitude`, the peaks are divided by
+# the clear-sky curve first. Chosen curve: noon solar elevation with standard
+# atmospheric attenuation (T=0.75) - measured against the corpus, see v10.0.
+_LAT = -17.96
+
+# (a) the factor itself: ~1 at the summer ceiling, ~0.68 at the austral winter
+# solstice at 18 S; hemispheres mirror (day 172 is the NORTHERN summer)
+_days_yr = pd.date_range('2023-01-01', periods=365, freq='D')
+_f_yr = _QCT.clear_sky_factor(_days_yr, _LAT)
+assert 0.99 < _f_yr.max() <= 1.0 + 1e-9, _f_yr.max()
+_winter = _f_yr[_days_yr.dayofyear == 172][0]
+assert 0.62 < _winter < 0.74, _winter
+_north = _QCT.clear_sky_factor(_days_yr, +40.0)
+assert _north[_days_yr.dayofyear == 172][0] > 0.95, 'day 172 is summer at +40'
+
+# (b) a SEASON-SHAPED decline (no fouling): install mid-February at 18 S,
+# 150 days into July, peaks tracking the seasonal curve steepened by the
+# underwater response (factor^2.5 - deep enough to cross the 50% threshold).
+# The raw rule reads it as fouling; the corrected rule must NOT.
+_t26 = pd.date_range('2023-02-15', periods=150, freq='D') + pd.Timedelta(hours=12)
+_fac = _QCT.clear_sky_factor(_t26, _LAT)
+_seasonal = 40000.0 * _fac ** 2.5
+_raw = _QCT.light_fouling_baseline(_t26, _seasonal)
+_cor = _QCT.light_fouling_baseline(_t26, _seasonal, latitude=_LAT)
+assert _raw['proposed_cutoff'] is not None, 'the uncorrected rule must fire on the seasonal decline'
+assert _cor['proposed_cutoff'] is None, _cor['proposed_cutoff']
+# the curve's VALUES matter, not just its presence: an inverted back-mapping
+# (threshold/factor instead of threshold*factor) would draw the winter
+# threshold ~2x too high on every review plot while the suite stayed green
+# (found by mutation testing)
+assert _cor['threshold_curve'] is not None and len(_cor['threshold_curve']) == 150
+assert np.allclose(_cor['threshold_curve'].values,
+                   _cor['threshold'] * _QCT.clear_sky_factor(_cor['daily_peak'].index, _LAT)), \
+    'threshold_curve must be threshold * factor, mapped back to raw lux'
+
+# (c) GENUINE fouling on top of the season (exponential decay, tau = 40 d):
+# the corrected rule must still catch it, at the decay's own crossing (~day 28),
+# not at the season's
+_fouled = 40000.0 * _fac * np.exp(-np.arange(150.0) / 40.0)
+_cor2 = _QCT.light_fouling_baseline(_t26, _fouled, latitude=_LAT)
+assert _cor2['proposed_cutoff'] is not None
+_lag = (_cor2['proposed_cutoff'] - _t26[0]).days
+assert 24 <= _lag <= 34, _lag
+# the corrected baseline must come from the CORRECTED peaks: in this fixture
+# the day-0 corrected peak is exactly 40000 (decay 1, factor cancels), while a
+# baseline mistakenly taken from the raw peaks lands at ~39835 - a mutant that
+# corrects the crossings but not the baseline passed the whole suite before
+# this assertion (found by mutation testing)
+assert abs(_cor2['baseline'] - 40000.0) < 1.0, _cor2['baseline']
+
+# (d) latitude=None is byte-compatible with the pre-v10.0 rule: no curve in the
+# output and the same decision surface (every earlier test in this suite runs
+# through that path)
+assert _raw['threshold_curve'] is None and _raw['params']['latitude'] is None
+ok.append('light seasonal normalization (winter decline not read as fouling / real fouling still caught / None = old rule)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))
