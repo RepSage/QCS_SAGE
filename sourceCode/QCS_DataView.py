@@ -1254,7 +1254,7 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
                     ax.axvline(cutoff, color='#b30000', lw=1.6)
                     handles.append(ax.axvspan(cutoff, db['Datetime'].iloc[-1],
                                               color='#b30000', alpha=0.10,
-                                              label='Fouling window (Flag_lux == 4)'))
+                                              label='Fouling window (light unusable)'))
         ax.set_ylabel(display, color=bcParam[param])
         ax.tick_params(axis='y', colors=bcParam[param])
         if i == 1:
