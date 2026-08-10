@@ -1,42 +1,44 @@
 # -*- coding: utf-8 -*-
-r"""Generates the clock-corrected copies of the raw HOBO exports whose logger
-was launched with AM/PM swapped.
+r"""Repairs, IN PLACE, the raw HOBO exports whose logger was launched with
+AM/PM swapped - and records the operation in the raw manifest.
 
-This is a DATA repair, not an app feature: a timestamp that is wrong in the
-export is wrong for every tool that reads the file, not just QCS. The repair
-therefore lives beside the data - corrected copies under
-CLAUDE\HOBO\corrected\, mirroring the raw layout - and the raw files are never
-touched. This script is the reproducible recipe for that folder: delete
-corrected\ and re-run it, and you get the same bytes back.
+History of where this fix lives (both were the archive owner's decisions):
+2026-08-06 it was moved out of the app into corrected\ twin copies ("a wrong
+timestamp is wrong for every tool, not just QCS"); 2026-08-07 the owner chose
+to apply it IN PLACE to the raw CSVs and drop the twin folder - one archive,
+one truth. The loggers' own binary exports (raw\<SITE>\<camp>\bruto\*.hobo)
+are NOT touched, so the original uncorrected export remains recoverable.
 
-The evidence (2026-08, see changelog v9.1): a submerged light sensor must peak
-near local noon. These loggers peaked at 23.2-23.6 h with 0-0.8% of their light
-energy in daylight hours; the raw rows themselves read e.g.
-'08/20/21 11:08:39 PM,25.222,31689.1' - 31 thousand lux at 23 h. Shifted by
--12 h they land at 11.2-11.6 h and 99-100% daylight, matching the sound
-loggers of the same semester (PAB3 11.6 h / 99.9%, PNOR 11.8 h, ESQRODO
-11.7 h). The shift is EXACTLY 12 h, never the measured centroid offset: an
-AM/PM mistake is exact antiphase, and the centroid sits slightly off noon only
-because cloud and fouling are not symmetric about it.
+The evidence (changelog v9.1): a submerged light sensor must peak near local
+noon. These loggers peaked at 23.2-23.6 h with 0-0.8% of their light energy in
+daylight hours; the raw rows read e.g. '08/20/21 11:08:39 PM,25.222,31689.1' -
+31 thousand lux at 23 h. Shifted by -12 h they land at 11.2-11.6 h and
+99-100% daylight, matching the sound loggers of the same semester. The shift
+is EXACTLY 12 h: an AM/PM mistake is exact antiphase.
 
-The shift is applied to the TEXT of the export - each datetime field is parsed
-and re-rendered in the same format - so everything else in the file
-(readings, serial numbers, event rows like 'Logged') stays byte-identical, and
-any HOBO-reading tool parses the corrected copy exactly like the raw one.
+The shift edits the TEXT of the export - each datetime field is parsed and
+re-rendered in the same format - so everything else stays byte-identical and
+any HOBO-reading tool parses the repaired file exactly like the original.
 
-Every corrected file is validated before being accepted: the raw file must be
-ACCUSED by QCS_Tests.light_clock_phase (the detector shipped in v9.1) and the
-corrected one must be CLEAN, with the same number of rows. The script fails
-loudly otherwise.
+Safety gates, all BEFORE the raw file is replaced:
+  - the file must be ACCUSED by QCS_Tests.light_clock_phase (a file already
+    in phase is reported 'already corrected' and skipped - re-running this
+    script can never double-shift);
+  - the shifted copy, staged in a LOCAL scratch dir, must come out clean
+    (peak near noon, >=90% daylight energy, same row count);
+  - only then is the raw file replaced, and its manifest row updated
+    (new md5/size, status 'clock_corrected_-12h', dated note).
 
-Usage:  python correct_clock.py          (writes CLAUDE\HOBO\corrected\)
+Usage:  python correct_clock.py
 """
+import csv
+import datetime as _dt
+import hashlib
 import os
 import re
 import shutil
 import sys
 import tempfile
-import datetime as _dt
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import QCS_DataHandler as dh
@@ -44,12 +46,11 @@ import QCS_Tests as QC
 
 ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE\HOBO"
 H_RAW = os.path.join(ROOT, 'raw')
-H_COR = os.path.join(ROOT, 'corrected')
+MANIFEST = os.path.join(H_RAW, 'manifest.csv')
 
 # (site, campaign, file) -> hours ADDED to every timestamp.
 # All three loggers belong to campaign RRDM 14a MAR 2022, but only 3 of its 7
-# sites are affected - these were individual launch mistakes, not a campaign
-# procedure.
+# sites are affected - individual launch mistakes, not a campaign procedure.
 CLOCK_CORRECTIONS = {
     ('PLES', 'RRDM 14a MAR 2022', 'HOBO1_PLeste_210821.csv'):     -12,
     ('PLES', 'RRDM 14a MAR 2022', 'HOBO1_PLeste_210821_0.csv'):   -12,
@@ -87,19 +88,61 @@ def _phase(path):
     return QC.light_clock_phase(df['Datetime'], df['Luminosity (lux)']), len(df)
 
 
+def _md5(path):
+    h = hashlib.md5()
+    with open(path, 'rb') as f:
+        for b in iter(lambda: f.read(1 << 20), b''):
+            h.update(b)
+    return h.hexdigest()
+
+
+def update_manifest(repaired):
+    """Rewrites the manifest rows of the repaired files: new md5/size, status
+    'clock_corrected_-12h' and a dated note. The manifest is the archive's
+    integrity record - an edited file with a stale md5 would read as
+    corruption, when it is a documented repair."""
+    with open(MANIFEST, newline='', encoding='utf-8-sig') as f:
+        rows = list(csv.DictReader(f))
+        fields = rows and list(rows[0].keys())
+    by_dest_name = {os.path.basename(r['dest']): r for r in rows}
+    for path in repaired:
+        row = by_dest_name.get(os.path.basename(path))
+        if row is None:
+            print('   WARNING: %s has no manifest row - nothing updated for it'
+                  % os.path.basename(path))
+            continue
+        row['md5'] = _md5(path)
+        row['size_bytes'] = str(os.path.getsize(path))
+        row['status'] = 'clock_corrected_-12h'
+        row['note'] = ('logger launched with AM/PM swapped; -12h applied in place '
+                       'on 2026-08-07 by correct_clock.py (owner decision); the '
+                       'original export remains in bruto\\*.hobo')
+    with open(MANIFEST, 'w', newline='', encoding='utf-8-sig') as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        w.writerows(rows)
+    print('manifest updated for %d file(s)' % len(repaired))
+
+
 def main():
-    # every candidate is written and VALIDATED in a local scratch dir first;
-    # the share is only touched after its file passes all gates. Writing to the
-    # share before validating would strand an invalid twin there on failure -
-    # and qualify_site prefers any twin it finds, silently.
     scratch = tempfile.mkdtemp(prefix='clockfix_')
-    done, staged = [], []
+    repaired, already = [], []
     try:
         for (site, camp, fname), hours in sorted(CLOCK_CORRECTIONS.items()):
             raw = os.path.join(H_RAW, site, camp, 'planilha', fname)
-            cor = os.path.join(H_COR, site, camp, 'planilha', fname)
             if not os.path.isfile(raw):
                 raise SystemExit('MISSING raw file: %s' % raw)
+
+            pr, nr = _phase(raw)
+            if pr['suspect_shift_h'] is None:
+                if pr['evaluable'] and pr['daylight_frac'] > 0.9:
+                    already.append(fname)
+                    print('%-8s %-32s already corrected (peak %.1f h, daylight %.0f%%) - skipped'
+                          % (site, fname, pr['peak_hour'], 100 * pr['daylight_frac']))
+                    continue
+                raise SystemExit('%s: neither accused nor clearly in phase '
+                                 '(peak %.1f h, daylight %.0f%%) - refusing to guess'
+                                 % (fname, pr['peak_hour'], 100 * pr['daylight_frac']))
 
             with open(raw, 'r', encoding='latin-1', newline='') as f:
                 text = f.read()
@@ -110,43 +153,24 @@ def main():
             with open(tmp, 'w', encoding='latin-1', newline='') as f:
                 f.write(new)
 
-            # validation gates: the raw must be accused, the corrected must be clean
-            pr, nr = _phase(raw)
             pc, nc = _phase(tmp)
-            if pr['suspect_shift_h'] is None:
-                raise SystemExit('%s: the RAW file is not accused by the detector - '
-                                 'why is it in CLOCK_CORRECTIONS?' % fname)
             if pc['suspect_shift_h'] is not None or pc['collapsed'] or pc['daylight_frac'] < 0.9:
                 raise SystemExit('%s: still wrong after %+d h (peak %.1f h, daylight %.0f%%)'
                                  % (fname, hours, pc['peak_hour'], 100 * pc['daylight_frac']))
             if nr != nc:
                 raise SystemExit('%s: row count changed (%d -> %d)' % (fname, nr, nc))
-            staged.append((tmp, cor))
-            done.append((site, fname, n, pr, pc))
+
+            shutil.copy2(tmp, raw)          # all gates passed - replace in place
+            repaired.append(raw)
             print('%-8s %-32s %5d timestamps %+d h | peak %5.1f h -> %5.1f h | daylight %3.0f%% -> %3.0f%%'
                   % (site, fname, n, hours, pr['peak_hour'], pc['peak_hour'],
                      100 * pr['daylight_frac'], 100 * pc['daylight_frac']))
-
-        # every file validated - only now touch the share
-        for tmp, cor in staged:
-            os.makedirs(os.path.dirname(cor), exist_ok=True)
-            shutil.copy2(tmp, cor)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
-    with open(os.path.join(H_COR, 'README.txt'), 'w', encoding='utf-8') as f:
-        f.write(
-            'Clock-corrected copies of raw HOBO exports. Generated by\n'
-            'sourceCode/batch/correct_clock.py (QCS repo) - re-running it rebuilds\n'
-            'this folder from raw/; nothing in raw/ is ever modified.\n\n'
-            'These loggers were launched with AM/PM swapped, so the whole series\n'
-            '(light AND temperature) sat 12 h out of phase. Diagnostic: light\n'
-            'peaked at 23.2-23.6 h with 0-0.8%% of its energy in daylight hours;\n'
-            'corrected, it peaks at 11.2-11.6 h with 99-100%%, matching the sound\n'
-            'loggers of the same semester. See changelog v9.1 of the QCS repo.\n\n'
-            'Files (%d, all -12 h):\n%s\n'
-            % (len(done), '\n'.join('  %s\\%s' % (s, f) for s, f, *_ in done)))
-    print('\n%d corrected file(s) under %s' % (len(done), H_COR))
+    if repaired:
+        update_manifest(repaired)
+    print('\n%d repaired, %d already corrected' % (len(repaired), len(already)))
 
 
 if __name__ == '__main__':

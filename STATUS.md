@@ -2,6 +2,20 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-10 — clock repair applied IN PLACE to raw; corrected\ deleted
+
+Owner decision, explicit: "nesse caso específico pode editar o raw". The eight
+AM/PM-swapped 2022S1 CSVs (PLES/SGOM/TIM2) now carry the −12 h repair in the
+raw tree itself; `HOBO\corrected\` is gone. `correct_clock.py` became the
+in-place repair recipe (gated: only an ACCUSED file is shifted, so re-running
+never double-shifts; validated locally before replacing; idempotence verified —
+second run reports 8/8 "already corrected"). The raw `manifest.csv` rows carry
+new checksums, status `clock_corrected_-12h` and a dated note; the original
+`.hobo` binaries under `bruto\` are untouched. The three products requalified
+from the repaired raw are data-identical to the corrected-twin era (verified).
+Driver: `_prefer_corrected`/`_require_corrected` removed; `_fail_on_wrong_clock`
+now fails any batch HOBO product whose input is accused of a 12 h phase error.
+
 ## 2026-08-07 — v10.0: seasonal normalization of the adaptive light rule
 
 Stacked on the unreleased v9.1, same branch (`improvements-v9.1`), one PR for
