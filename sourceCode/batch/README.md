@@ -15,6 +15,13 @@ absolute path — a bare `python` resolves to the Microsoft Store stub and fails
 & "C:\Users\LAMB\anaconda3\python.exe" batch\build_index.py                # rebuild CLAUDE\qualified_index.csv
 ```
 
+Three of the scripts here repair the RAW archive rather than qualify it —
+`correct_clock.py`, `repair_collapsed_clock.py` and `repair_unset_clock.py` —
+and `drop_stale_products.py` removes superseded products. Everything they have
+done to the archive is recorded, dated and with its evidence, in
+**`CORPUS_LOG.md`** beside this file. That log is not a `changelog/` entry: the
+app has its own version and none of this changes the program.
+
 `QCS_SG_ONLY=1` (environment variable) restricts a run to the Seaguard side
 (scalar + Doppler), leaving HOBO products untouched — used for timebase reruns.
 `QCS_HOBO_ONLY=1` is the mirror image: HOBO products only, Seaguard/Doppler

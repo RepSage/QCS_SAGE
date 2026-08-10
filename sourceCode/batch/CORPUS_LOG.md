@@ -1,10 +1,25 @@
-# QCS v11.0 — the collapsed 12-hour clock is reconstructed; half the HOBO archive gets its afternoons back
+# CORPUS LOG — operations performed on the archive itself
 
-> **MAJOR** release (v10.0 → v11.0). No QC rule changed — the *data* did. 41 raw
-> HOBO exports had half their samples on the wrong timestamp; after the repair
-> those deployments carry twice the usable temporal resolution, and every
-> product built from them is different. The app code changes only by one
-> version constant and one new batch script.
+What was done to the DATA under `CLAUDE\HOBO\raw` and `\qualified`, when, and
+why. This is not a `changelog/` entry: the app has its own version and its own
+release notes, and nothing here changes the program. It is kept beside the
+scripts that did the work, because re-running them is how any of it is
+reproduced.
+
+Lane check, so this file does not compete with the other three: `CLAUDE.md`
+holds durable rules, `STATUS.md` volatile dated state, `DECISIONS.md` the
+numbers behind a parameter choice, and `changelog/` the app releases. This file
+holds **irreversible operations on the archive** — dated, with their evidence.
+
+---
+
+## 2026-08-10 — the collapsed 12-hour clock reconstructed
+
+> No QC rule changed — the *data* did. 65 raw HOBO exports had half their
+> samples on the wrong timestamp; after the repair those deployments carry twice
+> the usable temporal resolution, and every product built from them is
+> different. **The app was not touched**: running the same v10.0 program over
+> the repaired raw is what produced the new products.
 
 ## The defect
 
@@ -126,8 +141,39 @@ is per-logger. It was tested before being built, and it fails twice over:
 The recommendation is therefore to **stop optimizing the adaptive threshold**.
 The fixed 60-day window remains the corpus standard for exactly this reason.
 
+## Also done in this round
+
+- **9 factory-epoch clocks repaired** (`repair_unset_clock.py`): loggers
+  deployed with the clock never set — right duration, wrong epoch. The DAY
+  offset comes from the archived/field launch dates, the HOUR from the light
+  phase, and the check is the TEMPERATURE against contemporaneous loggers at
+  other sites (independent of light, so it cannot pass by construction):
+  r = +0.78 to +0.99 over 104–460 days. Recovered `PAB3_2021S2` and
+  `PNOR_2021S2`, which had been failing outright.
+- **10 stale/redundant products deleted** (`drop_stale_products.py`): 7 left
+  behind when replicate grouping changed, plus `ESQRODO_2020S1` (a re-file
+  under the wrong campaign) and the `PLES_FORA` / `SGOM_FORA` pool products
+  (the owner confirmed the FORA control IS the site logger).
+- **The replicate rule was widened**: both ends within 3 days now also count
+  when the two durations differ by less than 5%. Pairs are started and stopped
+  by hand and the collapsed clock had been hiding it.
+
 ## Verification
 
-44 self-tests pass, ruff clean. The repair is validated per file by the gates
-above; the HOBO corpus was requalified from the repaired raw and the index
-rebuilt.
+44 self-tests pass, ruff clean — unchanged, because the app was not modified.
+Every repair is gated per file (see each script's header). Final state:
+**315 products** — HOBO 138, Seaguard 123, Doppler 54, 34 with CO2; the 60-day
+light validation reports 0 inconsistent, and the index's duplicate-input
+warning is silent.
+
+## Still open on the data
+
+| what | files | why it is not automatic |
+|---|---|---|
+| light channel anomalous, clock roughly right | `HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv` | light peaks 4.4 h but TEMPERATURE peaks 12.0 h (corpus median 13.7 h); also fails the sampling-regularity gate (67% of steps on the interval) |
+| light and temperature disagree by ~8 h | `HOBO1_ESQRODO_B1_050424_160325.xlsx` | dates are correct; no single rotation fixes both channels |
+| sensor dark from the start | `PAB3_30062016_PAREDE.csv` | nothing decides morning from afternoon; 8,833 duplicated timestamps remain |
+| several sites stacked in one hand-made sheet | `HOBO-incubacao_rodolito.csv` | the product structure would have to be invented |
+
+The inference-free route for all four is a **HOBOware re-export from the
+`.hobo` binary** with a 24-hour clock.

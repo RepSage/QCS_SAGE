@@ -2,6 +2,39 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-10 — there is NO v11.0; the app is still v10.0
+
+The whole clock-repair round touched the **data and the batch drivers**, never
+the program. Verified: `git diff v10.0..HEAD -- sourceCode/*.py` is one line,
+the version constant itself. Bumping `QCS_VERSION` was a mistake and had a real
+cost — the constant is version-gated for user settings, so a bump resets saved
+QC criteria on next launch for a release that changed no criterion.
+
+- `QCS_VERSION` back to **v10.0**; the manual back to v10.0; the 138 HOBO
+  products re-stamped by requalifying (they carried a phantom `v11.0`).
+- `changelog/v11.0.md` moved to **`sourceCode/batch/CORPUS_LOG.md`** — a dated
+  record of irreversible operations on the ARCHIVE, kept beside the scripts
+  that perform them. It is not a `changelog/` entry: the changelog is for app
+  releases, and none of this is one.
+- **Rule for next time**: `QCS_VERSION` changes only when `sourceCode/*.py`
+  outside `batch/` changes. Corpus work goes in `CORPUS_LOG.md`.
+
+### Re-file rule (the ESQRODO duplicate, fixed at the source)
+
+Deleting `ESQRODO_2020S1` was not enough — the next full run recreated it,
+because the same export is filed under two campaigns and the cause was still
+there. `_owning_campaign` now resolves this across ALL campaigns of a site
+(a re-file is by definition in a different SEMESTER, so a per-semester check
+could never see it): the owner is the earliest campaign whose month falls on
+or after the end of the data — the one that recovered the logger. `ESQRODO
+2020S1` now qualifies nothing, and the index's duplicate-input warning is
+silent.
+
+**Corpus: 315 products** — HOBO 138, Seaguard 123, Doppler 54, 34 with CO2.
+60-day validation 0 inconsistent. 11 of 138 HOBO products still carry
+duplicated timestamps, all traceable to the four exports listed as open in
+`CORPUS_LOG.md`.
+
 ## 2026-08-10 — v11.0 (cont.): xlsx side repaired too; 4 stale products to delete
 
 - **24 `.xlsx` exports repaired** as well (the collapsed clock sits as cell

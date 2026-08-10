@@ -49,6 +49,59 @@ def log(m):
     print(m, flush=True)
 
 
+def campaign_date(campaign):
+    """The campaign's own month as a date ('RRDM 6a MAI 2019' -> 2019-05-01),
+    or None when the label does not carry both a month and a year."""
+    yr = re.search(r'(19|20)\d\d', campaign)
+    mon = next((PT2NUM[w] for w in re.findall(r'[A-Za-zÇÃÁÉÍÓÚçãáéíóú]+', campaign.upper())
+                if w in PT2NUM), None)
+    return _dt.date(int(yr.group(0)), mon, 1) if (yr and mon) else None
+
+
+_OWNER_CACHE = {}
+
+
+def _owning_campaign(site):
+    """{export basename: the campaign that owns it} across ALL campaigns of a
+    site.
+
+    The field archive sometimes files one export under two campaigns - the
+    2018-2019 ESQRODO deployment sits in both 'RRDM 6a MAI 2019' and 'RRDM 9a
+    MAR 2020' - which used to produce two products, under two SEMESTERS, from
+    one deployment. It has to be resolved across the whole site rather than
+    inside one semester, because a re-file is by definition in a different
+    semester from the original.
+
+    The owner is the campaign that RECOVERED the logger: the earliest one whose
+    month falls on or after the end of the data. Anything later is a re-file."""
+    if site in _OWNER_CACHE:
+        return _OWNER_CACHE[site]
+    sdir = os.path.join(H_RAW, site)
+    where = {}
+    if os.path.isdir(sdir):
+        for camp in sorted(os.listdir(sdir)):
+            pl = os.path.join(sdir, camp, 'planilha')
+            if not os.path.isdir(pl):
+                continue
+            for f in _sheets(pl):
+                where.setdefault(os.path.basename(f), []).append((camp, f))
+    owner = {}
+    for base, cands in where.items():
+        if len(cands) < 2:
+            owner[base] = cands[0][0]
+            continue
+        span = _span(cands[0][1])
+        end = span[1].date() if span else None
+        scored = []
+        for camp, _f in cands:
+            cd = campaign_date(camp)
+            scored.append(((cd - end).days if (cd and end) else 10 ** 6, camp))
+        after = [s for s in scored if s[0] >= 0] or scored
+        owner[base] = min(after, key=lambda s: s[0])[1]
+    _OWNER_CACHE[site] = owner
+    return owner
+
+
 def sem_tag(campaign):
     """'1 - ABRIL 2019' -> '2019S1'; 'RRDM 6a MAI 2019' -> '2019S1'."""
     yr = re.search(r'(19|20)\d\d', campaign)
@@ -315,6 +368,12 @@ def plan(site, sem):
                     items.append({'kind': kind, 'tipo': tipo, 'campaign': camp,
                                   'start': start, 'files': bins,
                                   'co2': pick_co2(co2s, start) if kind == 'SEAGUARD' else None})
+    # One export, one product: drop the campaigns that merely RE-FILE it
+    items = [i for i in items
+             if i['kind'] != 'HOBO'
+             or all(_owning_campaign(site).get(os.path.basename(f), i['campaign'])
+                    == i['campaign'] for f in i['files'])]
+
     # name them: _k only when the semester holds several of that kind+tipo
     from collections import defaultdict
     groups = defaultdict(list)
