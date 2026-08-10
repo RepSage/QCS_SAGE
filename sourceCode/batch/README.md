@@ -45,12 +45,14 @@ untouched — used for light-mode reruns.
   trim, not the overnight file); no match → no CO2, never guessed.
 - **Sheets rule** (`_sheets`): one export per logger — `.xlsx`, falling back
   to `.csv` only when that logger has no xlsx (exact-stem grouping so
-  HOBO1/HOBO2 stay apart). A **clock-corrected twin outranks the format
-  rule**: `correct_clock.py` writes −12 h copies of the AM/PM-swapped exports
-  to `CLAUDE\HOBO\corrected\` (raw never touched, validated before the share
-  is written); the driver prefers the twin, stamps `[clock-corrected]` in
-  provenance, and REFUSES to qualify a known-bad file from raw
-  (`_require_corrected`).
+  HOBO1/HOBO2 stay apart).
+- **Clock repairs live in the raw itself** (owner decision, 2026-08-07):
+  `correct_clock.py` applies the −12 h AM/PM repair IN PLACE to the affected
+  raw CSVs — gated (a file must be accused by `light_clock_phase` first, so
+  re-running never double-shifts), validated locally before replacing, and
+  recorded in the raw `manifest.csv`; the original `.hobo` binaries under
+  `bruto\` are never touched. The driver's `_fail_on_wrong_clock` makes any
+  HOBO product whose input is 12 h out of phase FAIL instead of shipping.
 - **Light cutoff mode** (`LIGHT_MODE`, since 2026-08): the corpus standard is
   the FIXED 60-day window (`light : fixed-60d window` in provenance) — the
   adaptive threshold is entangled with season. The replicate-review

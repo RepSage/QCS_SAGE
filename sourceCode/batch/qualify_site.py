@@ -372,37 +372,26 @@ EXCLUDED_REPLICATES = {
 
 
 # Clock repairs are DATA, not driver logic: correct_clock.py (same folder)
-# writes corrected copies of the affected raw exports under HOBO\corrected\,
-# mirroring the raw layout, with the evidence in its own header and README.
-# Here the corrected twin merely takes precedence over the raw file, so every
-# path (qualification, span probing, replicate grouping) sees one time axis.
-H_COR = os.path.join(ROOT, 'HOBO', 'corrected')
-# the list of files that MUST resolve to a corrected twin - _require_corrected
-# below refuses to qualify from the wrong-clock raw when corrected\ is missing
-# (e.g. a fresh rebuild before correct_clock.py was re-run)
-from correct_clock import CLOCK_CORRECTIONS as _CLOCK_FIX_LIST      # noqa: E402
-_CLOCK_FIX_BASENAMES = {f for (_s, _c, f) in _CLOCK_FIX_LIST}
+# applies the -12 h AM/PM repair IN PLACE to the affected raw exports (owner
+# decision, 2026-08-07; the original .hobo binaries under bruto\ are never
+# touched, and the raw manifest records each repair). The driver's remaining
+# duty is _fail_on_wrong_clock below: a product qualified from a 12 h-antiphase
+# input must FAIL LOUDLY, never ship - e.g. if a raw file is ever restored
+# from the field archive without re-running correct_clock.py.
 
 
-def _prefer_corrected(path):
-    """The clock-corrected twin of a raw export, when one exists."""
-    rel = os.path.relpath(path, H_RAW)
-    if rel.startswith('..'):
-        return path                      # not under raw\ (e.g. already corrected)
-    twin = os.path.join(H_COR, rel)
-    return twin if os.path.isfile(twin) else path
-
-
-def _require_corrected(files):
-    """Raises when a file KNOWN to need a clock correction is about to be used
-    raw. Silence here would requalify the product on the 12 h-wrong axis and
-    nothing downstream would notice - qualification succeeds either way."""
-    for f in files if isinstance(files, list) else [files]:
-        if (os.path.basename(str(f)) in _CLOCK_FIX_BASENAMES
-                and os.sep + 'corrected' + os.sep not in str(f)):
+def _fail_on_wrong_clock(name):
+    """Raises when any input of the product just qualified was accused of a
+    12 h phase error. In the GUI the accusation pops a dialog; in batch the
+    log is a no-op and dialogs are only read on failure, so without this check
+    the wrong-clock product would land in the corpus with only a provenance
+    line to show for it."""
+    for fname, c in qm.OUTPUT.get('clock_checks', []):
+        if c.get('suspect_shift_h') is not None:
             raise RuntimeError(
-                '%s needs its clock-corrected twin, which is missing under %s - '
-                'run correct_clock.py first' % (os.path.basename(str(f)), H_COR))
+                '%s: %s is %+d h out of phase (light peaks at %.1f h) - '
+                'fix the raw export (correct_clock.py) before qualifying'
+                % (name, fname, c['suspect_shift_h'], c['peak_hour']))
 
 
 def _excluded_in(pl):
@@ -448,17 +437,6 @@ def _sheets(pl):
         by_logger.setdefault(os.path.splitext(os.path.basename(f))[0], []).append(f)
     out = []
     for _k, fs in by_logger.items():
-        # a clock-corrected twin of ANY variant outranks the xlsx-over-csv
-        # preference: the format rule is about export richness, the corrected
-        # twin is about a wrong TIME AXIS - correctness beats format (else an
-        # xlsx re-export of a corrected logger would silently revert the
-        # deployment to the 12 h-wrong clock)
-        cor = [c for c in (_prefer_corrected(f) for f in fs)
-               if os.sep + 'corrected' + os.sep in c]
-        if cor:
-            xlc = [c for c in cor if c.lower().endswith('.xlsx')]
-            out.append(xlc[0] if xlc else cor[0])
-            continue
         xl = [f for f in fs if f.lower().endswith('.xlsx')]
         out.append(xl[0] if xl else fs[0])
     return sorted(out)
@@ -624,10 +602,10 @@ def do_buckets(sem):
             % (it['bucket'], name, it['campaign'],
                '/' + it['subpath'] if it['subpath'] else '', len(it['files'])))
         try:
-            _require_corrected(it['files'])
             csv, root, err = run_qualification(it['files'], 'HOBO', None, site, name)
             if not csv:
                 log('    FAILED: %s' % err); out.append((name, None, 0, err)); continue
+            _fail_on_wrong_clock(name)
             dest = os.path.join(H_QLF, sem, it['bucket'], site)
             fc = assemble(csv, root, dest, name)
             n = render(fc, dest, 'HOBO', None, name)
@@ -637,9 +615,7 @@ def do_buckets(sem):
                              '%s\n    bucket   : %s\n    campaign : %s\n    subpath  : %s\n'
                              '    inputs   : %s'
                              % (name, it['bucket'], it['campaign'], it['subpath'] or '-',
-                                ' | '.join(os.path.basename(x)
-                                           + (' [clock-corrected]' if os.sep + 'corrected' + os.sep in x else '')
-                                           for x in it['files']))
+                                ' | '.join(os.path.basename(x) for x in it['files']))
                              + '\n    light    : %s' % (
                                  'fixed-%dd window' % int(qm.CONFIG['tsSettings'].get('lux_fixed_days', 60))
                                  if LIGHT_MODE == 'fixed' else 'adaptive (reviewed)')
@@ -751,8 +727,6 @@ def do_site(site, sem):
         # one product must never take the whole site down with it
         try:
             files = it['files'] if kind == 'HOBO' else it['files'][0]
-            if kind == 'HOBO':
-                _require_corrected(files)
             # arm the replicate referee for multi-replicate HOBO deployments
             if kind == 'HOBO' and isinstance(files, list) and len(files) > 1:
                 span = it.get('start')
@@ -767,6 +741,8 @@ def do_site(site, sem):
                                                dtype, site, name, co2=it['co2'])
             if not csv:
                 log('    FAILED: %s' % err); done.append((name, None, 0, err)); continue
+            if kind == 'HOBO':
+                _fail_on_wrong_clock(name)
             dest = os.path.join(H_QLF if kind == 'HOBO' else SG_QLF, sem, site)
             fc = assemble(csv, root, dest, name)
             n = render(fc, dest, kind, it['tipo'], name)
@@ -776,9 +752,8 @@ def do_site(site, sem):
             # A Seaguard input is always '<session folder>\Data000.bin': name the
             # SESSION (the file name alone identifies nothing).
             srcs = it['files'] if isinstance(it['files'], list) else [it['files']]
-            labels = [(os.path.basename(os.path.dirname(x))
-                       if os.path.basename(x).lower().startswith('data') else os.path.basename(x))
-                      + (' [clock-corrected]' if os.sep + 'corrected' + os.sep in x else '')
+            labels = [os.path.basename(os.path.dirname(x))
+                      if os.path.basename(x).lower().startswith('data') else os.path.basename(x)
                       for x in srcs]
             block = ('%s\n    campaign : %s\n    tipo     : %s\n    cast     : %s\n'
                      '    inputs   : %s\n    co2      : %s'
