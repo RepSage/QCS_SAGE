@@ -12,14 +12,27 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 - Corpus requalified again: index **323 products**, HOBO **146**, 60-day
   validation **0 inconsistent**. Products still carrying duplicated timestamps:
   33 → **21** (the rest are the refused files and their products).
-- **AWAITING A DECISION — 4 stale products must be deleted.** The repair
-  changed replicate GROUPING (with correct timestamps `_group_replicates` sees
-  the real deployment structure), so some product NAMES changed and the old
-  files were left behind, indexed, holding un-repaired data:
-  `TIM2_2019S2_HOBO_QLF` (now `_1` + `_2`), `PNOR_2024S1_HOBO_QLF` (now `_1` +
-  `_2`), `PNOR_2026S1_HOBO_1_QLF` + `_2_QLF` (now `PNOR_2026S1_HOBO_QLF`).
-  Each is fully superseded — verified input by input against provenance.
-  Deleting them takes the index to 319 / HOBO 142.
+- **The replicate rule was too tight, and the repair exposed it.** Grouping
+  required both ends within 1 day; with the collapsed clock, spans were
+  compressed and that always held. With real timestamps, TIM2 2019S2 ends 26 h
+  apart and PNOR 2024S1 starts 34 h apart — pairs are started and stopped by
+  hand, and one logger often records past its twin — so genuine replicates
+  split into two products each. `_same_deployment` now also accepts both ends
+  within 3 days **when the two durations differ by less than 5%**: that is what
+  separates a hand-offset pair from different deployments (BRITAS vs incubation
+  differ by 150×, not 5%). Measured over the whole archive before applying:
+  exactly **3 folders regroup, all correct merges, no spurious ones**.
+- **AWAITING A DECISION — 7 stale products to delete.** Each is fully
+  superseded by a fresher product built from the same raw inputs:
+  `TIM2_2019S2_HOBO_1/_2` → `TIM2_2019S2_HOBO_QLF`;
+  `PNOR_2024S1_HOBO_1/_2` → `PNOR_2024S1_HOBO_QLF`;
+  `PNOR_2026S1_HOBO_1/_2` → `PNOR_2026S1_HOBO_QLF`;
+  `PAB3_2022S2_HOBO_3` → `PAB3_2022S2_HOBO_2`.
+- **Three PRE-EXISTING duplicate pairs surfaced by the new check** (not from
+  this round, worth a look): `ESQRODO_2019S1` vs `ESQRODO_2020S1` (same inputs,
+  same 4690 rows, two semesters), `PLES_2025S1` vs `PLES_FORA_2025S1`, and
+  `SGOM_2025S1` vs `SGOM_FORA_2025S1` (site product duplicating its
+  `_PISCINAS` bucket product).
 - `build_index.py` now **warns when one raw export feeds two products**, which
   is exactly this failure; it also flags some pre-existing DENTRO/FORA bucket
   overlaps worth a look (ESQRODO 2020S1, PLES/PLES_FORA 2025S1, SGOM/SGOM_FORA

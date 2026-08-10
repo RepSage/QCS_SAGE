@@ -461,29 +461,52 @@ def _span(path):
 
 
 _REPL_TOL = pd.Timedelta(days=1)
+_REPL_TOL_LOOSE = pd.Timedelta(days=3)
+_REPL_LEN_TOL = 0.05          # durations may differ by this much within a pair
+
+
+def _same_deployment(s, e, gs, ge):
+    """Are these two spans the same deployment (i.e. replicates)?
+
+    Replicates are deployed and recovered TOGETHER, so the primary rule is BOTH
+    ends within a day. Mere overlap is not enough - the 5-month BRITAS series
+    contains the 1-day incubation and would swallow it.
+
+    A day is too tight on its own, though: loggers of one pair are started and
+    stopped by hand, minutes to hours apart, and one often keeps recording after
+    its twin is downloaded. Repairing the collapsed clock exposed this - with
+    real timestamps, TIM2 2019S2 ends 26 h apart and PNOR 2024S1 starts 34 h
+    apart, and both pairs split into two products each. So a second rule
+    accepts a wider gap when the two series are the SAME LENGTH: that is what
+    separates a hand-offset pair from genuinely different deployments (BRITAS
+    vs incubation differ by 150x, not by 5%)."""
+    if abs(s - gs) <= _REPL_TOL and abs(e - ge) <= _REPL_TOL:
+        return True
+    if abs(s - gs) <= _REPL_TOL_LOOSE and abs(e - ge) <= _REPL_TOL_LOOSE:
+        d1, d2 = (e - s).total_seconds(), (ge - gs).total_seconds()
+        if min(d1, d2) > 0 and abs(d1 - d2) / max(d1, d2) <= _REPL_LEN_TOL:
+            return True
+    return False
 
 
 def _group_replicates(files):
-    """Group exports into DEPLOYMENTS from the DATA, not the names. Returns
-    [(files, span)].
+    """Group exports into DEPLOYMENTS from the DATA, not the names (see
+    `_same_deployment` for the criterion). Returns [(files, span)].
 
     A planilha folder does NOT always hold one deployment's replicates:
       - _EXPERIMENTOS: RH30 21a = 5 files / 3 experiments;
       - even a plain SITE: PAB3 8a = 'PAB3_200419_TOPO' (reef top) AND
         'PAB3_30062016_PAREDE' (wall, 2016-2018) - two different loggers.
-    Averaging those as replicates is simply wrong. Names cannot decide it (the
-    same SET's replicates get spelled 'ExpIncubacaoMacroalgas' vs
-    'Expincubacaorodolito'; dates appear as both 260326 and 26032026), but the
-    data can: replicates are deployed and recovered TOGETHER, so require BOTH
-    ends within a day. Mere overlap is not enough - the 5-month BRITAS series
-    contains the 1-day incubation and would swallow it."""
+    Averaging those as replicates is simply wrong, and names cannot decide it
+    (the same SET's replicates get spelled 'ExpIncubacaoMacroalgas' vs
+    'Expincubacaorodolito'; dates appear as both 260326 and 26032026)."""
     spans = {f: _span(f) for f in files}
     groups = []
     for f in sorted([x for x in files if spans[x]], key=lambda x: spans[x][0]):
         s, e = spans[f]
         for g in groups:
             gs, ge = g['span']
-            if abs(s - gs) <= _REPL_TOL and abs(e - ge) <= _REPL_TOL:
+            if _same_deployment(s, e, gs, ge):
                 g['files'].append(f)
                 g['span'] = (min(s, gs), max(e, ge))
                 break
