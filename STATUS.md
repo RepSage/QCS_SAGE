@@ -30,11 +30,26 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
   products — HOBO 139, Seaguard 123, Doppler 54, 34 with CO2.** 60-day
   validation 0 inconsistent, 0 orphan DataView folders, and the index's
   duplicate-input warning now reports only the three pre-existing pairs.
-- **Three PRE-EXISTING duplicate pairs surfaced by the new check** (not from
-  this round, worth a look): `ESQRODO_2019S1` vs `ESQRODO_2020S1` (same inputs,
-  same 4690 rows, two semesters), `PLES_2025S1` vs `PLES_FORA_2025S1`, and
-  `SGOM_2025S1` vs `SGOM_FORA_2025S1` (site product duplicating its
-  `_PISCINAS` bucket product).
+- **The three PRE-EXISTING duplicate pairs are RESOLVED** (2026-08-10):
+  - `ESQRODO_2020S1` dropped. The same byte-identical raw file was archived
+    under two campaigns; the deployment ended 05/04/2019, so the campaign that
+    recovered it is `RRDM 6a MAI 2019` and the copy filed under `RRDM 9a MAR
+    2020` is a re-file. `ESQRODO_2019S1` survives.
+  - `PLES_FORA_2025S1` and `SGOM_FORA_2025S1` dropped. Owner: "o monitoramento
+    de sítio e o controle fora da piscina são a mesma coisa" — the `_FORA` pool
+    control IS the site logger, so the site product survives. `plan_buckets`
+    now skips a `<SITE>_FORA` bucket whose files also live under that site, by
+    FILE NAME (the MD5 rule could not catch it: the two copies are re-exports,
+    not byte-identical). `_DENTRO` buckets are untouched — inside the pool is a
+    genuinely different measurement.
+- **2 more xlsx repaired** (`HOBO2_-_ESQNORTE_(B2)_-_19092022_UMIDADE...` and
+  `HOBO2_PAB3_A3_220324_130924 (ERRO)`), which had been refused for lacking a
+  `.hobo` original: the script now writes a `<stem>.original.xlsx` backup into
+  `bruto\` first, so the repair is never the only copy in existence. Total
+  **67 exports repaired, 13 refused**.
+- **Corpus after all of it: 313 products** — HOBO 136, Seaguard 123, Doppler
+  54, 34 with CO2. 60-day validation **0 inconsistent**, and the index's
+  duplicate-input warning is now **silent**.
 - `build_index.py` now **warns when one raw export feeds two products**, which
   is exactly this failure; it also flags some pre-existing DENTRO/FORA bucket
   overlaps worth a look (ESQRODO 2020S1, PLES/PLES_FORA 2025S1, SGOM/SGOM_FORA
@@ -55,11 +70,26 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
   carry ~50% duplicated timestamps**. Rewriting workbooks in place is a
   different risk (whole-file rewrite) and was left for an explicit decision.
   The algorithm carries over unchanged.
-- **NEW defect class found: loggers whose clock was never set.** 9 CSV exports
-  reconstruct correctly yet still put the light peak at 19–23 h, with dates
-  years off — e.g. `HOBO1_PNorte_090521_210821.csv` (May–Aug **2021**) stamped
-  31/12/2017 → 16/04/2018: right duration, wrong epoch. Refused by the repair
-  and **not fixed** — it needs the deployment's own dates, not an inference.
+- **NEW defect class: loggers whose clock was never set — 11 files, OPEN.**
+  Listed with full paths and evidence in
+  `scratchpad/relogios_errados.csv` (regenerate with `unset_clocks.py`). They
+  are NOT one problem:
+  - **6 files** have the data duration matching the archived deployment dates
+    almost exactly (353 vs 353, 102 vs 103, 104 vs 104) with a clean constant
+    offset (700, 1223, 1225 days) — a factory-epoch clock:
+    `Hobo1_RRDM_RecEsqSul2_050320_210221`, `Hobo_RRDM_RecEsqSul2(B5)_...`,
+    `HOBO1/2_PAB3_110521_220821`, `HOBO1/2_PNorte_090521_210821`.
+  - **2 files** (`HOBO_PAB3_160320_110521`, `HOBO_Parede_PAB3_...`) have the
+    same ~699-day offset but durations that do NOT match the name (364/344 vs
+    421) — something else is also wrong.
+  - **2 files** carry no dates in the name at all.
+  - **1 file** (`HOBO1_ESQRODO_B1_050424_160325.xlsx`) has CORRECT dates
+    (−2 days) and only the time of day off — a different defect entirely.
+  A repair path exists and is defensible, but was not taken without a decision:
+  take the DAY offset from the archived dates, the HOUR from the light phase
+  (orthogonal, so not circular), and validate against the TEMPERATURE of
+  contemporaneous loggers at other sites — independent of the light, so the
+  check is not guaranteed to pass by construction.
 - **The clock guard was too broad**: `_fail_on_wrong_clock` now skips the
   `_EXPERIMENTOS` bucket. Macroalgae incubations run in tanks, where "light
   must peak at noon" is simply false; it was failing two RH products and

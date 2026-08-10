@@ -25,7 +25,11 @@ import pandas as pd
 ROOT = r'\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE'
 INDEX = os.path.join(ROOT, 'qualified_index.csv')
 
-# stale -> the product that supersedes it
+# Two kinds of removal, with different evidence behind them.
+#
+# SUPERSEDED: an earlier run's product left behind when replicate GROUPING
+# changed and the name changed with it. The replacement must be NEWER - that is
+# what proves it replaced this one.
 SUPERSEDED = {
     'TIM2_2019S2_HOBO_1_QLF': 'TIM2_2019S2_HOBO_QLF',
     'TIM2_2019S2_HOBO_2_QLF': 'TIM2_2019S2_HOBO_QLF',
@@ -34,6 +38,21 @@ SUPERSEDED = {
     'PNOR_2026S1_HOBO_1_QLF': 'PNOR_2026S1_HOBO_QLF',
     'PNOR_2026S1_HOBO_2_QLF': 'PNOR_2026S1_HOBO_QLF',
     'PAB3_2022S2_HOBO_3_QLF': 'PAB3_2022S2_HOBO_2_QLF',
+}
+
+# REDUNDANT: two CURRENT products describing the same deployment under two
+# labels, so the age test does not apply and the choice of survivor is an
+# explicit decision, recorded here with its reason.
+REDUNDANT = {
+    # the same raw file archived under two campaigns; the deployment ended
+    # 05/04/2019, so the campaign that recovered it is RRDM 6a MAI 2019 and the
+    # copy filed under RRDM 9a MAR 2020 (11 months later) is a re-file
+    'ESQRODO_2020S1_HOBO_QLF': 'ESQRODO_2019S1_HOBO_QLF',
+    # "o monitoramento de sitio e o controle fora da piscina sao a mesma coisa"
+    # (archive owner, 2026-08-10): the _FORA pool control IS the site logger,
+    # so the site product is the one that survives
+    'PLES_FORA_2025S1_HOBO_QLF': 'PLES_2025S1_HOBO_QLF',
+    'SGOM_FORA_2025S1_HOBO_QLF': 'SGOM_2025S1_HOBO_QLF',
 }
 
 
@@ -46,7 +65,9 @@ def inputs_of(idx, name):
 
 def main(dry):
     idx = pd.read_csv(INDEX, encoding='utf-8-sig')
-    for stale, keeper in sorted(SUPERSEDED.items()):
+    plan = ([(s, k, True) for s, k in SUPERSEDED.items()]
+            + [(s, k, False) for s, k in REDUNDANT.items()])
+    for stale, keeper, need_newer in sorted(plan):
         row = idx[idx['product'] == stale]
         krow = idx[idx['product'] == keeper]
         if not len(row):
@@ -60,7 +81,7 @@ def main(dry):
         if not (os.path.exists(csv) and os.path.exists(kcsv)):
             print('%-26s SKIP - a file is missing on disk' % stale)
             continue
-        if os.path.getmtime(kcsv) <= os.path.getmtime(csv):
+        if need_newer and os.path.getmtime(kcsv) <= os.path.getmtime(csv):
             print('%-26s SKIP - replacement is not newer' % stale)
             continue
         si, ki = inputs_of(idx, stale), inputs_of(idx, keeper)

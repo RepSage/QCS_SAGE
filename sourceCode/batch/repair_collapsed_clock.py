@@ -369,14 +369,26 @@ def main(dry_run=False):
             skipped.append((name, 'no duplicated timestamps - nothing collapsed'))
             wb.close()
             continue
-        # the inference-free original must survive the whole-workbook rewrite
+        # The original must survive the whole-workbook rewrite. Normally the
+        # logger's own .hobo binary IS that original; when it is missing, a
+        # byte copy of the workbook is written to bruto\ first, so the repair
+        # is never the only version of the file in existence.
         stem = os.path.splitext(name)[0]
-        hobo = os.path.join(os.path.dirname(os.path.dirname(path)), 'bruto', stem + '.hobo')
-        if not os.path.isfile(hobo):
-            refused.append((name, 'no .hobo original beside it - not rewriting the '
-                                  'workbook in place'))
-            wb.close()
-            continue
+        bruto = os.path.join(os.path.dirname(os.path.dirname(path)), 'bruto')
+        if not os.path.isfile(os.path.join(bruto, stem + '.hobo')):
+            backup = os.path.join(bruto, stem + '.original.xlsx')
+            if not os.path.isfile(backup):
+                if dry_run:
+                    print('   (would back up %s -> bruto\\%s)'
+                          % (name, os.path.basename(backup)))
+                else:
+                    os.makedirs(bruto, exist_ok=True)
+                    shutil.copy2(path, backup)
+            if not dry_run and not os.path.isfile(backup):
+                refused.append((name, 'backup could not be written - not rewriting '
+                                      'the workbook in place'))
+                wb.close()
+                continue
 
         fingerprint = _sheet_fingerprint(ws, [c for c, _d, _s in stamps])
         tmp = os.path.join(scratch, name)

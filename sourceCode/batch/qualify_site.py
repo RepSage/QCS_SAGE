@@ -610,6 +610,29 @@ def plan_buckets(sem):
         keep.append(it)
     items = keep
 
+    # A '<SITE>_FORA' pool bucket IS the site's own monitoring logger (owner,
+    # 2026-08-10: "o monitoramento de sitio e o controle fora da piscina sao a
+    # mesma coisa"), so the same deployment was being qualified twice - once
+    # under the site, once under the bucket. The MD5 rule above cannot catch
+    # it: the two copies are re-exports of one logger, not byte-identical.
+    # Match by FILE NAME across the two trees, and let the site product win.
+    keep = []
+    for it in items:
+        base = re.sub(r'_FORA$', '', it['site'])
+        sdir = os.path.join(H_RAW, base)
+        if (it['bucket'] == '_PISCINAS' and it['site'].endswith('_FORA')
+                and os.path.isdir(sdir)):
+            names = {os.path.basename(f) for f in it['files']}
+            in_site = {os.path.basename(p) for p in
+                       glob.glob(os.path.join(sdir, '**', 'planilha', '*.*'), recursive=True)}
+            if names and names.issubset(in_site):
+                log('    (skipped _PISCINAS/%s %s: the same logger is qualified under '
+                    'site %s - the FORA control IS the site monitoring)'
+                    % (it['site'], it['campaign'], base))
+                continue
+        keep.append(it)
+    items = keep
+
     # name + number within (bucket, site)
     from collections import defaultdict
     g = defaultdict(list)
