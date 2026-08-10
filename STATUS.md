@@ -22,12 +22,14 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
   separates a hand-offset pair from different deployments (BRITAS vs incubation
   differ by 150×, not 5%). Measured over the whole archive before applying:
   exactly **3 folders regroup, all correct merges, no spurious ones**.
-- **AWAITING A DECISION — 7 stale products to delete.** Each is fully
-  superseded by a fresher product built from the same raw inputs:
-  `TIM2_2019S2_HOBO_1/_2` → `TIM2_2019S2_HOBO_QLF`;
-  `PNOR_2024S1_HOBO_1/_2` → `PNOR_2024S1_HOBO_QLF`;
-  `PNOR_2026S1_HOBO_1/_2` → `PNOR_2026S1_HOBO_QLF`;
-  `PAB3_2022S2_HOBO_3` → `PAB3_2022S2_HOBO_2`.
+- **7 stale products DELETED** (owner authorised, 2026-08-10), each in full —
+  CSV, DataView folder, reports files and provenance block: `TIM2_2019S2_HOBO_1/_2`,
+  `PNOR_2024S1_HOBO_1/_2`, `PNOR_2026S1_HOBO_1/_2`, `PAB3_2022S2_HOBO_3`. Every
+  one was re-verified against the live index first (replacement exists, is
+  newer, covers the same raw inputs); none was skipped. **Final corpus: 316
+  products — HOBO 139, Seaguard 123, Doppler 54, 34 with CO2.** 60-day
+  validation 0 inconsistent, 0 orphan DataView folders, and the index's
+  duplicate-input warning now reports only the three pre-existing pairs.
 - **Three PRE-EXISTING duplicate pairs surfaced by the new check** (not from
   this round, worth a look): `ESQRODO_2019S1` vs `ESQRODO_2020S1` (same inputs,
   same 4690 rows, two semesters), `PLES_2025S1` vs `PLES_FORA_2025S1`, and
