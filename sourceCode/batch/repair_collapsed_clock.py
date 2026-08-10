@@ -172,6 +172,39 @@ def _clock_blanked(text):
                       % (m.group(1), m.group(2), m.group(3), m.group(4)), text)
 
 
+# --------------------------------------------------------------- xlsx exports
+# The same defect reaches .xlsx exports, where the collapsed clock sits as CELL
+# TEXT (single sheet, no merged cells, one datetime column). openpyxl rewrites
+# the whole workbook on save, so the repair is only applied when the logger's
+# own .hobo binary exists beside it - the inference-free original stays
+# recoverable, exactly as on the CSV side.
+_STAMP_CELL = re.compile(r'^\s*(\d\d)/(\d\d)/(\d\d)(\s+)(\d{1,2})h(\d{1,2})min(\d{1,2})s\s*$')
+
+
+def parse_stamps_xlsx(ws):
+    """[(cell, date, seconds-within-half-day)] in row order, or [] when this
+    sheet does not carry the collapsed clock."""
+    out = []
+    for row in ws.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str):
+                m = _STAMP_CELL.match(cell.value)
+                if m:
+                    out.append((cell, (m.group(3), m.group(1), m.group(2)),
+                                (int(m.group(5)) % 12) * 3600
+                                + int(m.group(6)) * 60 + int(m.group(7))))
+                    break                  # one datetime column per row
+    return out
+
+
+def _sheet_fingerprint(ws, clock_cells):
+    """Every cell value except the clock ones - so two versions of a workbook
+    compare equal iff nothing BUT the clock changed."""
+    skip = {c.coordinate for c in clock_cells}
+    return tuple((c.coordinate, c.value) for row in ws.iter_rows() for c in row
+                 if c.coordinate not in skip)
+
+
 def _read(path):
     df, _ = dh.read_hobo({'raw_data_path': os.path.dirname(path),
                           'file_name': os.path.basename(path),
@@ -313,6 +346,117 @@ def main(dry_run=False):
                      100 * rec['step_match'], 'PM start' if seed_pm else 'AM start',
                      phase['peak_hour'], 100 * phase['daylight_frac']))
         finally:
+            if os.path.isfile(tmp):
+                os.remove(tmp)
+
+    # ---------------------------- the same defect in .xlsx exports -----------
+    import openpyxl
+    for path in sorted(glob.glob(os.path.join(H_RAW, '**', 'planilha', '*.xlsx'),
+                                 recursive=True)):
+        name = os.path.basename(path)
+        if name in EXCLUDED:
+            continue
+        wb = openpyxl.load_workbook(path)
+        ws = wb[wb.sheetnames[0]]
+        stamps = parse_stamps_xlsx(ws)
+        if len(stamps) < 50:
+            wb.close()
+            continue
+        before = _read(path)
+        n_before = len(before)
+        dup_before = int(before['Datetime'].duplicated().sum())
+        if dup_before == 0:
+            skipped.append((name, 'no duplicated timestamps - nothing collapsed'))
+            wb.close()
+            continue
+        # the inference-free original must survive the whole-workbook rewrite
+        stem = os.path.splitext(name)[0]
+        hobo = os.path.join(os.path.dirname(os.path.dirname(path)), 'bruto', stem + '.hobo')
+        if not os.path.isfile(hobo):
+            refused.append((name, 'no .hobo original beside it - not rewriting the '
+                                  'workbook in place'))
+            wb.close()
+            continue
+
+        fingerprint = _sheet_fingerprint(ws, [c for c, _d, _s in stamps])
+        tmp = os.path.join(scratch, name)
+        try:
+            options = {}
+            for seed_pm in (False, True):
+                r = reconstruct(stamps, seed_pm=seed_pm)
+                if r is None:
+                    continue
+                for (cell, _d, _s), t in zip(stamps, r['times'], strict=True):
+                    m = _STAMP_CELL.match(cell.value)
+                    sod = t % 86400
+                    cell.value = ('%s/%s/%s%s%dh%dmin%ds'
+                                  % (m.group(1), m.group(2), m.group(3), m.group(4),
+                                     sod // 3600, (sod % 3600) // 60, sod % 60))
+                wb.save(tmp)
+                df = _read(tmp)
+                options[seed_pm] = (r, QC.light_clock_phase(
+                    pd.to_datetime(df['Datetime']), df['Luminosity (lux)']), df)
+            if not options:
+                refused.append((name, 'could not be made monotonic/regular'))
+                continue
+            if not all(o[1]['evaluable'] for o in options.values()):
+                refused.append((name, 'too little light to tell morning from '
+                                      'afternoon - needs a HOBOware re-export'))
+                continue
+            seed_pm = min(options, key=lambda k: options[k][1]['offset_h'])
+            rec, phase, after = options[seed_pm]
+            if phase['offset_h'] > MAX_NOON_OFFSET_H:
+                refused.append((name, 'no half puts the light near noon (%s) - not a '
+                                      'plain collapsed clock'
+                                % ' / '.join('%.1f h' % o[1]['peak_hour']
+                                             for o in options.values())))
+                continue
+            if rec['step_match'] < MIN_STEP_MATCH:
+                refused.append((name, 'only %.0f%% of steps land on the %d s interval'
+                                % (100 * rec['step_match'], rec['interval'])))
+                continue
+
+            # rebuild the winning workbook (the loop above left the PM variant in wb)
+            for (cell, _d, _s), t in zip(stamps, rec['times'], strict=True):
+                m = _STAMP_CELL.match(cell.value)
+                sod = t % 86400
+                cell.value = ('%s/%s/%s%s%dh%dmin%ds'
+                              % (m.group(1), m.group(2), m.group(3), m.group(4),
+                                 sod // 3600, (sod % 3600) // 60, sod % 60))
+            wb.save(tmp)
+
+            problems = []
+            check = openpyxl.load_workbook(tmp)
+            cws = check[check.sheetnames[0]]
+            cstamps = parse_stamps_xlsx(cws)
+            seq, seen = [], {}
+            for cell, d, _s in cstamps:
+                if d not in seen:
+                    seen[d] = len(seen)
+                mm = _STAMP_CELL.match(cell.value)
+                seq.append(seen[d] * 86400 + int(mm.group(5)) * 3600
+                           + int(mm.group(6)) * 60 + int(mm.group(7)))
+            if any(b <= a for a, b in zip(seq, seq[1:], strict=False)):
+                problems.append('the written workbook is not in increasing time order')
+            if _sheet_fingerprint(cws, [c for c, _d, _s in cstamps]) != fingerprint:
+                problems.append('a cell other than the clock changed')
+            check.close()
+            t = pd.to_datetime(after['Datetime'])
+            if int(t.duplicated().sum()):
+                problems.append('%d duplicated timestamps remain' % int(t.duplicated().sum()))
+            if problems:
+                refused.append((name, '; '.join(problems)))
+                continue
+
+            if not dry_run:
+                shutil.copy2(tmp, path)
+            repaired.append((path, n_before, dup_before, rec, phase, seed_pm))
+            print('%-46s %5d rows | %4d dups -> 0 | step %5d s (%3.0f%%) | %s | peak %4.1f h, %3.0f%% daylight  [xlsx]'
+                  % (name[:46], n_before, dup_before, rec['interval'],
+                     100 * rec['step_match'], 'PM start' if seed_pm else 'AM start',
+                     phase['peak_hour'], 100 * phase['daylight_frac']))
+        finally:
+            wb.close()
             if os.path.isfile(tmp):
                 os.remove(tmp)
 

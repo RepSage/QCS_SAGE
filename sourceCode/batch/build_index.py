@@ -82,6 +82,26 @@ def main(out_csv):
     print('index: %d product(s) -> %s' % (len(df), out_csv))
     print(df.groupby(['instrument']).size().to_string())
     print('with CO2 merged: %d' % int((df['co2_points'] > 0).sum()))
+
+    # STALE PRODUCTS: a raw export must feed exactly one product. When it feeds
+    # two, an earlier run's product was left behind under a name the current
+    # run no longer produces - which happens whenever replicate GROUPING
+    # changes (repairing the collapsed clock regrouped several deployments,
+    # both splitting and merging them). The old file stays indexed and carries
+    # the un-repaired data, so the corpus would double-count the deployment.
+    owners = {}
+    for _i, r in df.iterrows():
+        for src in str(r.get('inputs') or '').split('|'):
+            src = src.strip()
+            if src and src != '-':
+                owners.setdefault(src, []).append(r['product'])
+    shared = {s: p for s, p in owners.items() if len(set(p)) > 1}
+    if shared:
+        stale = sorted({p for ps in shared.values() for p in ps})
+        print('\nWARNING: %d raw export(s) feed more than one product - likely a stale\n'
+              'product from an earlier run (see STATUS.md). Products involved:' % len(shared))
+        for p in stale:
+            print('   %s' % p)
     return df
 
 

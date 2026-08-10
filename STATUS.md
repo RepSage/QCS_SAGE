@@ -2,7 +2,30 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
-## 2026-08-10 — v11.0: collapsed clock repaired on the CSV side; xlsx side OPEN
+## 2026-08-10 — v11.0 (cont.): xlsx side repaired too; 4 stale products to delete
+
+- **24 `.xlsx` exports repaired** as well (the collapsed clock sits as cell
+  text). Light peaks at 10.8–12.0 h on all of them. Because saving a workbook
+  rewrites the whole file, the xlsx path refuses unless the logger's `.hobo`
+  binary sits beside it — 2 refused on that ground, 1 more for light phase.
+  Total: **65 exports repaired, 15 refused**, idempotent (2nd pass: 0).
+- Corpus requalified again: index **323 products**, HOBO **146**, 60-day
+  validation **0 inconsistent**. Products still carrying duplicated timestamps:
+  33 → **21** (the rest are the refused files and their products).
+- **AWAITING A DECISION — 4 stale products must be deleted.** The repair
+  changed replicate GROUPING (with correct timestamps `_group_replicates` sees
+  the real deployment structure), so some product NAMES changed and the old
+  files were left behind, indexed, holding un-repaired data:
+  `TIM2_2019S2_HOBO_QLF` (now `_1` + `_2`), `PNOR_2024S1_HOBO_QLF` (now `_1` +
+  `_2`), `PNOR_2026S1_HOBO_1_QLF` + `_2_QLF` (now `PNOR_2026S1_HOBO_QLF`).
+  Each is fully superseded — verified input by input against provenance.
+  Deleting them takes the index to 319 / HOBO 142.
+- `build_index.py` now **warns when one raw export feeds two products**, which
+  is exactly this failure; it also flags some pre-existing DENTRO/FORA bucket
+  overlaps worth a look (ESQRODO 2020S1, PLES/PLES_FORA 2025S1, SGOM/SGOM_FORA
+  2025S1).
+
+## 2026-08-10 — v11.0: collapsed clock repaired on the CSV side
 
 `QCS_VERSION = 'v11.0'`, `changelog/v11.0.md`. **Unreleased** — committed on
 `master`, not tagged. 44/44 self-tests, ruff clean.
