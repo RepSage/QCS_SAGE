@@ -385,7 +385,13 @@ def _fail_on_wrong_clock(name):
     12 h phase error. In the GUI the accusation pops a dialog; in batch the
     log is a no-op and dialogs are only read on failure, so without this check
     the wrong-clock product would land in the corpus with only a provenance
-    line to show for it."""
+    line to show for it.
+
+    NOT applied to the _EXPERIMENTOS bucket: the accusation rests on 'a
+    submerged sensor must peak at local noon', which is true for a moored
+    logger and false for a short macroalgae incubation in a tank, where the
+    lighting is whatever the experiment imposed. Those products keep the
+    `clock :` provenance line and the operator judges it."""
     for fname, c in qm.OUTPUT.get('clock_checks', []):
         if c.get('suspect_shift_h') is not None:
             raise RuntimeError(
@@ -605,7 +611,8 @@ def do_buckets(sem):
             csv, root, err = run_qualification(it['files'], 'HOBO', None, site, name)
             if not csv:
                 log('    FAILED: %s' % err); out.append((name, None, 0, err)); continue
-            _fail_on_wrong_clock(name)
+            if it['bucket'] != '_EXPERIMENTOS':      # see _fail_on_wrong_clock
+                _fail_on_wrong_clock(name)
             dest = os.path.join(H_QLF, sem, it['bucket'], site)
             fc = assemble(csv, root, dest, name)
             n = render(fc, dest, 'HOBO', None, name)

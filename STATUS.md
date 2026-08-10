@@ -2,6 +2,36 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-10 — v11.0: collapsed clock repaired on the CSV side; xlsx side OPEN
+
+`QCS_VERSION = 'v11.0'`, `changelog/v11.0.md`. **Unreleased** — committed on
+`master`, not tagged. 44/44 self-tests, ruff clean.
+
+- **41 raw CSV exports repaired in place** by the new
+  `batch/repair_collapsed_clock.py`; light now peaks at 11.5–12.9 h on all of
+  them. Idempotent (second pass repairs 0). Manifest updated.
+- **Corpus requalified**: index 316 → **319 products** (HOBO 139 → 142); the
+  60-day validation still reports **0 inconsistent**.
+- **STILL OPEN — the same defect in 34 `.xlsx` exports.** The repair scans
+  `.csv` only, and `_sheets` prefers `.xlsx`, so **33 of 142 HOBO products still
+  carry ~50% duplicated timestamps**. Rewriting workbooks in place is a
+  different risk (whole-file rewrite) and was left for an explicit decision.
+  The algorithm carries over unchanged.
+- **NEW defect class found: loggers whose clock was never set.** 9 CSV exports
+  reconstruct correctly yet still put the light peak at 19–23 h, with dates
+  years off — e.g. `HOBO1_PNorte_090521_210821.csv` (May–Aug **2021**) stamped
+  31/12/2017 → 16/04/2018: right duration, wrong epoch. Refused by the repair
+  and **not fixed** — it needs the deployment's own dates, not an inference.
+- **The clock guard was too broad**: `_fail_on_wrong_clock` now skips the
+  `_EXPERIMENTOS` bucket. Macroalgae incubations run in tanks, where "light
+  must peak at noon" is simply false; it was failing two RH products and
+  leaving their stale 06/08 files indexed.
+- **Seasonal residual: closed as "do not pursue".** The regional-witness idea
+  (other sites as an independent light reference, the v9.0 referee pattern) was
+  measured before being built and fails twice: only **11 of 111** series have
+  ≥50% contemporaneous coverage, and on those it is no better than the
+  astronomical curve (better on 5, worse on 6). Fixed-60d stays the standard.
+
 ## 2026-08-10 — v9.1 and v10.0 RELEASED; nothing pending
 
 The light round is closed. `master` is at `f37e39c`, working tree clean,
