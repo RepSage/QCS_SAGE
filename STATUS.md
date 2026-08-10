@@ -85,11 +85,27 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
   - **2 files** carry no dates in the name at all.
   - **1 file** (`HOBO1_ESQRODO_B1_050424_160325.xlsx`) has CORRECT dates
     (−2 days) and only the time of day off — a different defect entirely.
-  A repair path exists and is defensible, but was not taken without a decision:
-  take the DAY offset from the archived dates, the HOUR from the light phase
-  (orthogonal, so not circular), and validate against the TEMPERATURE of
+  **The 6 unambiguous ones are now REPAIRED** by
+  `batch/repair_unset_clock.py`: DAY offset from the archived dates, HOUR from
+  the light phase, and the result checked against the TEMPERATURE of
   contemporaneous loggers at other sites — independent of the light, so the
-  check is not guaranteed to pass by construction.
+  check cannot pass by construction. Results: light lands at 11.5–12.3 h and
+  temperature correlates **+0.88 to +0.99** with the region over 104–355
+  overlapping days. Offsets were clean constants (+702 d −8 h; +1225 d −11 h;
+  +1227 d −11 h). Requalifying recovered **PAB3_2021S2 and PNOR_2021S2**, which
+  had been failing outright with "fewer than 2 valid timestamps".
+  **Corpus: 315 products** — HOBO 138, Seaguard 123, Doppler 54. 60-day
+  validation 0 inconsistent.
+
+### The 5 wrong-clock files that still need FIELD information
+
+| file | what is missing |
+|---|---|
+| `HOBO_PAB3_160320_110521.csv` | the real launch date. Name says 16/03/2020→11/05/2021 (421 d) but the data spans 364 d — the two disagree, so the name cannot fix the epoch |
+| `HOBO_Parede_PAB3_160320_110521.csv` | same, 344 d of data against 421 d claimed |
+| `HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv` | the name carries no parsable date pair, and only 30 days of data survive |
+| `HOBO1_RodoRaso_17022_200521.csv` | the name carries no parsable date pair; 458 days of data |
+| `HOBO1_ESQRODO_B1_050424_160325.xlsx` | dates are CORRECT (−2 d); only the time of day is off, and by ~4.6 h — not a whole-day epoch error, so the launch HOUR is what is needed |
 - **The clock guard was too broad**: `_fail_on_wrong_clock` now skips the
   `_EXPERIMENTOS` bucket. Macroalgae incubations run in tanks, where "light
   must peak at noon" is simply false; it was failing two RH products and
