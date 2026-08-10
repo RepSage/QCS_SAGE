@@ -56,7 +56,11 @@ ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE\HOBO"
 H_RAW = os.path.join(ROOT, 'raw')
 H_QLF = os.path.join(ROOT, 'qualified')
 
-# file -> (site, archived start date). Only the six with matching durations.
+# file -> (site, LAUNCH date). The first six were read off the archived file
+# names, whose durations matched the data; the last three come from the field
+# records the archive owner supplied on 2026-08-10, which is the stronger
+# source - for those three the logger stopped BEFORE retrieval (364 d of data
+# against 421 d in the water, etc.), so only the launch date anchors the epoch.
 TARGETS = {
     'Hobo1_RRDM_RecEsqSul2_050320_210221.csv':   ('ESQSUL2', _dt.date(2020, 3, 5)),
     'Hobo_RRDM_RecEsqSul2(B5)_050320_230221.csv': ('ESQSUL2', _dt.date(2020, 3, 5)),
@@ -64,6 +68,9 @@ TARGETS = {
     'HOBO2_PAB3_110521_220821.csv':              ('PAB3', _dt.date(2021, 5, 11)),
     'HOBO1_PNorte_090521_210821.csv':            ('PNOR', _dt.date(2021, 5, 9)),
     'HOBO2_PNorte_090521_210821.csv':            ('PNOR', _dt.date(2021, 5, 9)),
+    'HOBO_PAB3_160320_110521.csv':               ('PAB3', _dt.date(2020, 3, 16)),
+    'HOBO_Parede_PAB3_160320_110521.csv':        ('PAB3', _dt.date(2020, 3, 16)),
+    'HOBO1_RodoRaso_17022_200521.csv':           ('RODORASO', _dt.date(2020, 2, 17)),
 }
 
 MIN_REF_CORR = 0.50      # corrected temperature must track the region this well

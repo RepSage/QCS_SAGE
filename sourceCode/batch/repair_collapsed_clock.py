@@ -63,6 +63,7 @@ from collections import Counter
 
 warnings.filterwarnings('ignore')
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import numpy as np                                                   # noqa: E402
 import pandas as pd                                                  # noqa: E402
 import QCS_DataHandler as dh                                         # noqa: E402
 import QCS_Tests as QC                                               # noqa: E402
@@ -81,6 +82,28 @@ EXCLUDED = {'HOBO-incubacao_rodolito.csv'}
 
 MIN_STEP_MATCH = 0.95        # share of steps that must sit on the interval
 MAX_NOON_OFFSET_H = 3.0      # repaired light must peak within this of noon
+
+# Fallback when the light cannot choose the absolute half - a shaded or fouled
+# light channel peaks nowhere near noon in EITHER half, but the water still
+# warms in the afternoon. The corpus median hour of the daily temperature
+# maximum is 13.7 h (measured over 47 clean-phase products), so the half whose
+# temperature peaks nearer that wins. Wider tolerance than the light gate: the
+# diurnal temperature signal of reef water is ~1 degC and noisier than light.
+TEMP_PEAK_H = 13.7
+MAX_TEMP_OFFSET_H = 5.0
+
+
+def temp_peak_hour(t, temp):
+    """Circular mean of the hour at which each day's temperature peaks, or NaN
+    when there are too few complete days to mean anything."""
+    s = pd.Series(pd.to_numeric(temp, errors='coerce').values,
+                  index=pd.DatetimeIndex(t)).dropna()
+    hrs = [g.idxmax().hour + g.idxmax().minute / 60.0
+           for _d, g in s.groupby(s.index.date) if len(g) >= 8]
+    if len(hrs) < 20:
+        return float('nan')
+    a = 2 * np.pi * np.asarray(hrs, dtype=float) / 24.0
+    return float((np.arctan2(np.sin(a).sum(), np.cos(a).sum()) * 24 / (2 * np.pi)) % 24)
 
 
 def parse_stamps(text):
@@ -300,12 +323,30 @@ def main(dry_run=False):
                 continue
             seed_pm = min(options, key=lambda k: options[k][2]['offset_h'])
             rec, body, phase, after = options[seed_pm]
+            by = 'light'
             if phase['offset_h'] > MAX_NOON_OFFSET_H:
-                refused.append((name, 'no half puts the light near noon (%s) - not a '
-                                      'plain collapsed clock'
-                                % ' / '.join('%.1f h' % o[2]['peak_hour']
-                                             for o in options.values())))
-                continue
+                # the light channel cannot choose (shaded or fouled): fall back
+                # to the water's own diurnal warming, which no shading moves
+                temps = {k: temp_peak_hour(pd.to_datetime(o[3]['Datetime']),
+                                           o[3]['Temperature (degC)'])
+                         for k, o in options.items()}
+                usable = {k: v for k, v in temps.items() if v == v}      # drop NaN
+                if not usable:
+                    refused.append((name, 'no half puts the light near noon (%s) and there '
+                                          'are too few complete days to use temperature'
+                                    % ' / '.join('%.1f h' % o[2]['peak_hour']
+                                                 for o in options.values())))
+                    continue
+                seed_pm = min(usable, key=lambda k: abs((usable[k] - TEMP_PEAK_H + 12) % 24 - 12))
+                off = abs((usable[seed_pm] - TEMP_PEAK_H + 12) % 24 - 12)
+                if off > MAX_TEMP_OFFSET_H:
+                    refused.append((name, 'neither light (%s) nor temperature (%s) puts this '
+                                          'series on a normal day - not a plain collapsed clock'
+                                    % (' / '.join('%.1f h' % o[2]['peak_hour'] for o in options.values()),
+                                       ' / '.join('%.1f h' % v for v in usable.values()))))
+                    continue
+                rec, body, phase, after = options[seed_pm]
+                by = 'temp %.1f h' % usable[seed_pm]
             if rec['step_match'] < MIN_STEP_MATCH:
                 refused.append((name, 'only %.0f%% of steps land on the %d s interval'
                                 % (100 * rec['step_match'], rec['interval'])))
@@ -343,7 +384,7 @@ def main(dry_run=False):
             repaired.append((path, n_before, dup_before, rec, phase, seed_pm))
             print('%-46s %5d rows | %4d dups -> 0 | step %5d s (%3.0f%%) | %s | peak %4.1f h, %3.0f%% daylight'
                   % (name[:46], n_before, dup_before, rec['interval'],
-                     100 * rec['step_match'], 'PM start' if seed_pm else 'AM start',
+                     100 * rec['step_match'], ('PM' if seed_pm else 'AM') + ' by ' + by,
                      phase['peak_hour'], 100 * phase['daylight_frac']))
         finally:
             if os.path.isfile(tmp):
@@ -417,12 +458,29 @@ def main(dry_run=False):
                 continue
             seed_pm = min(options, key=lambda k: options[k][1]['offset_h'])
             rec, phase, after = options[seed_pm]
+            by = 'light'
             if phase['offset_h'] > MAX_NOON_OFFSET_H:
-                refused.append((name, 'no half puts the light near noon (%s) - not a '
-                                      'plain collapsed clock'
-                                % ' / '.join('%.1f h' % o[1]['peak_hour']
-                                             for o in options.values())))
-                continue
+                # same fallback as the CSV path: a shaded light channel cannot
+                # choose the half, but the water's diurnal warming can
+                temps = {k: temp_peak_hour(pd.to_datetime(o[2]['Datetime']),
+                                           o[2]['Temperature (degC)'])
+                         for k, o in options.items()}
+                usable = {k: v for k, v in temps.items() if v == v}
+                if not usable:
+                    refused.append((name, 'no half puts the light near noon (%s) and too few '
+                                          'complete days to use temperature'
+                                    % ' / '.join('%.1f h' % o[1]['peak_hour']
+                                                 for o in options.values())))
+                    continue
+                seed_pm = min(usable, key=lambda k: abs((usable[k] - TEMP_PEAK_H + 12) % 24 - 12))
+                if abs((usable[seed_pm] - TEMP_PEAK_H + 12) % 24 - 12) > MAX_TEMP_OFFSET_H:
+                    refused.append((name, 'neither light (%s) nor temperature (%s) puts this '
+                                          'series on a normal day'
+                                    % (' / '.join('%.1f h' % o[1]['peak_hour'] for o in options.values()),
+                                       ' / '.join('%.1f h' % v for v in usable.values()))))
+                    continue
+                rec, phase, after = options[seed_pm]
+                by = 'temp %.1f h' % usable[seed_pm]
             if rec['step_match'] < MIN_STEP_MATCH:
                 refused.append((name, 'only %.0f%% of steps land on the %d s interval'
                                 % (100 * rec['step_match'], rec['interval'])))
@@ -465,7 +523,7 @@ def main(dry_run=False):
             repaired.append((path, n_before, dup_before, rec, phase, seed_pm))
             print('%-46s %5d rows | %4d dups -> 0 | step %5d s (%3.0f%%) | %s | peak %4.1f h, %3.0f%% daylight  [xlsx]'
                   % (name[:46], n_before, dup_before, rec['interval'],
-                     100 * rec['step_match'], 'PM start' if seed_pm else 'AM start',
+                     100 * rec['step_match'], ('PM' if seed_pm else 'AM') + ' by ' + by,
                      phase['peak_hour'], 100 * phase['daylight_frac']))
         finally:
             wb.close()

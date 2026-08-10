@@ -97,15 +97,39 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
   **Corpus: 315 products** — HOBO 138, Seaguard 123, Doppler 54. 60-day
   validation 0 inconsistent.
 
-### The 5 wrong-clock files that still need FIELD information
+### The wrong-clock files after the field records (2026-08-10)
 
-| file | what is missing |
-|---|---|
-| `HOBO_PAB3_160320_110521.csv` | the real launch date. Name says 16/03/2020→11/05/2021 (421 d) but the data spans 364 d — the two disagree, so the name cannot fix the epoch |
-| `HOBO_Parede_PAB3_160320_110521.csv` | same, 344 d of data against 421 d claimed |
-| `HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv` | the name carries no parsable date pair, and only 30 days of data survive |
-| `HOBO1_RodoRaso_17022_200521.csv` | the name carries no parsable date pair; 458 days of data |
-| `HOBO1_ESQRODO_B1_050424_160325.xlsx` | dates are CORRECT (−2 d); only the time of day is off, and by ~4.6 h — not a whole-day epoch error, so the launch HOUR is what is needed |
+The owner supplied the field launch/retrieval dates. **Three more were repaired**
+with them (`repair_unset_clock.py`, now 9 files): `HOBO_PAB3_160320_110521` and
+`HOBO_Parede_PAB3_...` (+701 d, launch 16/03/2020) and `HOBO1_RodoRaso_17022_200521`
+(+702 d, launch 17/02/2020). Their data is shorter than the time in the water
+because the loggers stopped before retrieval — only the LAUNCH date anchors the
+epoch, which is why the field record was needed. Temperature against the region:
+r = +0.78 to +0.85 over 345–460 days.
+
+**Independent corroboration on RodoRaso**: the repaired series ends 21/05/2021,
+one day after the retrieval date the owner gave (20/05/2021) — and the end was
+never used in the fit. The file name `..._17022_200521` encodes the same pair;
+the date parser had missed it because the first field has 5 digits, not 6.
+
+**Two remain, and neither is a plain clock error** — measured on their
+reconstructed versions, the light and the temperature disagree about what the
+correction should be, so no single rotation fixes both:
+
+| file | light | temperature | reading |
+|---|---|---|---|
+| `HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv` | 4.4 h | **12.0 h** | temperature is already near the corpus median (13.7 h), so the CLOCK is roughly right and the LIGHT channel is anomalous (shading). It also fails the sampling-regularity gate: only 67% of steps land on the interval |
+| `HOBO1_ESQRODO_B1_050424_160325.xlsx` | 16.6 h | 0.4 h | the two channels disagree by ~8 h; dates are correct (−2 d). Its second half-day candidate is not reconstructible, so the temperature fallback has nothing to compare against |
+
+Neither should be rotated: aligning the light would break the temperature and
+vice versa. Both need a HOBOware re-export from the `.hobo` binary, which is the
+inference-free route. **Note this does not block their use**: the corpus light
+cutoff is the FIXED 60-day window, so light phase drives no QC decision.
+
+A new fallback was added to `repair_collapsed_clock.py` for the general case:
+when the light cannot choose the absolute half (shaded or fouled channel), the
+half whose **temperature** peaks nearer the corpus median 13.7 h wins, within a
+5 h tolerance. It did not rescue these two, but it is the right rule.
 - **The clock guard was too broad**: `_fail_on_wrong_clock` now skips the
   `_EXPERIMENTOS` bucket. Macroalgae incubations run in tanks, where "light
   must peak at noon" is simply false; it was failing two RH products and
