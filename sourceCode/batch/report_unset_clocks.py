@@ -66,22 +66,22 @@ for name in SUSPECT:
     dur_data = (t.max() - t.min()).days
     dur_name = (nd[1] - nd[0]).days if nd else None
     rows.append(dict(
-        arquivo=name, pasta=os.path.relpath(os.path.dirname(path), RAW),
-        dado_de=t.min().strftime('%d/%m/%Y'), dado_ate=t.max().strftime('%d/%m/%Y'),
-        dias_dado=dur_data,
-        nome_de=nd[0].strftime('%d/%m/%Y') if nd else '?',
-        nome_ate=nd[1].strftime('%d/%m/%Y') if nd else '?',
-        dias_nome=dur_name if dur_name is not None else '?',
-        pico_luz=round(ph['peak_hour'], 1) if ph['evaluable'] else None,
-        desloc_dias=(nd[0] - t.min()).days if nd else None))
+        file=name, folder=os.path.relpath(os.path.dirname(path), RAW),
+        data_from=t.min().strftime('%d/%m/%Y'), data_to=t.max().strftime('%d/%m/%Y'),
+        data_days=dur_data,
+        name_from=nd[0].strftime('%d/%m/%Y') if nd else '?',
+        name_to=nd[1].strftime('%d/%m/%Y') if nd else '?',
+        name_days=dur_name if dur_name is not None else '?',
+        light_peak_h=round(ph['peak_hour'], 1) if ph['evaluable'] else None,
+        offset_days=(nd[0] - t.min()).days if nd else None))
 
 r = pd.DataFrame(rows)
 pd.set_option('display.width', 200)
-print(r[['arquivo', 'dado_de', 'dado_ate', 'dias_dado', 'nome_de', 'nome_ate',
-         'dias_nome', 'pico_luz', 'desloc_dias']].to_string(index=False))
-print('\ncaminhos completos:')
+print(r[['file', 'data_from', 'data_to', 'data_days', 'name_from', 'name_to',
+         'name_days', 'light_peak_h', 'offset_days']].to_string(index=False))
+print('\nfull paths:')
 for _i, x in r.iterrows():
-    print('   %s\\%s' % (x['pasta'], x['arquivo']))
-out = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'relogios_errados.csv')
+    print('   %s\\%s' % (x['folder'], x['file']))
+out = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wrong_clocks.csv')
 r.to_csv(out, index=False, encoding='utf-8-sig')
-print('\ntabela salva em %s' % out)
+print('\ntable written to %s' % out)

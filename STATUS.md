@@ -275,7 +275,8 @@ duplicated timestamps, all traceable to the four exports listed as open in
   The algorithm carries over unchanged.
 - **NEW defect class: loggers whose clock was never set — 11 files, OPEN.**
   Listed with full paths and evidence in
-  `scratchpad/relogios_errados.csv` (regenerate with `unset_clocks.py`). They
+  `sourceCode/batch/wrong_clocks.csv` (regenerate with `batch/report_unset_clocks.py`;
+  the file was `relogios_errados.csv` and the script name here was wrong). They
   are NOT one problem:
   - **6 files** have the data duration matching the archived deployment dates
     almost exactly (353 vs 353, 102 vs 103, 104 vs 104) with a clean constant
