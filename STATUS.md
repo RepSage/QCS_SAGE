@@ -2,6 +2,35 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-11 — the release history is complete on GitHub: 21 tags, 21 releases
+
+Verified on the releases page, not assumed: **21 published releases against 21
+tags, a 1:1 match with no version missing and none duplicated.** The owner
+published them by hand.
+
+- **Three tags were created retroactively** in this round: `v1.0` → `0932f32`
+  (the commit that names itself "QCS_SAGEv1.0"; corroborated by the v1.0 manual
+  PDF, whose cover reads the same), and `v2.0` and `v2.1` → **both at
+  `02d3983`**.
+- **v2.0 and v2.1 share a commit because they have to.** The repository has **no
+  commits at all between 19 Dec 2024 and 11 Jun 2026** — both versions happened
+  inside that hole, when the project was versioned by renaming the working
+  folder instead of committing. The tags record the ORDER, which is known, not
+  the commit, which was never made.
+- **What v2.0 was, inferred from evidence** (`RELEASE_v2.0_para_colar.md` on the
+  Desktop keeps the full reasoning): the release that turned QCS from scripts
+  into a packaged Windows application. `resource_path`/`_MEIPASS` exist nowhere
+  in the Dec 2024 code yet are being bug-fixed by v2.1, and the buggy line names
+  the `QCS_SAGE_v2.0` folder — which also already contains `sourceCode\`. So the
+  **`sourceCode/` reorganization belongs to v2.0, not v2.2**: the v2.2 changelog
+  claims it only because it was written against an 18-month-old baseline.
+- Release texts from v3.2.1 down were **rewritten in English** from the original
+  changelogs (they had been pt-BR).
+
+Nothing is pending on releases. Note for next time: `.pyc` files committed in the
+early history embed the compile-time source path, which is how the folder-name
+versioning was dated — a useful forensic trick when the git record is silent.
+
 ## 2026-08-11 — Seaguard swept for the scale defect: nothing there, and nothing can be
 
 Read-only sweep, no data changed and **no version bump** (nothing under
