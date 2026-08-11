@@ -1,9 +1,9 @@
-# Dependencias do QCS (Quality Control System - SAGE)
-# Instalar com: pip install -r requirements.txt
+# QCS (Quality Control System - SAGE) dependencies
+# Install with: pip install -r requirements.txt
 numpy
 pandas
 matplotlib
 scipy
-openpyxl   # leitura/escrita de arquivos .xlsx
-gsw        # diagrama T-S (QCS_DataView.plot_TS_diagram)
-sv-ttk     # tema visual moderno da interface (QCS_Theme); opcional, com fallback
+openpyxl   # reading/writing .xlsx files
+gsw        # T-S diagram (QCS_DataView.plot_TS_diagram)
+sv-ttk     # modern interface theme (QCS_Theme); optional, has a fallback
