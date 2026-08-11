@@ -1,11 +1,11 @@
-# Configuracao conservadora: apenas erros reais, sem impor estilo ao codigo existente.
-# Rodar com: python -m ruff check .   (a partir da raiz do repositorio)
+# Conservative configuration: real errors only, no style imposed on existing code.
+# Run with: python -m ruff check .   (from the repository root)
 
 [lint]
-# E9 = erros de sintaxe/indentacao; F = pyflakes (nome indefinido, import nao usado,
-# f-string sem placeholder, redefinicao); B = bugbear (bugs provaveis, ex. argumento
-# default mutavel).
+# E9 = syntax/indentation errors; F = pyflakes (undefined name, unused import,
+# f-string without placeholder, redefinition); B = bugbear (probable bugs, e.g.
+# a mutable default argument).
 select = ["E9", "F", "B"]
 
-# F403/F405: o projeto usa `from tkinter import *` por estilo; nao reportar.
+# F403/F405: the project uses `from tkinter import *` by style; do not report.
 ignore = ["F403", "F405"]
