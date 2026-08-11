@@ -2,6 +2,35 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-11 — a self-contained installer exists: QCS_Setup_v11.1.exe
+
+Built for the field notebook (no Python, no Anaconda, no dependencies needed).
+**54 MB installer** wrapping a 195 MB PyInstaller onedir bundle; recipes
+versioned under `packaging/` (spec + iss + README), build artifacts gitignored.
+No source change — the frozen-aware paths from the v2.0 era still work — so
+**`QCS_VERSION` did not move**.
+
+Measured, end to end, on this machine: silent install to `%LOCALAPPDATA%\QCS`
+(no admin), the installed app opens in **~3–4 s warm** (first-ever launch
+~15–20 s while matplotlib builds its font cache, one time), Start Menu
+shortcuts created, silent uninstall removes everything. 48/48 self-tests also
+pass on the pinned build venv itself.
+
+Three traps the recipe now documents, all hit while building:
+- **onedir, never onefile** (onefile unpacks everything per launch = the
+  30–60 s startup);
+- **the venv sits on Anaconda's Python**, whose `_ctypes`/`_ssl`/tkinter load
+  DLLs from `anaconda3\Library\bin` — that folder must be on PATH during the
+  build or the bundle dies at startup with "DLL load failed importing _ctypes";
+- **always `--clean`**: a cached analysis silently reuses the old dependency
+  scan, which made the DLL fix look like it had failed.
+
+Deliverable on the Desktop: `QCS_Setup_v11.1.exe`. Deps pinned to the base
+env's exact versions (pandas 2.2.3, numpy 2.1.3, matplotlib 3.10.0, scipy
+1.15.3, gsw 3.6.21) — the venv's default resolution had picked pandas 3.x,
+which would have frozen an app on library versions the corpus was never
+validated against.
+
 ## 2026-08-11 — v11.1 RELEASED
 
 PR #19 merged (merge commit `61bc6a4`, message customized to the PR title —

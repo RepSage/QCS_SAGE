@@ -37,3 +37,7 @@ _commitmsg.txt
 _prbody.md
 _diag_*.py
 _smoke_test.py
+
+# Packaging build artifacts (rebuilt at will from packaging/*.spec + .iss)
+packaging/dist/
+packaging/Output/
