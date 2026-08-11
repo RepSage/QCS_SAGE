@@ -1,7 +1,3 @@
-# Paths Git must never track. Note that the qualified corpus does NOT live in
-# this repository at all - it is on the Abrolhos share; the patterns below only
-# catch program output written when the app is run from inside the repo.
-
 # Python caches
 __pycache__/
 *.pyc

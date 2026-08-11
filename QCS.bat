@@ -1,9 +1,6 @@
 @echo off
 rem Unified QCS launcher: one window with the Data Qualification and Data
 rem Visualization tabs (see sourceCode\QCS_App.py).
-rem Requires Anaconda in the default location (%USERPROFILE%\anaconda3): the
-rem interpreter is called by absolute path because a bare "python" resolves to
-rem the Microsoft Store stub on this machine and fails immediately.
 rem Launch with pythonw (no console window). Progress/warnings/errors show in the
 rem app's Execution log; a fatal crash writes sourceCode\QCS_crash.log and pops a
 rem message box (see install_crash_handler in QCS_Theme.py).
