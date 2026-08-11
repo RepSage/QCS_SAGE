@@ -177,3 +177,36 @@ warning is silent.
 
 The inference-free route for all four is a **HOBOware re-export from the
 `.hobo` binary** with a 24-hour clock.
+
+---
+
+## 2026-08-11 — re-exports from the .hobo binaries
+
+The archive owner re-exported the two loggers that no inference could settle.
+The result closed one and diagnosed the other.
+
+**`HOBO1_ESQRODO_B1_050424_160325`** — resolved. The clean export carries a
+24-hour clock and a dot decimal: 0 duplicated timestamps (was 2,065) and
+temperature natively 24.74–28.06 degC, so the product no longer depends on
+`_hobo_fix_temp_scale` at all. Staged and requalified. Its light still peaks at
+16.8 h, identical across three independent exports — that is what the logger
+recorded, not an export artifact, and it does not affect QC because the corpus
+light window is the fixed 60 days.
+
+**`HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221`** — three defects, one on top
+of the other, and the re-export was what made the second visible:
+
+1. collapsed 12-hour export — fixed by the re-export;
+2. clock launched +12 h out of phase — INVISIBLE until now, because phase
+   cannot be measured on a collapsed clock. `_fail_on_wrong_clock` blocks its
+   qualification, which is the intended behaviour;
+3. temperature reading −84.77…156.53 degC — confirmed across three independent
+   exports. The sensor failed in the field; nothing recovers it.
+
+Left unqualified on purpose. Repairing defect 2 would only rescue 30 days of
+light on a logger whose temperature is lost, and the antiphase script currently
+handles CSV only.
+
+A note for future exports: the 24-hour clock lives in HOBOware under
+*Preferences → General → Date/Time*, not in the export dialog — which is why
+the first attempt came back still collapsed.

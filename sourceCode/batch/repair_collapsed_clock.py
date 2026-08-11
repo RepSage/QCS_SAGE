@@ -72,8 +72,9 @@ ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE\HOBO"
 H_RAW = os.path.join(ROOT, 'raw')
 MANIFEST = os.path.join(H_RAW, 'manifest.csv')
 
-# '03/17/18 04h0min0s' - date left untouched, only the clock is rewritten
-_STAMP = re.compile(r'(\d\d)/(\d\d)/(\d\d)(\s+)(\d{1,2})h(\d{1,2})min(\d{1,2})s')
+# '03/17/18 04h0min0s' - and, since the 2026-08 re-exports, '04/05/2024
+# 07h6min49s' with a four-digit year. Date left untouched either way.
+_STAMP = re.compile(r'(\d\d)/(\d\d)/(\d{2,4})(\s+)(\d{1,2})h(\d{1,2})min(\d{1,2})s')
 
 # Hand-assembled sheet holding SEVERAL sites stacked in one file (Sitio;Data...),
 # so its dates legitimately jump backwards - the premise does not apply and an
@@ -201,7 +202,7 @@ def _clock_blanked(text):
 # the whole workbook on save, so the repair is only applied when the logger's
 # own .hobo binary exists beside it - the inference-free original stays
 # recoverable, exactly as on the CSV side.
-_STAMP_CELL = re.compile(r'^\s*(\d\d)/(\d\d)/(\d\d)(\s+)(\d{1,2})h(\d{1,2})min(\d{1,2})s\s*$')
+_STAMP_CELL = re.compile(r'^\s*(\d\d)/(\d\d)/(\d{2,4})(\s+)(\d{1,2})h(\d{1,2})min(\d{1,2})s\s*$')
 
 
 def parse_stamps_xlsx(ws):
