@@ -34,10 +34,19 @@ python -m pip install -r sourceCode/requirements.txt
   - `QCS_DataHandler.py` — data reading, conversion and formatting; the `QCS_VERSION` constant.
   - `QCS_DataView.py` — plot and panel generation.
   - `QCS_Tests.py` — quality control tests.
+  - `QCS_Theme.py` — theming, DPI awareness and the crash handler.
   - `QCS_SelfTest.py` — self-tests with synthetic data (`python QCS_SelfTest.py`).
+  - `qcs_headless_harness.py` — drives the real pipeline with no GUI.
+  - `batch/` — reproducible drivers that qualify the whole staged archive, plus
+    `CORPUS_LOG.md` (what was done to the data itself) and a `README.md` with
+    the corpus rules.
+  - `requirements.txt` — dependencies.
   - `qcs_user_settings.json` — user preferences (auto-generated).
 - `changelog/` — change history, one file per version.
 - `Quality Control System (SAGE) - User Manual.html` — user manual.
+- `CLAUDE.md` — durable rules and architecture gotchas.
+- `STATUS.md` — current state, dated; read it before starting work.
+- `ruff.toml` — lint configuration.
 
 ## Version
 
