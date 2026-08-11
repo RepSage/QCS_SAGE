@@ -317,14 +317,15 @@ def main(dry_run=False):
             if not options:
                 refused.append((name, 'could not be made monotonic/regular'))
                 continue
-            if not all(o[2]['evaluable'] for o in options.values()):
-                refused.append((name, 'too little light to tell morning from '
-                                      'afternoon - needs a HOBOware re-export'))
-                continue
-            seed_pm = min(options, key=lambda k: options[k][2]['offset_h'])
+            # a temperature-only Pendant has no light to judge by; so does a
+            # sensor dark from the start. Both go straight to the temperature
+            # fallback rather than being refused for lacking light.
+            lit = all(o[2]['evaluable'] for o in options.values())
+            seed_pm = (min(options, key=lambda k: options[k][2]['offset_h'])
+                       if lit else next(iter(options)))
             rec, body, phase, after = options[seed_pm]
             by = 'light'
-            if phase['offset_h'] > MAX_NOON_OFFSET_H:
+            if (not lit) or phase['offset_h'] > MAX_NOON_OFFSET_H:
                 # the light channel cannot choose (shaded or fouled): fall back
                 # to the water's own diurnal warming, which no shading moves
                 temps = {k: temp_peak_hour(pd.to_datetime(o[3]['Datetime']),
@@ -332,7 +333,7 @@ def main(dry_run=False):
                          for k, o in options.items()}
                 usable = {k: v for k, v in temps.items() if v == v}      # drop NaN
                 if not usable:
-                    refused.append((name, 'no half puts the light near noon (%s) and there '
+                    refused.append((name, 'no half can be chosen: light (%s) and there '
                                           'are too few complete days to use temperature'
                                     % ' / '.join('%.1f h' % o[2]['peak_hour']
                                                  for o in options.values())))

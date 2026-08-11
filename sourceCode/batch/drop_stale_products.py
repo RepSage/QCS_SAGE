@@ -44,6 +44,9 @@ SUPERSEDED = {
 # labels, so the age test does not apply and the choice of survivor is an
 # explicit decision, recorded here with its reason.
 REDUNDANT = {
+    # renamed when the reader learned to mark temperature-only loggers (v11.0)
+    'PAB3_2019S2_HOBO_1_QLF': 'PAB3_2019S2_HOBO_1_TEMP_ONLY_QLF',
+    'PLES_2024S1_HOBO_QLF': 'PLES_2024S1_HOBO_TEMP_ONLY_QLF',
     # the same raw file archived under two campaigns; the deployment ended
     # 05/04/2019, so the campaign that recovered it is RRDM 6a MAI 2019 and the
     # copy filed under RRDM 9a MAR 2020 (11 months later) is a re-file

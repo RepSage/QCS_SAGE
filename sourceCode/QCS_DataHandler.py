@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v10.0'
+QCS_VERSION = 'v11.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -866,6 +866,60 @@ def _hobo_error(file_name, message):
 _HOBO_PT_CLOCK = r'(?i)(\d{1,2})h(\d{1,2})min(\d{1,2})s'
 
 
+# Physically possible water temperature for a moored HOBO. Deliberately wide -
+# this is only used to recognise a LOST DECIMAL SEPARATOR, not to judge data.
+_HOBO_T_MIN, _HOBO_T_MAX = -5.0, 60.0
+
+
+def _hobo_fix_temp_scale(temp, file_name):
+    """Undoes the decimal separator lost by some HOBOware exports.
+
+    Several xlsx exports in this archive write 25.125 degC as the integer
+    25125: the pt-BR comma decimal was dropped when the workbook was written,
+    and the reader used to take the number at face value, so five corpus
+    products carried temperatures in the tens of thousands of degrees.
+
+    The correction is applied ONLY when it is unambiguous: essentially every
+    value must be outside any possible temperature AND one single power of ten
+    must bring essentially all of them back inside. A file that is merely
+    warm, or that needs different factors for different rows, is left alone -
+    a wrong rescale would silently invent plausible data, which is worse than
+    an obviously absurd number.
+
+    Returns (series, message-or-None).
+    """
+    v = temp.dropna()
+    if len(v) < 10:
+        return temp, None
+    inside = ((v >= _HOBO_T_MIN) & (v <= _HOBO_T_MAX)).mean()
+    if inside > 0.02:
+        return temp, None                  # already on a plausible scale
+    # A lost separator leaves INTEGERS behind: 25.125 becomes 25125. A sensor
+    # that genuinely reads -84.77 degC still carries its decimals, and must be
+    # reported as broken rather than divided into looking plausible - without
+    # this guard, -84.77..156.53 would be "recovered" as -0.85..1.57.
+    if (v != v.round()).mean() > 0.02:
+        return temp, (
+            'Warning: temperatures in %s are outside %.0f..%.0f degC (%.0f to %.0f) but '
+            'still carry decimals, so this is not a lost separator - the sensor itself '
+            'is reading out of range. Left untouched.'
+            % (file_name, _HOBO_T_MIN, _HOBO_T_MAX, float(v.min()), float(v.max())))
+    for factor in (10.0, 100.0, 1000.0):
+        if (((v / factor >= _HOBO_T_MIN) & (v / factor <= _HOBO_T_MAX)).mean()) > 0.98:
+            return temp / factor, (
+                'Warning: every temperature in %s was outside %.0f..%.0f degC and '
+                'dividing by %d brings them all back (e.g. %.0f -> %.3f). This export '
+                'lost its decimal separator; the values were rescaled. Check the '
+                'export locale - re-exporting with a dot decimal avoids the guess.'
+                % (file_name, _HOBO_T_MIN, _HOBO_T_MAX, int(factor),
+                   float(v.iloc[0]), float(v.iloc[0]) / factor))
+    return temp, (
+        'Warning: temperatures in %s are outside %.0f..%.0f degC (%.0f to %.0f) and no '
+        'single power of ten brings them back - left untouched, but they are not '
+        'usable as recorded.' % (file_name, _HOBO_T_MIN, _HOBO_T_MAX,
+                                 float(v.min()), float(v.max())))
+
+
 def _hobo_datetimes(series, say):
     """Parses a HOBOware time column.
 
@@ -1041,6 +1095,9 @@ def read_hobo(INPUT, tsSettings):
     if df.empty:
         raise _hobo_error(file_name, 'no rows with valid timestamps after reading.')
     df[temp_col] = pd.to_numeric(df[temp_col], errors='coerce')
+    df[temp_col], scale_msg = _hobo_fix_temp_scale(df[temp_col], file_name)
+    if scale_msg:
+        say(scale_msg)
     if light_col is None:                     # temperature-only logger
         light_col = 'Intensidade, Lux (absent)'
         df[light_col] = np.nan

@@ -2,6 +2,44 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-10 — v11.0 (the real one): reader fixes, unreleased
+
+`QCS_VERSION = 'v11.0'`, `changelog/v11.0.md`, manual updated. **Committed on
+`master`, not tagged, no PR yet.** 45/45 self-tests, ruff clean. This one does
+change `sourceCode/*.py` outside `batch/`, which is what a version bump is for.
+
+- **Lost decimal separator**: some HOBOware xlsx wrote `25.125 degC` as the
+  integer `25125`. Five products carried temperatures in the tens of thousands.
+  `_hobo_fix_temp_scale` recovers them, gated three ways — everything out of
+  −5…60 °C, values must be INTEGERS, and one power of ten must fix all of them.
+  The integer rule is load-bearing: without it a sensor genuinely reading
+  −84.77…156.53 °C gets "recovered" into −0.85…1.57 °C. That false positive was
+  in the first draft and is now self-test #27.
+  - 4 of the 5 rescaled. `PAB3_2024S2_HOBO_2` was correctly REFUSED (÷1000 still
+    gives 68–89 °C) — it comes from the file the team already named `(ERRO)`.
+  - 3 products keep out-of-range temperatures (156.5, 78.8, 49.2 °C) and are
+    left alone: genuinely bad sensors, which QC should flag, not rescale.
+- **Temperature-only loggers**: products are named `..._TEMP_ONLY_QLF`, and the
+  collapsed-clock repair now sends them to the temperature fallback instead of
+  refusing them for lacking light. That recovered `PAB3_30062016_PAREDE.csv`
+  (17,668 rows, 8,833 duplicated timestamps) — the file that first exposed the
+  referee's dedup problem in v9.0.
+
+**Corpus: 315 products** — HOBO 138, Seaguard 123, Doppler 54, 34 with CO2.
+Index duplicate-input warning silent.
+
+### Still open on the data
+
+- `HOBO1_ESQRODO_B1_050424_160325.xlsx` — light 16.6 h vs temperature 0.4 h.
+  Now that the ×1000 scale is fixed the temperature VALUES are right, but the
+  two channels still disagree by ~8 h, so no rotation fixes both. Needs a
+  HOBOware re-export.
+- `HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv` — fails the sampling
+  regularity gate (67% of steps on the interval) and its temperature reads
+  −84…156 °C. Broken logger, not a clock problem.
+- `HOBO-incubacao_rodolito.csv` — hand-made multi-site sheet; owner said to
+  leave it.
+
 ## 2026-08-10 — there is NO v11.0; the app is still v10.0
 
 The whole clock-repair round touched the **data and the batch drivers**, never

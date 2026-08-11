@@ -383,6 +383,11 @@ def plan(site, sem):
         lst.sort(key=lambda x: str(x['start']))
         for i, it in enumerate(lst, start=1):
             suf = '' if len(lst) == 1 else '_%d' % i
+            # a Pendant that records temperature only says so in the product
+            # name: its Luminosity column is empty by nature, not by fouling,
+            # and nothing downstream should read that as missing light data
+            if kind == 'HOBO' and _is_temp_only(it['files']):
+                suf += '_TEMP_ONLY'
             it['name'] = '%s_%s_%s%s%s_QLF' % (site, sem, kind,
                                                ('_' + tipo) if tipo else '', suf)
     return items
@@ -517,6 +522,28 @@ def _span(path):
         return (t.min(), t.max())
     except Exception:
         return None
+
+
+_TEMP_ONLY_CACHE = {}
+
+
+def _is_temp_only(files):
+    """True when EVERY export of a deployment lacks a light channel - a Pendant
+    model that records temperature only. Read from the reader itself rather
+    than guessed from the header, so one rule decides it everywhere."""
+    out = []
+    for f in files if isinstance(files, list) else [files]:
+        if f not in _TEMP_ONLY_CACHE:
+            try:
+                df, _ = dh.read_hobo({'raw_data_path': os.path.dirname(f),
+                                      'file_name': os.path.basename(f),
+                                      'input_type': 'HOBO', 'correct_gmt3h': False}, {})
+                lux = pd.to_numeric(df.get('Luminosity (lux)'), errors='coerce')
+                _TEMP_ONLY_CACHE[f] = lux is None or lux.notna().sum() == 0
+            except Exception:
+                _TEMP_ONLY_CACHE[f] = False
+        out.append(_TEMP_ONLY_CACHE[f])
+    return bool(out) and all(out)
 
 
 _REPL_TOL = pd.Timedelta(days=1)

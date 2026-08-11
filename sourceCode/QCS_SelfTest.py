@@ -907,5 +907,32 @@ assert abs(_cor2['baseline'] - 40000.0) < 1.0, _cor2['baseline']
 assert _raw['threshold_curve'] is None and _raw['params']['latitude'] is None
 ok.append('light seasonal normalization (winter decline not read as fouling / real fouling still caught / None = old rule)')
 
+# --------------------------------------------------- 27. lost decimal separator
+# Some HOBOware xlsx exports wrote 25.125 degC as the integer 25125 (the pt-BR
+# comma decimal dropped when the workbook was written). Five corpus products
+# carried temperatures in the tens of thousands before this was caught.
+_scaled = pd.Series([25125.0, 30862.0, 28853.0, 26097.0] * 5)
+_fixed, _msg = data._hobo_fix_temp_scale(_scaled, 'x.xlsx')
+assert abs(_fixed.iloc[0] - 25.125) < 1e-9, _fixed.iloc[0]
+assert _msg and 'decimal separator' in _msg, _msg
+
+# a normal series must be left EXACTLY alone - a false positive here would
+# silently divide real data by a thousand
+_ok_t = pd.Series([25.125, 30.862, 28.853, 26.097] * 5)
+_same, _m2 = data._hobo_fix_temp_scale(_ok_t, 'x.csv')
+assert _same.equals(_ok_t) and _m2 is None, _m2
+
+# out of range but NOT rescalable (a genuinely broken sensor, -84..156 degC):
+# reported, never "corrected" into looking plausible
+_broken = pd.Series([-84.77, 156.53, 120.0, 99.9] * 5)
+_kept, _m3 = data._hobo_fix_temp_scale(_broken, 'x.csv')
+assert _kept.equals(_broken), 'a broken sensor must not be rescaled'
+assert _m3 and 'not a lost separator' in _m3, _m3
+
+# too few points to judge: leave alone
+_short, _m4 = data._hobo_fix_temp_scale(pd.Series([25125.0, 25200.0]), 'x.csv')
+assert _short.iloc[0] == 25125.0 and _m4 is None
+ok.append('hobo temperature scale (lost decimal separator recovered / sound data untouched / broken sensor not rescaled)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))
