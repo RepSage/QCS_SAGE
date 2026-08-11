@@ -2,12 +2,17 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
-## 2026-08-11 — v11.1 on branch `improvements-v11.1`, PR open, UNRELEASED
+## 2026-08-11 — v11.1 RELEASED
+
+PR #19 merged (merge commit `61bc6a4`, message customized to the PR title —
+not the GitHub default). **Tagged `v11.1` → `61bc6a4`, pushed; branch
+`improvements-v11.1` deleted local and remote; `master` up to date.** 22 tags
+now. The GitHub Release text is ready on the Desktop
+(`RELEASE_v11.1_para_colar.md`) — publishing it is the one step left, manual.
 
 `QCS_VERSION = 'v11.1'`, `changelog/v11.1.md`, manual updated to v11.1.
 **48/48 self-tests, ruff clean.** MINOR — no QC result changes, verified on
-real corpus inputs (see below). Not tagged; tag after the merge, per the
-ritual.
+real corpus inputs (see below).
 
 The four app changes, each born from a measured incident of this week:
 
@@ -40,9 +45,9 @@ MOVES into `CLAUDE\_deleted\<date>\` instead of deleting; `build_index.py` ends
 every corpus round by running `sweep_value_integrity.py` (exit non-zero on a
 pipeline defect); the sweep speaks English now.
 
-**Pending after the merge**: tag v11.1, GitHub Release, delete the branch. The
-corpus does NOT need requalifying (results unchanged); the next natural corpus
-round will add the two derived columns and re-stamp.
+**Pending**: only the GitHub Release (manual, text on the Desktop). The corpus
+does NOT need requalifying (results unchanged); the next natural corpus round
+will add the two derived columns and re-stamp.
 
 ## 2026-08-11 — the whole corpus is on v11.0; one logger discarded
 
