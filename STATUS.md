@@ -2,11 +2,41 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
-## 2026-08-10 — v11.0 (the real one): reader fixes, unreleased
+## 2026-08-11 — Seaguard swept for the scale defect: nothing there, and nothing can be
 
-`QCS_VERSION = 'v11.0'`, `changelog/v11.0.md`, manual updated. **Committed on
-`master`, not tagged, no PR yet.** 45/45 self-tests, ruff clean. This one does
-change `sourceCode/*.py` outside `batch/`, which is what a version bump is for.
+Read-only sweep, no data changed and **no version bump** (nothing under
+`sourceCode/` outside `batch/` was touched). Closes the last item that was open
+from the v11.0 round.
+
+- **The defect cannot occur on the Seaguard side.** Its raw archive is 255 AADI
+  `.bin` sessions and no text data; a lost decimal separator is a text accident.
+  Verified by decoding a real session: 8 of 9 numeric columns carry decimals on
+  100% of values, the one all-integer column being `Record Number`. The only
+  text input, the MiniCO2 `.txt`, carries its own `%07.2f` format line.
+- **Measured anyway, over both families**: new `batch/sweep_value_integrity.py`
+  ran the reader's three gates over all **315 products** — 3 scale suspects,
+  **0 passing all three gates**, all three explained (two alkaline pH profiles;
+  `PAB3_2024S2_HOBO_2`, the known `(ERRO)` file the reader correctly refuses).
+- **The QC is catching what it should**: 3,361 values outside the instrument's
+  physical limit across 6 products, **100% flagged 4**; 137 of 137 out-of-range
+  DOM values marked. Zero unflagged, either family.
+- **Not a defect, but worth knowing**: `RRDM03_C_2019S1` and
+  `RRDM03_D_2019S1_2` have conductivity ≈ 0.017 mS/cm for **90% of the
+  deployment** — no usable salinity or conductivity, temperature fine, rows
+  already flagged 3. Details and the two traps the sweep itself fell into are in
+  `sourceCode/batch/CORPUS_LOG.md`.
+
+45/45 self-tests, ruff clean.
+
+## 2026-08-10 — v11.0 (the real one): reader fixes
+
+`QCS_VERSION = 'v11.0'`, `changelog/v11.0.md`, manual updated. **Tagged `v11.0`
+at `2d0adb3`, which is `master`.** No PR — this round went straight to `master`.
+45/45 self-tests, ruff clean. This one does change `sourceCode/*.py` outside
+`batch/`, which is what a version bump is for.
+
+*(Corrected 2026-08-11: this entry read "not tagged, no PR yet", which was
+already false — `git log -1 v11.0` resolves to `2d0adb3`.)*
 
 - **Lost decimal separator**: some HOBOware xlsx wrote `25.125 degC` as the
   integer `25125`. Five products carried temperatures in the tens of thousands.

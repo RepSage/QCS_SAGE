@@ -210,3 +210,79 @@ handles CSV only.
 A note for future exports: the 24-hour clock lives in HOBOware under
 *Preferences → General → Date/Time*, not in the export dialog — which is why
 the first attempt came back still collapsed.
+
+---
+
+## 2026-08-11 — the Seaguard side swept for the lost decimal separator: it is not there, and it cannot be
+
+Nothing was changed. This entry records a **negative result** so the question
+does not have to be re-opened: `_hobo_fix_temp_scale` was written for the HOBO
+side, and the obvious next question was whether the Seaguard corpus carries the
+same defect. It does not, for a structural reason plus a measured one.
+
+**The structural reason.** The Seaguard raw archive is **255 `.bin` AADI binary
+sessions and no text data at all** — the 4 `.csv` in the tree are manifests and
+the 40 `.txt` are MiniCO2 files. A lost decimal separator is a *text* accident:
+it needs a locale that writes `25.125` as `25125`. In an AADI session the
+measurements are `float32` payloads read by `struct.unpack`, so there is no
+separator to lose. Verified rather than asserted, by decoding a real session
+(`5650-2097-1-2019-05-03T…`): 8 of its 9 numeric columns carry a decimal part
+on **100%** of their values, and the single all-integer column is `Record
+Number`, which is an integer by definition.
+
+The one text input on this side is the MiniCO2 `.txt`, and it is safe by
+construction: it carries its own C format line (`%07.2f,%03.2f,…`) with dot
+decimals and comma field separators. All 39 data files parse; the 40th is a
+field note whose filename *is* the note.
+
+**The measured reason.** `sweep_value_integrity.py` (new, beside this file) ran
+the reader's own three gates over **all 315 products of both families**:
+
+| | |
+|---|---|
+| product × variable combinations flagged as scale suspects | **3** |
+| of those, passing all three gates | **0** |
+
+The three suspects are all genuine data, not scale errors: two RRDM03 2019S2 pH
+profiles reading 8.35–10.62 (alkaline, no power of ten fixes them, no integers),
+and `PAB3_2024S2_HOBO_2` at 68,934–89,384 °C — the file the team had already
+named `(ERRO)`, which the reader **correctly refuses** to rescale because ÷1000
+still leaves 68–89 °C. The sweep reproduces that refusal from the other
+direction, which is the useful part.
+
+**And the QC is doing its job.** 3,361 values across 6 products fall outside the
+instrument's physical limit — **100% of them carry flag 4**. Zero values escaped
+unflagged, in either family.
+
+### Two traps in the sweep itself, worth remembering
+
+- **Guessing column names silently skips variables.** The first pass used
+  `Pressure (kPa)`, `Turbidity (NTU)`, `Dissolved Oxygen (uM)` and
+  `Chlorophyll (ug/l)`; the corpus writes `(dbar)`, `(FTU)`, `O2 level (uM)` and
+  `(ug/L)`. Four of ten variables were not swept and the run reported success.
+  The script now takes its mapping from `QCS_DataHandler.PARAM_FLAG_COLUMN`.
+- **Not every variable has a sensor-range test, and no environmental test flags
+  4.** Dissolved organic matter has *only* an environmental range test and every
+  environmental test assigns SUSPECT (3) — see `test_sequence` in `QCS_Main.py`.
+  Checking DOM for flag 4 against an invented sensor limit produced three
+  "pipeline defects" that did not exist; with the correct expectation, **137 of
+  137** out-of-envelope DOM values are marked.
+
+### What the sweep did find, and it is not a defect
+
+`Density (kg/m3)` falls below 1000 in many products — fresh-water density, which
+means the **conductivity reads zero**. On `RRDM03_C_2019S1` and
+`RRDM03_D_2019S1_2` that is **90% of the deployment** (conductivity median
+0.017 mS/cm against a corpus median of 56), so those two moorings have no usable
+salinity or conductivity — their temperature is fine. The pipeline marks the
+rows `Flag_S`/`Flag_C` = 3. Elsewhere the same signature is brief and is simply
+the instrument out of the water at deployment and recovery.
+
+Density, Soundspeed, TSS, Depth and PAR are derived and carry **no flag column
+of their own**: a reader taking Density at face value gets 996 kg/m³ with no
+warning attached. The verdict lives in `Flag_S`/`Flag_C`, which is where it
+should be read.
+
+On the Doppler side (54 products), `Speed stdev (cm/s)` uses **−1 as a no-data
+sentinel** — 35,471 occurrences, **all 35,471 flagged 4**, as are 1,171 of the
+1,178 values above the instrument's speed range (the other 7 are flagged 3).
