@@ -2,6 +2,72 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-11 — the whole corpus is on v11.0; one logger discarded
+
+**Corpus: 314 products** — HOBO 137, Seaguard 123, Doppler 54, 34 with CO2.
+**All 314 carry the v11.0 stamp** (was: 138 at v11.0, 169 at v8.1, 4 at v9.0,
+4 at v9.1 — the Seaguard side had never been run through v9.0–v11.0).
+
+### The version question, and what it actually was
+
+The repository was already correct. It holds exactly **two** version STAMPS —
+`QCS_VERSION` and the manual's header — and both already read v11.0. Every other
+mention is a HISTORICAL reference ("added in v8.0", "the pre-v9.0 behaviour",
+"Per-variable Flag_ columns (v4.0)"), which is a fact about the past: rewriting
+those to v11.0 would make them false. 38 of the manual's 39 mentions are of this
+kind. **What was stale was the DATA**, and that is now fixed.
+
+### Requalifying the Seaguard side changed nothing but the stamp — verified
+
+The diff v8.1→v11.0 names `doppler_qc` and `vertical_gradient_test`, which WOULD
+affect this side; they are only the enclosing functions of code added below
+them, and all 12 removed lines sit in `light_fouling_baseline` (HOBO). But
+`qualify_site.py` gained ~400 lines that touch naming and grouping for every
+instrument, so it was measured before the full run: RH3/2019S2 (Seaguard +
+Doppler + CO2, exercising the GMT-3 bypass) was backed up, requalified and
+diffed — **same 3 products, data identical, only the stamp changed**.
+
+After the full run, against the previous index: **0 products appeared, 1
+disappeared** (the discard below), and only one row count moved — a stale index
+entry, not a data change (see below). 8 products FAILED to build; all 8 are
+pre-existing raw-data failures that **never existed in the index** (verified
+name by name), so nothing was lost.
+
+Row accounting: 695,173 → 694,803 = **−370 = −366** (the discarded product)
+**−4** (`ESQRODO_2025S1_HOBO_2_QLF`, whose file was regenerated at 11:28 during
+the earlier `.hobo` re-export work while the index had not been rebuilt since;
+the Seaguard round started at 14:14 and never touched it).
+
+### `HOBO#02_Ref.EsquecidoSul` DISCARDED — and it was not blocked as claimed
+
+Owner decision: "essencialmente descartável agora que vimos que tem tanto erro".
+Acting on it exposed a real defect in this file's own notes: **the product
+existed**. `ESQSUL_2021S1_HOBO_QLF` had been regenerated the same morning,
+stamped v11.0, carrying **337 of its 366 rows flagged GOOD** from a sensor that
+reads to 156 °C. `_fail_on_wrong_clock` never fired — it only triggers on a
+clean ±12 h accusation, and this logger's light peaks at 4.4 h, which raises
+none. The earlier claim that it was "left unqualified on purpose, blocked by the
+guard" was simply wrong.
+
+Removed cause-first, because deleting alone is how `ESQRODO_2020S1` came back:
+both exports (`.csv` and `.xlsx`) are now in `EXCLUDED_REPLICATES` with the
+evidence, and `drop_stale_products.py` gained a **`DISCARDED`** mode — a removal
+with no replacement, gated on the raw already being excluded, so it refuses to
+delete a product whose cause is still live. Verified after the fact:
+requalifying ESQSUL 2021S1 reports *"nothing to qualify", 0 products*. No
+coverage lost — 05/02–07/03/2020 is already covered by `ESQSUL_2020S1_HOBO_2_QLF`
+from a sound logger. The `.hobo` binary in `bruto\` is untouched.
+
+### `HOBO1_ESQRODO_B1` is CLOSED, not open
+
+*(Corrects the "Still open on the data" list below, which was stale.)* The
+re-export resolved it: `ESQRODO_2025S1_HOBO_2_QLF`, 4,138 rows, 24.74–27.86 °C,
+3,485 rows good. Its light peaks at 16.8 h across three independent exports —
+that is what the logger recorded, and it **drives no QC decision**, because the
+corpus light window is the fixed 60 days. Nothing to fix.
+
+45/45 self-tests, ruff clean.
+
 ## 2026-08-11 — the release history is complete on GitHub: 21 tags, 21 releases
 
 Verified on the releases page, not assumed: **21 published releases against 21
@@ -89,15 +155,15 @@ Index duplicate-input warning silent.
 
 ### Still open on the data
 
-- `HOBO1_ESQRODO_B1_050424_160325.xlsx` — light 16.6 h vs temperature 0.4 h.
-  Now that the ×1000 scale is fixed the temperature VALUES are right, but the
-  two channels still disagree by ~8 h, so no rotation fixes both. Needs a
-  HOBOware re-export.
-- `HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv` — fails the sampling
-  regularity gate (67% of steps on the interval) and its temperature reads
-  −84…156 °C. Broken logger, not a clock problem.
+*(Superseded 2026-08-11 — see the top entry. The first two are CLOSED: ESQRODO
+B1 was resolved by the re-export, and Ref.EsquecidoSul was discarded by owner
+decision. Only the third remains.)*
+
+- ~~`HOBO1_ESQRODO_B1_050424_160325.xlsx`~~ — **closed**: re-export resolved it.
+- ~~`HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv`~~ — **discarded** by
+  owner decision, raw excluded so it cannot be requalified.
 - `HOBO-incubacao_rodolito.csv` — hand-made multi-site sheet; owner said to
-  leave it.
+  leave it. **The one still open.**
 
 ## 2026-08-10 — there is NO v11.0; the app is still v10.0
 

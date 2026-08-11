@@ -394,11 +394,17 @@ def plan(site, sem):
 
 
 # ---------------- the two HOBO-only buckets (_PISCINAS / _EXPERIMENTOS) -------
-# Replicates excluded as FAULTY after diagnosis. A redundant pair only helps
-# when both loggers work: the combine averages them, so a drifting sensor
-# contaminates the mean (the QC flags the disagreement SUSPECT, but a suspect
-# flag does not fix the value, and dropping the suspect rows would throw away
-# the sound replicate too). Each entry must carry the evidence.
+# Exports excluded from qualification, dropped in _sheets so every path that
+# lists sheets honours it. Each entry must carry the evidence. Two kinds:
+#
+#  - FAULTY REPLICATES (most of the list). A redundant pair only helps when both
+#    loggers work: the combine averages them, so a drifting sensor contaminates
+#    the mean (the QC flags the disagreement SUSPECT, but a suspect flag does
+#    not fix the value, and dropping the suspect rows would throw away the sound
+#    replicate too).
+#  - REJECTED LOGGERS: a lone export the archive owner has ruled unusable. There
+#    is no twin to fall back on, so excluding it means the deployment yields no
+#    product at all - which is the point: a gap is honest, bad data is not.
 EXCLUDED_REPLICATES = {
     'HOBO1_PLES_A1_17032022_22092022.xlsx':
         'faulty sensor: from ~2022-05-01 it loses the seasonal signal (flat '
@@ -426,6 +432,29 @@ EXCLUDED_REPLICATES = {
     'HOBO1_ESQRODO_B1_160325_110925.xlsx':
         'replicate referee (v9.0): change-correlation -0.20 (twin +0.89), bias '
         '+3.15 degC - it moves against the regional signal.',
+    # REJECTED LOGGER (archive owner, 2026-08-11): "essencialmente descartavel
+    # agora que vimos que tem tanto erro". Three independent defects stacked on
+    # one logger, confirmed across three separate exports of it:
+    #   1. temperature reads -84.77..156.53 degC - the sensor failed in the
+    #      field and nothing recovers it;
+    #   2. the clock was launched +12 h out of phase, invisible until the
+    #      collapsed 12-hour export was repaired (phase cannot be measured on a
+    #      collapsed clock);
+    #   3. the export itself was collapsed, and it fails the sampling-regularity
+    #      gate anyway (67% of steps on the interval).
+    # It was NOT being blocked: _fail_on_wrong_clock only fires on a clean
+    # +/-12 h accusation, and this logger's light peaks at 4.4 h, so no
+    # accusation was raised and the product shipped with 337 of 366 rows flagged
+    # GOOD. Both exports are named because the .xlsx re-export carries the same
+    # broken sensor. Nothing is lost: 05/02-07/03/2020 is already covered by
+    # ESQSUL_2020S1_HOBO_2_QLF, from a sound logger.
+    'HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv':
+        'rejected logger: temperature -84.77..156.53 degC across three '
+        'independent exports (failed sensor), clock +12 h out of phase, and '
+        'only 67% of steps on the sampling interval. Owner decision 2026-08-11.',
+    'HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.xlsx':
+        'rejected logger: the re-export of the same failed sensor - see the '
+        '.csv entry above. Owner decision 2026-08-11.',
     # NOT excluded, deliberately: ESQCENTRAL 2024S1 (see the note below the dict)
     # (HOBO1_ESQCENTRAL_B3_281023_050424.xlsx). The referee names replicate 1 on
     # the seasonal-swing criterion (the other replicate swings only 0.48x the

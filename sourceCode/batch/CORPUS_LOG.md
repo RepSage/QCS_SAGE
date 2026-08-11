@@ -286,3 +286,88 @@ should be read.
 On the Doppler side (54 products), `Speed stdev (cm/s)` uses **−1 as a no-data
 sentinel** — 35,471 occurrences, **all 35,471 flagged 4**, as are 1,171 of the
 1,178 values above the instrument's speed range (the other 7 are flagged 3).
+
+---
+
+## 2026-08-11 — the Seaguard side requalified onto v11.0, and one logger discarded
+
+Two operations, both on the archive; the app was not touched and `QCS_VERSION`
+did not move.
+
+### The 177 Seaguard/Doppler products were still stamped v8.1
+
+They had never been run through v9.0–v11.0, because every release in that range
+was HOBO-side. **Requalifying them changes only the stamp — measured, not
+assumed**, in two steps:
+
+- the code diff v8.1→v11.0 names `doppler_qc` and `vertical_gradient_test`,
+  which *would* matter here — but they are only the enclosing functions of code
+  added below them, and all 12 REMOVED lines sit in `light_fouling_baseline`;
+- `qualify_site.py` nevertheless gained ~400 lines that touch naming and
+  grouping for every instrument, so **RH3/2019S2 was backed up, requalified and
+  diffed first**: Seaguard + Doppler + CO2 (the GMT-3 bypass path), same three
+  products, **data identical, only the stamp changed**.
+
+The full run then covered 9 semesters with `QCS_SG_ONLY=1`, leaving HOBO alone.
+Against the previous index: **0 products appeared, 1 disappeared** (the discard
+below), and every row count matched except one stale index entry. **8 products
+failed to build; all 8 never existed in the index** — pre-existing raw-data
+problems ("no data records found", "fewer than 2 valid timestamps"), verified
+name by name against the old index before accepting them.
+
+Row accounting, because the totals must add up: 695,173 → 694,803 = **−370**
+= −366 (the discarded product) −4 (`ESQRODO_2025S1_HOBO_2_QLF`, regenerated at
+11:28 during the `.hobo` re-export work while the index had not been rebuilt
+since; the Seaguard round started at 14:14 and never touched it).
+
+**Corpus: 314 products — HOBO 137, Seaguard 123, Doppler 54, 34 with CO2. All
+314 stamped v11.0.**
+
+### `HOBO#02_Ref.EsquecidoSul` discarded — and the notes about it were wrong
+
+The archive owner ruled it unusable ("essencialmente descartável agora que vimos
+que tem tanto erro"). Acting on that exposed a defect in this very log: the
+entry of 2026-08-11 above says it was "left unqualified on purpose" and that
+`_fail_on_wrong_clock` "blocks its qualification". **It did not.** The product
+`ESQSUL_2021S1_HOBO_QLF` existed, regenerated that same morning and stamped
+v11.0, with **337 of its 366 rows flagged GOOD** — from the sensor that reads to
+156 °C.
+
+The guard fires only on a clean ±12 h accusation from `light_clock_phase`. This
+logger's light peaks at **4.4 h**, which raises no accusation at all, so nothing
+stopped it. Worth remembering as a general lesson: *a guard that keys on a
+specific diagnosis does not cover a logger broken in a different way.*
+
+Removed **cause first**, because deleting a product whose cause is still live is
+exactly how `ESQRODO_2020S1` resurrected:
+
+1. both exports (`.csv` and `.xlsx` — the re-export carries the same failed
+   sensor) added to `EXCLUDED_REPLICATES` in `qualify_site.py`, with the
+   evidence. `_sheets` drops them, so every path that lists sheets honours it;
+2. `drop_stale_products.py` gained a **`DISCARDED`** mode: a removal with no
+   replacement, **gated on the raw already being excluded** — it refuses to
+   delete otherwise. The gate reads `EXCLUDED_REPLICATES` by parsing
+   `qualify_site.py` with `ast` rather than importing it, since importing builds
+   a Tk root as a side effect;
+3. the folder was backed up, then the product removed in full — CSV, DataView,
+   5 report files, provenance block;
+4. **verified**: requalifying ESQSUL 2021S1 now reports *"nothing to qualify",
+   0 products*.
+
+No coverage is lost: its window (05/02–07/03/2020) is already covered by
+`ESQSUL_2020S1_HOBO_2_QLF` from a sound logger. The `.hobo` binary under
+`bruto\` is untouched, so the decision is reversible by removing the two
+exclusion entries.
+
+### `HOBO1_ESQRODO_B1` — closed, and it had been closed for a while
+
+Listed as open in `STATUS.md` while the entry above already recorded it
+resolved. The corpus settles it: `ESQRODO_2025S1_HOBO_2_QLF`, 4,138 rows,
+24.74–27.86 °C, 3,485 rows good. Its 16.8 h light peak is real and reproduced
+across three exports, and it **drives no QC decision** — the corpus light window
+is the fixed 60 days.
+
+### Verification
+
+45/45 self-tests, ruff clean — the app was not modified. Every count above was
+read from the rebuilt index and the products themselves, not from the run log.

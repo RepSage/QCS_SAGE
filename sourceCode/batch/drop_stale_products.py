@@ -22,6 +22,26 @@ import warnings
 warnings.filterwarnings('ignore')
 import pandas as pd
 
+
+def excluded_raw_files():
+    """The keys of qualify_site.EXCLUDED_REPLICATES, read from the SOURCE.
+
+    Importing qualify_site would build a Tk root and the whole qualification
+    tab as an import side effect - far too much for reading one dict - so the
+    file is parsed instead of executed.
+    """
+    import ast
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'qualify_site.py')
+    with open(src, encoding='utf-8') as fh:
+        tree = ast.parse(fh.read())
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        if 'EXCLUDED_REPLICATES' in names:
+            return {k.value for k in node.value.keys if isinstance(k, ast.Constant)}
+    raise RuntimeError('EXCLUDED_REPLICATES not found in qualify_site.py')
+
 ROOT = r'\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE'
 INDEX = os.path.join(ROOT, 'qualified_index.csv')
 
@@ -58,6 +78,25 @@ REDUNDANT = {
     'SGOM_FORA_2025S1_HOBO_QLF': 'SGOM_2025S1_HOBO_QLF',
 }
 
+# DISCARDED: the product is removed and NOTHING replaces it - the archive owner
+# ruled the logger unusable. Maps the product to the raw export(s) behind it,
+# which must ALREADY be listed in qualify_site.EXCLUDED_REPLICATES: deleting a
+# product whose cause is still in place only means the next full run recreates
+# it (that is exactly how ESQRODO_2020S1 came back). The check below enforces it.
+DISCARDED = {
+    # "essencialmente descartavel agora que vimos que tem tanto erro" (archive
+    # owner, 2026-08-11). Failed sensor (-84.77..156.53 degC across three
+    # exports) + a +12 h clock + irregular sampling. It had NOT been blocked:
+    # _fail_on_wrong_clock only fires on a clean +/-12 h accusation and this
+    # logger's light peaks at 4.4 h, so the product shipped with 337 of its 366
+    # rows flagged GOOD. Its window (05/02-07/03/2020) is already covered by
+    # ESQSUL_2020S1_HOBO_2_QLF from a sound logger, so no coverage is lost.
+    'ESQSUL_2021S1_HOBO_QLF': [
+        'HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv',
+        'HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.xlsx',
+    ],
+}
+
 
 def inputs_of(idx, name):
     r = idx[idx['product'] == name]
@@ -69,28 +108,45 @@ def inputs_of(idx, name):
 def main(dry):
     idx = pd.read_csv(INDEX, encoding='utf-8-sig')
     plan = ([(s, k, True) for s, k in SUPERSEDED.items()]
-            + [(s, k, False) for s, k in REDUNDANT.items()])
-    for stale, keeper, need_newer in sorted(plan):
+            + [(s, k, False) for s, k in REDUNDANT.items()]
+            + [(s, None, False) for s in DISCARDED])
+    for stale, keeper, need_newer in sorted(plan, key=lambda t: t[0]):
         row = idx[idx['product'] == stale]
-        krow = idx[idx['product'] == keeper]
         if not len(row):
             print('%-26s SKIP - not in the index' % stale)
             continue
-        if not len(krow):
-            print('%-26s SKIP - replacement %s missing' % (stale, keeper))
-            continue
         csv = os.path.join(ROOT, str(row.iloc[0]['path']))
-        kcsv = os.path.join(ROOT, str(krow.iloc[0]['path']))
-        if not (os.path.exists(csv) and os.path.exists(kcsv)):
-            print('%-26s SKIP - a file is missing on disk' % stale)
+        if not os.path.exists(csv):
+            print('%-26s SKIP - missing on disk' % stale)
             continue
-        if need_newer and os.path.getmtime(kcsv) <= os.path.getmtime(csv):
-            print('%-26s SKIP - replacement is not newer' % stale)
-            continue
-        si, ki = inputs_of(idx, stale), inputs_of(idx, keeper)
-        if not si or not si.issubset(ki):
-            print('%-26s SKIP - inputs %s not covered by %s' % (stale, si, keeper))
-            continue
+
+        if keeper is None:
+            # A DISCARD has no replacement to check against. Its safeguard is
+            # the other half of the decision: the raw export must already be in
+            # EXCLUDED_REPLICATES, so requalifying cannot bring the product
+            # back. Deleting without that is how ESQRODO_2020S1 resurrected.
+            missing = [f for f in DISCARDED[stale] if f not in excluded_raw_files()]
+            if missing:
+                print('%-26s SKIP - not excluded in qualify_site.py: %s'
+                      % (stale, missing))
+                continue
+            print('%-26s -> DISCARDED (raw excluded, will not come back)' % stale)
+        else:
+            krow = idx[idx['product'] == keeper]
+            if not len(krow):
+                print('%-26s SKIP - replacement %s missing' % (stale, keeper))
+                continue
+            kcsv = os.path.join(ROOT, str(krow.iloc[0]['path']))
+            if not os.path.exists(kcsv):
+                print('%-26s SKIP - a file is missing on disk' % stale)
+                continue
+            if need_newer and os.path.getmtime(kcsv) <= os.path.getmtime(csv):
+                print('%-26s SKIP - replacement is not newer' % stale)
+                continue
+            si, ki = inputs_of(idx, stale), inputs_of(idx, keeper)
+            if not si or not si.issubset(ki):
+                print('%-26s SKIP - inputs %s not covered by %s' % (stale, si, keeper))
+                continue
 
         folder = os.path.dirname(csv)
         targets = [csv]
@@ -99,7 +155,8 @@ def main(dry):
             targets.append(dv)
         targets += sorted(glob.glob(os.path.join(folder, 'reports', stale + '__*')))
         mt = datetime.datetime.fromtimestamp(os.path.getmtime(csv)).strftime('%d/%m %H:%M')
-        print('%-26s (%s) -> superseded by %s' % (stale, mt, keeper))
+        if keeper is not None:
+            print('%-26s (%s) -> superseded by %s' % (stale, mt, keeper))
         for t in targets:
             print('      %s %s' % ('rmdir ' if os.path.isdir(t) else 'delete',
                                    os.path.relpath(t, ROOT)))
