@@ -126,4 +126,23 @@ archive and diff the counts against the previous `qualified_index.csv`.
 - After a PR merges, delete the feature branch (local and remote) and return to
   an updated `master` before branching again.
 
+## Which file holds what
+
+Four lanes, and a fact belongs in exactly one. When it moves lane, move it —
+do not copy it.
+
+- **`CLAUDE.md`** (this file) — durable rules and invariants. Read every
+  session, so every line costs context on every task.
+- **`STATUS.md`** — dated, volatile state: current phase, what is unfinished,
+  known-bad artifacts. Read the top entry before starting.
+- **`changelog/`** — one file per released version of the PROGRAM.
+- **`sourceCode/batch/CORPUS_LOG.md`** — what was done to the archived DATA,
+  dated and with its evidence: requalification rounds, raw repairs, discarded
+  loggers. **Not a changelog entry** — none of it changes the program, and a
+  corpus operation never bumps `QCS_VERSION`.
+
+There is no `DECISIONS.md` in this project; the numbers behind a parameter
+choice live beside the rule that uses them, in `sourceCode/batch/README.md` for
+corpus rules and in the changelog entry for QC ones.
+
 Current phase, unreleased work and known-bad artifacts: see `STATUS.md`.
