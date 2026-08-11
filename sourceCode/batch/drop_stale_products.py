@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 r"""Removes the qualified products superseded by the replicate regrouping.
 
-Each product is deleted in full - the CSV, its DataView panel folder, its
+Each product is removed in full - the CSV, its DataView panel folder, its
 reports files and its provenance block - so nothing is left half-removed and
-the index cannot pick up an orphan.
+the index cannot pick up an orphan. Removal MOVES everything into a dated
+trash folder (`CLAUDE\_deleted\<YYYYMMDD>\<product>\`) rather than deleting:
+the share has no recycle bin, so this keeps the one irreversible step of the
+pipeline reversible. Emptying the trash is a human decision.
 
 Every name is re-verified against the live index before anything is touched:
 its replacement must exist, must be newer, and must list the same raw inputs.
@@ -157,13 +160,22 @@ def main(dry):
         mt = datetime.datetime.fromtimestamp(os.path.getmtime(csv)).strftime('%d/%m %H:%M')
         if keeper is not None:
             print('%-26s (%s) -> superseded by %s' % (stale, mt, keeper))
+        # Removal is a MOVE into a dated trash folder beside the corpus, not a
+        # deletion: the share has no recycle bin, so os.remove there is the one
+        # irreversible step of the whole pipeline. The trash sits at the ROOT
+        # level - outside SEAGUARD\qualified and HOBO\qualified - so
+        # build_index can never pick it up. Emptying it is a human decision.
+        trash = os.path.join(ROOT, '_deleted',
+                             datetime.datetime.now().strftime('%Y%m%d'), stale)
         for t in targets:
-            print('      %s %s' % ('rmdir ' if os.path.isdir(t) else 'delete',
-                                   os.path.relpath(t, ROOT)))
+            print('      %s %s  ->  %s' % ('move dir ' if os.path.isdir(t) else 'move file',
+                                           os.path.relpath(t, ROOT),
+                                           os.path.relpath(trash, ROOT)))
         if dry:
             continue
+        os.makedirs(trash, exist_ok=True)
         for t in targets:
-            shutil.rmtree(t) if os.path.isdir(t) else os.remove(t)
+            shutil.move(t, os.path.join(trash, os.path.basename(t)))
         # and its provenance block
         prov = os.path.join(folder, 'provenance.txt')
         if os.path.isfile(prov):

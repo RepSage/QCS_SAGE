@@ -234,6 +234,11 @@ def _clock_lines():
         elif c.get('suspect_shift_h') is not None:
             verdict = 'SUSPECT %+dh PHASE (peak %.1f h, %.0f%% daylight)' % (
                 c['suspect_shift_h'], c['peak_hour'], 100 * c['daylight_frac'])
+        elif c.get('anomalous'):
+            # v11.1: off-noon but no clock accusation - shading, fouling or a
+            # faulty light channel. Warning only; drives no QC decision.
+            verdict = 'ANOMALOUS PHASE (peak %.1f h, %.0f%% daylight; no shift prescribed)' % (
+                c['peak_hour'], 100 * c['daylight_frac'])
         else:
             verdict = 'OK (peak %.1f h, %.0f%% daylight)' % (c['peak_hour'], 100 * c['daylight_frac'])
         out += '\n    clock    : %s: %s' % (fname, verdict)

@@ -934,5 +934,88 @@ _short, _m4 = data._hobo_fix_temp_scale(pd.Series([25125.0, 25200.0]), 'x.csv')
 assert _short.iloc[0] == 25125.0 and _m4 is None
 ok.append('hobo temperature scale (lost decimal separator recovered / sound data untouched / broken sensor not rescaled)')
 
+# ------------------------------------------------ 28. derived-variable flags (v11.1)
+# Density and Depth are computed columns; their flag is their parents' worst
+# (dens from T+S, depth from P). The corpus sweep motivated this: density at
+# 996 kg/m3 (dead conductivity) was readable at face value with no warning.
+_dd = pd.DataFrame({'Datetime': pd.date_range('2026-01-01', periods=4, freq='min'),
+                    'Temperature (degC)': [25.0, 25.1, 25.2, 25.3],
+                    'Salinity (PSU)': [36.0, 36.1, 36.2, 36.3],
+                    'Pressure (dbar)': [10.0, 10.1, 10.2, 10.3],
+                    'Density (kg/m3)': [1024.0, 996.0, 1024.1, 1024.2],
+                    'Depth (m)': [9.9, 10.0, 10.1, 10.2]})
+_fl = ['1' * len(MOORING_LAYOUT),                     # all good
+       flag_with(MOORING_LAYOUT, 'S', '4'),           # salinity bad -> dens bad
+       flag_with(MOORING_LAYOUT, 'T', '3'),           # temperature suspect -> dens suspect
+       flag_with(MOORING_LAYOUT, 'P', '4')]           # pressure bad -> depth bad, dens untouched
+_out = data.handle_output_file(_dd, _fl, MOORING_LAYOUT,
+                               remove_suspect=False, remove_bad=False)[0]
+assert list(_out['Flag_dens']) == [1, 4, 3, 1], _out['Flag_dens'].tolist()
+assert list(_out['Flag_depth']) == list(_out['Flag_P']), 'depth derives from pressure alone'
+assert _out['Flag_depth'].iloc[3] == 4
+# severity order is the rollup's own: missing (9) outranks good (1)
+_fl9 = [flag_with(MOORING_LAYOUT, 'S', '9')]
+_o9 = data.handle_output_file(_dd.iloc[:1].copy(), _fl9, MOORING_LAYOUT,
+                              remove_suspect=False, remove_bad=False)[0]
+assert _o9['Flag_dens'].iloc[0] == 9, _o9['Flag_dens'].iloc[0]
+# layouts: tscp keeps them ordered before 'QCS version'; hobo has neither column
+_ot = data.order_var(_out.assign(**{'QCS version': data.QCS_VERSION}).copy(), 1, data_type='tscp')
+_cols = list(_ot.columns)
+assert _cols.index('Flag_dens') < _cols.index('QCS version'), _cols
+assert _cols.index('Flag_lux' if 'Flag_lux' in _cols else 'Flag_tur') < _cols.index('Flag_dens')
+_oh = data.order_var(_out.assign(**{'QCS version': data.QCS_VERSION}).copy(), 1, data_type='hobo')
+assert 'Flag_dens' not in _oh.columns and 'Flag_depth' not in _oh.columns, \
+    'HOBO has no Density or Depth, so no derived flags'
+# build_database must stack an old-layout file (no derived flags) with a new one
+import os
+import tempfile
+with tempfile.TemporaryDirectory() as _td:
+    _old = _out.drop(columns=['Flag_dens', 'Flag_depth']).assign(Site='A')
+    _new = _out.assign(Site='B')
+    _new['Datetime'] = _new['Datetime'] + pd.Timedelta(days=1)
+    _p1, _p2 = os.path.join(_td, 'old_QLF.csv'), os.path.join(_td, 'new_QLF.csv')
+    _old.to_csv(_p1, index=False); _new.to_csv(_p2, index=False)
+    _db, _msgs = data.build_database('TSCP Mooring', file_list=[_p1, _p2])
+    assert len(_db) == 8, len(_db)
+    assert _db.loc[_db['Site'] == 'A', 'Flag_dens'].isna().all(), 'old rows: NaN, not invented'
+    assert not _db.loc[_db['Site'] == 'B', 'Flag_dens'].isna().any()
+ok.append('derived-variable flags (Flag_dens = worst of T+S / Flag_depth = Flag_P / layouts / old+new files stack)')
+
+# ------------------------------------- 29. anomalous light phase is a verdict (v11.1)
+# Off-noon but no clock accusation: shading, fouling or a faulty channel. The
+# field case peaked at 4.4 h while the temperature peaked at noon - a warning
+# TEXT existed but nothing downstream could read it; now it is a key.
+_days = 20
+_tt = pd.date_range('2026-03-01', periods=_days * 24, freq='h')
+_gauss = np.exp(-0.5 * ((np.arange(_days * 24) % 24 - 12) / 2.5) ** 2) * 40000
+_c_ok = _QCT.light_clock_phase(_tt, _gauss)
+assert _c_ok['evaluable'] and not _c_ok['anomalous'] and _c_ok['suspect_shift_h'] is None
+_c_shade = _QCT.light_clock_phase(_tt + pd.Timedelta(hours=5), _gauss)   # peaks ~17 h
+assert _c_shade['evaluable'] and _c_shade['anomalous'], _c_shade
+assert _c_shade['suspect_shift_h'] is None and not _c_shade['collapsed']
+assert any('worth a look' in w for w in _c_shade['warnings'])
+_c_anti = _QCT.light_clock_phase(_tt + pd.Timedelta(hours=12), _gauss)   # antiphase
+assert _c_anti['suspect_shift_h'] == 12 and not _c_anti['anomalous'], \
+    'a clean accusation must not also read as anomalous'
+ok.append('anomalous light phase (structured verdict / accusation and noon both excluded)')
+
+# ---------------------------------------------- 30. once-per-run warning dedup (v11.1)
+import io
+import contextlib
+_QCT.reset_run_warnings()
+_buf = io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    _QCT._warn_once('Warning: same line')
+    _QCT._warn_once('Warning: same line')
+    _QCT._warn_once('Warning: other line')
+assert _buf.getvalue().count('same line') == 1, _buf.getvalue()
+assert _buf.getvalue().count('other line') == 1
+_QCT.reset_run_warnings()
+_buf2 = io.StringIO()
+with contextlib.redirect_stdout(_buf2):
+    _QCT._warn_once('Warning: same line')
+assert _buf2.getvalue().count('same line') == 1, 'a new run must warn again'
+ok.append('once-per-run warning dedup (repeat suppressed / next run warns again)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

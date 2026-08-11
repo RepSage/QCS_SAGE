@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v11.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v11.1</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -643,10 +643,37 @@
     decode the string position by position to filter data by quality — for example, keeping only
     the rows with <code>Flag_T &lt;= 2</code> in a temperature analysis.</p>
 
+    <h3>Derived-variable flags: Flag_dens and Flag_depth (v11.1)</h3>
+    <p>Density and Depth are <strong>computed</strong> columns — density from temperature and
+    salinity, depth from pressure — so they carry a derived flag rather than none:
+    <code>Flag_dens</code> is the worst of <code>Flag_T</code> and <code>Flag_S</code> in the
+    row, and <code>Flag_depth</code> equals <code>Flag_P</code>. A density read from a dead
+    conductivity cell (~996 kg/m³, fresh-water density) therefore announces itself instead of
+    looking like data. TSCP layout only; HOBO files have neither column. Files qualified before
+    v11.1 lack the two columns — merging old and new files in the database builder works, with
+    the old rows left empty there.</p>
+
+    <h3>Light clock check: the anomalous-phase verdict (v11.1)</h3>
+    <p>For HOBO files, the light clock check names three situations rather than two: a clean
+    <strong>±12 h antiphase</strong> (AM/PM swapped at launch), the <strong>collapsed 12-hour
+    export</strong> (no AM/PM marker at all), and now an <strong>anomalous phase</strong> — the
+    light peaks well off noon but no clock error explains it, which points at shading, heavy
+    fouling or a faulty light channel. The verdict is a warning in the Execution log and in the
+    batch provenance; it prescribes no correction and flags no data (the corpus light window is
+    the fixed 60-day rule, so the phase drives no QC decision).</p>
+
     <h2 id="settings_management">6. Settings Management</h2>
     <p>All quality criteria (tests on/off, parameters and per-variable factors) are adjusted in the
     <strong>Settings</strong> window, opened by the Settings button in the main window. The choices
     are saved automatically across sessions.</p>
+    <div class="note">
+        <p><strong>Since v11.1</strong>, the first launch after a program update shows a dialog when
+        your saved QC criteria were reset to the new version's defaults. The reset itself is old,
+        deliberate behaviour (a version may change criteria on purpose, and keeping old saved values
+        would silently mask that — see the v3.2 changelog); what is new is that it is announced
+        instead of being one log line. Folders, file choices and visualization preferences are
+        always kept.</p>
+    </div>
     <div class="note">
         <p><strong>Change in v4.0:</strong> the old <em>Export Settings</em> (export .json) and
         <em>Config File</em> (import .json) were <strong>removed from the interface</strong> —

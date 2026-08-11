@@ -13,14 +13,22 @@ absolute path — a bare `python` resolves to the Microsoft Store stub and fails
 & "C:\Users\LAMB\anaconda3\python.exe" batch\run_semester.py 2019S1        # one whole semester (all sites + buckets)
 & "C:\Users\LAMB\anaconda3\python.exe" batch\qualify_site.py PAB3 --sem 2019S1   # one site of one semester
 & "C:\Users\LAMB\anaconda3\python.exe" batch\build_index.py                # rebuild CLAUDE\qualified_index.csv
+& "C:\Users\LAMB\anaconda3\python.exe" batch\build_data_package.py --sites ESQSUL,SGOM --years 2019-2024   # delivery bundle on the Desktop
 ```
+
+`build_index.py` ends by running **`sweep_value_integrity.py`** over the indexed
+products (the lost-separator gates and the "impossible value not flagged" check)
+and exits non-zero if the sweep finds a pipeline defect — a corpus round is not
+done until that sweep is clean.
 
 Three of the scripts here repair the RAW archive rather than qualify it —
 `correct_clock.py`, `repair_collapsed_clock.py` and `repair_unset_clock.py` —
-and `drop_stale_products.py` removes superseded products. Everything they have
-done to the archive is recorded, dated and with its evidence, in
-**`CORPUS_LOG.md`** beside this file. That log is not a `changelog/` entry: the
-app has its own version and none of this changes the program.
+and `drop_stale_products.py` removes superseded products, by MOVING them into
+`CLAUDE\_deleted\<YYYYMMDD>\` (the share has no recycle bin; emptying that
+folder is a human decision). Everything they have done to the archive is
+recorded, dated and with its evidence, in **`CORPUS_LOG.md`** beside this file.
+That log is not a `changelog/` entry: the app has its own version and none of
+this changes the program.
 
 `QCS_SG_ONLY=1` (environment variable) restricts a run to the Seaguard side
 (scalar + Doppler), leaving HOBO products untouched — used for timebase reruns.
