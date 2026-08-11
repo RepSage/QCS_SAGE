@@ -367,6 +367,48 @@ resolved. The corpus settles it: `ESQRODO_2025S1_HOBO_2_QLF`, 4,138 rows,
 across three exports, and it **drives no QC decision** — the corpus light window
 is the fixed 60 days.
 
+### `HOBO-incubacao_rodolito.csv` filed with the experiments it consolidates
+
+The last item on the open list, and it was never a data problem — it was a
+FILING problem. The sheet consolidates, by hand, the five rodolith incubation
+experiments of RRDM 16a MAR 2023, stacked in one file under a `Sitio` column:
+
+| RH50 | B1 | A5 | RH30 | RH18 | total |
+|---|---|---|---|---|---|
+| 542 | 484 | 481 | 422 | 361 | **2,290 rows**, 19–30/03/2023, 24.93–30.15 °C |
+
+Those are exactly the five `Experimento ... INCUB RODOLITO` folders that sit in
+the same campaign, each with its own `bruto\*.hobo`. So the sheet is a DERIVED
+consolidation of data that already exists, per experiment, in its own folder.
+
+It could never be qualified: the qualifier writes one product per deployment,
+and this is five deployments overlapping in time in a single file — a product
+structure would have to be invented. It yielded **0 products**.
+
+The reason it kept coming back is that it sat in
+`_EXPERIMENTOS\RRDM 16a MAR 2023\planilha\`, and **`planilha` is precisely the
+folder name the driver walks for** (`qualify_site.py`, the `_EXPERIMENTOS`
+branch: `if os.path.basename(root) != 'planilha': continue`). It came from the
+CAMPAIGN ROOT of the field archive rather than from inside `HOBO\`, which is how
+it landed there. Moved (owner decision, 2026-08-11) to:
+
+```
+HOBO\raw\_EXPERIMENTOS\RRDM 16a MAR 2023\HOBO\CONSOLIDADO INCUB RODOLITO\
+```
+
+beside the five experiment folders, with a `LEIA-ME.txt` explaining what it is,
+why it is not qualified and where the per-experiment originals are. Content
+untouched — MD5 `180440705a8924e0784731630959d1b5` verified before and after —
+the manifest row updated with a dated note, and the emptied `planilha\` folder
+removed. Verified after the move: the driver's own discovery walk now finds
+**0 files** in that campaign.
+
+One trap worth recording: the first manifest update **silently did nothing**.
+The search string was `r'...\planilha\\'`, and in a raw string that trailing
+`\\` is two characters, so it never matched the single backslash in the path.
+The replacement reported success because a no-match replace is not an error —
+it was caught only because the script printed the resulting value.
+
 ### Verification
 
 45/45 self-tests, ruff clean — the app was not modified. Every count above was

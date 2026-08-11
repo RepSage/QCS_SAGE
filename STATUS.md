@@ -162,8 +162,15 @@ decision. Only the third remains.)*
 - ~~`HOBO1_ESQRODO_B1_050424_160325.xlsx`~~ — **closed**: re-export resolved it.
 - ~~`HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv`~~ — **discarded** by
   owner decision, raw excluded so it cannot be requalified.
-- `HOBO-incubacao_rodolito.csv` — hand-made multi-site sheet; owner said to
-  leave it. **The one still open.**
+- ~~`HOBO-incubacao_rodolito.csv`~~ — **filed, 2026-08-11.** Never a data
+  problem: it consolidates by hand the five rodolith incubation experiments of
+  RRDM 16a MAR 2023 (2,290 rows, 5 sites in one file), all of which already
+  exist separately with their own `.hobo`. It kept reappearing only because it
+  sat in a `planilha\` folder, which is what the driver walks for. Moved to
+  `_EXPERIMENTOS\RRDM 16a MAR 2023\HOBO\CONSOLIDADO INCUB RODOLITO\` with a
+  `LEIA-ME.txt`; MD5 verified, manifest updated, driver now finds 0 files there.
+
+**Nothing is open on the data.**
 
 ## 2026-08-10 — there is NO v11.0; the app is still v10.0
 
