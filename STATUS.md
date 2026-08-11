@@ -1,6 +1,13 @@
 # STATUS — QCS (Quality Control System — SAGE)
 
-Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
+Volatile state, newest first. Every entry dated. Durable rules live in
+`CLAUDE.md`; the numbers behind a parameter choice in `DECISIONS.md`; what was
+done to the archived DATA in `sourceCode/batch/CORPUS_LOG.md`.
+
+**Read the top entry before starting work, and treat anything below it as
+possibly superseded** — an entry is a snapshot of the day it was written, not a
+claim about today. Where this file and the repository disagree, the repository
+wins and this file is the one to fix.
 
 ## 2026-08-11 — the whole corpus is on v11.0; one logger discarded
 
