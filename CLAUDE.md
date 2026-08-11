@@ -100,7 +100,24 @@ archive and diff the counts against the previous `qualified_index.csv`.
 
 ## Releases and commits
 
-- Commit messages in English, prefixed with the version: `v9.1: short description`.
+- Commit messages in English. The **subject line carries no version**; the
+  version goes on the first line of the body:
+
+  ```
+  short description of the change
+
+  Version: v11.0
+  <the rest of the body>
+  ```
+
+  GitHub's file listing shows the subject of the last commit that touched each
+  path, so a `v4.0:` prefix there reads as a version label ON THE FILE — the
+  `.gitignore` row still showed `v4.0:` in August 2026 simply because nothing
+  had needed to change it since. Which release a commit belongs to is recorded
+  by the tags, exactly, and `git describe` answers it. Changed 2026-08-11;
+  **commits before that date keep the old `vX.Y: description` prefix and must
+  not be rewritten** — rewriting them changes every SHA and breaks the 21 tags
+  and the 21 GitHub Releases that point at them.
 - Propose the next SemVer number for each change set. Any change that alters QC
   results (flags, thresholds, test logic) is a MAJOR bump.
 - On each release: add a file to `changelog/` listing the version's changes,
