@@ -359,6 +359,10 @@ def settings_store_path():
     return os.path.join(base, 'qcs_user_settings.json')
 
 USER_PREFS = {}
+# Set by load_user_prefs when saved QC criteria were DISCARDED because they came
+# from another program version (holds the old version string). QCS_App turns it
+# into a visible dialog; None = nothing was reset.
+SETTINGS_RESET_FROM = None
 
 def load_user_prefs():
     global USER_PREFS
@@ -824,6 +828,7 @@ def start_qualification():
         return
     run_button.config(state='disabled')
     window.config(cursor='watch')
+    QC.reset_run_warnings()   # once-per-run warnings (window span etc.) start fresh
     # one entry per qualified file: (file_name, light_clock_phase result). The
     # batch driver reads this to stamp the clock verdict into provenance - its
     # log_line is a no-op and it only inspects dialogs on FAILURE, so without
@@ -1045,6 +1050,13 @@ def restore_user_prefs():
     # version. On a version change, keep the new code defaults (so criteria
     # improvements take effect) instead of the user's old saved criteria.
     if p.get('qcs_version') != data.QCS_VERSION:
+        # The reset is by design, but it used to be only this log line, easy to
+        # miss. QCS_App reads SETTINGS_RESET_FROM after building the window and
+        # shows a one-time dialog (v11.1) - the flag lives here, the DIALOG in
+        # the app shell, so the headless/batch paths (which never import
+        # QCS_App) can never block on it.
+        global SETTINGS_RESET_FROM
+        SETTINGS_RESET_FROM = p.get('qcs_version')
         print("Info: saved settings are from a different version (%s != %s); "
               "using the current default quality criteria." % (p.get('qcs_version'), data.QCS_VERSION))
         return

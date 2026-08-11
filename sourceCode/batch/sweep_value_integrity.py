@@ -69,7 +69,7 @@ def sweep():
     for _i, r in idx.iterrows():
         path = os.path.join(ROOT, str(r['path']))
         if not os.path.isfile(path):
-            print('AUSENTE: %s' % r['product'])
+            print('MISSING ON DISK: %s' % r['product'])
             continue
         d = pd.read_csv(path, encoding='utf-8-sig', low_memory=False)
         n_read += 1
@@ -94,8 +94,8 @@ def sweep():
                     product=r['product'], var=col, n=len(v),
                     vmin=float(v.min()), vmax=float(v.max()),
                     integers=integers, factor=factor,
-                    verdict=('SEPARADOR PERDIDO' if (integers and factor)
-                             else 'nao e defeito de escala')))
+                    verdict=('LOST SEPARATOR' if (integers and factor)
+                             else 'not a scale defect')))
 
             # --- 2. impossible, and did the flag catch it? -------------------
             out = (v < s_lo) | (v > s_hi)
@@ -134,41 +134,41 @@ def sweep():
 
 def main():
     n_read, scale_hits, impossible, unflagged = sweep()
-    print('produtos lidos: %d\n' % n_read)
+    print('products read: %d\n' % n_read)
 
-    print('== 1. DEFEITO DE ESCALA (separador decimal perdido) ==')
+    print('== 1. SCALE DEFECT (lost decimal separator) ==')
     if not scale_hits:
-        print('   nenhum produto x variavel com >98% dos valores fora da faixa'
-              ' ambiental.\n')
+        print('   no product x variable with >98% of its values outside the'
+              ' environmental envelope.\n')
     else:
         real = [h for h in scale_hits if h['integers'] and h['factor']]
         for h in sorted(scale_hits, key=lambda x: (x['var'], x['product'])):
             print('   %-42s %-24s %9.2f..%-9.2f  %s'
                   % (h['product'][:42], h['var'][:24], h['vmin'], h['vmax'],
                      h['verdict']))
-        print('   -> %d de %d passam os TRES portoes\n' % (len(real), len(scale_hits)))
+        print('   -> %d of %d pass ALL THREE gates\n' % (len(real), len(scale_hits)))
 
-    print('== 2. VALORES FORA DO LIMITE DO SENSOR ==')
+    print('== 2. VALUES OUTSIDE THE SENSOR LIMIT ==')
     if not impossible:
-        print('   nenhum.\n')
+        print('   none.\n')
     else:
         tot = sum(h['n_out'] for h in impossible)
         ok = sum(h['n_flag4'] for h in impossible)
-        print('   %d valores em %d produto(s); %d (%.1f%%) com flag 4'
+        print('   %d values across %d product(s); %d (%.1f%%) carry flag 4'
               % (tot, len({h['product'] for h in impossible}), ok,
                  100.0 * ok / max(tot, 1)))
         for h in sorted(impossible, key=lambda x: -x['n_out'])[:15]:
-            print('      %-42s %-22s %5d fora, %5d com flag 4 (pior %.2f)'
+            print('      %-42s %-22s %5d outside, %5d flagged 4 (worst %.2f)'
                   % (h['product'][:42], h['var'][:22], h['n_out'],
                      h['n_flag4'], h['worst']))
         print()
 
-    print('== 3. FORA DA FAIXA E NAO MARCADO (defeito de pipeline) ==')
+    print('== 3. OUT OF RANGE AND NOT MARKED (a pipeline defect) ==')
     if not unflagged:
-        print('   nenhum: todo valor fora de faixa saiu marcado como a regra manda.')
+        print('   none: every out-of-range value came out marked as the rule requires.')
     else:
         for prod, col, n, ok, dist in unflagged:
-            print('   %-42s %-24s %d fora, %d marcados, flags %s'
+            print('   %-42s %-24s %d outside, %d marked, flags %s'
                   % (prod[:42], col[:24], n, ok, dist))
     return 0 if not unflagged else 1
 

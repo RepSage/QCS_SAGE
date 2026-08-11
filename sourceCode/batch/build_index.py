@@ -108,3 +108,13 @@ def main(out_csv):
 if __name__ == '__main__':
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'qualified_index.csv')
     main(out)
+    # A corpus round ends here, and that is exactly when the value-level
+    # integrity questions should be asked - the lost-separator gates and the
+    # "impossible value not flagged" check (see sweep_value_integrity.py).
+    # Running it by hand was one forgotten step away from never running: wired
+    # in since 2026-08-11. A failing sweep makes this script exit non-zero.
+    print('\n' + '=' * 70)
+    print('value-integrity sweep over the indexed products')
+    print('=' * 70)
+    import sweep_value_integrity
+    sys.exit(sweep_value_integrity.main())

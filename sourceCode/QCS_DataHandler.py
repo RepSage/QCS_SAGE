@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v11.0'
+QCS_VERSION = 'v11.1'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -1334,8 +1334,10 @@ FLAG_BUCKET_MAP = {
 
 # Maps a data column to its per-variable rollup flag column, for consumers that
 # need to select rows by qualification result (e.g. the DataView scale defaults).
-# Derived/untested variables (Density, Soundspeed, CO2, PAR, Depth) have no flag
-# column and are intentionally absent.
+# Density and Depth carry DERIVED flags (v11.1): they are computed values, so
+# their flag is their parents' worst - dens from T+S, depth from P. Soundspeed
+# and PAR remain untested and intentionally absent. (This comment once listed
+# CO2 as unflagged; Flag_CO2 exists since v6.0.)
 PARAM_FLAG_COLUMN = {
     'Temperature (degC)': 'Flag_T',
     'Salinity (PSU)': 'Flag_S',
@@ -1350,6 +1352,8 @@ PARAM_FLAG_COLUMN = {
     'Turbidity (FTU)': 'Flag_tur',
     'TSS (mg/L)': 'Flag_tur',
     'Luminosity (lux)': 'Flag_lux',
+    'Density (kg/m3)': 'Flag_dens',
+    'Depth (m)': 'Flag_depth',
 }
 
 def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad):
@@ -1439,6 +1443,21 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
     for k in var_keys:
         output_df['Flag_' + k] = agg_flags[k]
 
+    # Derived-variable flags (v11.1). Density and Depth are COMPUTED columns -
+    # dens from T+S (the density-inversion test already implicates exactly that
+    # pair in FLAG_BUCKET_MAP), depth from P - yet they carried no flag at all:
+    # the corpus sweep found density at 996 kg/m3 (conductivity dead in the
+    # water) readable at face value with no warning attached. Their flag is
+    # their parents' worst, by the same priority as worst_flag above. Purely
+    # additive: no existing flag changes, and order_var keeps these columns
+    # only in the TSCP layout (HOBO has no Density or Depth).
+    _sev = {4: 0, 3: 1, 9: 2, 1: 3, 2: 4, 5: 5}        # severity rank, worst first
+    _by_rank = {r: f for f, r in _sev.items()}
+    output_df['Flag_dens'] = [
+        _by_rank[min(_sev[t], _sev[s])]
+        for t, s in zip(agg_flags['T'], agg_flags['S'], strict=True)]
+    output_df['Flag_depth'] = agg_flags['P']
+
     T_bdata, S_bdata, C_bdata, P_bdata = (np.asarray(bdata['T']), np.asarray(bdata['S']), np.asarray(bdata['C']), np.asarray(bdata['P']))
     pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata = (np.asarray(bdata['pH']), np.asarray(bdata['chl']), np.asarray(bdata['O2']), np.asarray(bdata['org']), np.asarray(bdata['tur']))
     T_sdata, S_sdata, C_sdata, P_sdata = (np.asarray(sdata['T']), np.asarray(sdata['S']), np.asarray(sdata['C']), np.asarray(sdata['P']))
@@ -1517,7 +1536,9 @@ def order_var (qualified_data, n_cel, data_type):
                         'Battery voltage (V)': 20, 'Flag': 21,
                         'Flag_T': 22, 'Flag_S': 23, 'Flag_C': 24, 'Flag_P': 25, 'Flag_pH': 26,
                         'Flag_chl': 27, 'Flag_CO2': 28, 'Flag_O2': 29, 'Flag_org': 30,
-                        'Flag_tur': 31, 'Flag_lux': 32, 'QCS version': 33}
+                        'Flag_tur': 31, 'Flag_lux': 32,
+                        # derived-variable flags (v11.1) sit after the measured ones
+                        'Flag_dens': 33, 'Flag_depth': 34, 'QCS version': 35}
     elif data_type == 'hobo':
         # HOBO Pendant: only the measured variables (temperature in Celsius and
         # light in lux), with the same metadata block as the TSCP standard. The

@@ -49,6 +49,26 @@ def parse_time_window_samples(time_window, sample_interval_s, n_total):
 MIN_SIGMA_SAMPLES = 11
 
 
+# The window-span warnings below fire once PER TEST CALL, and one qualification
+# runs the same test over up to nine variables of the same series - so the exact
+# same line used to land in the Execution log up to nine times. Deduplicated per
+# RUN: QCS_Main clears the set when a qualification starts.
+_warned_this_run = set()
+
+
+def reset_run_warnings():
+    """Clears the once-per-run warning memory. Called at the start of each
+    qualification run."""
+    _warned_this_run.clear()
+
+
+def _warn_once(message):
+    """Prints `message` unless an identical one was already printed this run."""
+    if message not in _warned_this_run:
+        _warned_this_run.add(message)
+        print(message)
+
+
 def robust_rolling_sigma(pop, win):
     """Rolling robust sigma (1.4826 x MAD), used as the threshold reference in the
     spike and rate-of-change tests: it is not inflated by the very outliers that
@@ -84,8 +104,8 @@ def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interva
 
     win = parse_time_window_samples(time_window, sample_interval / np.timedelta64(1, 's'), n)
     if 0 < win < MIN_SIGMA_SAMPLES and win < n:
-        print("Warning: spike-test window '%s' spans only %d sample(s) at this "
-              "sampling interval; using the whole-series sigma instead." % (time_window, win))
+        _warn_once("Warning: spike-test window '%s' spans only %d sample(s) at this "
+                   "sampling interval; using the whole-series sigma instead." % (time_window, win))
     std = robust_rolling_sigma(pop, win)
 
     upperLimit = (threshold_fail * std).abs().to_numpy()
@@ -146,9 +166,9 @@ def sigma_rate_of_change_test(
     if n_samples < MIN_SIGMA_SAMPLES:
         # a window too small does not estimate a stable local sigma; before this
         # the test silently became a no-op (sigma NaN -> nothing rejected)
-        print("Warning: rate-of-change window '%s' spans only %d sample(s) at this "
-              "sampling interval; using the whole-series sigma instead."
-              % (time_window, n_samples))
+        _warn_once("Warning: rate-of-change window '%s' spans only %d sample(s) at this "
+                   "sampling interval; using the whole-series sigma instead."
+                   % (time_window, n_samples))
         n_samples = n_lines
 
     index = np.arange(n_lines)
@@ -321,13 +341,22 @@ def light_clock_phase(datetimes, light, warn_offset_h=4.0, bad_offset_h=8.0):
     duplicated - and it is reported as 'collapsed', not as a phase shift, since
     the remedy is different (reconstruct from row order, not shift the series).
 
+    A THIRD verdict, 'anomalous', names the middle ground (v11.1): the phase is
+    off by more than `warn_offset_h` but not by enough to accuse the clock.
+    Shading, heavy fouling or a faulty light channel do this - the field case
+    was a logger whose light peaked at 4.4 h while its TEMPERATURE peaked at
+    noon, i.e. the clock was right and the light channel was not. It existed
+    only as warning TEXT before, which nothing downstream could read; as a key,
+    the batch provenance and the report can name it. It prescribes no shift and
+    flags no data - the light-based QC decisions are unaffected.
+
     Returns dict: 'evaluable', 'peak_hour', 'offset_h', 'daylight_frac',
     'suspect_shift_h' (the whole-hour shift that would restore noon, or None),
-    'collapsed' (bool) and 'warnings'.
+    'collapsed' (bool), 'anomalous' (bool) and 'warnings'.
     """
     out = {'evaluable': False, 'peak_hour': np.nan, 'offset_h': np.nan,
            'daylight_frac': np.nan, 'suspect_shift_h': None, 'collapsed': False,
-           'warnings': []}
+           'anomalous': False, 'warnings': []}
 
     t = pd.DatetimeIndex(pd.to_datetime(pd.Series(datetimes), errors='coerce'))
     v = pd.to_numeric(pd.Series(np.asarray(light, dtype=float)), errors='coerce')
@@ -386,10 +415,12 @@ def light_clock_phase(datetimes, light, warn_offset_h=4.0, bad_offset_h=8.0):
             'timestamps are equally affected.'
             % (peak, 100 * out['daylight_frac'], shift))
     elif offset >= warn_offset_h:
+        out['anomalous'] = True
         out['warnings'].append(
             'Note: the light peaks at %.1f h, %.1f h away from local noon (%.0f%% of the '
             'light energy between 06:00 and 18:00). Heavy fouling or a shaded emplacement '
-            'can do this, but so can a wrong clock - worth a look.'
+            'can do this, but so can a wrong clock - worth a look. No shift is prescribed '
+            'and no data is flagged; the light-based decisions below are unaffected.'
             % (peak, offset, 100 * out['daylight_frac']))
     return out
 

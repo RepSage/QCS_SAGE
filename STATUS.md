@@ -2,6 +2,48 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-11 — v11.1 on branch `improvements-v11.1`, PR open, UNRELEASED
+
+`QCS_VERSION = 'v11.1'`, `changelog/v11.1.md`, manual updated to v11.1.
+**48/48 self-tests, ruff clean.** MINOR — no QC result changes, verified on
+real corpus inputs (see below). Not tagged; tag after the merge, per the
+ritual.
+
+The four app changes, each born from a measured incident of this week:
+
+- **`Flag_dens` / `Flag_depth`** (TSCP layout): derived flags for the computed
+  columns — dens = worst(Flag_T, Flag_S), depth = Flag_P. Motivated by RRDM03
+  reading 996 kg/m³ for 90% of a deployment with no warning on the Density
+  column. Additive only; HOBO layout untouched; old+new files stack in
+  `build_database` (old rows get NaN).
+- **`anomalous` verdict** in `light_clock_phase`: the "off-noon but no clock
+  accusation" middle ground (shading / fouled channel) was free text nothing
+  could read — the EsquecidoSul product shipped GOOD because the guard only
+  fires on clean ±12 h. Now structured, in the log and in batch provenance
+  (`ANOMALOUS PHASE`). Warning only: no shift, no flags.
+- **Settings-reset dialog** in `QCS_App` on first launch after a version
+  change (the reset is old v3.2 behaviour; only the announcement is new).
+  Lives in the shell, so headless/batch can never block on it — verified.
+- **Once-per-run warning dedup** (`QC.reset_run_warnings()` at RUN start): the
+  window-span warning used to repeat up to 9× per file.
+
+**Real-data verification (corpus untouched, tempdir output)**: RH3 2019S2
+Seaguard mooring — 97 rows, every pre-existing column identical to the corpus
+product, new columns correct row by row; ESQRODO_B1 → `anomalous`, peak 16.8 h,
+flags identical to its corpus product; healthy ESQSUL B4 → not anomalous,
+peak 11.7 h.
+
+**Batch lane in the same change set (no version impact)**:
+`build_data_package.py` (site/period delivery bundle, promoted from the August
+one-off; run against RH18 2025 and verified); `drop_stale_products.py` now
+MOVES into `CLAUDE\_deleted\<date>\` instead of deleting; `build_index.py` ends
+every corpus round by running `sweep_value_integrity.py` (exit non-zero on a
+pipeline defect); the sweep speaks English now.
+
+**Pending after the merge**: tag v11.1, GitHub Release, delete the branch. The
+corpus does NOT need requalifying (results unchanged); the next natural corpus
+round will add the two derived columns and re-stamp.
+
 ## 2026-08-11 — the whole corpus is on v11.0; one logger discarded
 
 **Corpus: 314 products** — HOBO 137, Seaguard 123, Doppler 54, 34 with CO2.

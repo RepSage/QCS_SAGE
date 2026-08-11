@@ -168,6 +168,24 @@ def main(run=True):
     menubar.add_cascade(label='Help', menu=m_help)
 
     root.config(menu=menubar)
+
+    # First launch after a version change: the saved QC criteria were reset to
+    # the new version's defaults (by design - see load_user_prefs), but until
+    # v11.1 the only trace was a log line, easy to miss before qualifying. The
+    # dialog lives HERE, not in load_user_prefs, so the headless/batch paths
+    # (which drive QCS_Main directly and never import this shell) cannot block
+    # on it. after() defers it until the window is actually up.
+    if getattr(qual, 'SETTINGS_RESET_FROM', None):
+        root.after(300, lambda: messagebox.showinfo(
+            'Quality criteria reset to the %s defaults' % data.QCS_VERSION,
+            'Your saved settings were from %s, so the QC criteria were reset to '
+            'the %s defaults - a version may change criteria on purpose, and '
+            'keeping the old saved values would silently mask that.\n\n'
+            'Folders, file choices and visualization preferences were kept. '
+            'Custom criteria can be set again in Edit > Qualification settings; '
+            'they will persist within %s.'
+            % (qual.SETTINGS_RESET_FROM, data.QCS_VERSION, data.QCS_VERSION)))
+
     if run:
         root.mainloop()
     return root, notebook
