@@ -5,6 +5,14 @@ These loggers recorded from a factory epoch: the right DURATION on the wrong
 DATE, and the wrong time of day too. `HOBO1_PNorte_090521_210821.csv` is a
 May-August 2021 deployment stamped 31/12/2017 to 16/04/2018.
 
+GOTCHA, found 2026-08-13: unlike correct_clock.py and
+repair_collapsed_clock.py, this script DOES NOT update the raw manifest, so
+every file it rewrites leaves its manifest row with a stale md5/size - which
+reads as corruption on the next integrity check. Its 2026-08 repairs were
+reconciled by refresh_manifest_md5.py; if this script ever runs again, run
+refresh_manifest_md5.py right after (or teach this one to update the manifest
+like its two siblings).
+
 Only the six exports whose evidence is unambiguous are listed below - the data
 duration matches the archived deployment dates to within a day or two, and the
 offset is a single clean constant. The other five wrong-clock files need field

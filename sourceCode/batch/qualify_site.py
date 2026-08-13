@@ -76,15 +76,13 @@ def _owning_campaign(site):
     month falls on or after the end of the data. Anything later is a re-file."""
     if site in _OWNER_CACHE:
         return _OWNER_CACHE[site]
-    sdir = os.path.join(H_RAW, site)
     where = {}
-    if os.path.isdir(sdir):
-        for camp in sorted(os.listdir(sdir)):
-            pl = os.path.join(sdir, camp, 'planilha')
-            if not os.path.isdir(pl):
-                continue
-            for f in _sheets(pl):
-                where.setdefault(os.path.basename(f), []).append((camp, f))
+    for camp in sorted(os.listdir(H_RAW)):
+        pl = os.path.join(H_RAW, camp, site, 'planilha')
+        if not os.path.isdir(pl):
+            continue
+        for f in _sheets(pl):
+            where.setdefault(os.path.basename(f), []).append((camp, f))
     owner = {}
     for base, cands in where.items():
         if len(cands) < 2:
@@ -339,16 +337,15 @@ def plan(site, sem):
     """[{kind, tipo, campaign, start, files, co2}] across EVERY campaign of the
     semester (a semester can hold two expeditions)."""
     items = []
-    # HOBO
-    sdir = os.path.join(H_RAW, site)
-    if os.path.isdir(sdir):
-        for camp in sorted(os.listdir(sdir)):
-            if not os.path.isdir(os.path.join(sdir, camp)) or sem_tag(camp) != sem:
-                continue
+    # HOBO - campaign-first (like SG_RAW below) since the 2026-08-13
+    # reorganisation: HOBO\raw\<RRDM campaign>\<site>\planilha
+    for camp in sorted(os.listdir(H_RAW)):
+        cdir = os.path.join(H_RAW, camp, site)
+        if os.path.isdir(cdir) and sem_tag(camp) == sem:
             # a site's planilha folder can hold SEVERAL deployments, not just
             # the replicates of one (PAB3 8a = a reef-top logger AND a wall
             # logger spanning 2016-2018) - group them from the data
-            pl = os.path.join(sdir, camp, 'planilha')
+            pl = os.path.join(cdir, 'planilha')
             dropped = _excluded_in(pl)
             for grp, span in _group_replicates(_sheets(pl)):
                 items.append({'kind': 'HOBO', 'tipo': None, 'campaign': camp,
@@ -683,18 +680,20 @@ def _bucket_order(name):
 def plan_buckets(sem):
     """Products of the HOBO-only buckets for this semester."""
     items = []
-    # _PISCINAS: <bucket>\<campaign>\planilha  - the bucket IS the site, and the
-    # sheets in one campaign are replicates of that one pool deployment
+    # _PISCINAS: <campaign>\<bucket>\planilha (campaign-first since the
+    # 2026-08-13 reorganisation) - the bucket IS the site, and the sheets in
+    # one campaign are replicates of that one pool deployment
     base = os.path.join(H_RAW, '_PISCINAS')
     if os.path.isdir(base):
-        for bucket in sorted(os.listdir(base), key=_bucket_order):
-            bdir = os.path.join(base, bucket)
-            if not os.path.isdir(bdir):
+        for camp in sorted(os.listdir(base)):
+            cdir = os.path.join(base, camp)
+            if not os.path.isdir(cdir) or sem_tag(camp) != sem:
                 continue
-            for camp in sorted(os.listdir(bdir)):
-                if not os.path.isdir(os.path.join(bdir, camp)) or sem_tag(camp) != sem:
+            for bucket in sorted(os.listdir(cdir), key=_bucket_order):
+                bdir = os.path.join(cdir, bucket)
+                if not os.path.isdir(bdir):
                     continue
-                files = _sheets(os.path.join(bdir, camp, 'planilha'))
+                files = _sheets(os.path.join(bdir, 'planilha'))
                 if files:
                     items.append({'bucket': '_PISCINAS', 'site': bucket, 'campaign': camp,
                                   'subpath': '', 'files': files})
@@ -739,12 +738,12 @@ def plan_buckets(sem):
     keep = []
     for it in items:
         base = re.sub(r'_FORA$', '', it['site'])
-        sdir = os.path.join(H_RAW, base)
-        if (it['bucket'] == '_PISCINAS' and it['site'].endswith('_FORA')
-                and os.path.isdir(sdir)):
+        if it['bucket'] == '_PISCINAS' and it['site'].endswith('_FORA'):
             names = {os.path.basename(f) for f in it['files']}
+            # campaign-first: the site's sheets live under every campaign,
+            # HOBO\raw\<camp>\<site>\planilha
             in_site = {os.path.basename(p) for p in
-                       glob.glob(os.path.join(sdir, '**', 'planilha', '*.*'), recursive=True)}
+                       glob.glob(os.path.join(H_RAW, '*', base, 'planilha', '*.*'))}
             if names and names.issubset(in_site):
                 log('    (skipped _PISCINAS/%s %s: the same logger is qualified under '
                     'site %s - the FORA control IS the site monitoring)'

@@ -413,3 +413,79 @@ it was caught only because the script printed the resulting value.
 
 45/45 self-tests, ruff clean — the app was not modified. Every count above was
 read from the rebuilt index and the products themselves, not from the run log.
+
+---
+
+## 2026-08-13 — HOBO\raw inverted to campaign-first; the archive tidied
+
+Owner request: make the two raw trees read the same way. The Seaguard layout
+(campaign → site) is the standard; HOBO was site → campaign.
+
+### The layout inversion
+
+`reorg_hobo_raw.py` moved **123 directories** (111 site campaigns, 12
+`_PISCINAS` pool campaigns; `_EXPERIMENTOS` was already campaign-first and was
+not touched):
+
+```
+before   HOBO\raw\PAB3\RRDM 16a MAR 2023\{bruto,planilha}
+after    HOBO\raw\RRDM 16a MAR 2023\PAB3\{bruto,planilha}
+```
+
+**The RRDM campaign names were kept.** The two numbering series cannot be
+merged: HOBO runs `6a..22a`, Seaguard `1..12`, and only 8 of 15 HOBO campaigns
+have a Seaguard counterpart at all (HOBOs are recovered on more expeditions).
+Renumbering would invent numbers and destroy the identity the field team uses.
+
+Whole directories were moved, never individual files. Verification, in
+layers: content fingerprint before/after (489 files, identical md5 multiset);
+then, independently, **every one of the manifest's 407 rows checked against
+the file at its new path — 407/407 md5-identical, 0 missing**; the manifest's
+`dest` column rewritten in the same pass (367 rows; the 40 untouched are all
+`_EXPERIMENTOS`, accounted for by name).
+
+### A latent record defect the re-check exposed
+
+12 manifest rows still said `copied_verified` with pre-repair md5 AND size.
+Cause: **`repair_unset_clock.py` never updated the manifest** (its two sibling
+repair scripts do), and the two hand re-exports were never re-recorded either.
+The record had been silently disagreeing with the archive since the August
+repairs — found only because the reorganisation forced a full re-check. Fixed
+by the new `refresh_manifest_md5.py`: the 12 rows now carry the current
+md5/size, status `repaired_in_place`, and a note stating the FILE was never in
+doubt — the row was late. A gotcha note went into `repair_unset_clock.py`.
+
+### The driver adapted, and proven equivalent
+
+`qualify_site.py` (three walks: `plan`, `_owning_campaign`, `plan_buckets`
+`_PISCINAS`, plus the FORA-skip glob) and `run_semester.py` (site enumeration)
+now read campaign-first. Proof, strongest available:
+
+- **discovery parity**: for all **137 HOBO products** in the index, the
+  rewritten discovery re-finds a group with exactly the same input files —
+  137/137, including the FORA/NA skip guards firing correctly;
+- **full-stack controls** (tempdir, corpus untouched): `ESQSUL_2026S1`
+  (4,285 rows) and `PLES_DENTRO_2026S1` (4,307 rows, the `_PISCINAS` branch)
+  requalified from the new layout — every column identical to the corpus
+  product, stamp aside;
+- the ESQRODO 2020S1 re-file guard still plans **nothing**, as it must.
+
+### The tables tidied
+
+Owner request: the archive as clean as possible. `tidy_archive_tables.py`
+moved the one-off analysis outputs and old reorganisation paperwork
+(`replicate_disagreement_sweep`, `replicate_referee_verdicts`, two
+`a2_manifest`, `reorg_manifest`, `survey_master`) into **`CLAUDE\_registros\`**
+with a LEIA-ME; deleted `manifest.csv.bak` (superseded). **The two
+`manifest.csv` (provenance, written by the repair scripts) and
+`qualified_index.csv` (read by four scripts) stay where the pipeline expects
+them.** Today's operation backups of the HOBO manifest were also filed into
+`_registros`. The root now holds exactly: `HOBO`, `SEAGUARD`, `_registros`,
+`qualified_index.csv`.
+
+### Still open (pre-existing, observed while verifying)
+
+84 files under `HOBO\raw` have no manifest row — almost all `_EXPERIMENTOS`
+campaigns staged after the original manifest sweep (RRDM 20a/21a/22a), plus
+the two LEIA-ME notes. Not caused by this round; extending the manifest to
+cover them is a separate decision.

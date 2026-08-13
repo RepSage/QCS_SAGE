@@ -2,6 +2,38 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-13 — HOBO\raw campaign-first; archive tidied; duplicate install removed
+
+Owner requests, all done and verified (full record in
+`sourceCode/batch/CORPUS_LOG.md`):
+
+- **HOBO\raw inverted to campaign-first** (123 directories moved, RRDM names
+  kept — the two campaign numberings are not convertible). Verified in layers:
+  identical md5 multiset (489 files), then **407/407 manifest rows checked
+  against the files at their new paths**, manifest `dest` rewritten (367 rows,
+  40 `_EXPERIMENTOS` untouched by design).
+- The re-check exposed a latent defect: **12 manifest rows stale since August**
+  (`repair_unset_clock.py` never updated the manifest; two hand re-exports
+  never re-recorded). Reconciled by the new `refresh_manifest_md5.py`; gotcha
+  note added to the script.
+- **Driver adapted** (`qualify_site.py`, `run_semester.py`) and proven:
+  discovery parity **137/137** HOBO products; full-stack tempdir controls
+  ESQSUL_2026S1 and PLES_DENTRO_2026S1 column-identical to their corpus
+  products; ESQRODO 2020S1 re-file guard still plans nothing.
+- **Archive root tidied** to `HOBO / SEAGUARD / _registros /
+  qualified_index.csv`; historical tables filed in `_registros\` with a
+  LEIA-ME; `manifest.csv.bak` deleted. The two `manifest.csv` and the index
+  stay — the pipeline reads/writes them.
+- **Duplicate install removed** on this machine: the per-user copy was already
+  gone from disk; its orphaned HKCU uninstall entry (backed up to a .reg in the
+  session scratchpad) was deleted. One QCS remains: v11.2.1 all-users in
+  `Program Files (x86)` — kept there by owner decision ("(x86) mesmo").
+- Pre-existing observation: 84 files under HOBO\raw (mostly newer
+  `_EXPERIMENTOS` campaigns) have no manifest row; separate decision.
+
+The corpus itself was NOT requalified — nothing about the data changed, only
+where the raw files live and how the drivers find them.
+
 ## 2026-08-13 — v11.2.2 MERGED and TAGGED; installer rebuilt; two install findings
 
 PR #22 merged (`7fcc7a6`); **tagged `v11.2.2` after re-verifying 51/51 + ruff on

@@ -37,6 +37,13 @@ untouched — used for light-mode reruns.
 
 ## What the drivers encode (the hard-won rules)
 
+- **Both raw trees are campaign-first** (HOBO since 2026-08-13, matching
+  Seaguard): `SEAGUARD\raw\<N - MES ANO>\<SITE>\` and
+  `HOBO\raw\<RRDM Na MES ANO>\<SITE>\{bruto,planilha}`;
+  `_PISCINAS\<campaign>\<pool>\`, `_EXPERIMENTOS\<campaign>\<subpath>\`. The
+  two campaign numberings are DIFFERENT series and must never be merged — only
+  8 of 15 HOBO campaigns have a Seaguard counterpart.
+
 - **Semester naming** `<SITE>_<YEAR>S<n>_<INSTRUMENT>[_<TIPO>][_k]_QLF` — the
   semester tag unifies the two corpora (the same expedition is labelled
   "ABRIL 2019" by Seaguard and "MAI 2019" by HOBO). `_k` numbers multiple
