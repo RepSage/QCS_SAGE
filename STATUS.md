@@ -2,7 +2,40 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
-## 2026-08-13 — v11.2.1 MERGED and TAGGED; installer rebuilt; release pending
+## 2026-08-13 — v11.2.2 on branch `improvements-v11.2.2`: the update check on a clean machine
+
+**The v11.2.1 self-update worked on this machine and FAILED on the field
+notebook** ("could not be reached", with working internet). Root cause found:
+`api.github.com` chains to *Sectigo Public Server Authentication Root E46*, a
+recent root; Windows fetches a missing root on demand for the browser and
+PowerShell, but **Python validates only against roots already installed**. A
+rarely-online notebook does not have it — the exact machine class this
+installer exists for.
+
+Two defects, both mine, both fixed:
+- **`fetch_latest` swallowed every exception** (`except Exception: return
+  None`), so DNS, proxy, timeout and certificate all read as "no connection".
+  It now RAISES; the silent-on-startup policy moved to the call site (startup
+  silent + logs the reason, manual check names the cause).
+- **The app trusted the machine's certificate store.** It now ships `certifi`
+  (118 roots) and uses it for the check and the download, falling back to the
+  system context when certifi is absent (source runs). Timeout 6 s → 15 s.
+
+**Verified against the live API with the Windows store EXCLUDED**: trusting
+only the shipped bundle the connection succeeds; with no trust anchors it is
+refused (so the success is the bundle's, not an ambient default). 51/51
+self-tests, ruff clean.
+
+`QCS_diagnostico_update.ps1` (Desktop) is a standalone diagnostic for the field
+notebook — DNS, port 443, proxy, .NET call, presence of the required root,
+firewall rules, plus a verdict. It has NOT been run there yet; it will confirm
+or refute the diagnosis above.
+
+**Lesson worth keeping**: the v11.2 live update test passed on the development
+machine, which is the one machine guaranteed to have every dependency. A
+feature whose whole purpose is clean machines has to be tested on one.
+
+## 2026-08-13 — v11.2.1 MERGED and TAGGED; installer rebuilt; release published
 
 PR #21 merged (`d67ab9c`, carrying the message fix AND the user-manual deep
 revision — title now "User Manual of…", zero version mentions in the body,

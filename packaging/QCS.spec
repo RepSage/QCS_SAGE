@@ -23,9 +23,12 @@ from PyInstaller.utils.hooks import collect_all
 SRC = os.path.join(SPECPATH, '..', 'sourceCode')  # noqa: F821 (SPECPATH is a PyInstaller global)
 
 datas, binaries, hiddenimports = [], [], []
-# sv_ttk ships .tcl theme files and gsw its coefficient tables; neither is a
-# plain import PyInstaller can trace, so collect both wholesale.
-for pkg in ('sv_ttk', 'gsw'):
+# sv_ttk ships .tcl theme files, gsw its coefficient tables and certifi the CA
+# bundle (cacert.pem) the update check validates against; none of the three is
+# a plain import PyInstaller can trace, so collect them wholesale. certifi is
+# what frees the app from the target machine's certificate store - see
+# QCS_Update.ssl_context.
+for pkg in ('sv_ttk', 'gsw', 'certifi'):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b

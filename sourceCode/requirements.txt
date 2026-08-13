@@ -7,3 +7,5 @@ scipy
 openpyxl   # reading/writing .xlsx files
 gsw        # T-S diagram (QCS_DataView.plot_TS_diagram)
 sv-ttk     # modern interface theme (QCS_Theme); optional, has a fallback
+certifi    # CA bundle for the update check (QCS_Update); optional, falls back
+           # to the machine's certificate store
