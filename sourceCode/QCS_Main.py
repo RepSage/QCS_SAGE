@@ -1,7 +1,6 @@
 # system modules
 import os
 import re
-import sys
 import time
 import json
 import shutil
@@ -350,13 +349,11 @@ TS_QUALITY_TESTS_TOOLTIPS = {
 
 # ----- user preferences: last folders and last choices, kept between sessions -----
 def settings_store_path():
-    # the settings file lives next to the script (or next to the .exe when frozen),
-    # NOT in _MEIPASS, which is recreated at every run
-    if getattr(sys, 'frozen', False):
-        base = os.path.dirname(sys.executable)
-    else:
-        base = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base, 'qcs_user_settings.json')
+    # the settings file lives next to the script (or next to the .exe when
+    # frozen and that folder is writable - per-user installs, the portable
+    # unzip), falling back to %APPDATA%\QCS for read-only installs such as
+    # Program Files (v11.2). Never _MEIPASS, which is recreated at every run.
+    return os.path.join(theme.writable_app_dir(), 'qcs_user_settings.json')
 
 USER_PREFS = {}
 # Set by load_user_prefs when saved QC criteria were DISCARDED because they came

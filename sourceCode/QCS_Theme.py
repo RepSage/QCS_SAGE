@@ -341,6 +341,29 @@ def install_output_redirect():
     return _redirect_stream
 
 
+def writable_app_dir():
+    """The folder where the app may WRITE its per-user files (settings, crash
+    log). Running from source, that is the script folder - unchanged. Frozen,
+    it is the folder beside the exe WHEN WRITABLE (per-user installs, the
+    portable unzip), else %APPDATA%\\QCS - which is what makes an install into
+    Program Files workable (v11.2): that folder is read-only for a regular
+    user, and os.access lies about it on Windows, so the probe is a real write.
+    """
+    if not getattr(sys, 'frozen', False):
+        return os.path.dirname(os.path.abspath(__file__))
+    base = os.path.dirname(sys.executable)
+    try:
+        probe = os.path.join(base, '.qcs_write_probe')
+        with open(probe, 'w') as f:
+            f.write('x')
+        os.remove(probe)
+        return base
+    except OSError:
+        appdata = os.path.join(os.environ.get('APPDATA', base), 'QCS')
+        os.makedirs(appdata, exist_ok=True)
+        return appdata
+
+
 def install_crash_handler(app_name, out_stream=None, base_dir=None):
     """Global excepthook: on an uncaught error (e.g. a crash before the window
     exists, when there is no console to read), write a QCS_crash.log next to the

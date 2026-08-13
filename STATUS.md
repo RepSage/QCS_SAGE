@@ -2,6 +2,40 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-11 — v11.2 on branch `improvements-v11.2`, PR to open; UNRELEASED
+
+Self-update + Program Files support. `QCS_VERSION = 'v11.2'`,
+`changelog/v11.2.md`, manual updated. **50/50 self-tests (2 new), ruff clean**,
+source app opens under the new wiring. MINOR — the qualification path is
+untouched.
+
+- **`QCS_Update.py`**: startup check of GitHub releases/latest in a daemon
+  thread (silent offline — the field notebook's normal state), one-click
+  download + silent in-place upgrade + relaunch; *Help → Check for updates…*
+  for the manual path. Batch/headless never import it, so corpus runs never
+  touch the network. Never offers a downgrade; junk tags ignored (tested).
+- **`writable_app_dir()`** (`QCS_Theme`): settings and crash log go beside the
+  exe when writable (per-user installs — unchanged), else `%APPDATA%\QCS` —
+  which is what makes Program Files installs work. Both tabs and the crash
+  handler route through it; from source the path is byte-identical (tested).
+- **Dual-mode installer** (`.iss`): one setup asks all-users (Program Files,
+  admin) or just-me (no admin); `CloseApplications` + silent-upgrade relaunch
+  for the self-update loop. `AppVersion` 11.2.
+
+**The update check needs the repository PUBLIC** (owner decided to flip it):
+while private, the API 404s and the check is silently idle — safe either way.
+
+**Live end-to-end test, pending the release** (the honest proof, in order):
+1. owner makes the repo public (Settings → General → Danger Zone → Change
+   visibility) — then `curl api.github.com/repos/RepSage/QCS_SAGE/releases/latest`
+   must answer 200 anonymously;
+2. merge the PR; tag v11.2; rebuild the bundle + installer per
+   `packaging/README.md` (AppVersion already 11.2);
+3. publish the v11.2 Release **with `QCS_Setup_v11.2.exe` attached as an
+   asset** (the checker looks for a `QCS_Setup_*.exe` asset);
+4. install the OLD `QCS_Setup_v11.1.exe` (Desktop), open QCS → it must offer
+   v11.2 → one click → app reopens as v11.2. That closes the loop.
+
 ## 2026-08-11 — a self-contained installer exists: QCS_Setup_v11.1.exe
 
 Built for the field notebook (no Python, no Anaconda, no dependencies needed).
