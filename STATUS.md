@@ -13,9 +13,23 @@ never executed: Windows opens a double-clicked `.ps1` in Notepad. Fixed by
 shipping `QCS_diagnostico.bat` beside it (double-click runs it, `Unblock-File`
 first for files that arrived by e-mail, output teed to
 `QCS_diagnostico_resultado.txt` so the evidence survives a window that closes).
-Tested end to end from a cmd double-click. **So the certificate diagnosis is
-still UNCONFIRMED on that machine** — the fix stands on its own merits, but the
-field evidence has not been collected yet.
+Tested end to end from a cmd double-click.
+
+**The diagnosis is nonetheless settled, by a fact the owner supplied: that
+notebook cannot install Windows updates at all** (it reports its build as
+end-of-service though it is Windows 11 Pro 22H2). Root-certificate updates
+arrive through Windows Update, so its root store is frozen at whenever it last
+succeeded — and the root `api.github.com` chains to is recent. Browser works
+(.NET fetches a missing root on demand), QCS did not (Python reads only what is
+installed). The chain is complete without running the diagnostic; the files
+remain on the Desktop should formal confirmation ever be wanted.
+
+**Consequence worth keeping:** on that machine the workaround the error message
+suggests — install the pending Windows updates — is a dead end, so **v11.2.2 is
+not merely the fix but the only route**. Install it there BY HAND (the old
+version cannot self-update; that is the defect). The owner has decided not to
+pursue the machine's Windows problem, which is fine for QCS: from v11.2.2 the
+app depends on that machine for nothing.
 
 **Two findings from testing the diagnostic here, both real:**
 
