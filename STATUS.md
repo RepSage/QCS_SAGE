@@ -2,7 +2,24 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
-## 2026-08-11 — v11.2 on branch `improvements-v11.2`, PR to open; UNRELEASED
+## 2026-08-13 — v11.2 MERGED and TAGGED; installer rebuilt; release publication pending
+
+PR #20 merged (merge `e67b4a5`, which also carries the no-AI-attribution rule
+committed to master in parallel). **Tagged `v11.2` → `e67b4a5`; branch deleted
+local and remote; 50/50 self-tests and ruff clean re-verified on the merged
+master before tagging.** The repository is PUBLIC (API answers 200 anonymously
+— verified, and that is the call the updater makes).
+
+Remaining, in order:
+1. installer rebuilt from the tagged master → `QCS_Setup_v11.2.exe` on the
+   Desktop (in progress at the time of this entry);
+2. owner publishes the v11.2 Release (`RELEASE_v11.2_para_colar.md` on the
+   Desktop) **with the setup attached as an asset** — the updater looks for a
+   `QCS_Setup_*.exe` asset;
+3. the live loop test: install the v11.1 setup, open QCS, accept the v11.2
+   offer, watch it reopen updated.
+
+## 2026-08-11 — v11.2 on branch `improvements-v11.2` (superseded by the entry above)
 
 Self-update + Program Files support. `QCS_VERSION = 'v11.2'`,
 `changelog/v11.2.md`, manual updated. **50/50 self-tests (2 new), ruff clean**,
