@@ -2,18 +2,35 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
-## 2026-08-13 — known cosmetic nit, fix at the NEXT release (needs a version)
+## 2026-08-13 — v11.2.1 on branch `improvements-v11.2.1`, PR to open
 
-On a **virgin install** (no settings file at all) the startup log prints
-*"saved settings are from a different version (None != v11.2)"* — misleading:
-nothing was saved and nothing was reset. The condition in
-`QCS_Main.load_user_prefs` treats "no `qcs_version` key" and "different
-version" as one case. Fix: when `USER_PREFS` is empty / has no version key,
-say "no saved settings; using the default quality criteria" and do NOT set
-`SETTINGS_RESET_FROM` (the v11.1 dialog already ignores None, so only the log
-line is wrong). One line, but it touches `sourceCode/` → next release, not a
-cycle of its own. Found by the owner on the first fresh-install launch —
-installers make virgin environments common, which is why it surfaced now.
+The virgin-install message fix (the nit below), released as a PATCH at the
+owner's request — deliberately doubling as **the owner's own live test of the
+self-update**: the installed v11.2 on this machine must offer v11.2.1 at
+startup once the release is published with its setup asset.
+
+- `QCS_Main`: the version gate now separates "no settings at all" (new
+  message: *"Info: no saved settings; using the default quality criteria."*,
+  no reset flag) from "settings from another version" (unchanged message +
+  dialog). **All three cases exercised through the real UI-build path**
+  (harness with a withdrawn Tk root): virgin → new message, flag None;
+  v8.0 file → old message, flag 'v8.0'; same version → silent.
+- `QCS_VERSION = 'v11.2.1'`; `changelog/v11.2.1.md`; manual bumped;
+  `.iss` AppVersion 11.2.1. 50/50 self-tests, ruff clean.
+- Two harness quirks worth remembering when testing this area: importing
+  `QCS_Main` installs the app's stdout redirect (your own prints vanish —
+  restore `sys.__stdout__`), and with a sink set but NO mainloop the redirect
+  queues forever (the batch harness sees prints only because it never sets a
+  sink).
+
+After the merge: tag, rebuild bundle+installer, Release with the asset —
+then the owner's v11.2 updates itself to v11.2.1, which is the point.
+
+*(The nit, as recorded when found:)* on a **virgin install** the startup log
+printed *"saved settings are from a different version (None != v11.2)"* —
+misleading: nothing was saved and nothing was reset. Found by the owner on the
+first fresh-install launch; installers make virgin environments common, which
+is why a wording flaw dating from the v3.2 version gate only surfaced now.
 
 ## 2026-08-13 — v11.2 RELEASED, and the self-update loop CLOSED LIVE
 
