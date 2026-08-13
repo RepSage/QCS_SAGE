@@ -1046,6 +1046,14 @@ def restore_user_prefs():
     # Restore the quality CRITERIA only if they were saved by the SAME program
     # version. On a version change, keep the new code defaults (so criteria
     # improvements take effect) instead of the user's old saved criteria.
+    if not p.get('qcs_version'):
+        # Virgin install (or a settings file so old it predates the version
+        # key): there are no saved criteria, so nothing is being "reset" - the
+        # old wording, "different version (None != v11.2)", read as if previous
+        # settings had been found and discarded, and misled the first
+        # fresh-install user it met (v11.2.1).
+        print("Info: no saved settings; using the default quality criteria.")
+        return
     if p.get('qcs_version') != data.QCS_VERSION:
         # The reset is by design, but it used to be only this log line, easy to
         # miss. QCS_App reads SETTINGS_RESET_FROM after building the window and

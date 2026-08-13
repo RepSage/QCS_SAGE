@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Complete Manual of the QCS System (Quality Control System)</title>
+    <title>User Manual of the QCS System (Quality Control System)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -151,8 +151,8 @@
     </style>
 </head>
 <body>
-    <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v11.2</em></p>
+    <h1>User Manual of the QCS System (Quality Control System)</h1>
+    <p style="text-align:center; opacity:0.7;"><em>For version v11.2.1</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -178,45 +178,47 @@
     <p>QCS (Quality Control System) is a complete solution for the qualification and visualization
     of oceanographic data from two instrument families: <strong>Seaguard/TSCP</strong>
     (temperature, salinity, conductivity, pressure, O₂, pH, chlorophyll, turbidity — profiles and
-    moorings) and, since v4.0, <strong>HOBO Pendant</strong> (temperature and light — see section 9).
+    moorings) and <strong>HOBO Pendant</strong> (temperature and light — see section 9).
     This manual covers every aspect of the system, from installation to advanced operations.</p>
 
     <h2 id="installation">2. Installation</h2>
     <h3>Minimum Requirements</h3>
     <ul>
         <li>Windows 10 or later (64-bit)</li>
-        <li>Python (Anaconda is recommended) with the packages from <code>sourceCode/requirements.txt</code>:
-            <code>numpy</code>, <code>pandas</code>, <code>matplotlib</code>, <code>scipy</code>, <code>openpyxl</code> and <code>gsw</code></li>
-        <li><code>sv-ttk</code> (optional, included in requirements.txt): the "Sun Valley" visual theme
-            (Windows 11 look, with light/dark mode). Without it, the interface uses the classic
-            look — nothing stops working.</li>
+        <li>Nothing else for the installed program — the installer is self-contained (no Python
+            and no libraries to install). Running from source instead requires Python and the
+            project dependencies (see section 13).</li>
     </ul>
+
+    <h3>Installing (recommended)</h3>
+    <ol>
+        <li>Download <code>QCS_Setup_v&lt;version&gt;.exe</code> from the project's releases page
+            and run it.</li>
+        <li>Choose the installation mode: <strong>install for all users</strong> (goes to
+            <code>C:\Program Files\QCS</code>, asks for an administrator account) or
+            <strong>install for me only</strong> (user area, no administrator needed — the right
+            choice for a field notebook).</li>
+        <li>Open <strong>QCS</strong> from the Start Menu or the Desktop shortcut.</li>
+    </ol>
     <div class="note">
-        <p><strong>New in v4.0:</strong> a modernized interface with a <strong>dark mode</strong>
-        (toggle in the window header, preference remembered across sessions), crisp text on
-        high-resolution displays, and an <strong>"Execution log"</strong> panel in the main windows
-        that shows the progress, warnings and errors of each run, color-coded by severity.</p>
+        <p>Two first-run notes: Windows SmartScreen may warn about an unrecognized publisher (the
+        installer carries no code-signing certificate) — choose <em>"More info &rarr; Run
+        anyway"</em>. And the very first launch takes ~15–20&nbsp;s while the plotting library
+        builds its font cache, one time only; after that the program opens in a few seconds.</p>
     </div>
 
-    <h3>Basic Installation</h3>
-    <p>QCS runs directly from the Python scripts (there are no more executables). To set it up:</p>
-    <ol>
-        <li>Obtain the project folder (containing the <strong>sourceCode</strong> subfolder and the <code>.bat</code> shortcuts)</li>
-        <li>Install the dependencies by running in the terminal:
-            <pre><code>python -m pip install -r sourceCode/requirements.txt</code></pre></li>
-        <li>Open <strong>QCS.bat</strong></li>
-    </ol>
-    <p>Since v5.0, both tools live in a <strong>single window</strong> (open with
-    <strong>QCS.bat</strong>): a menu bar (File / Edit / View / Tools / Help) plus two tabs,
-    <strong>Data Qualification</strong> and <strong>Data Visualization</strong>. Dark mode is
-    under the View menu.</p>
-    <p>Since v4.0, the app runs with <strong>no terminal window</strong> (launched via
-    <code>pythonw</code>): all progress, warnings and errors appear in the <strong>Execution log</strong>.
-    Since v5.0 this is <strong>one single panel, fixed at the bottom of the window</strong> — the same
-    log, in the same place and with the same message styling, for every pipeline stage (qualification,
-    database building/preview and panel generation). If a fatal error happens before the window can
-    open, a message box appears and a <code>sourceCode/QCS_crash.log</code> file is written with the
-    details.</p>
+    <h3>The interface at a glance</h3>
+    <p>Both tools live in a <strong>single window</strong>: a menu bar (File / Edit / View /
+    Tools / Help) plus two tabs, <strong>Data Qualification</strong> and
+    <strong>Data Visualization</strong>. The interface offers a <strong>dark mode</strong>
+    (View menu, remembered across sessions) and crisp text on high-resolution displays.</p>
+    <p>The app runs with <strong>no terminal window</strong>: all progress, warnings and errors
+    appear in the <strong>Execution log</strong> — one single panel, fixed at the bottom of the
+    window, the same log for every pipeline stage (qualification, database building/preview and
+    panel generation), color-coded by severity. If a fatal error happens before the window can
+    open, a message box appears and a <code>QCS_crash.log</code> file is written with the
+    details — next to <code>QCS.exe</code> on an installed copy (in <code>%APPDATA%\QCS</code>
+    for a Program Files install), or in <code>sourceCode/</code> when running from source.</p>
 
     <h2 id="interface_qcs_main">3. QCS_Main Interface</h2>
     <h3>INPUT SETTINGS Section</h3>
@@ -235,7 +237,7 @@
             (groups sampled at different rates are interpolated onto the finest one), so every
             variable is qualified together. Selecting a <strong>Doppler current-profiler
             (DCPS)</strong> group's <code>Data000.bin</code> auto-sets the Data type to
-            <strong>TSCP Doppler</strong> and runs the CURRENT pipeline instead (since v8.0):
+            <strong>TSCP Doppler</strong> and runs the CURRENT pipeline instead:
             one row per record &times; depth cell, four current quality tests (speed range;
             signal quality &mdash; cell state, return strength, 'no ping' placeholders; speed
             standard deviation; instrument tilt), output in
@@ -245,7 +247,7 @@
             Visualization tab, the same qualified table is auto-detected as Instrument
             <strong>Doppler</strong> / Data type <strong>TSCP Doppler</strong>, and 'Generate
             panels' renders the current panels into <code>DatabaseView\&lt;site&gt;
-            (current)</code> per selected site. Since v8.1 the current panels honour the
+            (current)</code> per selected site. The current panels honour the
             <strong>time window</strong> and the <strong>depth range</strong> (which also sets
             the stick/vector reference depth to the band's centre); <strong>Fixed scale</strong>
             gives every heatmap one shared speed colour scale so sites/years compare 1:1; and
@@ -332,11 +334,9 @@
         </tr>
     </table>
     <div class="note">
-        <p><strong>New in v4.0:</strong> when you choose the <strong>Data File</strong>, the
-        <em>Output Folder</em> and <em>Output File Name</em> are pre-filled automatically
-        (same folder as the file, and base name + <code>_QLF</code>); you can edit them freely.
-        The old <em>Config File</em> field (import .json) and the <em>Export Settings</em> button
-        were removed — all configuration is done in the Settings window.</p>
+        <p>When you choose the <strong>Data File</strong>, the <em>Output Folder</em> and
+        <em>Output File Name</em> are pre-filled automatically (same folder as the file, and
+        base name + <code>_QLF</code>); you can edit them freely.</p>
     </div>
 
     <h3>OUTPUT SETTINGS Section</h3>
@@ -360,7 +360,7 @@
         <tr>
             <td>Output format</td>
             <td>Format of the <strong>qualified data</strong> file (CSV or XLSX). The automatic
-                report files are always written as <strong>.xlsx</strong> (since v4.0), with
+                report files are always written as <strong>.xlsx</strong>, with
                 columns auto-fitted to their content.</td>
         </tr>
         <tr>
@@ -436,19 +436,18 @@
         <tr>
             <td>Instrument</td>
             <td>Selects the instrument that produced the qualified files (Seaguard or HOBO).
-            Since v5.0 it is <strong>auto-detected</strong> from the selected files (and stays
+            It is <strong>auto-detected</strong> from the selected files (and stays
             editable). Seaguard and HOBO spreadsheets have different layouts and are
             <strong>never combined with each other</strong> — build a separate database for
-            each instrument. Both .csv and .xlsx files are read automatically (the old format
-            selector was removed in v4.0).</td>
+            each instrument. Both .csv and .xlsx files are read automatically.</td>
         </tr>
         <tr>
-            <td>Recent (v5.0)</td>
+            <td>Recent</td>
             <td>Dropdown with the last file selections — pick one to refill the fields
                 with a single click.</td>
         </tr>
         <tr>
-            <td>Database preview (v5.0)</td>
+            <td>Database preview</td>
             <td>The <strong>Preview</strong> button builds the database right away and shows a
                 summary (rows, sites, period, source files, warnings) without leaving Step 1 —
                 confirm the selection before moving on. "Next &gt;" reuses this build, so
@@ -623,7 +622,7 @@
             only → light usable window, HOBO only)</li>
         <li>Flags are cumulative - a data point can have multiple codes</li>
         <li>The exact position → test → variable mapping is written to the
-            <code>QCS_flag_legend.xlsx</code> file, generated with each qualification (v4.0)</li>
+            <code>QCS_flag_legend.xlsx</code> file, generated with each qualification</li>
     </ul>
 
     <h4>Example</h4>
@@ -635,7 +634,7 @@
         <li>2: Test not applied in the fourth test</li>
     </ul>
 
-    <h3>Per-variable Flag_ columns (v4.0)</h3>
+    <h3>Per-variable Flag_ columns</h3>
     <p>Besides the full <code>Flag</code> string, the qualified file carries a summary column
     per variable (<code>Flag_T</code>, <code>Flag_S</code>, <code>Flag_C</code>, ...,
     <code>Flag_lux</code> in HOBO files), with the <strong>worst flag</strong> of that variable
@@ -643,17 +642,17 @@
     decode the string position by position to filter data by quality — for example, keeping only
     the rows with <code>Flag_T &lt;= 2</code> in a temperature analysis.</p>
 
-    <h3>Derived-variable flags: Flag_dens and Flag_depth (v11.1)</h3>
+    <h3>Derived-variable flags: Flag_dens and Flag_depth</h3>
     <p>Density and Depth are <strong>computed</strong> columns — density from temperature and
     salinity, depth from pressure — so they carry a derived flag rather than none:
     <code>Flag_dens</code> is the worst of <code>Flag_T</code> and <code>Flag_S</code> in the
     row, and <code>Flag_depth</code> equals <code>Flag_P</code>. A density read from a dead
     conductivity cell (~996 kg/m³, fresh-water density) therefore announces itself instead of
-    looking like data. TSCP layout only; HOBO files have neither column. Files qualified before
-    v11.1 lack the two columns — merging old and new files in the database builder works, with
-    the old rows left empty there.</p>
+    looking like data. TSCP layout only; HOBO files have neither column. Files qualified by
+    older program versions may lack the two columns — merging old and new files in the database
+    builder works, with the old rows left empty there.</p>
 
-    <h3>Light clock check: the anomalous-phase verdict (v11.1)</h3>
+    <h3>Light clock check: the anomalous-phase verdict</h3>
     <p>For HOBO files, the light clock check names three situations rather than two: a clean
     <strong>±12 h antiphase</strong> (AM/PM swapped at launch), the <strong>collapsed 12-hour
     export</strong> (no AM/PM marker at all), and now an <strong>anomalous phase</strong> — the
@@ -667,15 +666,14 @@
     <strong>Settings</strong> window, opened by the Settings button in the main window. The choices
     are saved automatically across sessions.</p>
     <div class="note">
-        <p><strong>Since v11.1</strong>, the first launch after a program update shows a dialog when
-        your saved QC criteria were reset to the new version's defaults. The reset itself is old,
-        deliberate behaviour (a version may change criteria on purpose, and keeping old saved values
-        would silently mask that — see the v3.2 changelog); what is new is that it is announced
-        instead of being one log line. Folders, file choices and visualization preferences are
-        always kept.</p>
+        <p>The first launch after a program update shows a dialog when your saved QC criteria were
+        reset to the new version's defaults. The reset is deliberate — a version may change
+        criteria on purpose, and keeping old saved values would silently mask that. Folders, file
+        choices and visualization preferences are always kept, and custom criteria can be set
+        again in the Settings window.</p>
     </div>
 
-    <h3>Updates (v11.2)</h3>
+    <h3>Updates</h3>
     <p>When the program starts it quietly checks GitHub for a newer release; with no internet
     connection nothing happens — the check never blocks or interrupts work. When a newer version
     exists, a dialog offers to <strong>download and install it in one click</strong>: the program
@@ -688,24 +686,16 @@
     program keeps its settings in <code>%APPDATA%\QCS</code>, since the installation folder is
     read-only.</p>
     <div class="note">
-        <p><strong>Change in v4.0:</strong> the old <em>Export Settings</em> (export .json) and
-        <em>Config File</em> (import .json) were <strong>removed from the interface</strong> —
-        configuration is now done entirely in the Settings window. Preferences are still saved
-        automatically in the <code>qcs_user_settings.json</code> file (generated by the program,
-        not versioned).</p>
+        <p>All configuration is done in the Settings window. Preferences are saved
+        automatically in the <code>qcs_user_settings.json</code> file, generated by the program —
+        next to <code>QCS.exe</code> on an installed copy (in <code>%APPDATA%\QCS</code> for a
+        Program Files install), or in <code>sourceCode/</code> when running from source.</p>
     </div>
 
     <h3>Reset to defaults</h3>
     <p>The Settings window has a <strong>"Reset to Defaults"</strong> button that returns all
     criteria to the defaults of the installed version. Invalid values typed in the fields are
     listed in a warning, instead of being silently ignored.</p>
-    <div class="note">
-        <p><strong>Note when upgrading from older versions:</strong> because of the version control
-        of the preferences, the first time you run v4.0 the quality criteria saved from v3.2.1 are
-        replaced by the current defaults (intentional behavior — the criteria were revised). File
-        paths and last choices are preserved.</p>
-    </div>
-
     <h3>Settings structure (JSON)</h3>
     <pre><code>{
     "tsQualityTests": {
@@ -715,16 +705,16 @@
     },
     "tsSettings": {
         "sensor_min_temp": -5,
-        "sensor_max_temp": 35,
+        "sensor_max_temp": 40,
         ...
     }
 }</code></pre>
 
     <h2 id="configuration_parameters">7. Detailed Configuration Parameters</h2>
-    <p><strong>Note (v3.1):</strong> <code>time_window</code>, <code>fail_factor</code> and
-    <code>susp_factor</code> are now defined <strong>per variable</strong>, in the
-    <strong>"Factors per Variable"</strong> tab of the Settings window (one row per variable,
-    columns Fail / Susp / Time window). The descriptions below apply to each variable.</p>
+    <p><code>time_window</code>, <code>fail_factor</code> and <code>susp_factor</code> are
+    defined <strong>per variable</strong>, in the <strong>"Factors per Variable"</strong> tab of
+    the Settings window (one row per variable, columns Fail / Susp / Time window). The
+    descriptions below apply to each variable.</p>
     <h3>time_window</h3>
     <p>Defines the time window for standard-deviation calculations in the spike and rate-of-change tests.</p>
     <p><strong>Accepted formats:</strong></p>
@@ -745,9 +735,9 @@
     </ul>
 
     <h3>fail_factor and susp_factor</h3>
-    <p>Deviation multipliers for classifying data. Since v4.0, the reference for the spike and
+    <p>Deviation multipliers for classifying data. The reference for the spike and
     rate-of-change tests is a <strong>robust deviation</strong> (1.4826 × MAD, the median absolute
-    deviation): the spurious value itself no longer inflates the threshold that should detect it.
+    deviation): the spurious value itself does not inflate the threshold that should detect it.
     Where the MAD degenerates (near-constant series), the calculation falls back to the ordinary
     standard deviation.</p>
     <p><strong>Behavior:</strong></p>
@@ -776,8 +766,10 @@
     <h3>How to Access Help</h3>
     <ul>
         <li><strong>Tooltips:</strong> Hover over any interface element to see a hint</li>
-        <li><strong>Help button (?):</strong> In the header of each window; it includes the basic
-            instructions and the information about the software (the old menu bar was removed in v4.0)</li>
+        <li><strong>Help menu:</strong> User manual, Qualification help, Visualization help,
+            Check for updates and About</li>
+        <li><strong>Help buttons:</strong> in the window headers and review panels, with the
+            basic instructions for that screen</li>
     </ul>
 
     <h2 id="qualification_tests">8. Qualification Tests</h2>
@@ -795,7 +787,7 @@
     <p>The log announces the pipeline in 5 stages (reading → pre-processing → tests →
     output/reports → plots), which makes it easier to find where a run failed.</p>
 
-    <h3>Sequential Order of the Qualification Tests (v4.0)</h3>
+    <h3>Sequential Order of the Qualification Tests</h3>
     <ol>
         <li><strong>Sensor Range Tests</strong> — failure becomes <strong>BAD (4)</strong>
             (physically impossible value for the sensor)
@@ -859,19 +851,15 @@
         window test. The flag string stays short and free of meaningless positions.</p>
     </div>
 
-    <p><strong>Note (v3.0):</strong> the qualification criteria were revised in this version to be
-    broad and general (valid for the entire Brazilian coast, from the South to the Amazonian reefs).
-    The spike test switched to the 3-point method (|V₂ − (V₁+V₃)/2|), and the density inversion test
-    was added for profiles. Because it changes the qualification results relative to the 2.x versions,
-    it is a major version (v3.0).</p>
-
-    <p><strong>Note (v4.0):</strong> a new revision that <strong>changes results</strong> relative to
-    v3.x: the environmental range and rate of change now produce SUSPECT (not BAD), per QARTOD; the
-    spike/rate-of-change reference is now the robust deviation (1.4826×MAD); the vertical gradient now
-    actually uses depth (|ΔV/Δz|); and several bug fixes (detailed in the project's
-    <code>changelog/v4.0.md</code> file). With "Remove Bad Data", values outside the environmental
-    envelope are <strong>no longer removed</strong> automatically — use "Remove Suspect Data" for the
-    old behavior.</p>
+    <div class="note">
+        <p><strong>Comparing results across program versions:</strong> the default criteria are
+        broad and general — a national climatological envelope, valid for the entire Brazilian
+        coast — grounded in the QARTOD/IOOS framework. They can be revised between MAJOR
+        versions of the program (that is precisely what a major version means here), so the same
+        raw file may qualify differently under different majors. <strong>Never compare results
+        produced by different major versions — requalify first.</strong> What changed in each
+        revision is recorded in the project's <code>changelog/</code> folder.</p>
+    </div>
 
     <h3>Test Details</h3>
     <p>Each test produces detailed logs in the console, including:</p>
@@ -881,7 +869,7 @@
         <li>Failure percentage</li>
     </ul>
 
-    <h3>Section: Joining Files in QCS_DatabaseView (build_database engine — v4.0)</h3>
+    <h3>Section: Joining Files in QCS_DatabaseView (the build_database engine)</h3>
     <h4>Two ways to build the database</h4>
     <p>In the Database Input Settings window, first choose the <strong>Instrument</strong>
     (Seaguard or HOBO — the two are never mixed in the same database) and then:</p>
@@ -932,7 +920,7 @@
     </div>
 
     <h2 id="hobo_data">9. HOBO Data (Temperature and Light)</h2>
-    <p>Since v4.0, QCS qualifies and visualizes data from the <strong>HOBO Pendant
+    <p>QCS qualifies and visualizes data from the <strong>HOBO Pendant
     (Temperature/Light)</strong> loggers, in addition to Seaguard. Select
     <strong>Input Type = HOBO</strong> in the main window and point to the HOBOware export.</p>
 
@@ -989,8 +977,9 @@
 
     <h3>Output</h3>
     <p>The qualified HOBO spreadsheet contains only the measured variables + metadata:
-    <code>Sample number</code>, <code>Datetime</code>, <code>Temperature (degC)</code>,
-    <code>Luminosity (lux)</code>, <code>Expedition</code>, <code>Site</code>,
+    <code>Sample number</code>, <code>Datetime</code>, <code>Site</code>,
+    <code>Temperature (degC)</code>, <code>Temperature spread (degC)</code> (filled when
+    redundant replicates are combined; empty for single files), <code>Luminosity (lux)</code>,
     <code>Battery voltage (V)</code>, <code>Flag</code>, <code>Flag_T</code>,
     <code>Flag_lux</code>, <code>QCS version</code>. It is saved in the
     <code>QCS qualified hobo data</code> subfolder (the Seaguard one remains
@@ -1026,7 +1015,7 @@
         foul</strong>. Light is not averaged (that would mix clean and fouled sensors).</li>
     </ul>
 
-    <h3>The clock check (since v9.1)</h3>
+    <h3>The clock check</h3>
     <p>A submerged light sensor <strong>must</strong> peak near local noon. Before the fouling
     analysis runs, QCS measures the diurnal phase of the light — the light-weighted mean
     hour of day, computed on the 24 h <em>circle</em>, and the share of light energy recorded
@@ -1041,9 +1030,8 @@
         <li><strong>A 12 h phase shift</strong> — the logger was launched with AM/PM swapped, so
         light and temperature both sit on the wrong half of the day. The prescribed correction is
         <strong>exactly 12 h</strong>: an AM/PM mistake is exact antiphase, and the measured peak
-        lands slightly off noon only because cloud and fouling are not symmetric about it. Three
-        loggers of the RRDM 14a MAR 2022 campaign (PLES, SGOM, TIM2) recorded tens of thousands
-        of lux at 21–23 h this way.</li>
+        lands slightly off noon only because cloud and fouling are not symmetric about it.
+        Loggers launched this way have recorded tens of thousands of lux at 21–23 h.</li>
         <li><strong>A collapsed 12-hour clock</strong> — some HOBOware exports (pt-BR locale,
         times written <code>04h0min0s</code>) carry a 12-hour clock with <em>no AM/PM marker at
         all</em>, so every afternoon reading lands on top of its morning twin. The signature is
@@ -1054,7 +1042,7 @@
     <p>A heavily fouled logger is <strong>not</strong> accused: fouling attenuates the light, it
     does not move the peak.</p>
 
-    <h3>The fixed light-cutoff mode (since v9.1)</h3>
+    <h3>The fixed light-cutoff mode</h3>
     <p>The adaptive fouling rule reads the decline out of the light itself — which entangles it
     with everything else that moves light on those timescales, <strong>season above all</strong>.
     At the Abrolhos latitude the clear-sky ceiling falls to ~60% of its summer value in winter,
@@ -1067,7 +1055,7 @@
     <ul>
         <li><strong>Reviewed (adaptive)</strong> — the default: the fouling decline is detected
         from the light and the proposed cutoff is reviewed on a plot (drag to adjust, N for no
-        cutoff). Since v10.0 each daily peak is first divided by the <strong>astronomical
+        cutoff). Each daily peak is first divided by the <strong>astronomical
         clear-sky curve</strong> for the run's latitude (taken from the region selection, which
         is therefore enabled for HOBO too), so the decision runs on "fraction of the seasonal
         ceiling" rather than raw lux — a deployment walking into winter is no longer read as
@@ -1085,7 +1073,7 @@
         that was actually applied.</li>
     </ul>
 
-    <h3>The replicate referee (since v9.0)</h3>
+    <h3>The replicate referee</h3>
     <p>Averaging is the right answer only while <strong>both</strong> loggers work. When one
     sensor is broken, the mean is contaminated and the SUSPECT spread flag does not repair it —
     and discarding the suspect rows would throw away the sound replicate too. Worse, a sensor
@@ -1118,7 +1106,7 @@
     replicates plotted against the reference, the score table, and the verdict in words. You
     choose <strong>Accept</strong> (qualify from the named replicate alone; the dropped one is
     recorded in the product's provenance with the full reason) or <strong>Keep all</strong>
-    (average both, the pre-v9.0 behaviour). Nothing is ever dropped silently: with no reference
+    (average both). Nothing is ever dropped silently: with no reference
     available, or with the replicates too close to separate, the referee reports that it cannot
     decide and the run averages as usual.</p>
 
@@ -1143,7 +1131,7 @@
             <ul>
                 <li>All the raw data (except what "Remove Bad/Suspect Data" removes)</li>
                 <li>A "Flag" column (full string) and <code>Flag_T</code>,
-                    <code>Flag_S</code>, ... columns per variable (worst flag of the row — v4.0)</li>
+                    <code>Flag_S</code>, ... columns per variable (worst flag of the row)</li>
                 <li>Metadata (site, QCS version). Latitude/Longitude are not written
                     (identical column layout across spreadsheets)</li>
             </ul>
@@ -1155,13 +1143,13 @@
                 <li>"Valid" discounts rows with bad data in any variable</li>
             </ul>
         </li>
-        <li><strong>Per-test report (QCS_test_report.xlsx — v4.0):</strong>
+        <li><strong>Per-test report (QCS_test_report.xlsx):</strong>
             <ul>
                 <li>One row per executed test: good/suspect/bad/missing counts,
                     test off, and execution time</li>
             </ul>
         </li>
-        <li><strong>Flag legend (QCS_flag_legend.xlsx — v4.0):</strong>
+        <li><strong>Flag legend (QCS_flag_legend.xlsx):</strong>
             <ul>
                 <li>Two sheets: <em>flag_positions</em> (flag-string position → test → variable)
                     and <em>flag_codes</em> (the meaning of each code)</li>
@@ -1174,7 +1162,7 @@
                 <li>Valid-data count (all variables present)</li>
             </ul>
         </li>
-        <li><strong>Light window (QCS_light_window.svg — HOBO only, v4.0):</strong>
+        <li><strong>Light window (QCS_light_window.svg — HOBO only):</strong>
             <ul>
                 <li>Daily light envelope with the baseline, threshold and fouling cutoff
                     applied, and the parameters used written on the plot</li>
@@ -1214,7 +1202,7 @@
         </tr>
     </table>
 
-    <h3>Visualization Panels (HOBO databases — v4.0)</h3>
+    <h3>Visualization Panels (HOBO databases)</h3>
     <p>With <strong>Instrument = HOBO</strong> in the input window, the visualization window
     offers the dedicated HOBO panels instead of panels 1/2/3 (Data Type is fixed to "mooring"
     and the T-S diagram is unavailable, since there is no salinity):</p>
@@ -1387,16 +1375,20 @@
 
     <h2 id="running_from_source">13. Running from Source Code</h2>
 
-    <p>Since version 2.2, QCS runs directly from the Python scripts — there are no more executable
-    (<code>.exe</code>) builds. This means any fix in the scripts takes effect immediately, with no
-    need to recompile.</p>
+    <p>Besides the installed program (section 2), QCS runs directly from the Python scripts —
+    the development workflow: any change in the scripts takes effect immediately, with no need
+    to rebuild or reinstall.</p>
 
     <h3>Requirements</h3>
     <ul>
+        <li>The project folder (containing the <strong>sourceCode</strong> subfolder and the
+            <code>QCS.bat</code> shortcut)</li>
         <li>Python (Anaconda is recommended)</li>
-        <li>The project dependencies installed (see section 2): <code>numpy</code>, <code>pandas</code>,
+        <li>The project dependencies — <code>numpy</code>, <code>pandas</code>,
             <code>matplotlib</code>, <code>scipy</code>, <code>openpyxl</code>, <code>gsw</code>
-            (and optionally <code>sv-ttk</code> for the modern theme)</li>
+            and optionally <code>sv-ttk</code> for the modern theme (without it the interface
+            falls back to the classic look) — installed with:
+            <pre><code>python -m pip install -r sourceCode/requirements.txt</code></pre></li>
     </ul>
 
     <h3>How to run</h3>
@@ -1447,8 +1439,10 @@ python QCS_DatabaseView.py  # visualization tool only (development)</code></pre>
         </tr>
         <tr>
             <td>The program does not open / closes with a message box</td>
-            <td>A fatal error occurred before the window could open. Read the message box, and check
-            <code>sourceCode/QCS_crash.log</code> for the full details</td>
+            <td>A fatal error occurred before the window could open. Read the message box, and
+            check <code>QCS_crash.log</code> for the full details — next to <code>QCS.exe</code>
+            on an installed copy (in <code>%APPDATA%\QCS</code> for a Program Files install), or
+            in <code>sourceCode/</code> when running from source</td>
         </tr>
         <tr>
             <td>"No year selected" when generating panels</td>
@@ -1477,7 +1471,9 @@ python QCS_DatabaseView.py  # visualization tool only (development)</code></pre>
     <p><em>fccardoso@sage.coppe.ufrj.br</em></p>
 
     <div class="note">
-        <p>This manual covers all the functionality of the QCS system. For updates and newer versions, refer to the project's official repository.</p>
+        <p>This manual covers all the functionality of the QCS system. The program checks for
+        newer versions by itself on startup (and on demand in <strong>Help → Check for
+        updates…</strong>); the full history lives in the project's official repository.</p>
     </div>
     <script>
         function copyToClipboard(id) {
