@@ -111,6 +111,11 @@ archive and diff the counts against the previous `qualified_index.csv`.
   them. Equally, do not touch a file just to change the text it displays: it is
   churn, the diff has to be invented, and the row is corrected by the next real
   edit anyway.
+- **No AI attribution anywhere** (owner decision, 2026-08-13): commit messages
+  carry no `Co-Authored-By: Claude` trailer and no "Generated with" footer, and
+  neither do PR bodies, release descriptions or any document in this
+  repository. Commits made before this date keep their trailer — removing it
+  would rewrite history, which the rule above forbids.
 - Propose the next SemVer number for each change set. Any change that alters QC
   results (flags, thresholds, test logic) is a MAJOR bump.
 - On each release: add a file to `changelog/` listing the version's changes,
