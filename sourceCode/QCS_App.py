@@ -161,12 +161,24 @@ def main(run=True):
     menubar.add_cascade(label='Tools', menu=m_tools)
 
     def manual_update_check():
-        latest = updater.fetch_latest()
+        # asked for explicitly, so answer explicitly - including WHY it failed
+        # (v11.2.2: the old message said only "could not be reached", which on
+        # the field notebook hid a missing root certificate behind what read
+        # like a network outage)
+        try:
+            latest = updater.fetch_latest()
+        except Exception as exc:
+            messagebox.showwarning(
+                'Check for updates',
+                'The releases page could not be reached: %s\n\nYou can keep '
+                'working normally - this only affects the update check.'
+                % updater.describe_error(exc))
+            return
         if latest is None:
             messagebox.showwarning(
                 'Check for updates',
-                'The releases page could not be reached - no connection, or '
-                'GitHub is unavailable. Try again later.')
+                'The latest release does not carry a readable version tag, so '
+                'it cannot be compared with this one.')
         elif updater.is_newer(latest['tag'], data.QCS_VERSION):
             updater.offer_update(latest, root)
         else:

@@ -14,6 +14,7 @@ upgrades in place; the app exits as the installer starts.
 import json
 import os
 import re
+import ssl
 import subprocess
 import tempfile
 import threading
@@ -21,12 +22,64 @@ import urllib.request
 
 RELEASES_API = 'https://api.github.com/repos/RepSage/QCS_SAGE/releases/latest'
 RELEASES_PAGE = 'https://github.com/RepSage/QCS_SAGE/releases/latest'
-TIMEOUT_S = 6
+# 15 s, not 6: a cold TLS handshake over a slow field link can eat several
+# seconds before the first byte, and a too-short timeout is indistinguishable
+# from "no internet" to the user.
+TIMEOUT_S = 15
 # GitHub's API rejects requests without a User-Agent
 _HEADERS = {'User-Agent': 'QCS-SAGE-update-check',
             'Accept': 'application/vnd.github+json'}
 
 _TAG = re.compile(r'^v(\d+)\.(\d+)(?:\.(\d+))?$')
+
+
+def ssl_context():
+    """The certificates the app CARRIES, not the ones the machine happens to
+    have (v11.2.2).
+
+    On Windows, Python validates against the certificates already installed in
+    the system store - it cannot fetch a missing root on demand the way the
+    browser and PowerShell do. api.github.com currently chains to 'Sectigo
+    Public Server Authentication Root E46', a recent root: a notebook that is
+    rarely online can simply not have it, and then the update check fails on a
+    machine whose internet works perfectly - which is exactly what happened on
+    the field notebook. Shipping the CA bundle removes the dependency.
+
+    Falls back to the system context when certifi is absent (running from
+    source without it), so nothing breaks - it just goes back to relying on
+    the machine.
+    """
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
+
+def describe_error(exc):
+    """A one-line, human explanation of a failed check. The generic 'could not
+    be reached' told the user nothing and told the maintainer less; these name
+    the cause and, where there is one, the fix."""
+    import socket
+    import urllib.error
+    if isinstance(exc, ssl.SSLCertVerificationError):
+        return ('the security certificate could not be verified - this machine '
+                'is missing a recent root certificate. Installing the pending '
+                'Windows updates usually fixes it.')
+    if isinstance(exc, urllib.error.HTTPError):
+        return 'GitHub answered HTTP %s (%s).' % (exc.code, exc.reason)
+    if isinstance(exc, socket.timeout) or isinstance(exc, TimeoutError):
+        return 'the connection timed out after %d s.' % TIMEOUT_S
+    if isinstance(exc, urllib.error.URLError):
+        reason = getattr(exc, 'reason', exc)
+        if isinstance(reason, ssl.SSLCertVerificationError):
+            return ('the security certificate could not be verified - this '
+                    'machine is missing a recent root certificate. Installing '
+                    'the pending Windows updates usually fixes it.')
+        if isinstance(reason, socket.gaierror):
+            return 'the address api.github.com could not be resolved (no DNS).'
+        return 'the connection failed (%s).' % reason
+    return '%s: %s' % (type(exc).__name__, exc)
 
 
 def parse_tag(tag):
@@ -47,15 +100,19 @@ def is_newer(remote_tag, current_tag):
 
 
 def fetch_latest():
-    """The latest release as {'tag', 'setup_url', 'setup_name', 'size_mb'},
-    or None when unreachable/unparsable. 'setup_url' is None when the release
-    has no QCS_Setup_*.exe asset (then the browser fallback is used)."""
-    try:
-        req = urllib.request.Request(RELEASES_API, headers=_HEADERS)
-        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
-            info = json.load(resp)
-    except Exception:
-        return None
+    """The latest release as {'tag', 'setup_url', 'setup_name', 'size_mb'};
+    None when the release carries no usable version tag. 'setup_url' is None
+    when it has no QCS_Setup_*.exe asset (then the browser fallback is used).
+
+    RAISES on any network/TLS/HTTP failure (v11.2.2). It used to swallow every
+    exception and return None, which left both the user and the maintainer with
+    'could not be reached' and no way to tell DNS from a proxy from an expired
+    certificate. The silent-on-startup policy now lives at the CALL SITE, where
+    it can be chosen per caller, instead of being welded into the fetch.
+    """
+    req = urllib.request.Request(RELEASES_API, headers=_HEADERS)
+    with urllib.request.urlopen(req, timeout=TIMEOUT_S, context=ssl_context()) as resp:
+        info = json.load(resp)
     tag = info.get('tag_name')
     if not parse_tag(tag):
         return None
@@ -73,9 +130,16 @@ def fetch_latest():
 def check_in_background(current_version, on_newer):
     """Startup path: queries the API in a daemon thread and, ONLY when a newer
     release exists, calls on_newer(latest_dict) - the caller marshals it onto
-    the Tk main thread. Silent in every other outcome."""
+    the Tk main thread. Silent in EVERY other outcome, failures included: the
+    startup check must never interrupt work on an offline field notebook. The
+    reason is still printed to the Execution log, so a puzzled user has
+    something to read without being interrupted."""
     def _worker():
-        latest = fetch_latest()
+        try:
+            latest = fetch_latest()
+        except Exception as exc:
+            print('Info: update check skipped - %s' % describe_error(exc))
+            return
         if latest and is_newer(latest['tag'], current_version):
             on_newer(latest)
     threading.Thread(target=_worker, daemon=True).start()
@@ -115,7 +179,8 @@ def download_and_run(latest, parent):
 
     try:
         req = urllib.request.Request(latest['setup_url'], headers=_HEADERS)
-        with urllib.request.urlopen(req, timeout=30) as resp, open(dest, 'wb') as f:
+        with urllib.request.urlopen(req, timeout=30, context=ssl_context()) as resp, \
+                open(dest, 'wb') as f:
             total = int(resp.headers.get('Content-Length') or 0)
             got = 0
             while True:
@@ -131,8 +196,8 @@ def download_and_run(latest, parent):
         win.destroy()
         messagebox.showwarning(
             'Update download failed',
-            'The installer could not be downloaded (%s).\n\nThe release page '
-            'will open in the browser instead.' % exc)
+            'The installer could not be downloaded: %s\n\nThe release page '
+            'will open in the browser instead.' % describe_error(exc))
         import webbrowser
         webbrowser.open(RELEASES_PAGE)
         return False

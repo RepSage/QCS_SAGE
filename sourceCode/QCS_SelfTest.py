@@ -1039,5 +1039,57 @@ import QCS_Theme as thm
 assert thm.writable_app_dir() == os.path.dirname(os.path.abspath(thm.__file__))
 ok.append('writable app dir (source runs unchanged; frozen fallback is install-tested)')
 
+# ------------------------------- 33. update check: certificates and honesty (v11.2.2)
+# The field notebook failed the update check on a machine whose internet was
+# fine: Python validates only against the certificates ALREADY in the Windows
+# store, and that machine lacked the recent root api.github.com chains to. The
+# app must carry its own CA bundle, and must say WHY when a check fails.
+import socket
+import ssl as _ssl
+import urllib.error
+_ctx = upd.ssl_context()
+assert _ctx.verify_mode == _ssl.CERT_REQUIRED and _ctx.check_hostname, 'never disable verification'
+assert len(_ctx.get_ca_certs()) > 20, 'the context must carry a real CA set'
+# with certifi present the trust anchors come from the SHIPPED file, not from
+# the machine: a context built from that file alone must still trust the roots
+# the update check needs
+try:
+    import certifi
+    assert os.path.isfile(certifi.where()), certifi.where()
+    _own = _ssl.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
+    _own.load_verify_locations(cafile=certifi.where())   # no system store at all
+    assert len(_own.get_ca_certs()) > 100, 'the shipped bundle looks truncated'
+except ImportError:
+    pass
+
+# every failure mode gets a specific sentence, never a bare class name
+_cert = _ssl.SSLCertVerificationError('unable to get local issuer certificate')
+assert 'root certificate' in upd.describe_error(_cert)
+assert 'root certificate' in upd.describe_error(urllib.error.URLError(_cert))
+assert 'DNS' in upd.describe_error(urllib.error.URLError(socket.gaierror(11001, 'getaddrinfo failed')))
+assert 'timed out' in upd.describe_error(TimeoutError())
+assert 'HTTP 404' in upd.describe_error(
+    urllib.error.HTTPError('u', 404, 'Not Found', None, None))
+assert upd.describe_error(ValueError('boom')) == 'ValueError: boom'
+
+# a network failure must PROPAGATE now (the caller decides silence), while the
+# startup path stays silent - the two policies live at the call sites
+_saved = upd.RELEASES_API
+upd.RELEASES_API = 'https://127.0.0.1:9/nonexistent'
+try:
+    upd.fetch_latest()
+    raise AssertionError('fetch_latest must raise on a network failure')
+except AssertionError:
+    raise
+except Exception:
+    pass
+_called = []
+upd.check_in_background('v1.0', _called.append)
+import time as _t
+_t.sleep(2.0)
+assert not _called, 'the startup check must stay silent when the network fails'
+upd.RELEASES_API = _saved
+ok.append('update check (own CA bundle / specific error reasons / raises for the caller to silence)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

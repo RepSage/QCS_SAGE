@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v11.2.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v11.2.2</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -1458,6 +1458,13 @@ python QCS_DatabaseView.py  # visualization tool only (development)</code></pre>
             <td>T-S diagram skipped</td>
             <td>Fill in Latitude and Longitude with valid values (decimal degrees) — they are
             required for the T-S</td>
+        </tr>
+        <tr>
+            <td>"Check for updates" fails although the internet works</td>
+            <td>The dialog now names the cause. If it mentions the security certificate, this
+            machine is missing a recent root certificate — install the pending Windows updates.
+            The program itself keeps working normally; only the update check is affected, and
+            the installer can always be downloaded by hand from the releases page</td>
         </tr>
         <tr>
             <td>Light recovery warning after the cutoff (HOBO)</td>
