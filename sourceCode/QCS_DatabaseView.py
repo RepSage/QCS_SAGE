@@ -1,6 +1,5 @@
 import os
 import re
-import sys
 import json
 import pandas as pd
 import QCS_DataHandler as data
@@ -66,11 +65,10 @@ class ErrorLogger(theme.LogConsole):
 
 # ----- user preferences: shared with QCS_Main (same json file) -----
 def settings_store_path():
-    if getattr(sys, 'frozen', False):
-        base = os.path.dirname(sys.executable)
-    else:
-        base = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base, 'qcs_user_settings.json')
+    # must resolve IDENTICALLY to QCS_Main.settings_store_path - both tabs
+    # write the same json - so both delegate to theme.writable_app_dir (v11.2:
+    # falls back to %APPDATA%\QCS when the install dir is read-only)
+    return os.path.join(theme.writable_app_dir(), 'qcs_user_settings.json')
 
 USER_PREFS = {}
 

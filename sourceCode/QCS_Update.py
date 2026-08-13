@@ -1,0 +1,161 @@
+"""Update check against the project's GitHub releases, with one-click install.
+
+Lives behind QCS_App (the GUI shell): the headless and batch paths never import
+this module, so no corpus run ever touches the network. The startup check runs
+in a background thread and FAILS SILENTLY on any network problem - a field
+notebook is offline most of its life, and an update notice is exactly the thing
+that must never block or crash qualification work.
+
+Flow: GET releases/latest (anonymous - the repository is public), compare the
+tag with the running QCS_VERSION, and when newer offer to download the
+QCS_Setup_*.exe asset and run it. The installer (Inno Setup, same AppId)
+upgrades in place; the app exits as the installer starts.
+"""
+import json
+import os
+import re
+import subprocess
+import tempfile
+import threading
+import urllib.request
+
+RELEASES_API = 'https://api.github.com/repos/RepSage/QCS_SAGE/releases/latest'
+RELEASES_PAGE = 'https://github.com/RepSage/QCS_SAGE/releases/latest'
+TIMEOUT_S = 6
+# GitHub's API rejects requests without a User-Agent
+_HEADERS = {'User-Agent': 'QCS-SAGE-update-check',
+            'Accept': 'application/vnd.github+json'}
+
+_TAG = re.compile(r'^v(\d+)\.(\d+)(?:\.(\d+))?$')
+
+
+def parse_tag(tag):
+    """'v11.1' -> (11, 1, 0); 'v3.2.1' -> (3, 2, 1); None when not a version
+    tag (a malformed remote tag must never crash the checker)."""
+    m = _TAG.match(str(tag).strip())
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+
+
+def is_newer(remote_tag, current_tag):
+    """True when remote_tag is a strictly newer version than current_tag."""
+    r, c = parse_tag(remote_tag), parse_tag(current_tag)
+    if r is None or c is None:
+        return False
+    return r > c
+
+
+def fetch_latest():
+    """The latest release as {'tag', 'setup_url', 'setup_name', 'size_mb'},
+    or None when unreachable/unparsable. 'setup_url' is None when the release
+    has no QCS_Setup_*.exe asset (then the browser fallback is used)."""
+    try:
+        req = urllib.request.Request(RELEASES_API, headers=_HEADERS)
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+            info = json.load(resp)
+    except Exception:
+        return None
+    tag = info.get('tag_name')
+    if not parse_tag(tag):
+        return None
+    out = {'tag': tag, 'setup_url': None, 'setup_name': None, 'size_mb': None}
+    for asset in info.get('assets') or []:
+        name = str(asset.get('name') or '')
+        if name.startswith('QCS_Setup_') and name.lower().endswith('.exe'):
+            out['setup_url'] = asset.get('browser_download_url')
+            out['setup_name'] = name
+            out['size_mb'] = round((asset.get('size') or 0) / 1e6, 1)
+            break
+    return out
+
+
+def check_in_background(current_version, on_newer):
+    """Startup path: queries the API in a daemon thread and, ONLY when a newer
+    release exists, calls on_newer(latest_dict) - the caller marshals it onto
+    the Tk main thread. Silent in every other outcome."""
+    def _worker():
+        latest = fetch_latest()
+        if latest and is_newer(latest['tag'], current_version):
+            on_newer(latest)
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def download_and_run(latest, parent):
+    """Downloads the setup asset with a small progress window, launches it
+    silently and asks the app to close. Returns True when the installer was
+    started (the caller should then destroy the root window).
+
+    The installer runs with /SILENT: same-mode upgrades need no clicks, and the
+    .iss relaunches the app when the silent install finishes. An install made
+    for all users (Program Files) triggers the normal UAC prompt first.
+    """
+    from tkinter import Toplevel, messagebox, ttk
+    if not latest.get('setup_url'):
+        # release exists but carries no installer asset: hand over to the browser
+        import webbrowser
+        webbrowser.open(RELEASES_PAGE)
+        return False
+
+    dest = os.path.join(tempfile.gettempdir(), latest['setup_name'])
+    win = Toplevel(parent)
+    win.title('Downloading %s' % latest['tag'])
+    win.resizable(False, False)
+    win.transient(parent)
+    ttk.Label(win, text='Downloading %s (%.0f MB)...'
+              % (latest['setup_name'], latest['size_mb'] or 0)).pack(padx=16, pady=(14, 6))
+    bar = ttk.Progressbar(win, length=320, mode='determinate', maximum=100)
+    bar.pack(padx=16, pady=(0, 14))
+    win.update_idletasks()
+
+    def _hook(blocks, block_size, total):
+        if total > 0:
+            bar['value'] = min(100.0, 100.0 * blocks * block_size / total)
+            win.update()
+
+    try:
+        req = urllib.request.Request(latest['setup_url'], headers=_HEADERS)
+        with urllib.request.urlopen(req, timeout=30) as resp, open(dest, 'wb') as f:
+            total = int(resp.headers.get('Content-Length') or 0)
+            got = 0
+            while True:
+                chunk = resp.read(1 << 16)
+                if not chunk:
+                    break
+                f.write(chunk)
+                got += len(chunk)
+                _hook(1, got, total)
+        if total and got != total:
+            raise OSError('incomplete download: %d of %d bytes' % (got, total))
+    except Exception as exc:
+        win.destroy()
+        messagebox.showwarning(
+            'Update download failed',
+            'The installer could not be downloaded (%s).\n\nThe release page '
+            'will open in the browser instead.' % exc)
+        import webbrowser
+        webbrowser.open(RELEASES_PAGE)
+        return False
+
+    win.destroy()
+    # /SILENT: progress bar only, no wizard; the .iss closes a running QCS if
+    # needed (CloseApplications) and relaunches it after a silent upgrade
+    subprocess.Popen([dest, '/SILENT', '/NORESTART'])
+    return True
+
+
+def offer_update(latest, root):
+    """The dialog shown when a newer release is found. On accept, starts the
+    download/install and closes the app."""
+    from tkinter import messagebox
+    from QCS_DataHandler import QCS_VERSION
+    size = (' (~%.0f MB)' % latest['size_mb']) if latest.get('size_mb') else ''
+    if not messagebox.askyesno(
+            'Update available',
+            'QCS %s is available - you are running %s.\n\n'
+            'Download and install it now%s? The program will close and '
+            'reopen updated; your settings and preferences are kept.'
+            % (latest['tag'], QCS_VERSION, size)):
+        return
+    if download_and_run(latest, root):
+        root.destroy()

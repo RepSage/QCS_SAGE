@@ -1017,5 +1017,27 @@ with contextlib.redirect_stdout(_buf2):
 assert _buf2.getvalue().count('same line') == 1, 'a new run must warn again'
 ok.append('once-per-run warning dedup (repeat suppressed / next run warns again)')
 
+# ------------------------------------------ 31. update version comparison (v11.2)
+# The update checker must never mis-order versions (offering a downgrade or
+# missing an upgrade) and must shrug at anything that is not a version tag.
+import QCS_Update as upd
+assert upd.parse_tag('v11.1') == (11, 1, 0)
+assert upd.parse_tag('v3.2.1') == (3, 2, 1)
+assert upd.parse_tag('banana') is None and upd.parse_tag('11.1') is None
+assert upd.is_newer('v11.2', 'v11.1') and upd.is_newer('v12.0', 'v11.2')
+assert upd.is_newer('v11.1.1', 'v11.1'), 'a patch outranks its base'
+assert not upd.is_newer('v11.1', 'v11.1')
+assert not upd.is_newer('v10.0', 'v11.1'), 'never offer a downgrade'
+assert not upd.is_newer('nightly', 'v11.1'), 'a malformed remote tag is ignored'
+ok.append('update version comparison (upgrade yes / same no / downgrade no / junk tag no)')
+
+# ------------------------------------------------- 32. writable app dir (v11.2)
+# From source it must be the script folder - byte-identical settings path to
+# every earlier version. (The frozen branch is exercised by the packaged app:
+# per-user installs probe writable, Program Files falls back to %APPDATA%.)
+import QCS_Theme as thm
+assert thm.writable_app_dir() == os.path.dirname(os.path.abspath(thm.__file__))
+ok.append('writable app dir (source runs unchanged; frozen fallback is install-tested)')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

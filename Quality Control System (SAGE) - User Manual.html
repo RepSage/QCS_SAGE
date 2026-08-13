@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>Complete Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v11.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v11.2</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -674,6 +674,19 @@
         instead of being one log line. Folders, file choices and visualization preferences are
         always kept.</p>
     </div>
+
+    <h3>Updates (v11.2)</h3>
+    <p>When the program starts it quietly checks GitHub for a newer release; with no internet
+    connection nothing happens — the check never blocks or interrupts work. When a newer version
+    exists, a dialog offers to <strong>download and install it in one click</strong>: the program
+    closes, the installer upgrades it in place and reopens it, with all settings kept. The same
+    check can be run by hand in <strong>Help → Check for updates…</strong>, which also answers
+    explicitly when you are already up to date or offline.</p>
+    <p>The installer itself offers two modes: <em>install for all users</em> (goes to Program
+    Files, asks for an administrator account) or <em>install for me only</em> (user area, no
+    administrator needed — the right choice for a field notebook). In a Program Files install the
+    program keeps its settings in <code>%APPDATA%\QCS</code>, since the installation folder is
+    read-only.</p>
     <div class="note">
         <p><strong>Change in v4.0:</strong> the old <em>Export Settings</em> (export .json) and
         <em>Config File</em> (import .json) were <strong>removed from the interface</strong> —

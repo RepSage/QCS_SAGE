@@ -21,12 +21,13 @@ from tkinter import ttk, messagebox
 
 import QCS_Main as qual
 import QCS_DatabaseView as viz
+import QCS_Update as updater
 
 # Both tools share ONE preferences dict, so saving from either tab writes the
 # same qcs_user_settings.json without clobbering the other tab's keys.
 qual.USER_PREFS = viz.USER_PREFS
 
-theme.install_crash_handler('QCS', _out)
+theme.install_crash_handler('QCS', _out, base_dir=theme.writable_app_dir())
 
 MANUAL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                            'Quality Control System (SAGE) - User Manual.html')
@@ -159,15 +160,39 @@ def main(run=True):
     m_tools.add_command(label='Generate panels', command=run_generate_panels)
     menubar.add_cascade(label='Tools', menu=m_tools)
 
+    def manual_update_check():
+        latest = updater.fetch_latest()
+        if latest is None:
+            messagebox.showwarning(
+                'Check for updates',
+                'The releases page could not be reached - no connection, or '
+                'GitHub is unavailable. Try again later.')
+        elif updater.is_newer(latest['tag'], data.QCS_VERSION):
+            updater.offer_update(latest, root)
+        else:
+            messagebox.showinfo(
+                'Check for updates',
+                'You are up to date: %s is the latest release.' % data.QCS_VERSION)
+
     m_help = Menu(menubar, tearoff=0)
     m_help.add_command(label='User manual', command=open_manual)
     m_help.add_command(label='Qualification help', command=qual.show_help)
     m_help.add_command(label='Visualization help', command=viz.show_help)
     m_help.add_separator()
+    m_help.add_command(label='Check for updates…', command=manual_update_check)
     m_help.add_command(label='About', command=show_about)
     menubar.add_cascade(label='Help', menu=m_help)
 
     root.config(menu=menubar)
+
+    # Startup update check (v11.2): a daemon thread queries the releases API
+    # and speaks ONLY when a newer version exists - offline (the field
+    # notebook's normal state) it times out and stays silent. The callback
+    # hops onto the Tk main thread via after(); Tk calls from a worker thread
+    # are not safe.
+    updater.check_in_background(
+        data.QCS_VERSION,
+        lambda latest: root.after(0, lambda: updater.offer_update(latest, root)))
 
     # First launch after a version change: the saved QC criteria were reset to
     # the new version's defaults (by design - see load_user_prefs), but until
