@@ -2,7 +2,23 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
-## 2026-08-13 — v11.2.1 on branch `improvements-v11.2.1`, PR to open
+## 2026-08-13 — v11.2.1 MERGED and TAGGED; installer rebuilt; release pending
+
+PR #21 merged (`d67ab9c`, carrying the message fix AND the user-manual deep
+revision — title now "User Manual of…", zero version mentions in the body,
+Installation rewritten installer-first, six staleness fixes). **Tagged
+`v11.2.1` → `d67ab9c` after re-verifying 50/50 + ruff on the merged master;
+branch deleted local and remote.** Installer rebuilt from the tagged master.
+
+Remaining: owner publishes the v11.2.1 Release with `QCS_Setup_v11.2.1.exe`
+attached (`RELEASE_v11.2.1_para_colar.md` on the Desktop) — and then opens the
+installed QCS v11.2, which should offer this update by itself: the owner's own
+live test of the self-update, on a real release.
+
+*(GitHub served two transient 500s this round — one on a branch push, one on
+the remote branch delete; both succeeded on retry. Retry before diagnosing.)*
+
+## 2026-08-13 — v11.2.1 on branch `improvements-v11.2.1`, PR opened (superseded)
 
 The virgin-install message fix (the nit below), released as a PATCH at the
 owner's request — deliberately doubling as **the owner's own live test of the
