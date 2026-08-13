@@ -2,22 +2,39 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
-## 2026-08-13 — v11.2 MERGED and TAGGED; installer rebuilt; release publication pending
+## 2026-08-13 — v11.2 RELEASED, and the self-update loop CLOSED LIVE
 
-PR #20 merged (merge `e67b4a5`, which also carries the no-AI-attribution rule
-committed to master in parallel). **Tagged `v11.2` → `e67b4a5`; branch deleted
-local and remote; 50/50 self-tests and ruff clean re-verified on the merged
-master before tagging.** The repository is PUBLIC (API answers 200 anonymously
-— verified, and that is the call the updater makes).
+The full chain ran on this machine against the real release:
 
-Remaining, in order:
-1. installer rebuilt from the tagged master → `QCS_Setup_v11.2.exe` on the
-   Desktop (in progress at the time of this entry);
-2. owner publishes the v11.2 Release (`RELEASE_v11.2_para_colar.md` on the
-   Desktop) **with the setup attached as an asset** — the updater looks for a
-   `QCS_Setup_*.exe` asset;
-3. the live loop test: install the v11.1 setup, open QCS, accept the v11.2
-   offer, watch it reopen updated.
+- PR #20 merged (`e67b4a5`, also carrying the no-AI-attribution rule); tagged
+  `v11.2`; branch deleted; 50/50 + ruff re-verified on the merged master
+  before tagging. Repo PUBLIC (API answers 200 anonymously).
+- Installer rebuilt from the tagged master; owner published the Release with
+  **`QCS_Setup_v11.2.exe` attached** — confirmed via the anonymous API (the
+  updater's own view).
+- **Live loop, machine-verified end to end**: an install stamped v11.1.9
+  (see the correction below) found the release at startup, offered the update,
+  and on Yes: downloaded the real asset to `%TEMP%\QCS_Setup_v11.2.exe`
+  (54.0 MB, 10:35:28), upgraded silently in place (registry DisplayVersion
+  11.1.9 → **11.2**) and relaunched itself titled v11.2 at 10:36:29 — 61 s
+  after the download. Three independent artifacts, one timeline. QCS v11.2
+  remains installed at `%LOCALAPPDATA%\Programs\QCS`.
+
+**Correction to the recipe this file used to carry**: "install v11.1 and watch
+it update" was impossible — v11.1 HAS no updater; the feature ships in v11.2,
+so the first version able to self-update is v11.2 itself. The live test used a
+throwaway installer built from the v11.2 code stamped `v11.1.9` (never
+committed, never shipped; working tree restored and verified clean). Real in
+every leg that matters: real API, real release, real asset, real silent
+upgrade, real relaunch.
+
+**Path note for future tests**: since the dual-mode `.iss`, fresh per-user
+installs land in `%LOCALAPPDATA%\Programs\QCS` (`{autopf}` per-user), not
+`%LOCALAPPDATA%\QCS` (the v11.1-era default) — an upgrade over an existing
+install keeps the old folder (`UsePreviousAppDir`). The first run of the live
+test failed by looking at the old path.
+
+Nothing is pending on v11.2. 23 tags, 23 releases.
 
 ## 2026-08-11 — v11.2 on branch `improvements-v11.2` (superseded by the entry above)
 
