@@ -82,6 +82,16 @@ def main(run=True):
     app_log = theme.LogConsole(root, title=' Execution log ', height=7)
     app_log.frame.pack(side='bottom', fill='x', padx=8, pady=(0, 8))
     _out.set_sink(app_log.log)
+    # Hide log / Show log (v11.3): the choice persists across sessions - on
+    # the small field-laptop screen the log is usually the first thing to give
+    # up its space, every session.
+    if viz.USER_PREFS.get('log_hidden'):
+        app_log.set_visible(False)
+
+    def remember_log_visibility(visible):
+        viz.USER_PREFS['log_hidden'] = not visible
+        viz.save_user_prefs()
+    app_log.on_visibility_change = remember_log_visibility
 
     content = ttk.Frame(root)
     content.pack(fill='both', expand=True, padx=8, pady=(0, 8))

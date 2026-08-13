@@ -1530,8 +1530,42 @@ def build_qualification_tab(container, root, shared_log=None):
     global log_console, log_line, _error_location, review_light_window, review_replicates
     global run_full_qualification
     window = root
+    # The whole tab lives inside a canvas so it can SCROLL when the window is
+    # shorter than the content (small field-laptop screens: the bottom row -
+    # Check variables, Light cutoff - used to slide out of view with no way to
+    # reach it). The scrollbar only appears when needed; when everything fits
+    # the tab looks and behaves exactly as before.
+    scroll_host = ttk.Frame(container)
+    scroll_host.pack(fill='both', expand=True)
+    tab_canvas = Canvas(scroll_host, bg=theme.surface_color(), highlightthickness=0,
+                        borderwidth=0)
+    tab_vbar = ttk.Scrollbar(scroll_host, orient='vertical', command=tab_canvas.yview)
+    tab_canvas.pack(side='left', fill='both', expand=True)
+    tab_canvas.configure(yscrollcommand=tab_vbar.set)
+    tab_inner = ttk.Frame(tab_canvas)
+    tab_window = tab_canvas.create_window((0, 0), window=tab_inner, anchor='nw')
+
+    def _fit_tab_canvas(event=None):
+        # the inner frame always spans the full canvas width, and at least the
+        # full height - so a tall window stretches the content as before,
+        # while a short one overflows into the scrollregion
+        need = tab_inner.winfo_reqheight()
+        have = tab_canvas.winfo_height()
+        width = tab_canvas.winfo_width()
+        tab_canvas.itemconfigure(tab_window, width=width, height=max(need, have))
+        tab_canvas.configure(scrollregion=(0, 0, width, max(need, have)))
+        if need > have:
+            if not tab_vbar.winfo_ismapped():
+                tab_vbar.pack(side='right', fill='y')
+        elif tab_vbar.winfo_ismapped():
+            tab_vbar.pack_forget()
+            tab_canvas.yview_moveto(0)
+    tab_canvas.bind('<Configure>', _fit_tab_canvas)
+    tab_inner.bind('<Configure>', _fit_tab_canvas)
+    theme.enable_mousewheel(tab_canvas)
+
     # Main container
-    main_frame = ttk.Frame(container, padding="16")
+    main_frame = ttk.Frame(tab_inner, padding="16")
     main_frame.pack(fill='both', expand=True)
 
 

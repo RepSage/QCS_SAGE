@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v11.2.2</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v11.3</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -215,7 +215,12 @@
     <p>The app runs with <strong>no terminal window</strong>: all progress, warnings and errors
     appear in the <strong>Execution log</strong> — one single panel, fixed at the bottom of the
     window, the same log for every pipeline stage (qualification, database building/preview and
-    panel generation), color-coded by severity. If a fatal error happens before the window can
+    panel generation), color-coded by severity. The <strong>Hide log</strong> button (left of
+    <em>Clear log</em>) collapses the log's text area to give its space to the tabs — useful on
+    small screens; messages keep accumulating while hidden, <em>Show log</em> brings them back,
+    and the choice is remembered across sessions. On a window too short for the whole
+    Data Qualification tab, a vertical scrollbar appears so every option stays reachable.
+    If a fatal error happens before the window can
     open, a message box appears and a <code>QCS_crash.log</code> file is written with the
     details — next to <code>QCS.exe</code> on an installed copy (in <code>%APPDATA%\QCS</code>
     for a Program Files install), or in <code>sourceCode/</code> when running from source.</p>
