@@ -30,6 +30,11 @@ for pkg in ('sv_ttk', 'gsw'):
     datas += d
     binaries += b
     hiddenimports += h
+# The window/taskbar icons: set_window_icon resolves them beside QCS_Theme
+# (dirname(__file__) = _internal when frozen), so they must ship as datas -
+# without this the installed app silently falls back to the Tk feather.
+datas += [(os.path.join(SRC, 'qcs_icon.ico'), '.'),
+          (os.path.join(SRC, 'qcs_icon.png'), '.')]
 # pandas imports its Excel engine lazily; make it explicit (the v2.2-era spec
 # needed the same).
 hiddenimports += ['openpyxl', 'openpyxl.cell._writer']
@@ -55,6 +60,9 @@ exe = EXE(
     name='QCS',
     console=False,               # windowed: errors go to the in-app log / crash handler
     upx=False,                   # UPX-compressed DLLs trip antivirus for no real gain
+    # embedded in the exe itself: Explorer, the Desktop/Start Menu shortcuts
+    # and the taskbar pin all read THIS icon, not the runtime one
+    icon=os.path.join(SRC, 'qcs_icon.ico'),
 )
 
 coll = COLLECT(

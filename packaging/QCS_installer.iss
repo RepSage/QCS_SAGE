@@ -1,11 +1,19 @@
 ; Inno Setup recipe for the QCS installer.
 ;
-; DUAL-MODE (v11.2): one setup.exe that asks whether to install for ALL USERS
-; (Program Files, needs admin) or FOR ME ONLY (user area, no admin - what a
-; field notebook without an administrator account uses). {autopf} resolves per
-; choice. A Program Files install dir is read-only for regular users, which is
-; fine: since v11.2 the app writes its settings and crash log to %APPDATA%\QCS
-; whenever the install dir is not writable (QCS_Theme.writable_app_dir).
+; DUAL-MODE, Program Files by DEFAULT (owner decision, 2026-08-13): the wizard
+; opens preselected on "install for all users" -> C:\Program Files\QCS (this is
+; a 64-bit app, so plain Program Files is its correct home; the (x86) folder is
+; the convention for 32-bit programs). "Only for me" remains available in the
+; same dialog for machines without an administrator account - the field
+; notebook - landing in the user area. A Program Files install dir is read-only
+; for regular users, which is fine: since v11.2 the app writes its settings and
+; crash log to %APPDATA%\QCS whenever the install dir is not writable
+; (QCS_Theme.writable_app_dir).
+;
+; Self-update note: an upgrade reuses the PREVIOUS install's mode and folder
+; (UsePreviousPrivileges/UsePreviousAppDir, both default) - over a Program
+; Files install the silent upgrade shows one UAC prompt, over a per-user
+; install it stays fully silent.
 ;
 ; CloseApplications lets the one-click self-update (QCS_Update) upgrade a
 ; running install; after a SILENT upgrade the app is relaunched by the [Run]
@@ -22,13 +30,15 @@ AppPublisher=SAGE (COPPE/UFRJ)
 DefaultDirName={autopf}\QCS
 DefaultGroupName=QCS
 DisableProgramGroupPage=yes
-PrivilegesRequired=lowest
+PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 OutputBaseFilename=QCS_Setup_v{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayName=QCS - Quality Control System (SAGE)
+SetupIconFile=..\sourceCode\qcs_icon.ico
+UninstallDisplayIcon={app}\QCS.exe
 CloseApplications=yes
 RestartApplications=no
 

@@ -73,11 +73,34 @@ then behaves exactly as on a source install (dialog on first launch, v11.1).
   a cached analysis silently reuses the old dependency scan (that is how the
   missing-DLL fix looked like it had failed).
 
+## Icons (fixed 2026-08-13)
+
+`sourceCode/qcs_icon.ico` + `.png` are wired in THREE places, each covering a
+different surface — miss one and that surface silently falls back to a default:
+
+- `icon=` on the EXE() in `QCS.spec` — Explorer, the Desktop/Start Menu
+  shortcuts and taskbar pins read the icon EMBEDDED in the exe;
+- the two icon files as `datas` in `QCS.spec` — `set_window_icon` loads them at
+  runtime from beside `QCS_Theme` (`_internal\` when frozen) for the window
+  title bar and the running taskbar entry;
+- `SetupIconFile=` in the `.iss` — the setup.exe's own icon.
+
+(An earlier revision of this README claimed the project had no icons —
+"removed in v2.2.1" — which was true of the OLD icons and false of the current
+ones, created later. The first shipped installer had no icons because of that
+wrong claim: nobody looked.)
+
+## Install location
+
+Default is **all users → `C:\Program Files\QCS`** (owner decision, 2026-08-13;
+this is a 64-bit app, so plain Program Files is its correct home — `(x86)` is
+the 32-bit convention). The same wizard still offers "only for me" (user area,
+no admin) for the field notebook. Upgrades — including the in-app self-update —
+reuse the previous install's mode and folder; over Program Files the silent
+upgrade shows one UAC prompt, over a per-user install it stays fully silent.
+
 ## Known limits
 
 - The installer carries no code-signing certificate, so SmartScreen may warn
   on first run ("More info → Run anyway"). Expected; signing needs a paid
   certificate.
-- The bundle has no window icon: the project's `.ico` files were removed in
-  v2.2.1. If an icon returns to the repo, add `icon=` to the EXE() in
-  `QCS.spec` and `SetupIconFile=` to the `.iss`.
