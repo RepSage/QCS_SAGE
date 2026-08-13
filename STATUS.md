@@ -2,6 +2,19 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-13 — known cosmetic nit, fix at the NEXT release (needs a version)
+
+On a **virgin install** (no settings file at all) the startup log prints
+*"saved settings are from a different version (None != v11.2)"* — misleading:
+nothing was saved and nothing was reset. The condition in
+`QCS_Main.load_user_prefs` treats "no `qcs_version` key" and "different
+version" as one case. Fix: when `USER_PREFS` is empty / has no version key,
+say "no saved settings; using the default quality criteria" and do NOT set
+`SETTINGS_RESET_FROM` (the v11.1 dialog already ignores None, so only the log
+line is wrong). One line, but it touches `sourceCode/` → next release, not a
+cycle of its own. Found by the owner on the first fresh-install launch —
+installers make virgin environments common, which is why it surfaced now.
+
 ## 2026-08-13 — v11.2 RELEASED, and the self-update loop CLOSED LIVE
 
 The full chain ran on this machine against the real release:
