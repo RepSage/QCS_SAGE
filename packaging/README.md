@@ -92,12 +92,27 @@ wrong claim: nobody looked.)
 
 ## Install location
 
-Default is **all users → `C:\Program Files\QCS`** (owner decision, 2026-08-13;
-this is a 64-bit app, so plain Program Files is its correct home — `(x86)` is
-the 32-bit convention). The same wizard still offers "only for me" (user area,
-no admin) for the field notebook. Upgrades — including the in-app self-update —
+Default is **all users**; the wizard still offers "only for me" (user area, no
+admin) for the field notebook. Upgrades — including the in-app self-update —
 reuse the previous install's mode and folder; over Program Files the silent
 upgrade shows one UAC prompt, over a per-user install it stays fully silent.
+
+**Which Program Files: measured, 2026-08-13.** An all-users install lands in
+**`C:\Program Files (x86)\QCS`**, not `C:\Program Files\QCS`. Inno Setup
+compiles a 32-bit installer unless told otherwise, and a 32-bit installer
+resolves `{autopf}` to the 32-bit Program Files (and writes its uninstall entry
+under `WOW6432Node`). An earlier revision of this README asserted the 64-bit
+folder without checking — the registry says otherwise.
+
+To move it to `C:\Program Files\QCS`, add to `[Setup]`:
+
+```
+ArchitecturesInstallIn64BitMode=x64compatible
+```
+
+Nothing breaks either way — a 64-bit exe runs from either folder; `(x86)` is
+only a convention violation. Changing it makes the next install a NEW install
+in a new folder, leaving the old one behind to be uninstalled by hand.
 
 ## Known limits
 

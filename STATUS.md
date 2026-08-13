@@ -2,7 +2,39 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
-## 2026-08-13 — v11.2.2 on branch `improvements-v11.2.2`: the update check on a clean machine
+## 2026-08-13 — v11.2.2 MERGED and TAGGED; installer rebuilt; two install findings
+
+PR #22 merged (`7fcc7a6`); **tagged `v11.2.2` after re-verifying 51/51 + ruff on
+the merged master; branch deleted local and remote; installer rebuilt** and on
+the Desktop. Release publication pending (text on the Desktop).
+
+**The field notebook ran the diagnostic and NOTHING appeared** — the .ps1 was
+never executed: Windows opens a double-clicked `.ps1` in Notepad. Fixed by
+shipping `QCS_diagnostico.bat` beside it (double-click runs it, `Unblock-File`
+first for files that arrived by e-mail, output teed to
+`QCS_diagnostico_resultado.txt` so the evidence survives a window that closes).
+Tested end to end from a cmd double-click. **So the certificate diagnosis is
+still UNCONFIRMED on that machine** — the fix stands on its own merits, but the
+field evidence has not been collected yet.
+
+**Two findings from testing the diagnostic here, both real:**
+
+1. **All-users installs land in `C:\Program Files (x86)\QCS`, not
+   `C:\Program Files\QCS`** (registry: WOW6432Node, InstallLocation
+   `...(x86)\QCS\`). Inno compiles a 32-bit installer unless told otherwise,
+   and `{autopf}` then resolves to the 32-bit folder. My earlier claim that it
+   goes to the 64-bit Program Files was **wrong and never verified**. It is
+   also, by accident, exactly what the owner originally asked for. The one-line
+   directive to change it is documented in `packaging/README.md`; awaiting the
+   owner's call.
+2. **This machine carries TWO installs**: v11.2.1 all-users in
+   `Program Files (x86)`, and v11.2 per-user in `%LOCALAPPDATA%\Programs\QCS`.
+   Inno tracks per-user and per-machine installs separately even with the same
+   AppId, so they coexist, each with its own Start Menu entry and its own
+   self-update. Whichever one is opened is the one that updates. Worth cleaning
+   up to one.
+
+## 2026-08-13 — v11.2.2 on branch `improvements-v11.2.2` (superseded by the entry above)
 
 **The v11.2.1 self-update worked on this machine and FAILED on the field
 notebook** ("could not be reached", with working internet). Root cause found:
