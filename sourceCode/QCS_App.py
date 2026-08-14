@@ -181,9 +181,22 @@ def main(run=True):
             if ignored:
                 print('Warning: %d dropped file(s) ignored - unsupported '
                       'format for this tab.' % ignored)
-        for area in (notebook, content, app_log.frame, qual_tab, viz_tab):
-            area.drop_target_register(DND_FILES)
-            area.dnd_bind('<<Drop>>', on_files_dropped)
+        # tkdnd targets do NOT propagate to child widgets (v11.6 fix: v11.5
+        # registered only the containers, so dragging over the entries,
+        # labels and buttons that cover most of the window showed 'no drop')
+        # - every widget in the tree is registered individually. Working
+        # drag-and-drop logs NOTHING (infrastructure noise); only its
+        # ABSENCE is worth a line, since that needs diagnosing.
+        def register_tree(w):
+            try:
+                w.drop_target_register(DND_FILES)
+                w.dnd_bind('<<Drop>>', on_files_dropped)
+            except Exception:
+                pass
+            for child in w.winfo_children():
+                register_tree(child)
+        for area in (notebook, content, app_log.frame):
+            register_tree(area)
     except Exception as exc:
         print('Info: drag-and-drop unavailable (%s).' % exc)
 

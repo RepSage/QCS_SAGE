@@ -732,6 +732,7 @@ def collect_input_settings():
         'remove_bad': OUTPUT['remove_bad'],
         'remove_suspect': OUTPUT['remove_suspect'],
         'site_code': INPUT['site'],
+        'light_cutoff_mode': light_cutoff_mode.get(),
         'macroregion': INPUT['macroregion'],
         'region': INPUT['region'],
         'qcs_version': data.QCS_VERSION,
@@ -771,6 +772,15 @@ LIGHT
   (that would mix clean and fouled sensors). Each replicate's own light-window plot
   (QCS_light_window_<replicate>.svg) is included here so you can see WHERE the
   combined window ends and WHY.
+
+COLUMNS
+  The 'Flag' column is EMPTY on purpose: in single-logger sheets it carries the
+  per-test flag string of that logger's own qualification, and a combined series
+  has no single test string (each replicate ran its own tests - see their _QLF
+  folders). The column is kept so combined and single-logger sheets share one
+  layout and stack cleanly into a database. The combined verdicts live in
+  Flag_T and Flag_lux. 'Temperature series.svg' beside this note plots the
+  combined temperature.
 """
 
 def write_combined_replicates(combined, light_plots=()):
@@ -815,6 +825,17 @@ def write_combined_replicates(combined, light_plots=()):
     # method note: permanent documentation of HOW the replicates were combined
     with open(os.path.join(folder, 'QCS_combine_method.txt'), 'w', encoding='utf-8') as f:
         f.write(COMBINE_METHOD_TEXT % INPUT.get('n_replicates', len(light_plots) or 2))
+    # temperature series of the COMBINED data, saved beside the sheet
+    # (v11.6, owner request - the combined folder shows the deployment's
+    # temperature at a glance, whatever the replicate count)
+    try:
+        plot_df = ordered.copy()
+        if 'Site' not in plot_df.columns or plot_df['Site'].isna().all():
+            plot_df['Site'] = str(INPUT.get('site') or 'HOBO')
+        view.plot_variable(plot_df, None, 'Temperature (degC)', folder,
+                           CONFIG['tsSettings'], False)
+    except Exception as e:
+        log_line('Warning: could not plot the combined temperature series: %s' % e)
     return root
 
 def start_qualification():
@@ -1020,6 +1041,10 @@ def restore_user_prefs():
     set_entry(outputPath_entry, 'output_folder')
     set_entry(outputName_entry, 'output_name')
     set_entry(siteSelect_entry, 'site_code')
+    # the light cutoff choice persists across sessions (v11.6 - it used to
+    # silently fall back to 'adaptive' on every launch)
+    if p.get('light_cutoff_mode') in ('adaptive', 'fixed'):
+        light_cutoff_mode.set(p['light_cutoff_mode'])
     if p.get('macroregion') in REGIONS:
         macroregion_combobox.set(p['macroregion'])
         update_regions()
