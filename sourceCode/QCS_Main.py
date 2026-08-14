@@ -591,48 +591,107 @@ def save_settings_values():
             invalid.append('%s time window' % key)
     return invalid
 
+# ----- UI facade (v12.0 Qt port, phase 0) -----
+# The qualification pipeline talks to the interface ONLY through these hooks,
+# plus log_line and the review functions (review_light_window,
+# review_replicates, data._show_and_wait) that the batch drivers already
+# replace. The defaults are the tk implementations; the Qt shell assigns its
+# own. The dialog defaults go through the module-level `messagebox` attribute
+# on purpose: the batch drivers monkeypatch messagebox.* and must keep
+# intercepting every dialog.
+
+def ui_info(title, message):
+    messagebox.showinfo(title, message)
+
+def ui_warn(title, message):
+    messagebox.showwarning(title, message)
+
+def ui_error(title, message):
+    messagebox.showerror(title, message)
+
+def ui_busy(busy):
+    """RUN in progress: disable the run button and show the wait cursor."""
+    run_button.config(state='disabled' if busy else 'normal')
+    window.config(cursor='watch' if busy else '')
+
+def ui_pump():
+    """Lets the interface redraw between pipeline stages (the pipeline runs
+    on the interface thread)."""
+    window.update_idletasks()
+
+def read_input_widgets():
+    """tk side of collect_input_settings: raw widget values, no validation.
+    The Qt shell builds the same dict from its own widgets instead."""
+    return {
+        'files_raw': fileNames_entry.get(),
+        'input_type': inputType_combobox.get(),
+        'data_type': dType_combobox.get(),
+        'out_dir': outputPath_entry.get(),
+        'out_name': outputName_entry.get(),
+        'out_format': outputFilesFormat_combobox.get(),
+        'correct_gmt3h': correct_gmt3h.get(),
+        'select_profile_data': select_profile_data.get(),
+        'check_variables': check_variables.get(),
+        'remove_bad': remove_bad.get(),
+        'remove_suspect': remove_suspect.get(),
+        'co2_file': _co2_file,
+        'site': siteSelect_entry.get(),
+        'macroregion': macroregion_combobox.get(),
+        'region': region_combobox.get(),
+        'light_cutoff_mode': light_cutoff_mode.get(),
+    }
+
 def collect_input_settings():
     """Validates and collects the interface settings. Returns True if all is ok."""
-    if not fileNames_entry.get().strip():
-        messagebox.showwarning("Warning", "Select the data file to be qualified\n('Data File' field).")
+    vals = read_input_widgets()
+    if vals['input_type'] == 'HOBO' and vals['files_raw'].strip():
+        # HOBO redundant replicates: the replicate count FOLLOWS the selection
+        n_rep = len([p for p in vals['files_raw'].split(';') if p.strip()])
+        replicate_var.set(str(n_rep))   # display-only, kept in sync
+    return apply_input_settings(vals)
+
+def apply_input_settings(vals):
+    """Toolkit-free core of collect_input_settings: validates `vals` (the
+    read_input_widgets dict) and fills INPUT/OUTPUT/USER_PREFS. Returns True
+    when all is ok; problems are reported through ui_warn/ui_error."""
+    if not vals['files_raw'].strip():
+        ui_warn("Warning", "Select the data file to be qualified\n('Data File' field).")
         return False
     # HOBO redundant replicates: the user selects as many files as they want
     # (';'-separated) and the replicate count FOLLOWS the selection - the
     # program says how many replicates there are, not the user.
-    replicate_files = [p.strip() for p in fileNames_entry.get().split(';') if p.strip()]
-    n_rep = len(replicate_files) if inputType_combobox.get() == 'HOBO' else 1
-    if inputType_combobox.get() == 'HOBO':
-        replicate_var.set(str(n_rep))   # display-only, kept in sync
+    replicate_files = [p.strip() for p in vals['files_raw'].split(';') if p.strip()]
+    n_rep = len(replicate_files) if vals['input_type'] == 'HOBO' else 1
     for f in replicate_files:
         if not os.path.isfile(f):
-            messagebox.showerror("Error", "Data file not found:\n%s" % f)
+            ui_error("Error", "Data file not found:\n%s" % f)
             return False
         if not re.search(r'\.(csv|xlsx|bin|hobo)$', f, re.IGNORECASE):
-            messagebox.showwarning("Warning", "Unsupported file format (use .csv, .xlsx, a "
-                                   "Seaguard .bin session or a raw HOBO .hobo file):\n%s" % f)
+            ui_warn("Warning", "Unsupported file format (use .csv, .xlsx, a "
+                    "Seaguard .bin session or a raw HOBO .hobo file):\n%s" % f)
             return False
     INPUT['replicate_files'] = replicate_files
     INPUT['n_replicates'] = n_rep
     data_path = replicate_files[0]   # drives file_name/raw_data_path below
-    if inputType_combobox.get() not in ('Seaguard', 'HOBO'):
-        messagebox.showwarning("Warning", "Select the instrument type\n('Input Type' field).")
+    if vals['input_type'] not in ('Seaguard', 'HOBO'):
+        ui_warn("Warning", "Select the instrument type\n('Input Type' field).")
         return False
     # HOBO has no TSCP collection type (it is a time series): Data Type stays empty
-    if inputType_combobox.get() != 'HOBO' and dType_combobox.get() not in ('TSCP Profile', 'TSCP Mooring', 'TSCP Doppler'):
-        messagebox.showwarning("Warning", "Select the data collection type\n('Data Type' field).")
+    if vals['input_type'] != 'HOBO' and vals['data_type'] not in ('TSCP Profile', 'TSCP Mooring', 'TSCP Doppler'):
+        ui_warn("Warning", "Select the data collection type\n('Data Type' field).")
         return False
-    out_dir = outputPath_entry.get().strip()
+    out_dir = vals['out_dir'].strip()
     if not out_dir:
-        messagebox.showwarning("Warning", "Select the folder where results will be saved\n('Output Folder' field).")
+        ui_warn("Warning", "Select the folder where results will be saved\n('Output Folder' field).")
         return False
     if not os.path.isdir(out_dir):
-        messagebox.showerror("Error", "The output folder does not exist:\n%s" % out_dir)
+        ui_error("Error", "The output folder does not exist:\n%s" % out_dir)
         return False
-    if not outputName_entry.get().strip():
-        messagebox.showwarning("Warning", "Define a name for the output files\n('Output File Name' field).")
+    if not vals['out_name'].strip():
+        ui_warn("Warning", "Define a name for the output files\n('Output File Name' field).")
         return False
-    if outputFilesFormat_combobox.get() not in ('.csv', '.xlsx'):
-        messagebox.showwarning("Warning", "Select the output format\n(.csv or .xlsx).")
+    if vals['out_format'] not in ('.csv', '.xlsx'):
+        ui_warn("Warning", "Select the output format\n(.csv or .xlsx).")
         return False
 
     file_name_match = re.search(r'[^\\/]+$', data_path, re.IGNORECASE)
@@ -641,28 +700,31 @@ def collect_input_settings():
 
     # pressure/conductivity units are read from the source file itself since
     # v11.4 (the .bin template and AADI export headers always name them)
-    INPUT['correct_gmt3h'] = correct_gmt3h.get()
-    INPUT['select_profile_data'] = select_profile_data.get()
-    INPUT['check_variables'] = check_variables.get()
-    INPUT['input_type'] = inputType_combobox.get()
-    INPUT['data_type'] = dType_combobox.get()
+    INPUT['correct_gmt3h'] = vals['correct_gmt3h']
+    INPUT['select_profile_data'] = vals['select_profile_data']
+    INPUT['check_variables'] = vals['check_variables']
+    INPUT['input_type'] = vals['input_type']
+    INPUT['data_type'] = vals['data_type']
+    # read mid-run by the light-window step, so it travels in INPUT instead of
+    # being read from a widget there (v12.0 phase 0)
+    INPUT['light_cutoff_mode'] = vals['light_cutoff_mode']
 
     OUTPUT['output_file_path'] = out_dir
-    OUTPUT['output_data_format'] = outputFilesFormat_combobox.get()
-    OUTPUT['output_file_name'] = outputName_entry.get() + OUTPUT['output_data_format']
-    OUTPUT['remove_bad'] = remove_bad.get()
-    OUTPUT['remove_suspect'] = remove_suspect.get()
+    OUTPUT['output_data_format'] = vals['out_format']
+    OUTPUT['output_file_name'] = vals['out_name'] + OUTPUT['output_data_format']
+    OUTPUT['remove_bad'] = vals['remove_bad']
+    OUTPUT['remove_suspect'] = vals['remove_suspect']
 
     # optional dissolved-CO2 file (Seaguard only; cleared for HOBO/batch by the UI)
-    if _co2_file and not os.path.isfile(_co2_file):
-        messagebox.showerror("Error", "CO2 file not found:\n%s" % _co2_file)
+    if vals['co2_file'] and not os.path.isfile(vals['co2_file']):
+        ui_error("Error", "CO2 file not found:\n%s" % vals['co2_file'])
         return False
-    INPUT['co2_file'] = _co2_file or None
+    INPUT['co2_file'] = vals['co2_file'] or None
 
-    INPUT['site'] = siteSelect_entry.get().strip().upper()
+    INPUT['site'] = vals['site'].strip().upper()
     if len(INPUT['site']) > SITE_CODE_MAX:
-        messagebox.showwarning("Warning", "Site Code must have at most %d characters\n"
-                               "('Site Code' field)." % SITE_CODE_MAX)
+        ui_warn("Warning", "Site Code must have at most %d characters\n"
+                "('Site Code' field)." % SITE_CODE_MAX)
         return False
 
     # The selected coastal region provides a representative latitude/longitude,
@@ -670,8 +732,8 @@ def collect_input_settings():
     # pressure->depth and the density inversion test (Seaguard), and the
     # seasonal correction of the light fouling analysis (HOBO). Small lat/long
     # variations do not affect these results meaningfully.
-    macroregion = macroregion_combobox.get()
-    region = region_combobox.get()
+    macroregion = vals['macroregion']
+    region = vals['region']
     INPUT['macroregion'] = macroregion
     INPUT['region'] = region
     INPUT['latitude'], INPUT['longitude'] = REGION_COORDS.get(macroregion, {}).get(
@@ -699,12 +761,12 @@ def collect_input_settings():
         'select_profile_data': INPUT['select_profile_data'],
         'check_variables': INPUT['check_variables'],
         'output_folder': out_dir,
-        'output_name': outputName_entry.get(),
+        'output_name': vals['out_name'],
         'output_format': OUTPUT['output_data_format'],
         'remove_bad': OUTPUT['remove_bad'],
         'remove_suspect': OUTPUT['remove_suspect'],
         'site_code': INPUT['site'],
-        'light_cutoff_mode': light_cutoff_mode.get(),
+        'light_cutoff_mode': vals['light_cutoff_mode'],
         'macroregion': INPUT['macroregion'],
         'region': INPUT['region'],
         'qcs_version': data.QCS_VERSION,
@@ -818,8 +880,7 @@ def start_qualification():
     another (a BATCH), each with its own '<file>_QLF' output."""
     if not collect_input_settings():
         return
-    run_button.config(state='disabled')
-    window.config(cursor='watch')
+    ui_busy(True)
     QC.reset_run_warnings()   # once-per-run warnings (window span etc.) start fresh
     # one entry per qualified file: (file_name, light_clock_phase result). The
     # batch driver reads this to stamp the clock verdict into provenance - its
@@ -855,7 +916,7 @@ def start_qualification():
             else:
                 log_line('=== Qualification started: %s (the window may not respond while processing) ==='
                          % INPUT['file_name'])
-            window.update_idletasks()
+            ui_pump()
             if batch:
                 # isolate each batch file: one bad session (e.g. a 1-record capture)
                 # must not cancel the files queued after it.
@@ -885,7 +946,7 @@ def start_qualification():
                 light_plots.append(OUTPUT.get('last_light_plot'))
         if combine_hobo:
             log_line('Combining %d replicates...' % n)
-            window.update_idletasks()
+            ui_pump()
             # Before averaging them: do the replicates actually agree? A logger
             # stuck on a plausible value passes its OWN tests, so only this
             # comparison can catch it - and the mean of a sound and a faulty
@@ -970,14 +1031,14 @@ def start_qualification():
                             "\n\n%d file(s) were SKIPPED (an error is logged for each):\n%s"
                             % (len(batch_failures), "\n".join('- %s: %s' % (f, e)
                                                               for f, e in batch_failures)))
-            messagebox.showinfo("Done",
-                                "Batch finished: %d of %d files qualified.%s\n\n"
-                                "Each qualified file has its own _QLF output in "
-                                "the output folder." % (n_done, n, skipped_note))
+            ui_info("Done",
+                    "Batch finished: %d of %d files qualified.%s\n\n"
+                    "Each qualified file has its own _QLF output in "
+                    "the output folder." % (n_done, n, skipped_note))
         else:
-            messagebox.showinfo("Done",
-                                "Qualification completed.\n\nResults saved to:\n%s"
-                                % OUTPUT.get('last_output_root', ''))
+            ui_info("Done",
+                    "Qualification completed.\n\nResults saved to:\n%s"
+                    % OUTPUT.get('last_output_root', ''))
     except data.ManualCutCancelled:
         # Cancel/Esc during a manual-cut panel or the variable chooser: abort
         # cleanly and return to the form (no error dialog, nothing written)
@@ -988,17 +1049,16 @@ def start_qualification():
         # the full traceback goes to the log; the dialog points to file/line
         for line in traceback.format_exc().strip().splitlines():
             log_line('Error: %s' % line)
-        messagebox.showerror("Qualification error",
-                             "The qualification was interrupted by an error:\n\n%s\n\n"
-                             "Location: %s\n(full traceback in the Execution log)\n\n"
-                             "Some files may have been partially generated in the output "
-                             "folder before the error. Check the input file and the "
-                             "settings and try again." % (e, _error_location(e)))
+        ui_error("Qualification error",
+                 "The qualification was interrupted by an error:\n\n%s\n\n"
+                 "Location: %s\n(full traceback in the Execution log)\n\n"
+                 "Some files may have been partially generated in the output "
+                 "folder before the error. Check the input file and the "
+                 "settings and try again." % (e, _error_location(e)))
     finally:
         plt.close('all')
         os.chdir(rootPath)
-        run_button.config(state='normal')
-        window.config(cursor='')
+        ui_busy(False)
 
 def restore_user_prefs():
     """Restores the user's last choices in the interface."""
@@ -2658,7 +2718,7 @@ def build_qualification_tab(container, root, shared_log=None):
                 for message in clock['warnings']:
                     log_line(message)
                 if clock['suspect_shift_h'] is not None:
-                    messagebox.showwarning(
+                    ui_warn(
                         'Light clock out of phase',
                         'The light peaks at %.1f h and only %.0f%% of its energy falls in '
                         'daylight hours.\n\nThis logger\'s clock looks %+d h out of phase '
@@ -2669,7 +2729,7 @@ def build_qualification_tab(container, root, shared_log=None):
                         % (clock['peak_hour'], 100 * clock['daylight_frac'],
                            clock['suspect_shift_h']))
                 elif clock['collapsed']:
-                    messagebox.showwarning(
+                    ui_warn(
                         'Light clock collapsed onto 12 hours',
                         'No sample in this file falls after 12:59, and about half the '
                         'timestamps are duplicated.\n\nThe export carries a 12-HOUR clock '
@@ -2696,7 +2756,7 @@ def build_qualification_tab(container, root, shared_log=None):
                 # adaptive rule, and the fixed mode must not silence them.
                 for message in lux_result['warnings']:
                     log_line(message)
-                if light_cutoff_mode.get() == 'fixed':
+                if INPUT.get('light_cutoff_mode') == 'fixed':
                     # FIXED window: light is BAD from lux_fixed_days after
                     # deployment, no data-driven decision and no review. The
                     # adaptive analysis above still runs, but only to document
