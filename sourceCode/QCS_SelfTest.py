@@ -376,6 +376,17 @@ repA = pd.DataFrame({'Datetime': tgrid, 'Site': 'PAB3',
                      'Luminosity (lux)': [10000., 9000, 8000, 7000, 6000, 500, 400, 300, 200, 100],
                      'Flag_T': [1] * 10,
                      'Flag_lux': [1, 1, 1, 1, 1, 4, 4, 4, 4, 4]})   # A fouls from index 5
+# a replicate at a COARSER interval (every 2 h): the uncovered rows of the
+# finer grid must carry an EMPTY spread (v11.5), never 0
+repC2h = pd.DataFrame({'Datetime': tgrid[::2], 'Site': 'PAB3',
+                       'Temperature (degC)': [25.2] * 5,
+                       'Luminosity (lux)': [9000.] * 5,
+                       'Flag_T': [1] * 5, 'Flag_lux': [1] * 5})
+comb2, cmsgs2 = data.combine_hobo_replicates([repA, repC2h], temp_tol=0.5)
+sp2 = comb2['Temperature spread (degC)']
+assert sp2.iloc[0] == sp2.iloc[0] and abs(sp2.iloc[0] - 0.2) < 1e-6, sp2.iloc[0]
+assert pd.isna(sp2.iloc[1]), 'single-replicate row must have EMPTY spread, got %r' % sp2.iloc[1]
+assert any('DIFFERENT sampling intervals' in m for m in cmsgs2), cmsgs2
 repB = pd.DataFrame({'Datetime': tgrid, 'Site': 'PAB3',
                      'Temperature (degC)': [25.2, 25.2, 25.2, 26.0, 25.2, 25.2, 25.2, 25.2, 25.2, 25.2],
                      'Luminosity (lux)': [11000., 9500, 8500, 7500, 6500, 6000, 5500, 5000, 300, 200],

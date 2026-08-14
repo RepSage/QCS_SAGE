@@ -973,15 +973,12 @@ def start_qualification():
                                                               for f, e in batch_failures)))
             messagebox.showinfo("Done",
                                 "Batch finished: %d of %d files qualified.%s\n\n"
-                                "Each qualified file has its own _QLF output in the output folder.\n\n"
-                                "You can select other files and run a new qualification "
-                                "without closing the program." % (n_done, n, skipped_note))
+                                "Each qualified file has its own _QLF output in "
+                                "the output folder." % (n_done, n, skipped_note))
         else:
             messagebox.showinfo("Done",
-                                "Qualification completed successfully!\n\n"
-                                "Results saved to:\n%s\n\n"
-                                "You can select another file and run a new qualification "
-                                "without closing the program." % OUTPUT.get('last_output_root', ''))
+                                "Qualification completed.\n\nResults saved to:\n%s"
+                                % OUTPUT.get('last_output_root', ''))
     except data.ManualCutCancelled:
         # Cancel/Esc during a manual-cut panel or the variable chooser: abort
         # cleanly and return to the form (no error dialog, nothing written)

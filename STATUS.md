@@ -2,6 +2,50 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.5 round OPEN — branch `improvements-v11.5`, NOT shippable yet)
+
+Owner's five requests after testing v11.4.2 with the PLES pair (the pair sits
+on the Desktop: `HOBO[12]_PLES_A1_200925_160326.hobo` + `.xlsx`).
+
+**BREAKTHROUGH — mid-stream event markers were the ~50-75% families.** An
+isolated temp==0x3FF token inside the stream is a logger EVENT (does not
+consume a time slot); un-skipped, each one slid the alignment by one from
+there on. With the greedy event-skipping walk (now in `_read_hobo_binary`),
+HOBO2_PLES goes 0.74 → **1.0000 exact** (guided; 1 event + old tail) and
+HOBO1_PLES stays 1.0000. The night-light hard gate is now: darkness ranks
+candidate SELECTION; bright-but-coherent daily peak (≤14 lit hours) decodes
+WITH a clock warning (HOBO2's clock is genuinely wrong - its EXPORT shows
+99,200 lux at "23:41", noon sun; replicates even configured at different
+intervals, 1 h vs 2 h); bright-and-incoherent refuses.
+
+**REMAINING BLOCKER (why the branch must not ship):** the blind reader still
+drops/adds the FIRST sample on some files (PLES1 blind = 0.36 exact by a
+1-slot shift, a silent regression vs refusal). Cause: the head guard kills
+real hot-deck first readings; without it, phantom preamble tokens win by
+count. **The clean fix is probably the header pointer: tags 0x0D/0x1D look
+like the first-sample address — for ESQRODO and SGOM2 (proven alignments),
+`sample0_bit = 8*(tag0x0D + 4) + 6` holds EXACTLY** (derive against more
+proven files; PNOR gave the slot one BEFORE sample0 — the formula may point
+at the last preamble token, i.e. sample0 = pointer + 18 bits). If it holds,
+every alignment heuristic collapses into reading the pointer.
+
+Done in the branch, tested: event-skip walk + gate redesign (suite 52/52);
+**spread fix** — single-replicate rows now carry EMPTY spread, not 0 (the
+owner's alternating zeros were replicates configured at DIFFERENT intervals;
+warning added + self-test); **conclusion dialogs trimmed** (no more "you can
+qualify another file..."). Pending: drag-and-drop of files onto the window
+(tkinterdnd2 installed in base for dev; needs GUI wiring + spec/requirements
++ 'Data file(s)' label), light-table refinement for high companded codes
+(PLES2 residual 2.3% light mismatches = law-filled codes above ~200).
+
+Owner's question 5 (which replicate anchors the fixed 60-day light cut):
+each replicate is qualified INDEPENDENTLY - the fixed window cuts each one
+60 days after ITS OWN first sample; the combined series then keeps light
+while at least one replicate is uncut (max of non-fouled). With replicates
+launched minutes apart the two cutoffs fall on the same day, so in practice
+the combined light window ends 60 days after deployment - no single logger
+is "chosen".
+
 ## 2026-08-14 (v11.4.2 released) — ritual done; replicate outputs proven
 
 PR #26 merged, tagged on `077fc49`, branch deleted, installer rebuilt with

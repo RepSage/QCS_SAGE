@@ -1098,6 +1098,30 @@ def _read_hobo_binary(file_path, say):
         raise _hobo_error(file_name, 'no end-of-header marker (88 11 00) found.')
     bits = np.unpackbits(np.frombuffer(blob[dstart + 3:end], dtype=np.uint8))
 
+    def _walk(temp, off):
+        """Greedy sample walk with EVENT skipping: an isolated temp==0x3FF
+        token whose lookahead still fits the calibration is a logger event
+        (skipped - it does not consume a time slot); a 0x3FF whose
+        continuation stops fitting is the terminator. Mid-stream events were
+        the cause of the families that decoded ~50-75% (each un-skipped
+        event slid the alignment by one slot from there on)."""
+        idx, n_events, i, ntok = [], 0, off, len(temp)
+        while i < ntok:
+            if temp[i] == 0x3FF:
+                ahead = temp[i + 1:i + 11]
+                fit = sum(1 for c in ahead
+                          if int(c) in HOBO_TEMP_LUT or c == 0x3FF)
+                if len(ahead) >= 5 and fit >= 0.9 * len(ahead):
+                    n_events += 1
+                    i += 1
+                    continue
+                break
+            idx.append(i)
+            i += 1
+        return np.array(idx, dtype=np.int64), n_events
+
+    step_limit = max(1.5, 2.0 * interval_s / 3600.0)
+    t0_local = launch + pd.Timedelta(seconds=1 + interval_s + tz_shift_s)
     best = None
     for phase in range(18):
         ntok = (len(bits) - phase) // 18
@@ -1106,69 +1130,106 @@ def _read_hobo_binary(file_path, say):
         seg = bits[phase:phase + ntok * 18].reshape(ntok, 18)
         temp = (seg[:, 8:18] @ (1 << np.arange(9, -1, -1))).astype(int)
         light = (seg[:, 0:8] @ (1 << np.arange(7, -1, -1))).astype(int)
-        terms = np.where(temp == 0x3FF)[0]
         for off in range(0, 9):
-            ends = [int(t) for t in terms if t >= off + 10][:3] + [ntok]
-            for e in ends:
-                nn = e - off
-                if nn < 10:
-                    continue
-                codes = temp[off:off + nn]
-                inlut = np.fromiter((int(c) in HOBO_TEMP_LUT for c in codes),
-                                    bool, len(codes))
-                coverage = float(np.mean(inlut))
-                if coverage < 0.995:
-                    continue
-                # physical guards against a wrong alignment that lands in the
-                # table by accident: a real deployment walks through many
-                # temperature codes, and water temperature cannot jump. The
-                # step limit scales with the sampling interval - a shallow
-                # POOL logger at 2 h steps legitimately moves 3-4 degC
-                # between samples (sun-heated), while random misdecodes jump
-                # far more, and at almost every step.
-                step_limit = max(1.5, 2.0 * interval_s / 3600.0)
-                degs = np.array([HOBO_TEMP_LUT.get(int(c), np.nan)
-                                 for c in codes])
-                step_ok = np.abs(np.diff(degs))
-                step_ok = step_ok[~np.isnan(step_ok)]
-                smooth = (float(np.mean(step_ok <= step_limit))
-                          if len(step_ok) else 0.0)
-                distinct = len(np.unique(codes[inlut]))
-                if nn >= 50 and (distinct < 8 or smooth < 0.99):
-                    continue
-                # the series must START on decodable samples with smooth
-                # steps: a leftover preamble token that lands in the table by
-                # accident would otherwise prepend a phantom first sample
-                head = degs[:4]
-                head_steps = np.abs(np.diff(head[~np.isnan(head)]))
-                if np.isnan(degs[0]) or (len(head_steps) and
-                                         float(head_steps.max()) > step_limit):
-                    continue
-                # rank by the NUMBER of decodable samples, preferring the
-                # smaller offset on ties: a stream whose tail ends in a
-                # partial token would otherwise push the alignment one slot
-                # forward (dropping the REAL first sample) just to keep a
-                # perfect coverage fraction
-                rank = (int(inlut.sum()), -off, -phase)
-                if best is None or rank > best[0]:
-                    best = (rank, coverage, phase, off, nn, temp, light)
+            idx, n_events = _walk(temp, off)
+            nn = len(idx)
+            if nn < 10:
+                continue
+            codes = temp[idx]
+            inlut = np.fromiter((int(c) in HOBO_TEMP_LUT for c in codes),
+                                bool, len(codes))
+            coverage = float(np.mean(inlut))
+            if coverage < 0.995:
+                continue
+            # physical guards against a wrong alignment that lands in the
+            # table by accident: a real deployment walks through many
+            # temperature codes, and water temperature cannot jump (limit
+            # scaled by the sampling interval - shallow pools legitimately
+            # move 3-4 degC between 2 h samples)
+            degs = np.array([HOBO_TEMP_LUT.get(int(c), np.nan)
+                             for c in codes])
+            step_ok = np.abs(np.diff(degs))
+            step_ok = step_ok[~np.isnan(step_ok)]
+            smooth = (float(np.mean(step_ok <= step_limit))
+                      if len(step_ok) else 0.0)
+            distinct = len(np.unique(codes[inlut]))
+            if nn >= 50 and (distinct < 8 or smooth < 0.99):
+                continue
+            # the series must START on decodable samples with smooth steps:
+            # a leftover preamble token that lands in the table by accident
+            # would otherwise prepend a phantom first sample
+            head = degs[:4]
+            head_steps = np.abs(np.diff(head[~np.isnan(head)]))
+            if np.isnan(degs[0]) or (len(head_steps) and
+                                     float(head_steps.max()) > step_limit):
+                continue
+            # nighttime darkness of THIS candidate: the true alignment is
+            # the dark one whenever the logger clock is right, so darkness
+            # ranks ABOVE tie-level differences in sample count (a wrong
+            # alignment can accidentally cover a few more in-table codes,
+            # but its light bytes are noise - and noise glows in the dark)
+            nxt = idx + 1
+            lc = np.where(nxt < len(light), light[np.minimum(nxt, len(light) - 1)], 255)
+            lx = np.array([HOBO_LIGHT_LUT.get(int(c), np.nan) for c in lc])
+            hrs = ((t0_local.hour * 3600 + t0_local.minute * 60
+                    + np.arange(nn, dtype=np.int64) * interval_s) // 3600) % 24
+            night = (hrs >= 22) | (hrs < 4)
+            nlx = lx[night & ~np.isnan(lx)]
+            dark = float(np.mean(nlx == 0.0)) if len(nlx) >= 20 else 1.0
+            rank = (int(inlut.sum()) // 10, round(dark, 2), int(inlut.sum()),
+                    -off, -phase)
+            if best is None or rank > best[0]:
+                best = (rank, coverage, phase, off, idx, n_events, temp,
+                        light, dark, lx)
     if best is None:
         raise _hobo_error(
             file_name, 'the sample stream does not fit the deciphered layout '
-            'at any alignment. Probably an older-HOBOware layout variant - '
-            'qualify this logger from its exported sheet instead.')
-    _, coverage, phase, off, nn, temp, light = best
+            'at any alignment. Probably an unsupported HOBOware layout '
+            'variant - qualify this logger from its exported sheet instead.')
+    _, coverage, phase, off, idx, n_events, temp, light, dark, lux = best
+    nn = len(idx)
 
-    tcodes = temp[off:off + nn]
+    # bright nights on the CHOSEN alignment: either the logger clock is wrong
+    # (real sun in the wrong hour bins - the light pattern stays coherent, a
+    # daily peak spanning a limited part of the day) or the decode is not
+    # trustworthy (light bytes are noise - light at every hour). The first is
+    # a data problem the pipeline's light-phase test exists to catch, so it
+    # decodes WITH a warning; the second is refused.
+    if dark < 0.9:
+        hrs = ((launch.hour * 3600 + launch.minute * 60
+                + (np.arange(nn, dtype=np.int64) + 1) * interval_s) // 3600) % 24
+        prof = np.array([np.nanmean(np.where(hrs == h, lux, np.nan))
+                         for h in range(24)])
+        prof = np.nan_to_num(prof)
+        lit_hours = int((prof > 0.1 * prof.max()).sum()) if prof.max() > 0 else 24
+        if lit_hours <= 14:
+            peak_h = int(np.argmax(prof))
+            say('Warning: the decoded light is non-zero through the night, '
+                'but keeps a coherent daily peak (~%02d:00) - the logger '
+                'clock is probably WRONG (the light-phase test will check). '
+                'Compare against the HOBOware export before trusting the '
+                'timestamps.' % peak_h)
+        else:
+            raise _hobo_error(
+                file_name, 'decoded light is non-zero through the night with '
+                'no coherent daily cycle - the stream cannot be decoded '
+                'reliably. Qualify this logger from its exported sheet '
+                'instead.')
+
+    if n_events:
+        say('Info: %d logger event marker(s) inside the sample stream '
+            'skipped (they do not consume a time slot).' % n_events)
+
+    tcodes = temp[idx]
     degc = np.array([HOBO_TEMP_LUT.get(int(c), np.nan) for c in tcodes])
     n_unk = int(np.isnan(degc).sum())
     if n_unk:
         say('Warning: %d sample(s) with a temperature code outside the '
             'calibration table set to NaN.' % n_unk)
-    # light of sample i lives in the NEXT record; code 255 = saturated/invalid
-    lcodes = light[off + 1:off + 1 + nn]
-    if len(lcodes) < nn:                       # stream ended at the padding
-        lcodes = np.concatenate([lcodes, [255] * (nn - len(lcodes))])
+    # light of sample i lives in the NEXT stream record; 255 = saturated
+    nxt = idx + 1
+    lcodes = np.where(nxt < len(light), light[np.minimum(nxt, len(light) - 1)],
+                      255)
     lux = np.array([HOBO_LIGHT_LUT.get(int(c), np.nan) for c in lcodes])
     n_sat = int((lcodes == 255).sum())
     if n_sat:
@@ -1181,22 +1242,6 @@ def _read_hobo_binary(file_path, say):
     # reading is an out-of-water value the edge trim would drop anyway.
     t0 = launch + pd.Timedelta(seconds=1 + interval_s + tz_shift_s)
     times = t0 + pd.to_timedelta(np.arange(nn) * interval_s, unit='s')
-
-    # last physical gate: at night a light sensor reads ZERO. A stream from
-    # an undeciphered layout variant can land inside the temperature table by
-    # accident, but its light bytes are then noise - and noise glows in the
-    # dark. (An indoor experiment lit around the clock also trips this gate;
-    # qualify such a file from its exported sheet.)
-    hours = times.hour.to_numpy()
-    night = (hours >= 22) | (hours < 4)
-    night_lux = lux[night & ~np.isnan(lux)]
-    if len(night_lux) >= 20 and float(np.mean(night_lux == 0.0)) < 0.9:
-        raise _hobo_error(
-            file_name, 'decoded light is non-zero through the night (%.0f%% '
-            'of %d night samples), which real deployments never show - the '
-            'stream is probably an older-HOBOware layout variant decoded '
-            'wrong. Qualify this logger from its exported sheet instead.'
-            % (100.0 * float(np.mean(night_lux > 0)), len(night_lux)))
     df = pd.DataFrame({'Datetime': times,
                        'Temperature (degC)': degc,
                        'Luminosity (lux)': lux})
@@ -2349,12 +2394,27 @@ def combine_hobo_replicates(replicates, temp_tol=0.5):
     L = stack('Luminosity (lux)')
     FL = stack('Flag_lux').apply(pd.to_numeric, errors='coerce')
 
+    # replicates configured at DIFFERENT sampling intervals leave every other
+    # row of the finer grid without a partner - say so, or the holes in the
+    # spread column read as noise
+    steps = [pd.DatetimeIndex(pd.to_datetime(r['Datetime'])).to_series()
+             .diff().median() for r in replicates]
+    if len({s for s in steps if pd.notna(s)}) > 1:
+        messages.append(
+            'Warning: the replicates were configured at DIFFERENT sampling '
+            'intervals (%s). The combined series follows the first replicate; '
+            'rows covered by a single replicate carry no spread value.'
+            % ', '.join(str(s) for s in steps))
+
     # temperature: mean over the acceptable (Flag_T <= 2) replicates
     t_ok = (FT <= 2) & T.notna()
     T_ok = T.where(t_ok)
     n_t = t_ok.sum(axis=1)
     temp_mean = T_ok.mean(axis=1)
-    temp_spread = (T_ok.max(axis=1) - T_ok.min(axis=1)).where(n_t >= 2, 0.0)
+    # spread with a SINGLE covering replicate is EMPTY, not 0: there was
+    # nothing to compare, and a 0 would read as 'the replicates agreed
+    # perfectly' (v11.5; same convention as the single-sound-replicate case)
+    temp_spread = (T_ok.max(axis=1) - T_ok.min(axis=1)).where(n_t >= 2, np.nan)
     flag_t = pd.Series(9, index=ref_times)              # none acceptable -> missing
     flag_t[n_t >= 1] = 1                                # at least one good
     flag_t[(n_t >= 2) & (temp_spread > temp_tol)] = 3   # replicates disagree -> suspect
