@@ -2,6 +2,59 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (later) — .hobo: 97 files decode EXACTLY; light law found; 105 older files pending
+
+v11.3 published by the owner. The reverse-engineering round continued and the
+prototype reader now stands at, corpus-wide (209 paired files):
+
+- **97 files VERIFIED: temperature decodes ≥ 99.9% exactly** (most 100.0%)
+  against their exports, with a poisoning-proof bootstrap (seeds = ESQRODO
+  28/10/23 + PNOR_A4 19/09/25 at phase 0 / sample0 = token 3; growth only
+  from already-verified alignments; contribution rejected on any conflict).
+- **Temp LUT: 174 codes (367..543), ZERO monotonicity violations, ZERO
+  cross-logger conflicts**, adjacent steps 0.095..0.114 °C. Universal.
+- **The light byte belongs to the PREVIOUS row**: record i = [light of
+  sample i−1, 8 bits][temp of sample i, 10 bits]. Proven on PNOR_A4: at row
+  shift −1 the code→lux table collapses from 176 ambiguous codes to ONE
+  (99.98% agreement). Low codes: lux = code × 10.7639 exactly (lumen/ft² →
+  lux); higher codes compand (~×8 steps observed around code 122+); derive
+  the full table from verified bright files — NOT YET DONE with the shift.
+- **105 files not verified yet**, heavily skewed to 2019–2022 campaigns —
+  working hypothesis: older HOBOware/firmware wrote a layout variant (header
+  tag 0x34 = HOBOware version string; correlate it with verified/failed and
+  hunt the variant's bit layout). Also among them: exports with pt-BR
+  decimal mangling on the LUX column too (repair before validating — the
+  temp-side crude repair `>1000 ⇒ /1000` is NOT enough; use read_hobo-grade
+  repair), and 2 unreadable exports (TIM2_0120 7 rows; SGOM out2023 3 rows).
+- **Bootstrap-poisoning lesson (cost one full sweep):** growing the LUT from
+  merely "single-valued" alignments lets wrong-phase files inject shifted
+  codes, which then steer later selections wrong. Only verified-exact files
+  may teach the LUT, and every contribution must be conflict-checked.
+- Prototype + per-file results: session scratchpad
+  `hobo_reader_proto3.py` / `hobo_reader_validation3.csv` (v1/v2 kept for
+  the record). Probes 19–25 document the write-pointer/phase/light-shift
+  hunt: session sits at the FRONT of memory at a per-file BIT PHASE
+  (preamble length varies, 2–5 tokens observed); terminator token has temp
+  bits all ones (0x3FF); old sessions REMAIN in memory after the terminator.
+
+**Units question (owner asked, 2026-08-14, answered with evidence):** all
+255 Seaguard raw `.bin` sessions carry their units internally; the 134 that
+measure pressure/conductivity declare **kPa and mS/cm, no exception** (the
+GUI reader also standardizes .bin columns to kPa by construction). The raw
+archive holds NO Seaguard text exports at all. So the Units section of the
+GUI only matters for hand-loaded text exports, whose AADI headers also name
+the unit (`Descr[Unit]` columns) — but today's reader DISCARDS the original
+header name before converting by the combobox. Plan (next release): parse
+the unit from the source itself, drop the Units section, and refuse loudly
+a text export whose header names no unit. Not implemented yet.
+
+**Next actions:** (1) rebuild the light table with the −1 row shift from
+verified files with CLEAN exports; (2) split the 105 pending files by
+HOBOware version (tag 0x34) and crack the older variant the same way
+(seed candidates: any 2019 file whose export is clean); (3) lux-repair
+mangled exports before scoring; (4) only when ~all pairs verify, implement
+`read_hobo_bin` in the app (v11.4) with suite tests + manual + changelog.
+
 ## 2026-08-14 — the .hobo sample stream is CRACKED (owner commissioned direct reading)
 
 v11.3 released (tag on `42e9c72`, installer rebuilt and smoke-tested, release
