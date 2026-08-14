@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v11.4.2</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v11.6.1</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -233,9 +233,9 @@
             <th>Description</th>
         </tr>
         <tr>
-            <td>Data file</td>
-            <td>Selects the raw data file(s): CSV, XLSX or a SeaGuard raw binary session
-            (<code>Data000.bin</code> &mdash; no spreadsheet export needed). A SeaGuard cast can
+            <td>Data file(s)</td>
+            <td>Selects the raw data file(s): CSV, XLSX or a Seaguard raw binary session
+            (<code>Data000.bin</code> &mdash; no spreadsheet export needed). A Seaguard cast can
             store its sensors in several group folders (e.g. CTD, the optical pH/chlorophyll/
             turbidity group, PAR); selecting any group's <code>Data000.bin</code> reads the
             <strong>whole deployment</strong> &mdash; all sensor groups merged onto one time axis
@@ -267,7 +267,10 @@
         </tr>
         <tr>
             <td>Browse...</td>
-            <td>Opens the file explorer for selection (multi-select allowed).</td>
+            <td>Opens the file explorer for selection (multi-select allowed). Files can also be
+            <strong>dragged and dropped anywhere on the window</strong> (since v11.5): they land
+            in this field &mdash; or in <em>Database file(s)</em> on the Visualization tab &mdash;
+            and run the same auto-detection as Browse.</td>
         </tr>
         <tr>
             <td>Add CO&#8322; data</td>
@@ -1007,8 +1010,14 @@
     Each replicate is qualified <strong>independently</strong> (its own light-window review) and then
     combined into a single series, saved to a <code>&lt;site&gt;_&lt;start&gt;_&lt;end&gt;_combined_QLF</code>
     folder (the individual per-file <code>_QLF</code> outputs are also kept). The method is written to
-    <code>QCS_combine_method.txt</code> in the combined folder, and each replicate's
-    <code>QCS_light_window_&lt;replicate&gt;.svg</code> is copied there.</p>
+    <code>QCS_combine_method.txt</code> in the combined folder, each replicate's
+    <code>QCS_light_window_&lt;replicate&gt;.svg</code> is copied there, and a
+    <code>Temperature series.svg</code> plot shows the combined temperature at a glance
+    (since v11.6). The combined sheet's <code>Flag</code> column is intentionally
+    <strong>empty</strong>: each replicate ran its own tests, so a combined series has no
+    single per-test flag string &mdash; the combined verdicts are <code>Flag_T</code> /
+    <code>Flag_lux</code>, and the column stays only so single and combined sheets share one
+    layout and stack cleanly into a database.</p>
     <ul>
         <li><strong>Temperature:</strong> the <strong>mean</strong> of the replicates that are
         acceptable (<code>Flag_T &le; 2</code>) at each timestamp. Replicates are aligned to the first
@@ -1018,7 +1027,9 @@
         interpolation). The between-replicate <strong>spread</strong> (max − min) is kept in the
         <code>Temperature spread (degC)</code> column; when it exceeds 0.5 °C the combined
         <code>Flag_T</code> is set to <strong>SUSPECT (3)</strong> — the replicates disagree, which is
-        itself a QC signal.</li>
+        itself a QC signal. A row covered by a <strong>single</strong> replicate carries an
+        <strong>empty</strong> spread (since v11.5): there was nothing to compare, and 0 would
+        read as perfect agreement.</li>
         <li><strong>Light:</strong> the per-timestamp <strong>maximum of the non-fouled</strong>
         readings (<code>Flag_lux &ne; 4</code>). Fouling only attenuates light, so the brightest
         unfouled sensor is the most reliable. The combined light stays good while <strong>at least

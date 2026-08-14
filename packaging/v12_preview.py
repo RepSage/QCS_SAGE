@@ -14,7 +14,8 @@ import sys
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QPalette
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDockWidget,
+from PySide6.QtWidgets import (QAbstractButton,
+                               QApplication, QCheckBox, QComboBox, QDockWidget,
                                QFileDialog, QFormLayout, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
                                QMainWindow, QProgressBar, QPushButton,
@@ -23,28 +24,31 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDockWidget,
 
 APP_TITLE = 'QCS v12.0 preview  -  choose the interface style in View > Interface style'
 
-# The REAL tooltip texts, ported verbatim from QCS_Main.TOOLTIPS so the
-# owner reviews the actual content, not stand-ins.
+# The REAL tooltip texts, synced with QCS_Main.TOOLTIPS after the v11.6.1
+# editorial pass, so the owner reviews the actual content, not stand-ins.
 TOOLTIPS = {
-    'co2_file': "OPTIONAL (Seaguard only): dissolved-CO2 file from the separate\nCO2 logger (.txt/.csv export with Year..Second columns). Its values are\ninterpolated in time onto the Seaguard timestamps (the two instruments\nsample at different rates), fill the 'CO2 Level (ppm)' column and go through\nthe CO2 quality tests (sensor/environmental range, spikes -> Flag_CO2).\nThe CO2 timestamps are used AS-IS: the GMT-3 correction is NEVER applied\nto them (the CO2 logger clock is local; the Seaguard side is corrected\nbefore the merge). Not available for a batch (one deployment at a time).",
-    'data_file': "Select the raw data file(s) to be qualified\nFormats: .csv, .xlsx, SeaGuard .bin session (Data000.bin) or raw HOBO .hobo\nSeaguard: several files = a BATCH, qualified one after another\nHOBO: several files = redundant replicates (combined)",
-    'macroregion': "Broad region of the world (currently only Brazil).\nStructured to add other regions in the future.",
-    'region': "Region within the selected macroregion.\nSets a representative latitude/longitude used only to run the\nqualification: pressure->depth and density inversion (Seaguard),\nand the seasonal correction of the light fouling analysis (HOBO).\nSmall variations do not change the results.",
-    'input_type': "Type of instrument that generated the data\nSeaguard: Standard CTD\nHOBO: Autonomous logger",
-    'data_type': "Data collection type\nProfile: Vertical data (cast)\nMooring: Fixed-point temporal data\nDoppler: DCPS current profiler (auto-detected from the .bin)",
-    'gmt_correction': "GMT-3 correction. The Seaguard clock records GMT, so EVERY\nSeaguard qualification needs this ON (it converts to local time).\nHOBO exports and the CO2 logger are already local: HOBO never\nneeds it, and the CO2 file is merged as-is (bypasses this\ncorrection) even when it is enabled for the Seaguard.",
-    'profile_selection': "Allows selecting only descent or ascent\nfor profile data (removes inversion)",
-    'variable_check': "Opens a per-variable point-cut panel to manually DISMISS\nspurious points; you pick which variables to review.\nDismissed points get flag 5 and are kept for traceability.\n(The mooring Depth review runs on its own, without this.)",
-    'light_cutoff_mode': "HOBO only - how the light usage window is decided.\nReviewed (adaptive): the fouling decline is read out of the light itself\nand the proposed cutoff is reviewed on a plot (drag to adjust).\nFixed window: light becomes BAD a fixed number of days after deployment\n(lux_fixed_days in Settings > Parameters, default 60), no review.\nThe fixed window avoids the seasonal confound: ambient light rises\ntoward summer and falls toward winter, which the adaptive rule\ncan mistake for (or mask as) fouling.",
-    'output_folder': "Folder where qualification results\nwill be saved",
-    'output_name': "Base name for output files\n(without extension)",
-    'output_format': "Output format for the qualified data\n.csv: Delimited text\n.xlsx: Excel\n(the automatic report files are always .xlsx)",
-    'remove_bad': "Automatically removes data flagged\nas BAD (flag 4) in output",
-    'remove_suspect': "Automatically removes data flagged\nas SUSPECT (flag 3) in output",
-    'site_code': "Identification code for the\ncollection site (max 20 characters)",
-    'run_button': "Runs the qualification process\nwith configured parameters",
-    'settings_button': "Opens test configuration window\nand quality parameters",
-    'summary': "What the readers detected in the selected files\n(instrument, replicates, period, interval, serials, timebase).\nFilled as soon as the files are chosen - confirm you picked the\nright deployment BEFORE running.",
+    'co2_file': "Seaguard only, one deployment at a time: adds the separate CO2\nlogger's export (.txt/.csv) -> 'CO2 Level (ppm)' column + CO2 tests\n(values time-interpolated onto the Seaguard timestamps).\nCO2 timestamps are used as-is: the GMT-3 correction never touches them",
+    'data_file': "Raw data file(s) to qualify: .csv, .xlsx, Seaguard .bin session\nor raw HOBO .hobo\nSeaguard: several files = a batch, qualified in sequence\nHOBO: several files = replicates of one deployment, combined",
+    'macroregion': "Broad world region (currently only Brazil)",
+    'region': "Sets the site's representative latitude/longitude, used only to run\nthe tests: pressure->depth and density inversion (Seaguard),\nseasonal light correction (HOBO)\nSmall variations do not change the results",
+    'input_type': "Instrument family: Seaguard (CTD platform) or HOBO\n(temperature/light logger)\nAuto-detected from the selected file",
+    'data_type': "Seaguard collection type: Profile (vertical cast),\nMooring (fixed point) or Doppler (DCPS current profiler,\nauto-detected from the .bin)",
+    'gmt_correction': "Converts the Seaguard clock (GMT) to local time - always ON for\nSeaguard runs\nHOBO and CO2 files are already local: HOBO disables it and the\nCO2 merge bypasses it",
+    'profile_selection': "Profiles only: keeps a single phase of the cast\n(descent or ascent)",
+    'variable_check': "Manual point cut: pick the variables, then dismiss spurious points\non a plot\nDismissed points get DISMISSED (5) and stay in the sheet for\ntraceability",
+    'light_cutoff_mode': "HOBO only: how the light usable window ends\nReviewed (adaptive): the fouling decline is read from the light and\nthe proposed cutoff is reviewed on a plot (drag to adjust)\nFixed window: light -> BAD (4) a fixed number of days after deployment\n(lux_fixed_days, default 60); avoids the seasonal confound",
+    'output_folder': "Folder for the qualification outputs",
+    'output_name': "Base name of the output files (no extension);\nauto-filled from the selection",
+    'output_format': "Qualified table format: .xlsx or .csv\n(report files are always .xlsx)",
+    'remove_bad': "Drops rows flagged BAD (4) from the output",
+    'remove_suspect': "Drops rows flagged SUSPECT (3) from the output",
+    'site_code': "Site identification code, stamped on every row\n(max 20 characters)",
+    'run_button': "Qualifies the selected file(s) with the current parameters",
+    'settings_button': "Opens the quality tests and parameters window",
+    'summary': "What the readers detected in the selected files (instrument,\nreplicates, period, interval, serials, timebase)\nFilled when the files are chosen - confirm the deployment\nbefore running",
+    'log_area': "Progress, warnings and errors of the current run\nRight-click for copy options",
+    'log_float': "Detaches the log into its own window (drag it back to re-dock)",
+    'log_close': "Hides the log; messages keep accumulating\nReopen it in View > Execution log",
 }
 
 
@@ -87,6 +91,14 @@ class Preview(QMainWindow):
         dock.setWidget(self.log)
         self.addDockWidget(Qt.BottomDockWidgetArea, dock)
         self.dock = dock
+        self.log.setToolTip(TOOLTIPS['log_area'])
+        # the float/close buttons live in the dock's default title bar; Qt
+        # names them but gives them no tooltips of its own
+        for btn in dock.findChildren(QAbstractButton):
+            if 'float' in btn.objectName():
+                btn.setToolTip(TOOLTIPS['log_float'])
+            elif 'close' in btn.objectName():
+                btn.setToolTip(TOOLTIPS['log_close'])
         for demo in ('Info: this is the Execution log (drag me, undock me, '
                      'close me - View menu brings me back).',
                      'Warning: warnings show in amber, like today.',

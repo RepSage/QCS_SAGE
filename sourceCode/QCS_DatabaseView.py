@@ -18,41 +18,39 @@ from tkinter import ttk
 from tkinter import filedialog
 from tkinter import messagebox
 
-# Tooltips dictionary
+# Tooltips dictionary - editorial standard in QCS_Main.py (v11.6.1)
 TOOLTIPS = {
-    'database_files': "Select database or qualified file(s) to visualize\nMultiple files can be selected (they are combined,\nvalidated and deduplicated automatically)",
-    'join_files': "Instead of picking files one by one: scan a parent folder,\nfind every 'QCS qualified ... data' subfolder of the QCS outputs,\nskip report files and combine everything found into one database.\n(Selecting multiple files above already joins them - this mode is\nfor sweeping a whole folder tree.)",
-    'sort_time': "Sort data chronologically by datetime",
-    'instrument': "Which instrument produced the qualified files\nSeaguard (TSCP) and HOBO spreadsheets are never\nstackable - build separate databases",
-    'output_name': "Name for processed database file",
-    'input_path': "Folder containing input files",
-    'output_path': "Folder where results will be saved",
-    'data_type': ("Type of data: TSCP Mooring, TSCP Profile or TSCP Doppler\n"
-                  "(same naming as the qualification Data Type);\n"
-                  "a HOBO database is shown as HOBO"),
-    'filter_year': "Check the year(s) to visualize\nPanels are generated once per selected year",
-    'time_start': "OPTIONAL: start of the X axis in mooring plots\nFormat: DD/MM/YYYY HH:MM (e.g. 15/04/2019 09:00)\nLeave empty to fit the data automatically\nCross-site panels standardize the TIME OF DAY: the window's\nday offset + clock time apply to each site's own days",
-    'time_end': "OPTIONAL: end of the X axis in mooring plots\nFormat: DD/MM/YYYY HH:MM (e.g. 16/04/2019 09:00)\nLeave empty to fit the data automatically\nCross-site panels standardize the TIME OF DAY: the window's\nday offset + clock time apply to each site's own days",
-    'depth_min': "OPTIONAL: minimum depth (m) for the depth axis in profile plots\nLeave empty to fit the data automatically",
-    'depth_max': "OPTIONAL: maximum depth (m) for the depth axis in profile plots\nLeave empty to fit the data automatically",
-    'panel1': "Panel 1: Comparison between parameters at the same site",
-    'panel2': "Panel 2: Comparison of the same parameter between sites",
-    'panel3': "Panel 3: Comparison between parameters at the same site (vertical profile)",
-    'hobo_params_site': "HOBO panel: the selected parameters (temperature/light) at one site,\none figure per site, all selected years in a single plot.\nLight is drawn as its DAILY PEAK envelope (linear scale) with the\nfouling window shaded; suspect/bad temperature is highlighted",
-    'hobo_params_across': "HOBO panel: one figure per selected parameter with all sites together,\naligned by TIME OF DAY (hours since each site's first midnight).\nLight uses the daily-peak envelope; each site's fouling cutoff is marked",
-    'ts_diagram': "Generate a Temperature-Salinity (T-S) diagram: temperature vs\nsalinity with depth as the colour, to identify water masses.",
-    'latitude': "Latitude used by the T-S diagram (gsw). Pre-filled from the\nqualification region and locked; editable only for a\nstandalone file (which stores no coordinates).",
-    'longitude': "Longitude used by the T-S diagram (gsw). Pre-filled from the\nqualification region and locked; editable only for a\nstandalone file (which stores no coordinates).",
-    'ts_params': "Which temperature & salinity to plot on the T-S diagram:\n- Conservative T & Absolute S (TEOS-10, uses lat/long)\n- Potential T & Practical S (classic EOS-80)",
-    'tendency': "Add linear regression lines to plots",
-    'tendency_degree': "Degree of polynomial for linear regression lines",
-    'data_points': "Show individual data points on plots",
-    'site_filter': "Select sites to include in visualization",
-    'param_filter': "Select parameters to include in visualization",
-    'param_secondary': "Rarely-used variables: always start unchecked\n(check manually when needed)",
-    'fixed_scale': "Use fixed scales for all plots to allow direct comparison",
-    'min_scale': "Minimum of this parameter's fixed scale\nDefault: smallest APPROVED value (flags 1/2) of the current\nSite/Year selection, minus 20% breathing room -\nfloored at 0 (no variable here can be negative)",
-    'max_scale': "Maximum of this parameter's fixed scale\nDefault: largest APPROVED value (flags 1/2) of the current\nSite/Year selection, plus 20% breathing room"
+    'database_files': "Qualified file(s) or database(s) to visualize\nSeveral files are combined, validated and deduplicated",
+    'join_files': "Sweeps a whole folder tree instead of picking files one by one:\nfinds every 'QCS qualified ... data' subfolder, skips report files\nand combines everything into one database\n(selecting several files above already joins them)",
+    'sort_time': "Sorts the database chronologically",
+    'instrument': "Instrument family of the qualified files\nSeaguard (TSCP) and HOBO tables are never stackable -\nbuild separate databases",
+    'output_name': "Base name of the database file",
+    'input_path': "Folder with the input files",
+    'output_path': "Folder for the outputs",
+    'data_type': "Collection type: TSCP Mooring, TSCP Profile or TSCP Doppler\n(same naming as the qualification Data type)\nA HOBO database is shown as HOBO",
+    'filter_year': "Year(s) to visualize\nPanels are generated once per selected year",
+    'time_start': "Optional: start of the time axis in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 15/04/2019 09:00); empty = fit the data\nCross-site panels keep the time of day: day offset + clock time\napply to each site's own days",
+    'time_end': "Optional: end of the time axis in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 16/04/2019 09:00); empty = fit the data\nCross-site panels keep the time of day: day offset + clock time\napply to each site's own days",
+    'depth_min': "Optional: upper limit of the depth axis in profile plots (m)\nEmpty = fit the data",
+    'depth_max': "Optional: lower limit of the depth axis in profile plots (m)\nEmpty = fit the data",
+    'panel1': "Panel 1: parameters compared at the same site",
+    'panel2': "Panel 2: one parameter compared between sites",
+    'panel3': "Panel 3: parameters compared at the same site (vertical profile)",
+    'hobo_params_site': "HOBO only: temperature/light at one site, one figure per site,\nall selected years in a single plot\nLight is drawn as its daily-peak envelope with the fouling window\nshaded; SUSPECT/BAD temperature is highlighted",
+    'hobo_params_across': "HOBO only: one figure per parameter, all sites together,\naligned by time of day (hours since each site's first midnight)\nLight uses the daily-peak envelope; each site's fouling cutoff\nis marked",
+    'ts_diagram': "Temperature-Salinity (T-S) diagram: temperature vs salinity with\ndepth as the colour, to identify water masses",
+    'latitude': "Latitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
+    'longitude': "Longitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
+    'ts_params': "Temperature & salinity pair for the T-S diagram:\nConservative T & Absolute S (TEOS-10, uses lat/long) or\nPotential T & Practical S (classic EOS-80)",
+    'tendency': "Adds regression lines to the plots",
+    'tendency_degree': "Degree of the regression polynomial (1 = straight line)",
+    'data_points': "Draws the individual data points on the plots",
+    'site_filter': "Sites to include in the plots",
+    'param_filter': "Parameters to include in the plots",
+    'param_secondary': "Rarely-used variables, always start unchecked\n(check manually when needed)",
+    'fixed_scale': "Same y-axis scale on every plot, for direct comparison",
+    'min_scale': "Lower limit of this parameter's fixed scale\nDefault: smallest approved value (flags 1/2) of the current\nSite/Year selection, minus 20% - floored at 0",
+    'max_scale': "Upper limit of this parameter's fixed scale\nDefault: largest approved value (flags 1/2) of the current\nSite/Year selection, plus 20%"
 }
 
 class ErrorLogger(theme.LogConsole):
@@ -1002,7 +1000,7 @@ def build_step1(parent):
     _recent_combobox = ttk.Combobox(input_frame, state='readonly', width=45)
     _recent_combobox.grid(row=9, column=0, columnspan=2, sticky='ew', pady=(0,5))
     _recent_combobox.bind('<<ComboboxSelected>>', _apply_recent)
-    ToolTip(_recent_combobox, "Recently used database file selections\n(pick one to fill the fields above)")
+    ToolTip(_recent_combobox, "Recent file selections\n(pick one to fill the fields above)")
     _refresh_recent_combobox()
 
     # --- Output Section ---
@@ -1032,8 +1030,7 @@ def build_step1(parent):
     preview_btn = ttk.Button(preview_frame, text="Preview", command=preview_database, width=12)
     preview_btn.grid(row=0, column=0, sticky='nw', padx=(0, 12))
     ToolTip(preview_btn, "Builds the database now and shows a summary below\n"
-                         "(sites, period, rows). 'Next >' reuses this build -\n"
-                         "nothing is read twice.")
+                         "(sites, period, rows); 'Next >' reuses this build")
     _preview_var = StringVar(value="No preview yet - choose the files (or folder) and click Preview.")
     ttk.Label(preview_frame, textvariable=_preview_var, justify='left',
               style='Small.TLabel').grid(row=0, column=1, sticky='w')

@@ -453,7 +453,7 @@ assert list(out14['Flag_T']) == [1, 5, 5], out14['Flag_T'].tolist()
 assert list(out14['Flag_S']) == [1, 3, 5], out14['Flag_S'].tolist()  # S row1 unharmed by the shared-dens 5
 ok.append('handle_output_file (manual-cut flag 5 rolls up per variable, no cross-contamination)')
 
-# 15) read_ctd on a SeaGuard II raw binary session (AADIBXML1.0): a synthetic
+# 15) read_ctd on a Seaguard II raw binary session (AADIBXML1.0): a synthetic
 # mini-session built to the reverse-engineered spec (header sections, template
 # XML, tag dictionary, sync-framed typed records) must decode into the same
 # standardized frame as a CSV export would.
@@ -522,7 +522,7 @@ with _tempfile.TemporaryDirectory() as tmp:
     assert str(d['Datetime'].dtype).startswith('datetime64')
     assert d['Datetime'].iloc[1] - d['Datetime'].iloc[0] == pd.Timedelta(minutes=1)
     assert data.sniff_input_type(bin_path) == 'Seaguard'
-ok.append('read_ctd (SeaGuard raw .bin session decoded and standardized; sniffer detects it)')
+ok.append('read_ctd (Seaguard raw .bin session decoded and standardized; sniffer detects it)')
 
 # 16) dissolved-CO2 import: the logger export (repeated headers, Year..Second
 # date columns) is read, and the merge LINEARLY INTERPOLATES onto the Seaguard
