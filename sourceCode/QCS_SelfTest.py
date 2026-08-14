@@ -409,12 +409,22 @@ with _tempfile.TemporaryDirectory() as tmp:
         f.write('16/03/2026 18:04:00;3;130,9420;28,64612;35,29525\n')
     d = data.read_ctd({'raw_data_path': tmp, 'file_name': 'PISCINA_qlf.csv'})
     assert len(d) == 3, len(d)
-    for c in ('Pressure (kPa)', 'Temperature (degC)', 'Salinity (PSU)'):
+    for c in ('Pressure (dbar)', 'Temperature (degC)', 'Salinity (PSU)'):
         assert str(d[c].dtype).startswith('float'), '%s not numeric (%s)' % (c, d[c].dtype)
-    assert abs(d['Pressure (kPa)'].iloc[0] - 131.7655) < 1e-6, d['Pressure (kPa)'].iloc[0]
+    # v11.4: the unit is read from the header ([kPa]) and converted to dbar
+    assert abs(d['Pressure (dbar)'].iloc[0] - 13.17655) < 1e-6, d['Pressure (dbar)'].iloc[0]
     assert abs(d['Temperature (degC)'].iloc[2] - 28.64612) < 1e-6
     assert str(d['Datetime'].dtype).startswith('datetime64')
-ok.append('read_ctd (Seaguard comma-decimal export parsed as numbers)')
+    # a pressure column WITHOUT a unit in the header must be refused, not guessed
+    with open(csv_path, 'w', encoding='utf-8') as f:
+        f.write('Record Time;Record Number;Pressure;Temperature[DegC]\n')
+        f.write('16/03/2026 18:02:00;1;131,7655;28,62414\n')
+    try:
+        data.read_ctd({'raw_data_path': tmp, 'file_name': 'PISCINA_qlf.csv'})
+        raise AssertionError('unit-less pressure column was not refused')
+    except ValueError as e:
+        assert 'does not name its unit' in str(e), e
+ok.append('read_ctd (units auto-detected from the header; unit-less export refused)')
 
 # 14) manual point-cut -> flag DISMISSED (5): setting all of a variable's flag
 # positions to '5' must roll up to Flag_<var> = 5 WITHOUT corrupting another
@@ -494,8 +504,9 @@ with _tempfile.TemporaryDirectory() as tmp:
         f.write(_build_mini_aadi())
     d = data.read_ctd({'raw_data_path': tmp, 'file_name': 'Data000.bin'})
     assert len(d) == 3, len(d)
-    assert 'Pressure (kPa)' in d.columns and 'Temperature (degC)' in d.columns, list(d.columns)
-    assert abs(d['Pressure (kPa)'].iloc[0] - 101.5) < 1e-5
+    assert 'Pressure (dbar)' in d.columns and 'Temperature (degC)' in d.columns, list(d.columns)
+    # the .bin template declares kPa; read_ctd auto-converts to dbar (v11.4)
+    assert abs(d['Pressure (dbar)'].iloc[0] - 10.15) < 1e-5
     assert abs(d['Temperature (degC)'].iloc[2] - 27.45) < 1e-5
     assert str(d['Datetime'].dtype).startswith('datetime64')
     assert d['Datetime'].iloc[1] - d['Datetime'].iloc[0] == pd.Timedelta(minutes=1)
@@ -1090,6 +1101,69 @@ _t.sleep(2.0)
 assert not _called, 'the startup check must stay silent when the network fails'
 upd.RELEASES_API = _saved
 ok.append('update check (own CA bundle / specific error reasons / raises for the caller to silence)')
+
+# N) raw .hobo binary reader: a synthetic file built exactly to the deciphered
+# spec (18-bit records [light 8][temp 10], light lagging one slot, launch+1s
+# timebase, 0x3FF terminator, 0xFF padding) must decode to the calibrated
+# values; a stream whose codes do not fit the calibration must be REFUSED.
+from QCS_HoboCal import HOBO_TEMP_LUT, HOBO_LIGHT_LUT   # noqa: E402
+import tempfile as _tempfile2                            # noqa: E402
+import os as _os2                                        # noqa: E402
+
+def _build_mini_hobo(temp_codes, light_codes, interval_s=600):
+    def tlv(tag, payload):
+        return bytes([0x88, tag, len(payload)]) + payload
+    hdr = b'HOBO'
+    hdr += tlv(0x05, b'HOBO UA-002-64 Pendant Temp/Light')
+    hdr += tlv(0x06, b'99990001')
+    hdr += tlv(0x07, bytes([0x14, 26, 3, 10, 12, 0, 30, 0]))  # 2026-03-10 12:00:30
+    hdr += tlv(0x08, interval_s.to_bytes(4, 'big'))
+    hdr += tlv(0x12, (-10800).to_bytes(4, 'big', signed=True))
+    hdr += bytes([0x88, 0x11, 0x00])
+    # tokens: preamble (2 all-ones markers land outside the calibration and
+    # force a nonzero offset), samples with the one-slot light lag, terminator
+    tokens = [0x3FFFF, 0x3FFFF]
+    prev_light = 0
+    for t, l in zip(temp_codes, light_codes, strict=True):
+        tokens.append((prev_light << 10) | t)
+        prev_light = l
+    tokens.append((prev_light << 10) | 0x3FF)             # terminator
+    bitstr = ''.join(format(t, '018b') for t in tokens)
+    bitstr += '0' * ((8 - len(bitstr) % 8) % 8)
+    body = bytes(int(bitstr[i:i + 8], 2) for i in range(0, len(bitstr), 8))
+    return hdr + body + b'\xFF' * 32
+
+_tcodes = [480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491]
+_lcodes = [0, 0, 3, 20, 130, 137, 20, 3, 0, 0, 0, 0]
+with _tempfile2.TemporaryDirectory() as tmp:
+    p = _os2.path.join(tmp, 'HOBO_TEST_010326.hobo')
+    with open(p, 'wb') as f:
+        f.write(_build_mini_hobo(_tcodes, _lcodes))
+    d, info = data.read_hobo({'raw_data_path': tmp,
+                              'file_name': 'HOBO_TEST_010326.hobo'}, {})
+    assert len(d) == len(_tcodes), len(d)
+    # first STORED sample = launch + 1 s + one interval (the launch-time
+    # reading lives only in HOBOware exports, never in the memory stream)
+    assert d['Datetime'].iloc[0] == pd.Timestamp(2026, 3, 10, 12, 10, 31)
+    assert (d['Datetime'].diff().dropna() == pd.Timedelta(seconds=600)).all()
+    for i, c in enumerate(_tcodes):
+        assert abs(d['Temperature (degC)'].iloc[i] - HOBO_TEMP_LUT[c]) < 1e-9
+    for i, c in enumerate(_lcodes):
+        assert abs(d['Luminosity (lux)'].iloc[i] - HOBO_LIGHT_LUT[c]) < 1e-9
+    # refusal: a stream that is not the deciphered layout (random bytes in
+    # place of the sample tokens) must be refused, never decoded by luck
+    good = _build_mini_hobo(_tcodes, _lcodes)
+    hdr_end = good.find(bytes([0x88, 0x11, 0x00])) + 3
+    rng_bytes = bytes(np.random.default_rng(7).integers(0, 255, 600, dtype=np.uint8))
+    with open(p, 'wb') as f:
+        f.write(good[:hdr_end] + rng_bytes + b'\xFF' * 32)
+    try:
+        data.read_hobo({'raw_data_path': tmp,
+                        'file_name': 'HOBO_TEST_010326.hobo'}, {})
+        raise AssertionError('an unrecognized layout was not refused')
+    except ValueError as e:
+        assert 'does not fit the deciphered layout' in str(e), e
+ok.append('read_hobo (.hobo binary: spec round-trip, timebase launch+1s, light lag, refusal)')
 
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

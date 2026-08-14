@@ -216,8 +216,6 @@ TOOLTIPS = {
     'data_type': ("Data collection type\nProfile: Vertical data (cast)\n"
                   "Mooring: Fixed-point temporal data\n"
                   "Doppler: DCPS current profiler (auto-detected from the .bin)"),
-    'pressure_unit': "Pressure unit of raw data\nAutomatic conversion to decibar",
-    'conductivity_unit': "Conductivity unit of raw data\nAutomatic conversion to mS/cm",
     'gmt_correction': ("GMT-3 correction. The Seaguard clock records GMT, so EVERY\n"
                        "Seaguard qualification needs this ON (it converts to local time).\n"
                        "HOBO exports and the CO2 logger are already local: HOBO never\n"
@@ -433,7 +431,7 @@ def selectFiles():
         title=("Select the HOBO file(s) - one per replicate"
                if inputType_combobox.get() == 'HOBO'
                else "Select data file(s) - each is qualified in sequence"),
-        filetypes=(("Data files", "*.csv *.xlsx *.bin"), ("All files", "*.*")))
+        filetypes=(("Data files", "*.csv *.xlsx *.bin *.hobo"), ("All files", "*.*")))
     names = list(names)
     if not names:
         return
@@ -663,8 +661,8 @@ def collect_input_settings():
     INPUT['file_name'] = file_name_match.group() if file_name_match else ""
     INPUT['raw_data_path'] = os.path.dirname(data_path)
 
-    INPUT['pressure_unit'] = pressure_unit_combobox.get() or 'kPa'
-    INPUT['conductivity_unit'] = conductivity_unit_combobox.get() or 'mS/cm'
+    # pressure/conductivity units are read from the source file itself since
+    # v11.4 (the .bin template and AADI export headers always name them)
     INPUT['correct_gmt3h'] = correct_gmt3h.get()
     INPUT['select_profile_data'] = select_profile_data.get()
     INPUT['check_variables'] = check_variables.get()
@@ -719,8 +717,6 @@ def collect_input_settings():
         'data_file': data_path,
         'input_type': INPUT['input_type'],
         'data_type': INPUT['data_type'],
-        'pressure_unit': INPUT['pressure_unit'],
-        'conductivity_unit': INPUT['conductivity_unit'],
         'correct_gmt3h': INPUT['correct_gmt3h'],
         'select_profile_data': INPUT['select_profile_data'],
         'check_variables': INPUT['check_variables'],
@@ -1030,10 +1026,6 @@ def restore_user_prefs():
         inputType_combobox.set(p['input_type'])
     if p.get('data_type'):
         dType_combobox.set(p['data_type'])
-    if p.get('pressure_unit'):
-        pressure_unit_combobox.set(p['pressure_unit'])
-    if p.get('conductivity_unit'):
-        conductivity_unit_combobox.set(p['conductivity_unit'])
     if p.get('output_format'):
         outputFilesFormat_combobox.set(p['output_format'])
     correct_gmt3h.set(True)   # GMT-3 defaults ON for Seaguard (not restored from prefs)
@@ -1520,8 +1512,8 @@ def build_qualification_tab(container, root, shared_log=None):
     own. All pipeline logic is unchanged."""
     global window, main_frame, input_frame, output_frame, fileNames_entry, browse_file_btn
     global co2_btn, co2_label, co2_clear_btn
-    global inputType_combobox, dType_combobox, replicate_label, replicate_combobox, replicate_var, update_profile_checkbox_state, units_frame
-    global pressure_unit_combobox, conductivity_unit_combobox, options_frame, correct_gmt3h, gmt_check, select_profile_data
+    global inputType_combobox, dType_combobox, replicate_label, replicate_combobox, replicate_var, update_profile_checkbox_state
+    global options_frame, correct_gmt3h, gmt_check, select_profile_data
     global light_cutoff_mode, light_mode_label, light_mode_adaptive, light_mode_fixed
     global profile_check, check_variables, var_check, outputPath_entry, browse_output_btn, outputName_entry
     global outputFilesFormat_combobox, filter_frame, remove_bad, bad_check, remove_suspect, suspect_check
@@ -1652,20 +1644,10 @@ def build_qualification_tab(container, root, shared_log=None):
     # bind to combobox selection
     dType_combobox.bind("<<ComboboxSelected>>", update_profile_checkbox_state)
 
-    # Units selection
-    units_frame = ttk.LabelFrame(input_frame, text=" Units ", padding=5)
-    units_frame.grid(row=4, column=0, columnspan=2, sticky='ew', pady=5)
-
-    ttk.Label(units_frame, text="Pressure:").grid(row=0, column=0, sticky='w')
-    pressure_unit_combobox = ttk.Combobox(units_frame, values=["decibar", "bar", "kPa"], width=10, state='readonly')
-    pressure_unit_combobox.set('kPa')  # default input unit (auto-converted to decibar internally)
-    pressure_unit_combobox.grid(row=0, column=1, padx=5, pady=2)
-    ToolTip(pressure_unit_combobox, TOOLTIPS['pressure_unit'])
-
-    ttk.Label(units_frame, text="Conductivity:").grid(row=1, column=0, sticky='w')
-    conductivity_unit_combobox = ttk.Combobox(units_frame, values=["mS/cm", "S/m"], width=10, state='readonly')
-    conductivity_unit_combobox.grid(row=1, column=1, padx=5, pady=2)
-    ToolTip(conductivity_unit_combobox, TOOLTIPS['conductivity_unit'])
+    # (the Units section was removed in v11.4: pressure/conductivity units
+    # are read from the source file itself - .bin templates and AADI export
+    # headers always name them - and a text export without a unit in its
+    # header is refused by read_ctd rather than guessed)
 
     # Options checkboxes
     options_frame = ttk.Frame(input_frame)
@@ -1787,26 +1769,19 @@ def build_qualification_tab(container, root, shared_log=None):
     _last_seaguard = {}
 
     def update_inputtype_state(event=None):
-        """HOBO only measures temperature and light: Data Type, units (pressure/conductivity),
-        GMT-3 correction and profile selection do not apply and stay disabled and empty.
-        The region (macro + region) stays ENABLED for HOBO since v10.0 - its latitude
-        drives the seasonal correction of the light fouling analysis. Data Type and the
-        units keep the last Seaguard selection and restore it when coming back. HOBO is a
-        time series (treated as non-profile)."""
+        """HOBO only measures temperature and light: Data Type, GMT-3
+        correction and profile selection do not apply and stay disabled and
+        empty. The region (macro + region) stays ENABLED for HOBO since
+        v10.0 - its latitude drives the seasonal correction of the light
+        fouling analysis. Data Type keeps the last Seaguard selection and
+        restores it when coming back. HOBO is a time series (treated as
+        non-profile)."""
         if inputType_combobox.get() == 'HOBO':
             # store the non-empty values before clearing
             if dType_combobox.get():
                 _last_seaguard['data_type'] = dType_combobox.get()
-            if pressure_unit_combobox.get():
-                _last_seaguard['pressure'] = pressure_unit_combobox.get()
-            if conductivity_unit_combobox.get():
-                _last_seaguard['conductivity'] = conductivity_unit_combobox.get()
             dType_combobox.set('')            # HOBO is neither TSCP profile nor mooring
-            pressure_unit_combobox.set('')    # no pressure
-            conductivity_unit_combobox.set('')
             dType_combobox.config(state='disabled')
-            pressure_unit_combobox.config(state='disabled')
-            conductivity_unit_combobox.config(state='disabled')
             # GMT-3 does not apply: greyed out AND unchecked (the last Seaguard
             # choice is remembered and restored when switching back)
             _last_seaguard['gmt'] = correct_gmt3h.get()
@@ -1830,13 +1805,7 @@ def build_qualification_tab(container, root, shared_log=None):
             # restore the last stored Seaguard selection (if any)
             if _last_seaguard.get('data_type'):
                 dType_combobox.set(_last_seaguard['data_type'])
-            if _last_seaguard.get('pressure'):
-                pressure_unit_combobox.set(_last_seaguard['pressure'])
-            if _last_seaguard.get('conductivity'):
-                conductivity_unit_combobox.set(_last_seaguard['conductivity'])
             dType_combobox.config(state='readonly')
-            pressure_unit_combobox.config(state='readonly')
-            conductivity_unit_combobox.config(state='readonly')
             gmt_check.config(state='normal')
             # ALWAYS back ON for Seaguard: its clock is GMT, and both the CO2
             # logger and the HOBO exports are local - every Seaguard
@@ -2305,16 +2274,9 @@ def build_qualification_tab(container, root, shared_log=None):
                 raw_data = raw_data.drop(columns={name})
             elif re.search(r'(?i)\btemperature\b.*\d', name, re.IGNORECASE):
                 raw_data = raw_data.drop(columns={name})
-        # converting units to software standards and calculating depth from pressure
-        check = list()
-        for var in raw_data.columns:
-            if re.search('conductivity|pressure', var, re.IGNORECASE):
-                check.append(var)
-        if len(check) >= 1:
-            raw_data = data.convert_tscp_units (raw_data, pressure_unit=INPUT['pressure_unit'], conductivity_unit=INPUT['conductivity_unit'])
-            for name in raw_data.columns:
-                if re.search('pressure', name, re.IGNORECASE):
-                    raw_data = raw_data.rename(columns={name:'Pressure (dbar)'})
+        # units already standardized by read_ctd (v11.4): pressure arrives in
+        # dbar and conductivity in mS/cm, converted from whatever unit the
+        # SOURCE declared in its own header/template
 
         dep, press = (0,0)
         for name in raw_data.columns:

@@ -2,6 +2,35 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.4 closing) — .hobo reader SHIPPED (experimental); units auto-detected
+
+Owner decisions this round: close v11.4 so they can test raw-`.hobo` reading;
+v12.0 will be the professional-interface (Qt) release; units auto-detection
+confirmed for v11.4.
+
+**Shipped in v11.4** (branch pushed, PR pending; suite 52/52, ruff clean):
+- `read_hobo` accepts `.hobo` directly (`_read_hobo_binary` +
+  `QCS_HoboCal.py` tables). Blind corpus validation: **42 files reproduce
+  their export 100.0% exactly in both channels** (all current-generation
+  families); older-generation files are REFUSED (layout mismatch, or the
+  night-light gate: decoded light glowing in the dark = wrong decode).
+  Timebase settled: export row0 = a launch-time in-air reading that is NOT
+  in the memory; stored sample i = launch + 1 s + (i+1)·interval.
+- Units read from the source (`read_ctd` detects `Descr[Unit]`, converts,
+  refuses unit-less text exports); the GUI Units section removed.
+- Window state persistence; Site code above Data filtering.
+
+**Known imperfect tail, documented not hidden:** ~30 pre-2023 pairs decode
+with partial mismatch or one-row offset (some older HOBOware generations DO
+store the launch reading, shifting the series by one slot) — most are
+refused by the gates; a few silent one-row-offset families remain in the
+2021-2022 range (exact_T ~0.5 in blind CSV). The corpus itself is
+unaffected (qualified from exports). Deciphering the old variant remains
+open work (blind CSV: scratchpad `blind_reader_validation.csv`).
+
+**v12.0 (next): Qt port of the GUI** — owner asked for examples; measured
+basis in the previous entry (sv-ttk theme is the 300 ms tab-switch cost).
+
 ## 2026-08-14 (v11.4 round open) — light law SOLVED; GUI perf measured; window state persists
 
 Branch `improvements-v11.4` open. Owner confirmed: automatic unit detection
