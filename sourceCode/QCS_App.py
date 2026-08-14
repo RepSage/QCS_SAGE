@@ -154,6 +154,39 @@ def main(run=True):
     notebook.bind('<ButtonRelease-1>', lambda e: on_tab_changed(), add='+')
     on_tab_changed()  # start on the qualification tab
 
+    # Drag-and-drop (v11.5): files dropped anywhere on the window land in the
+    # ACTIVE tab's file field - Data file(s) on Qualification, Database
+    # file(s) on Visualization - running the same auto-detection as Browse.
+    # tkdnd cannot register the root window itself, so the top-level areas
+    # are registered (drops over their children resolve up the hierarchy).
+    # Silently absent when tkinterdnd2 is not installed.
+    try:
+        from tkinterdnd2 import DND_FILES, TkinterDnD
+        TkinterDnD._require(root)
+
+        def on_files_dropped(event):
+            paths = [p for p in root.tk.splitlist(event.data)
+                     if os.path.isfile(p)]
+            if notebook.index(notebook.select()) == 0:
+                keep = [p for p in paths if p.lower().endswith(
+                    ('.csv', '.xlsx', '.bin', '.hobo'))]
+                if keep:
+                    qual.apply_selected_files(keep)
+            else:
+                keep = [p for p in paths
+                        if p.lower().endswith(('.csv', '.xlsx'))]
+                if keep:
+                    viz.apply_selected_files(keep)
+            ignored = len(paths) - len(keep)
+            if ignored:
+                print('Warning: %d dropped file(s) ignored - unsupported '
+                      'format for this tab.' % ignored)
+        for area in (notebook, content, app_log.frame, qual_tab, viz_tab):
+            area.drop_target_register(DND_FILES)
+            area.dnd_bind('<<Drop>>', on_files_dropped)
+    except Exception as exc:
+        print('Info: drag-and-drop unavailable (%s).' % exc)
+
     def switch_to(idx):
         notebook.select(idx)
 

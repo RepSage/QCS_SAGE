@@ -2,6 +2,101 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.5, session 3) — anchor SHIPPED; round complete, PR pending
+
+The delimiter anchor is in the reader (primary path; content scan is the
+fallback), the walk skips event markers, and the calibration tables were
+rebuilt from the 185 proven alignments (pooled modal, 462k light readings,
+temp 177 codes / zero conflicts / monotone; light 227 observed + 28 law).
+
+**Definitive blind validation: 124 files at exactly 100.0% temperature and
+120 at ≥ 99.9% light** (v11.4.2: 46). The owner's PLES pair: both decode
+blind - HOBO1 1.0000/0.9989, HOBO2 1.0000/0.9962 WITH the clock warning
+(its clock is genuinely wrong). Sub-0.1% light residuals are HOBOware's own
+±0.1 rounding wobble, visible between rows of its own exports.
+
+Also done this session: drag-and-drop shipped (tkinterdnd2 required into
+the app shell; drops land in the active tab's field; 4/4 GUI checks; dep in
+requirements + spec + build venv), 'Data file(s):' label, suite 52/52 with
+the delimiter in the synthetic fixture. Remaining before the PR: nothing -
+open it.
+
+## 2026-08-14 (v11.5, session 2) — 185/200 proven; the preamble DELIMITER found
+
+Owner approved the mixed-interval spread solution. Session results, all on
+branch `improvements-v11.5` (still NOT shippable until the anchor lands):
+
+- **With the event-skipping walk, 185 of ~200 paired files align at
+  exact_T ≥ 99.9%** (export-guided; was 97). The walk is the format's
+  missing piece confirmed at scale (`pointer_test.csv` in this session's
+  scratchpad has每 file's proven `s0_bit`).
+- **Tag 0x0D is only an approximate pointer** (predicted-vs-true diff
+  clusters: −24×102, −42×47, −46×16, −38×10, −20×6 — i.e. 1-2 metadata
+  tokens after the pointed spot, in two bit-jitter families). Use it as a
+  narrow search WINDOW, not an address.
+- **The real anchor: the LAST preamble token has a signature** — census over
+  the 185 proven files: values `03FF0/0FFF0/13FF0/07FF0/0BFF0/17FF0/...`,
+  i.e. `(token & 0x03FF0) == 0x03FF0 and (token & 0xF) == 0` (bits 4-13
+  set, low nibble clear, high bits vary — likely the launch-reading light
+  code). Minority family `3FF02/3FE00/...` = the −46/−38/−20 jitter files,
+  delimiter shifted by 2-4 bits. **Next action: sample0 = first token after
+  the LAST delimiter-signature match inside the pointer window (8·tag0x0D +
+  {10..56} bits); fall back to the count+darkness scan when no signature
+  matches; then re-run the blind validation** (expect ~185 exact) and only
+  then ship.
+- Drag-and-drop state: `apply_selected_files()` extracted in BOTH modules
+  (QCS_Main + QCS_DatabaseView, done, committed); STILL PENDING: the drop
+  wiring in QCS_App (tkinterdnd2._require(root) + drop_target_register on
+  notebook/content/log frames, active-tab dispatch), the 'Data file(s):'
+  label, tkinterdnd2 in requirements.txt + collect_all in QCS.spec.
+- Also pending: light-table refinement for high companded codes (law-filled
+  codes ≥ ~200 carry law rounding, not HOBOware's - collect from the newly
+  aligned 185), changelog v11.5, manual, PR.
+
+## 2026-08-14 (v11.5 round OPEN — branch `improvements-v11.5`, NOT shippable yet)
+
+Owner's five requests after testing v11.4.2 with the PLES pair (the pair sits
+on the Desktop: `HOBO[12]_PLES_A1_200925_160326.hobo` + `.xlsx`).
+
+**BREAKTHROUGH — mid-stream event markers were the ~50-75% families.** An
+isolated temp==0x3FF token inside the stream is a logger EVENT (does not
+consume a time slot); un-skipped, each one slid the alignment by one from
+there on. With the greedy event-skipping walk (now in `_read_hobo_binary`),
+HOBO2_PLES goes 0.74 → **1.0000 exact** (guided; 1 event + old tail) and
+HOBO1_PLES stays 1.0000. The night-light hard gate is now: darkness ranks
+candidate SELECTION; bright-but-coherent daily peak (≤14 lit hours) decodes
+WITH a clock warning (HOBO2's clock is genuinely wrong - its EXPORT shows
+99,200 lux at "23:41", noon sun; replicates even configured at different
+intervals, 1 h vs 2 h); bright-and-incoherent refuses.
+
+**REMAINING BLOCKER (why the branch must not ship):** the blind reader still
+drops/adds the FIRST sample on some files (PLES1 blind = 0.36 exact by a
+1-slot shift, a silent regression vs refusal). Cause: the head guard kills
+real hot-deck first readings; without it, phantom preamble tokens win by
+count. **The clean fix is probably the header pointer: tags 0x0D/0x1D look
+like the first-sample address — for ESQRODO and SGOM2 (proven alignments),
+`sample0_bit = 8*(tag0x0D + 4) + 6` holds EXACTLY** (derive against more
+proven files; PNOR gave the slot one BEFORE sample0 — the formula may point
+at the last preamble token, i.e. sample0 = pointer + 18 bits). If it holds,
+every alignment heuristic collapses into reading the pointer.
+
+Done in the branch, tested: event-skip walk + gate redesign (suite 52/52);
+**spread fix** — single-replicate rows now carry EMPTY spread, not 0 (the
+owner's alternating zeros were replicates configured at DIFFERENT intervals;
+warning added + self-test); **conclusion dialogs trimmed** (no more "you can
+qualify another file..."). Pending: drag-and-drop of files onto the window
+(tkinterdnd2 installed in base for dev; needs GUI wiring + spec/requirements
++ 'Data file(s)' label), light-table refinement for high companded codes
+(PLES2 residual 2.3% light mismatches = law-filled codes above ~200).
+
+Owner's question 5 (which replicate anchors the fixed 60-day light cut):
+each replicate is qualified INDEPENDENTLY - the fixed window cuts each one
+60 days after ITS OWN first sample; the combined series then keeps light
+while at least one replicate is uncut (max of non-fouled). With replicates
+launched minutes apart the two cutoffs fall on the same day, so in practice
+the combined light window ends 60 days after deployment - no single logger
+is "chosen".
+
 ## 2026-08-14 (v11.4.2 released) — ritual done; replicate outputs proven
 
 PR #26 merged, tagged on `077fc49`, branch deleted, installer rebuilt with

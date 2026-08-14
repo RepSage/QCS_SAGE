@@ -466,24 +466,30 @@ def selectFiles():
         start = ''
     filenames = filedialog.askopenfilenames(initialdir=start, title="Select files")
     if filenames:
-        fileNames_entry.delete(0, END)
-        fileNames_entry.insert(0, ";".join(filenames))
-        join.set(False)
-        toggle_input_mode()
-        USER_PREFS['dbv_last_db_dir'] = os.path.dirname(filenames[0])
-        # auto-fill Output Path with the qualification output root of the file
-        out_root = _default_output_root(filenames[0])
-        outputPath_entry.delete(0, END)
-        outputPath_entry.insert(0, out_root)
-        # remember an output name (used only if the user later switches to
-        # 'Build database from a folder'); the field itself stays blank/disabled
-        # in single-file mode
-        out_name = os.path.splitext(os.path.basename(filenames[0]))[0]
-        USER_PREFS['dbv_output_path'] = out_root
-        USER_PREFS['dbv_output_name'] = out_name
-        USER_PREFS['dbv_last_output_dir'] = out_root
-        save_user_prefs()
-        autodetect_instrument(filenames[0])
+        apply_selected_files(list(filenames))
+
+def apply_selected_files(filenames):
+    """Shared tail of the database-file selection (Browse or drag-and-drop,
+    v11.5): fills the entry, switches to single-file mode and auto-detects
+    the instrument."""
+    fileNames_entry.delete(0, END)
+    fileNames_entry.insert(0, ";".join(filenames))
+    join.set(False)
+    toggle_input_mode()
+    USER_PREFS['dbv_last_db_dir'] = os.path.dirname(filenames[0])
+    # auto-fill Output Path with the qualification output root of the file
+    out_root = _default_output_root(filenames[0])
+    outputPath_entry.delete(0, END)
+    outputPath_entry.insert(0, out_root)
+    # remember an output name (used only if the user later switches to
+    # 'Build database from a folder'); the field itself stays blank/disabled
+    # in single-file mode
+    out_name = os.path.splitext(os.path.basename(filenames[0]))[0]
+    USER_PREFS['dbv_output_path'] = out_root
+    USER_PREFS['dbv_output_name'] = out_name
+    USER_PREFS['dbv_last_output_dir'] = out_root
+    save_user_prefs()
+    autodetect_instrument(filenames[0])
 
 def autodetect_instrument(path):
     """Sets the Instrument combobox from the first selected file's columns

@@ -376,6 +376,17 @@ repA = pd.DataFrame({'Datetime': tgrid, 'Site': 'PAB3',
                      'Luminosity (lux)': [10000., 9000, 8000, 7000, 6000, 500, 400, 300, 200, 100],
                      'Flag_T': [1] * 10,
                      'Flag_lux': [1, 1, 1, 1, 1, 4, 4, 4, 4, 4]})   # A fouls from index 5
+# a replicate at a COARSER interval (every 2 h): the uncovered rows of the
+# finer grid must carry an EMPTY spread (v11.5), never 0
+repC2h = pd.DataFrame({'Datetime': tgrid[::2], 'Site': 'PAB3',
+                       'Temperature (degC)': [25.2] * 5,
+                       'Luminosity (lux)': [9000.] * 5,
+                       'Flag_T': [1] * 5, 'Flag_lux': [1] * 5})
+comb2, cmsgs2 = data.combine_hobo_replicates([repA, repC2h], temp_tol=0.5)
+sp2 = comb2['Temperature spread (degC)']
+assert sp2.iloc[0] == sp2.iloc[0] and abs(sp2.iloc[0] - 0.2) < 1e-6, sp2.iloc[0]
+assert pd.isna(sp2.iloc[1]), 'single-replicate row must have EMPTY spread, got %r' % sp2.iloc[1]
+assert any('DIFFERENT sampling intervals' in m for m in cmsgs2), cmsgs2
 repB = pd.DataFrame({'Datetime': tgrid, 'Site': 'PAB3',
                      'Temperature (degC)': [25.2, 25.2, 25.2, 26.0, 25.2, 25.2, 25.2, 25.2, 25.2, 25.2],
                      'Luminosity (lux)': [11000., 9500, 8500, 7500, 6500, 6000, 5500, 5000, 300, 200],
@@ -1120,14 +1131,20 @@ def _build_mini_hobo(temp_codes, light_codes, interval_s=600):
     hdr += tlv(0x08, interval_s.to_bytes(4, 'big'))
     hdr += tlv(0x12, (-10800).to_bytes(4, 'big', signed=True))
     hdr += bytes([0x88, 0x11, 0x00])
-    # tokens: preamble (2 all-ones markers land outside the calibration and
-    # force a nonzero offset), samples with the one-slot light lag, terminator
-    tokens = [0x3FFFF, 0x3FFFF]
+    # tokens: preamble built to the spec - 2 all-ones markers plus the
+    # DELIMITER token (bits 4..13 set, low nibble clear) that anchors
+    # sample 0 in the v11.5 reader - then samples with the one-slot light
+    # lag, then the terminator
+    tokens = [0x3FFFF, 0x3FFFF, 0x03FF0]
     prev_light = 0
     for t, l in zip(temp_codes, light_codes, strict=True):
         tokens.append((prev_light << 10) | t)
         prev_light = l
     tokens.append((prev_light << 10) | 0x3FF)             # terminator
+    # old-session junk after the terminator, like real memories carry - it
+    # also keeps the 0xFF-padding trim away from the terminator's own last
+    # byte (which IS 0xFF when the stream ends on a byte boundary)
+    tokens.append(0x00000)
     bitstr = ''.join(format(t, '018b') for t in tokens)
     bitstr += '0' * ((8 - len(bitstr) % 8) % 8)
     body = bytes(int(bitstr[i:i + 8], 2) for i in range(0, len(bitstr), 8))

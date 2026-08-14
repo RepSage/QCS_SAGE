@@ -435,6 +435,12 @@ def selectFiles():
     names = list(names)
     if not names:
         return
+    apply_selected_files(names)
+
+def apply_selected_files(names):
+    """Shared tail of the file selection: fills the entry and runs the same
+    auto-detection whether the files came from Browse or were DROPPED onto
+    the window (v11.5)."""
     first = names[0]
     fileNames_entry.delete(0, END)
     fileNames_entry.insert(0, ';'.join(names))
@@ -973,15 +979,12 @@ def start_qualification():
                                                               for f, e in batch_failures)))
             messagebox.showinfo("Done",
                                 "Batch finished: %d of %d files qualified.%s\n\n"
-                                "Each qualified file has its own _QLF output in the output folder.\n\n"
-                                "You can select other files and run a new qualification "
-                                "without closing the program." % (n_done, n, skipped_note))
+                                "Each qualified file has its own _QLF output in "
+                                "the output folder." % (n_done, n, skipped_note))
         else:
             messagebox.showinfo("Done",
-                                "Qualification completed successfully!\n\n"
-                                "Results saved to:\n%s\n\n"
-                                "You can select another file and run a new qualification "
-                                "without closing the program." % OUTPUT.get('last_output_root', ''))
+                                "Qualification completed.\n\nResults saved to:\n%s"
+                                % OUTPUT.get('last_output_root', ''))
     except data.ManualCutCancelled:
         # Cancel/Esc during a manual-cut panel or the variable chooser: abort
         # cleanly and return to the form (no error dialog, nothing written)
@@ -1580,7 +1583,7 @@ def build_qualification_tab(container, root, shared_log=None):
 
     # --- Input Section ---
     # File selection
-    ttk.Label(input_frame, text="Data file:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
+    ttk.Label(input_frame, text="Data file(s):", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
     fileNames_entry = ttk.Entry(input_frame, width=24)
     fileNames_entry.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(0,5))
     ToolTip(fileNames_entry, TOOLTIPS['data_file'])
