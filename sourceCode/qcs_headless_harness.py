@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Headless qualification harness for autonomous bug-hunting.
 
-Drives the REAL QCS qualification pipeline (no GUI) over a list of SeaGuard .bin
+Drives the REAL QCS qualification pipeline (no GUI) over a list of Seaguard .bin
 deployments with rotated settings, then checks invariants on each qualified sheet
 and writes structured findings as JSON.
 

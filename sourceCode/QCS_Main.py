@@ -95,7 +95,7 @@ CONFIG = {
     },
     'tsSettings': {
         #'depth_range': 1.55,
-        # Sensor ranges (instrument limit - Aanderaa SeaGuard II default)
+        # Sensor ranges (instrument limit - Aanderaa Seaguard II default)
         'sensor_min_temp': -5,
         'sensor_max_temp': 40,
         'sensor_min_sal': 0,
@@ -203,147 +203,119 @@ FACTOR_VARS = [
     ('org', 'Organic matter'), ('tur', 'Turbidity'),
 ]
 
-# Tooltips dictionary
+# Tooltips dictionary.
+#
+# EDITORIAL STANDARD (v11.6.1, applied to every tooltip in the program):
+# - instrument names as the interface shows them: Seaguard, HOBO, DCPS, TSCP
+# - first line says what the control does/means, directly (no "Allows...")
+# - units and limits in parentheses; flags by name and code: BAD (4),
+#   SUSPECT (3), DISMISSED (5)
+# - scope prefixes when a control applies to one family: "Seaguard only:",
+#   "HOBO only:", "Profiles only:"
+# - at most ~4 short lines
 TOOLTIPS = {
-    'co2_file': "OPTIONAL (Seaguard only): dissolved-CO2 file from the separate\nCO2 logger (.txt/.csv export with Year..Second columns). Its values are\ninterpolated in time onto the Seaguard timestamps (the two instruments\nsample at different rates), fill the 'CO2 Level (ppm)' column and go through\nthe CO2 quality tests (sensor/environmental range, spikes -> Flag_CO2).\nThe CO2 timestamps are used AS-IS: the GMT-3 correction is NEVER applied\nto them (the CO2 logger clock is local; the Seaguard side is corrected\nbefore the merge). Not available for a batch (one deployment at a time).",
-    'data_file': "Select the raw data file(s) to be qualified\nFormats: .csv, .xlsx, SeaGuard .bin session (Data000.bin) or raw HOBO .hobo\nSeaguard: several files = a BATCH, qualified one after another\nHOBO: several files = redundant replicates (combined)",
-    'latitude': "Latitude of the collection site (decimal degrees, -90 to 90)\nSouthern hemisphere is negative (e.g. -17.5)\nUsed to convert pressure to depth",
-    'longitude': "Longitude of the collection site (decimal degrees, -180 to 180)\nWestern hemisphere is negative (e.g. -40.0)\nUsed by the density inversion test",
-    'macroregion': "Broad region of the world (currently only Brazil).\nStructured to add other regions in the future.",
-    'region': "Region within the selected macroregion.\nSets a representative latitude/longitude used only to run the\nqualification: pressure->depth and density inversion (Seaguard),\nand the seasonal correction of the light fouling analysis (HOBO).\nSmall variations do not change the results.",
-    'config_file': "OPTIONAL: Select the configuration file (.json)\ncontaining quality test parameters",
-    'input_type': "Type of instrument that generated the data\nSeaguard: Standard CTD\nHOBO: Autonomous logger",
-    'data_type': ("Data collection type\nProfile: Vertical data (cast)\n"
-                  "Mooring: Fixed-point temporal data\n"
-                  "Doppler: DCPS current profiler (auto-detected from the .bin)"),
-    'gmt_correction': ("GMT-3 correction. The Seaguard clock records GMT, so EVERY\n"
-                       "Seaguard qualification needs this ON (it converts to local time).\n"
-                       "HOBO exports and the CO2 logger are already local: HOBO never\n"
-                       "needs it, and the CO2 file is merged as-is (bypasses this\n"
-                       "correction) even when it is enabled for the Seaguard."),
-    'profile_selection': "Allows selecting only descent or ascent\nfor profile data (removes inversion)",
-    'variable_check': "Opens a per-variable point-cut panel to manually DISMISS\nspurious points; you pick which variables to review.\nDismissed points get flag 5 and are kept for traceability.\n(The mooring Depth review runs on its own, without this.)",
-    'light_cutoff_mode': "HOBO only - how the light usage window is decided.\nReviewed (adaptive): the fouling decline is read out of the light itself\nand the proposed cutoff is reviewed on a plot (drag to adjust).\nFixed window: light becomes BAD a fixed number of days after deployment\n(lux_fixed_days in Settings > Parameters, default 60), no review.\nThe fixed window avoids the seasonal confound: ambient light rises\ntoward summer and falls toward winter, which the adaptive rule\ncan mistake for (or mask as) fouling.",
-    'output_folder': "Folder where qualification results\nwill be saved",
-    'output_name': "Base name for output files\n(without extension)",
-    'output_format': "Output format for the qualified data\n.csv: Delimited text\n.xlsx: Excel\n(the automatic report files are always .xlsx)",
-    'remove_bad': "Automatically removes data flagged\nas BAD (flag 4) in output",
-    'remove_suspect': "Automatically removes data flagged\nas SUSPECT (flag 3) in output",
-    'site_code': "Identification code for the\ncollection site (max %d characters)" % SITE_CODE_MAX,
-    'run_button': "Runs the qualification process\nwith configured parameters",
-    'settings_button': "Opens test configuration window\nand quality parameters",
-    'export_button': "Exports current settings\nto a JSON file"
+    'co2_file': "Seaguard only, one deployment at a time: adds the separate CO2\nlogger's export (.txt/.csv) -> 'CO2 Level (ppm)' column + CO2 tests\n(values time-interpolated onto the Seaguard timestamps).\nCO2 timestamps are used as-is: the GMT-3 correction never touches them",
+    'data_file': "Raw data file(s) to qualify: .csv, .xlsx, Seaguard .bin session\nor raw HOBO .hobo\nSeaguard: several files = a batch, qualified in sequence\nHOBO: several files = replicates of one deployment, combined",
+    'latitude': "Latitude in decimal degrees (-90 to 90; south negative, e.g. -17.5)\nUsed to convert pressure to depth",
+    'longitude': "Longitude in decimal degrees (-180 to 180; west negative, e.g. -40.0)\nUsed by the density inversion test",
+    'macroregion': "Broad world region (currently only Brazil)",
+    'region': "Sets the site's representative latitude/longitude, used only to run\nthe tests: pressure->depth and density inversion (Seaguard),\nseasonal light correction (HOBO)\nSmall variations do not change the results",
+    'config_file': "Optional .json file with quality-test parameters",
+    'input_type': "Instrument family: Seaguard (CTD platform) or HOBO\n(temperature/light logger)\nAuto-detected from the selected file",
+    'data_type': "Seaguard collection type: Profile (vertical cast),\nMooring (fixed point) or Doppler (DCPS current profiler,\nauto-detected from the .bin)",
+    'gmt_correction': "Converts the Seaguard clock (GMT) to local time - always ON for\nSeaguard runs\nHOBO and CO2 files are already local: HOBO disables it and the\nCO2 merge bypasses it",
+    'profile_selection': "Profiles only: keeps a single phase of the cast\n(descent or ascent)",
+    'variable_check': "Manual point cut: pick the variables, then dismiss spurious points\non a plot\nDismissed points get DISMISSED (5) and stay in the sheet for\ntraceability",
+    'light_cutoff_mode': "HOBO only: how the light usable window ends\nReviewed (adaptive): the fouling decline is read from the light and\nthe proposed cutoff is reviewed on a plot (drag to adjust)\nFixed window: light -> BAD (4) a fixed number of days after deployment\n(lux_fixed_days, default 60); avoids the seasonal confound",
+    'output_folder': "Folder for the qualification outputs",
+    'output_name': "Base name of the output files (no extension);\nauto-filled from the selection",
+    'output_format': "Qualified table format: .xlsx or .csv\n(report files are always .xlsx)",
+    'remove_bad': "Drops rows flagged BAD (4) from the output",
+    'remove_suspect': "Drops rows flagged SUSPECT (3) from the output",
+    'site_code': "Site identification code, stamped on every row\n(max %d characters)" % SITE_CODE_MAX,
+    'run_button': "Qualifies the selected file(s) with the current parameters",
+    'settings_button': "Opens the quality tests and parameters window",
+    'export_button': "Saves the current parameters to a .json file"
 }
 
+# Parameters tab. The per-variable range limits share one formula (sensor
+# ranges flag BAD (4), environmental ranges SUSPECT (3)), so they are built
+# from the variable table instead of 40 hand-written near-duplicates.
+_RANGE_UNITS = {'temp': ('temperature', '°C'), 'sal': ('salinity', 'PSU'),
+                'cond': ('conductivity', 'mS/cm'), 'pres': ('pressure', 'dbar'),
+                'O2': ('dissolved oxygen', 'μM'), 'pH': ('pH', ''),
+                'chl': ('chlorophyll', 'μg/L'), 'tur': ('turbidity', 'FTU'),
+                'CO2': ('dissolved CO2', 'ppm'), 'org': ('organic matter', 'ppb')}
+
 TS_SETTINGS_TOOLTIPS = {
-    'depth_range': "Maximum allowed depth range variation (meters)\nUsed in depth range test",
-    'sensor_min_temp': "Minimum valid temperature for sensor range (°C)\nValues below will be flagged",
-    'sensor_max_temp': "Maximum valid temperature for sensor range (°C)\nValues above will be flagged",
-    'sensor_min_sal': "Minimum valid salinity for sensor range (PSU)\nValues below will be flagged",
-    'sensor_max_sal': "Maximum valid salinity for sensor range (PSU)\nValues above will be flagged",
-    'sensor_min_cond': "Minimum valid conductivity for sensor range (mS/cm)\nValues below will be flagged",
-    'sensor_max_cond': "Maximum valid conductivity for sensor range (mS/cm)\nValues above will be flagged",
-    'sensor_min_pres': "Minimum valid pressure for sensor range (dbar)\nValues below will be flagged",
-    'sensor_max_pres': "Maximum valid pressure for sensor range (dbar)\nValues above will be flagged",
-    'sensor_min_O2': "Minimum valid dissolved oxygen for sensor range (μM)\nValues below will be flagged",
-    'sensor_max_O2': "Maximum valid dissolved oxygen for sensor range (μM)\nValues above will be flagged",
-    'sensor_min_pH': "Minimum valid pH for sensor range\nValues below will be flagged",
-    'sensor_max_pH': "Maximum valid pH for sensor range\nValues above will be flagged",
-    'sensor_min_chl': "Minimum valid chlorophyll for sensor range (μg/L)\nValues below will be flagged",
-    'sensor_max_chl': "Maximum valid chlorophyll for sensor range (μg/L)\nValues above will be flagged",
-    'sensor_min_tur': "Minimum valid turbidity for sensor range (FTU)\nValues below will be flagged",
-    'sensor_max_tur': "Maximum valid turbidity for sensor range (FTU)\nValues above will be flagged",
-    'sensor_min_CO2': "Minimum valid dissolved CO2 for sensor range (ppm)\nValues below will be flagged",
-    'sensor_max_CO2': "Maximum valid dissolved CO2 for sensor range (ppm)\nValues above will be flagged",
-    'env_min_temp': "Minimum expected environmental temperature (°C)\nValues below will be flagged",
-    'env_max_temp': "Maximum expected environmental temperature (°C)\nValues above will be flagged",
-    'env_min_sal': "Minimum expected environmental salinity (PSU)\nValues below will be flagged",
-    'env_max_sal': "Maximum expected environmental salinity (PSU)\nValues above will be flagged",
-    'env_min_cond': "Minimum expected environmental conductivity (mS/cm)\nValues below will be flagged",
-    'env_max_cond': "Maximum expected environmental conductivity (mS/cm)\nValues above will be flagged",
-    'env_min_pres': "Minimum expected environmental pressure (dbar)\nValues below will be flagged",
-    'env_max_pres': "Maximum expected environmental pressure (dbar)\nValues above will be flagged",
-    'env_min_pH': "Minimum expected environmental pH\nValues below will be flagged",
-    'env_max_pH': "Maximum expected environmental pH\nValues above will be flagged",
-    'env_min_chl': "Minimum expected chlorophyll (μg/L)\nValues below will be flagged",
-    'env_max_chl': "Maximum expected chlorophyll (μg/L)\nValues above will be flagged",
-    'env_min_O2': "Minimum expected dissolved oxygen (μM)\nValues below will be flagged",
-    'env_max_O2': "Maximum expected dissolved oxygen (μM)\nValues above will be flagged",
-    'env_min_org': "Minimum expected organic matter (ppb)\nValues below will be flagged",
-    'env_max_org': "Maximum expected organic matter (ppb)\nValues above will be flagged",
-    'env_min_tur': "Minimum expected turbidity (FTU)\nValues below will be flagged",
-    'env_max_tur': "Maximum expected turbidity (FTU)\nValues above will be flagged",
-    'env_min_CO2': "Minimum expected environmental dissolved CO2 (ppm)\nValues below will be flagged",
-    'env_max_CO2': "Maximum expected environmental dissolved CO2 (ppm)\nValues above will be flagged",
-    'env_min_lux': "Minimum luminosity (lux) for the FIXED-SCALE light plot.\nNot a QC test - only sets the plot's y-axis (HOBO).",
-    'env_max_lux': "Maximum luminosity (lux) for the FIXED-SCALE light plot.\nNot a QC test - only sets the plot's y-axis (HOBO).",
-    'rep_cnt_fail': "Number of repeated values to flag as FAIL\nFor flat line test",
-    'rep_cnt_susp': "Number of repeated values to flag as SUSPECT\nFor flat line test",
-    'dens_inv_tolerance': "Density inversion tolerance (kg/m3)\nPotential density may decrease with depth up to this\nvalue before the pair is flagged as SUSPECT",
-    'lux_baseline_days': "HOBO light fouling: clean-sensor baseline =\nmax daily light peak of the FIRST N days after deployment\n(max, so a cloudy install day does not lower it)",
-    'lux_cutoff_frac': "HOBO light fouling: fraction of the clean-sensor baseline\nbelow which light becomes BAD (0.5 = 50%)\nThe applied cutoff is shown in the review plot and saved with the results",
-    'lux_sustain_days': "HOBO light fouling: the daily peak must stay below the\nthreshold for this many CONSECUTIVE days before cutting\n(avoids cutting on a cloudy spell)",
-    'lux_fixed_days': "HOBO light, FIXED cutoff mode: light becomes BAD this many\ndays after deployment, with no data-driven decision\n(fouling is well advanced by then; the mode is chosen per run\nin the Qualification tab)",
-    'hobo_edge_temp_tol': "HOBO edge trim: leading/trailing samples are discarded while\ntemperature deviates more than this (degC) from the nearby\nstable segment (out-of-water readings at deployment/recovery)",
-    'doppler_max_speed': "Current speed range test: horizontal speed above this (cm/s)\nis physically impossible for the site -> BAD\n(negative speed is always BAD)",
-    'doppler_min_strength': "Signal quality test: return strength below this (dB) is under\nthe noise floor -> BAD. Genuine echoes are NEGATIVE dB; a\nstrength of 0 or above is the instrument's 'no ping'\nplaceholder and is always BAD",
-    'doppler_max_stdev': "Speed standard deviation test: single-ping stdev above this\n(cm/s) means a noisy cell -> SUSPECT",
-    'doppler_tilt_suspect': "Instrument tilt test: tilt above this (degrees) -> SUSPECT\n(tilt compromises the whole record, not just one cell)",
-    'doppler_tilt_bad': "Instrument tilt test: tilt above this (degrees) -> BAD",
-    #'eps': "Epsilon value for flat line detection\nMinimum difference to consider values different",
+    'depth_range': "Depth range test: maximum allowed depth variation (m)",
+    'env_min_lux': "Plot scale only, no QC: lower y-axis limit of the\nfixed-scale light plot (lux, HOBO)",
+    'env_max_lux': "Plot scale only, no QC: upper y-axis limit of the\nfixed-scale light plot (lux, HOBO)",
+    'rep_cnt_fail': "Flat line test: this many identical consecutive values -> BAD (4)",
+    'rep_cnt_susp': "Flat line test: this many identical consecutive values -> SUSPECT (3)",
+    'dens_inv_tolerance': "Density inversion test: potential density may decrease with\ndepth up to this (kg/m3); beyond it the pair -> SUSPECT (3)",
+    'lux_baseline_days': "Light fouling: the clean-sensor baseline is the highest daily\npeak of the first N days after deployment\n(highest, so one cloudy install day cannot lower it)",
+    'lux_cutoff_frac': "Light fouling: light -> BAD (4) below this fraction of the\nbaseline (0.5 = 50%)\nThe applied cutoff is drawn on the review plot and saved",
+    'lux_sustain_days': "Light fouling: the daily peak must stay below the threshold\nthis many consecutive days before cutting\n(a cloudy spell does not cut)",
+    'lux_fixed_days': "Fixed window mode: light -> BAD (4) this many days after\ndeployment, with no data-driven decision\n(the mode is chosen per run in the Qualification tab)",
+    'hobo_edge_temp_tol': "Edge trim: leading/trailing samples are dropped while\ntemperature deviates more than this (°C) from the deployment\n(out-of-water readings at launch/recovery)",
+    'doppler_max_speed': "Speed range test: horizontal speed above this (cm/s) -> BAD (4)\nNegative speed is always BAD",
+    'doppler_min_strength': "Signal quality test: return strength below this (dB) -> BAD (4)\nGenuine echoes are negative dB; 0 or above is the instrument's\n'no ping' placeholder, always BAD",
+    'doppler_max_stdev': "Speed stdev test: single-ping stdev above this (cm/s)\n-> SUSPECT (3)",
+    'doppler_tilt_suspect': "Tilt test: tilt above this (degrees) -> SUSPECT (3)\nTilt compromises the whole record, not one cell",
+    'doppler_tilt_bad': "Tilt test: tilt above this (degrees) -> BAD (4)",
 }
+for _key, (_var, _unit) in _RANGE_UNITS.items():
+    _u = (' (%s)' % _unit) if _unit else ''
+    if _key != 'org':                       # the sensor set has no organic matter
+        TS_SETTINGS_TOOLTIPS['sensor_min_%s' % _key] = (
+            "Sensor range test: lower valid %s%s\nBelow it -> BAD (4)" % (_var, _u))
+        TS_SETTINGS_TOOLTIPS['sensor_max_%s' % _key] = (
+            "Sensor range test: upper valid %s%s\nAbove it -> BAD (4)" % (_var, _u))
+    TS_SETTINGS_TOOLTIPS['env_min_%s' % _key] = (
+        "Environmental range test: lower expected %s%s\nBelow it -> SUSPECT (3)" % (_var, _u))
+    TS_SETTINGS_TOOLTIPS['env_max_%s' % _key] = (
+        "Environmental range test: upper expected %s%s\nAbove it -> SUSPECT (3)" % (_var, _u))
 
 # tooltips for the per-variable factor columns (Factors per Variable tab)
 TS_FACTORS_TOOLTIPS = {
-    'fail': "Robust-sigma multiplier to flag as FAIL\nSpike and vertical-gradient tests\n(rate of change is capped at SUSPECT per QARTOD)",
-    'susp': "Robust-sigma multiplier to flag as SUSPECT\nUsed in spike, rate-of-change and vertical-gradient tests",
-    'window': "Time window for the local sigma (spike and rate-of-change tests)\nFormat: '2D' (days), '3H' (hours), '30M' (minutes), '45S' (seconds) or 'WHOLE'\nMust cover at least 3 samples at the data's sampling interval",
+    'fail': "Spike and vertical-gradient tests: robust-sigma multiplier\nfor BAD (4)\n(rate of change is capped at SUSPECT per QARTOD)",
+    'susp': "Spike, rate-of-change and vertical-gradient tests:\nrobust-sigma multiplier for SUSPECT (3)",
+    'window': "Spike and rate-of-change tests: time window for the local sigma\n'2D' days, '3H' hours, '30M' minutes, '45S' seconds, or 'WHOLE'\nMust cover at least 3 samples at the data's sampling interval",
 }
 
+# Quality Tests tab: one checkbox per test. Each test family shares one
+# formula, so the per-variable entries are built from the variable lists.
 TS_QUALITY_TESTS_TOOLTIPS = {
-    'temperature sensor range': "Check if temperature values are within sensor specifications",
-    'salinity sensor range': "Check if salinity values are within sensor specifications",
-    'conductivity sensor range': "Check if conductivity values are within sensor specifications",
-    'pressure sensor range': "Check if pressure values are within sensor specifications",
-    'dissolved oxygen sensor range': "Check if dissolved oxygen values are within sensor specifications",
-    'pH sensor range': "Check if pH values are within sensor specifications",
-    'chlorophyll sensor range': "Check if chlorophyll values are within sensor specifications",
-    'turbidity sensor range': "Check if turbidity values are within sensor specifications",
-    'dissolved CO2 sensor range': "Check if dissolved CO2 values are within sensor specifications",
-    'temperature environmental range': "Check if temperature values are environmentally plausible",
-    'salinity environmental range': "Check if salinity values are environmentally plausible",
-    'conductivity environmental range': "Check if conductivity values are environmentally plausible",
-    'pressure environmental range': "Check if pressure values are environmentally plausible",
-    'pH environmental range': "Check if pH values are environmentally plausible",
-    'chlorophyll environmental range': "Check if chlorophyll values are environmentally plausible",
-    'dissolved oxygen environmental range': "Check if dissolved oxygen values are environmentally plausible",
-    'dissolved organic matter environmental range': "Check if organic matter values are environmentally plausible",
-    'turbidity environmental range': "Check if turbidity values are environmentally plausible",
-    'dissolved CO2 environmental range': "Check if dissolved CO2 values are environmentally plausible",
-    'temperature spikes': "Detect abnormal spikes in temperature values",
-    'salinity spikes': "Detect abnormal spikes in salinity values",
-    'conductivity spikes': "Detect abnormal spikes in conductivity values",
-    'pressure spikes': "Detect abnormal spikes in pressure values",
-    'pH spikes': "Detect abnormal spikes in pH values",
-    'chlorophyll spikes': "Detect abnormal spikes in chlorophyll values",
-    'dissolved oxygen spikes': "Detect abnormal spikes in dissolved oxygen values",
-    'dissolved organic matter spikes': "Detect abnormal spikes in organic matter values",
-    'turbidity spikes': "Detect abnormal spikes in turbidity values",
-    'dissolved CO2 spikes': "Detect abnormal spikes in dissolved CO2 values",
-    'temperature rate of change': "Check for unrealistic temperature changes over time",
-    'salinity rate of change': "Check for unrealistic salinity changes over time",
-    'conductivity rate of change': "Check for unrealistic conductivity changes over time",
-    'pressure rate of change': "Check for unrealistic pressure changes over time",
-    'temperature flat line': "Detect unchanging temperature values (sensor stuck)",
-    'salinity flat line': "Detect unchanging salinity values (sensor stuck)",
-    'conductivity flat line': "Detect unchanging conductivity values (sensor stuck)",
-    'pressure flat line': "Detect unchanging pressure values (sensor stuck)",
-    'temperature vertical gradient': "Check for unrealistic temperature changes with depth",
-    'salinity vertical gradient': "Check for unrealistic salinity changes with depth",
-    'conductivity vertical gradient': "Check for unrealistic conductivity changes with depth",
-    'density inversion': "Check water column stability: potential density must not decrease with depth (profiles only)",
-    'light fouling window': "HOBO only: flag light as BAD after the daily peak decays\nbelow a fraction of the clean-sensor baseline (sensor fouling).\nParameters in the Parameters tab (lux_*); cutoff reviewed on a plot before applying"
+    'density inversion': "Profiles only: potential density decreasing with depth beyond\nthe tolerance -> both rows of the pair SUSPECT (3)",
+    'light fouling window': "HOBO only: light -> BAD (4) after the usable window ends\n(fouling decline, or a fixed number of days)\nParameters in the Parameters tab (lux_*)",
 }
+def _cap(v):
+    # str.capitalize() would mangle 'pH' and 'dissolved CO2'
+    return v if v == 'pH' else v[0].upper() + v[1:]
+
+_QT_SENSOR = ['temperature', 'salinity', 'conductivity', 'pressure',
+              'dissolved oxygen', 'pH', 'chlorophyll', 'turbidity',
+              'dissolved CO2']
+_QT_ENV = ['temperature', 'salinity', 'conductivity', 'pressure', 'pH',
+           'chlorophyll', 'dissolved oxygen', 'dissolved organic matter',
+           'turbidity', 'dissolved CO2']
+for _v in _QT_SENSOR:
+    TS_QUALITY_TESTS_TOOLTIPS['%s sensor range' % _v] = (
+        "%s outside the sensor's valid range -> BAD (4)" % _cap(_v))
+for _v in _QT_ENV:
+    TS_QUALITY_TESTS_TOOLTIPS['%s environmental range' % _v] = (
+        "%s outside the expected range for the site -> SUSPECT (3)" % _cap(_v))
+    TS_QUALITY_TESTS_TOOLTIPS['%s spikes' % _v] = (
+        "Isolated %s spikes (robust-sigma criterion)\n-> BAD (4) or SUSPECT (3) by the per-variable factors" % _v)
+for _v in ['temperature', 'salinity', 'conductivity', 'pressure']:
+    TS_QUALITY_TESTS_TOOLTIPS['%s rate of change' % _v] = (
+        "%s changing too fast over time -> SUSPECT (3)" % _cap(_v))
+    TS_QUALITY_TESTS_TOOLTIPS['%s flat line' % _v] = (
+        "Identical consecutive %s values (stuck sensor)\n-> SUSPECT (3) or BAD (4) by run length" % _v)
+for _v in ['temperature', 'salinity', 'conductivity']:
+    TS_QUALITY_TESTS_TOOLTIPS['%s vertical gradient' % _v] = (
+        "Profiles only: %s changing too fast with depth\n-> BAD (4) or SUSPECT (3) by the per-variable factors" % _v)
 
 # ----- user preferences: last folders and last choices, kept between sessions -----
 def settings_store_path():
@@ -475,7 +447,7 @@ def apply_selected_files(names):
         elif dType_combobox.get() == 'TSCP Doppler':
             dType_combobox.set('TSCP Mooring')
             dType_combobox.event_generate('<<ComboboxSelected>>')
-            print("Info: scalar SeaGuard session selected - Data type reset to 'TSCP Mooring'.")
+            print("Info: scalar Seaguard session selected - Data type reset to 'TSCP Mooring'.")
     # auto-fill the output folder from the first file; the name follows the
     # selection (single / combined replicates / batch)
     outputPath_entry.delete(0, END)
@@ -485,7 +457,7 @@ def apply_selected_files(names):
 
 def _output_base_for(path):
     """Base name for a file's _QLF output: the file name without extension. For
-    a SeaGuard DataNNN.bin the SESSION FOLDER name is used instead ('Data000'
+    a Seaguard DataNNN.bin the SESSION FOLDER name is used instead ('Data000'
     is meaningless on its own - every session calls its file that)."""
     base = os.path.splitext(os.path.basename(path))[0]
     if path.lower().endswith('.bin') and re.fullmatch(r'(?i)data\d+', base):
@@ -637,7 +609,7 @@ def collect_input_settings():
             return False
         if not re.search(r'\.(csv|xlsx|bin|hobo)$', f, re.IGNORECASE):
             messagebox.showwarning("Warning", "Unsupported file format (use .csv, .xlsx, a "
-                                   "SeaGuard .bin session or a raw HOBO .hobo file):\n%s" % f)
+                                   "Seaguard .bin session or a raw HOBO .hobo file):\n%s" % f)
             return False
     INPUT['replicate_files'] = replicate_files
     INPUT['n_replicates'] = n_rep
@@ -1648,9 +1620,9 @@ def build_qualification_tab(container, root, shared_log=None):
                                    state='disabled', justify='center')
     replicate_combobox.grid(row=1, column=2, sticky='w', padx=(12, 0))
     ToolTip(replicate_combobox,
-            "HOBO only: how many redundant HOBO files were selected in 'Browse'\n"
-            "(set automatically - pick as many files as you want, one per replicate;\n"
-            "each is qualified separately, then combined into one series)")
+            "HOBO only: number of replicate files selected in Browse\n"
+            "(set automatically; each replicate is qualified separately,\n"
+            "then combined into one series)")
 
     # the selected CO2 file shows HERE (beside Replicates, below the button),
     # so a long file name never pushes the Browse/CO2 block to the right
@@ -1659,7 +1631,7 @@ def build_qualification_tab(container, root, shared_log=None):
     co2_label = ttk.Label(co2_info, text='', style='Small.TLabel')
     co2_label.pack(side='left', padx=(0, 2))
     co2_clear_btn = ttk.Button(co2_info, text='×', width=2, command=clear_co2_file)
-    ToolTip(co2_clear_btn, 'Remove the selected CO₂ file')
+    ToolTip(co2_clear_btn, 'Removes the selected CO2 file')
 
     # update profile checkbox
     def update_profile_checkbox_state(event=None):

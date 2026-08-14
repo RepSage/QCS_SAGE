@@ -216,6 +216,10 @@ class LogConsole:
         self._text_visible = True
         self.on_visibility_change = None   # optional callback(visible: bool)
 
+        ToolTip(self.clear_button, "Erases the messages shown so far")
+        ToolTip(self.hide_button, "Collapses the log to free vertical space\n"
+                                  "Messages keep accumulating while hidden")
+
     def _tag_for(self, message):
         # Severity is read from the message's leading label (case-insensitive), so
         # the whole app shares ONE colour scheme regardless of the caller. Standard

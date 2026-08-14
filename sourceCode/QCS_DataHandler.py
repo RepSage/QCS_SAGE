@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v11.6'
+QCS_VERSION = 'v11.6.1'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -21,7 +21,7 @@ QCS_VERSION = 'v11.6'
 # Search functions
 
 # ---------------------------------------------------------------------------
-# AADI SeaGuard II raw binary sessions (Data000.bin, format 'AADIBXML1.0').
+# AADI Seaguard II raw binary sessions (Data000.bin, format 'AADIBXML1.0').
 # The file is SELF-DESCRIBING: a header points to (1) a plain-XML template of
 # one full record (sensor names, parameter names, units, types) and (2) a tag
 # dictionary assigning a numeric id to every XML element; the data section is a
@@ -133,7 +133,7 @@ def _decode_aadi_bin(file_path):
 
 
 def read_seaguard_bin(file_path):
-    """Reads a SeaGuard II raw binary session: the selected DataNNN.bin plus any
+    """Reads a Seaguard II raw binary session: the selected DataNNN.bin plus any
     sibling DataNNN.bin files of the same session folder, concatenated in time
     order. Returns the CSV-export-equivalent DataFrame."""
     folder = os.path.dirname(file_path)
@@ -154,7 +154,7 @@ def read_seaguard_bin(file_path):
 
 
 # ---------------------------------------------------------------------------
-# A SeaGuard cast/deployment can be split into several sensor-GROUP folders that
+# A Seaguard cast/deployment can be split into several sensor-GROUP folders that
 # sit side by side (named '<serial>-<groupindex>-<start-timestamp>Z'): the
 # current standard protocol logs all sensors together in one synchronous group
 # (plus a separate Doppler group), but older deployments split the sensors into
@@ -204,7 +204,7 @@ def _merge_sensor_groups(groups):
 
 
 def read_seaguard_deployment(file_path):
-    """Reads a whole SeaGuard deployment: the selected sensor-group folder plus
+    """Reads a whole Seaguard deployment: the selected sensor-group folder plus
     any sibling sensor-group folders of the SAME cast (same instrument serial and
     start time, within a small tolerance), merged onto one time axis by
     _merge_sensor_groups. Doppler/DCPS groups are skipped. Falls back to the
@@ -270,7 +270,7 @@ def read_seaguard_deployment(file_path):
 
 
 # ---------------------------------------------------------------------------
-# DCPS / Doppler current-profiler sessions (Aanderaa DCPS on the SeaGuard II).
+# DCPS / Doppler current-profiler sessions (Aanderaa DCPS on the Seaguard II).
 # Same AADIBXML container as the scalar sessions, but a much richer record:
 # - the tag dictionary must be parsed SEQUENTIALLY (entry = 13-byte prefix,
 #   name, NUL, 3 zero bytes); the regex scan used for scalar files corrupts on
@@ -666,7 +666,7 @@ def read_ctd(INPUT):
 
     # First determine file type and handle accordingly
     if INPUT['file_name'].lower().endswith('.bin'):
-        # SeaGuard II raw binary session: decoded into the same layout as the
+        # Seaguard II raw binary session: decoded into the same layout as the
         # instrument's CSV export, so everything below applies unchanged. Reads
         # the whole deployment - all sibling sensor-group folders merged in time
         # (Doppler excluded) - so a multi-group cast qualifies as one record.
@@ -696,7 +696,7 @@ def read_ctd(INPUT):
                 i += 1
         dataframe = pd.read_csv(file_path, skiprows=i, header=0, delimiter=';')
     else:
-        raise ValueError("Unsupported file format. Only .bin (SeaGuard session), "
+        raise ValueError("Unsupported file format. Only .bin (Seaguard session), "
                          ".xlsx and .csv files are supported.")
 
     # Units are read from the SOURCE, not asked of the user (v11.4): every
