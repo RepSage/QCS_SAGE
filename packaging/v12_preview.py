@@ -17,8 +17,8 @@ from PySide6.QtGui import QAction, QColor, QPalette
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDockWidget,
                                QFileDialog, QFormLayout, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                               QMainWindow, QPlainTextEdit, QPushButton,
-                               QRadioButton, QTabWidget, QVBoxLayout, QWidget)
+                               QMainWindow, QPushButton, QRadioButton,
+                               QTabWidget, QTextEdit, QVBoxLayout, QWidget)
 
 APP_TITLE = 'QCS v12.0 preview  -  choose the interface style in View > Interface style'
 
@@ -49,17 +49,40 @@ class Preview(QMainWindow):
         self.setCentralWidget(tabs)
 
         # Execution log as a DOCK: draggable, collapsible, closable - the Qt
-        # answer to v11.3's Hide log button
-        self.log = QPlainTextEdit(readOnly=True)
-        self.log.setPlainText('Info: this is the Execution log (drag me, '
-                              'undock me, close me - View menu brings me back).')
+        # answer to v11.3's Hide log button. Grayed background to stand off
+        # the input fields (owner request), and the SAME severity colors as
+        # today's LogConsole: Info default, Warning amber, Error red,
+        # Done green.
+        self.log = QTextEdit(readOnly=True)
+        self.log.setObjectName('ExecutionLog')
         dock = QDockWidget('Execution log', self)
         dock.setWidget(self.log)
         self.addDockWidget(Qt.BottomDockWidgetArea, dock)
         self.dock = dock
+        for demo in ('Info: this is the Execution log (drag me, undock me, '
+                     'close me - View menu brings me back).',
+                     'Warning: warnings show in amber, like today.',
+                     'Error: errors show in red.',
+                     'Done: success shows in green.'):
+            self.log_line(demo)
 
         self._menus()
         self.statusBar().showMessage('Preview only - no QC logic behind the buttons')
+
+    LOG_COLORS = {'light': {'error': '#b30000', 'warning': '#9a6a00',
+                            'success': '#1f7a1f', 'default': '#202020'},
+                  'dark': {'error': '#f48771', 'warning': '#dcdcaa',
+                           'success': '#89d185', 'default': '#d4d4d4'}}
+
+    def log_line(self, message):
+        head = message.lstrip().lower()
+        kind = ('error' if head.startswith(('error', 'critical')) else
+                'warning' if head.startswith('warning') else
+                'success' if head.startswith(('done', 'success')) else
+                'default')
+        scheme = 'dark' if QApplication.instance().property('qcs_dark') else 'light'
+        self.log.append('<span style="color:%s">%s</span>'
+                        % (self.LOG_COLORS[scheme][kind], message))
 
     def _qualification_tab(self):
         w = QWidget()
@@ -83,10 +106,8 @@ class Preview(QMainWindow):
         dt = QComboBox()
         dt.addItems(['TSCP Profile', 'TSCP Mooring', 'TSCP Doppler'])
         fin.addRow('Data type:', dt)
-        fin.addRow(QCheckBox('Correct GMT-3'))
-        fin.addRow(QCheckBox('Select profile data'))
-        fin.addRow(QCheckBox('Check variables'))
         lm = QHBoxLayout()
+        lm.setContentsMargins(0, 0, 0, 0)   # radios level with their label
         lm.addWidget(QRadioButton('Reviewed (adaptive)', checked=True))
         lm.addWidget(QRadioButton('Fixed window'))
         lm.addStretch()
@@ -99,6 +120,13 @@ class Preview(QMainWindow):
         reg = QComboBox()
         reg.addItems(['Abrolhos (BA)'])
         fin.addRow('Region:', reg)
+        # the three toggles LAST, boxed like Data filtering (owner request)
+        gopt = QGroupBox('Options')
+        vo = QVBoxLayout(gopt)
+        vo.addWidget(QCheckBox('Correct GMT-3'))
+        vo.addWidget(QCheckBox('Select profile data'))
+        vo.addWidget(QCheckBox('Check variables'))
+        fin.addRow(gopt)
 
         gout = QGroupBox('Output settings')
         fout = QFormLayout(gout)
@@ -183,7 +211,9 @@ def apply_style(key):
     font = app.font()
     font.setPointSizeF(10.5)
     app.setFont(font)
-    if key == 'fusion-dark':
+    dark = (key == 'fusion-dark')
+    app.setProperty('qcs_dark', dark)
+    if dark:
         app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
         app.setStyle('Fusion')
         app.setPalette(dark_palette())
@@ -191,13 +221,16 @@ def apply_style(key):
         app.styleHints().setColorScheme(Qt.ColorScheme.Light)
         app.setStyle('Fusion')
         app.setPalette(app.style().standardPalette())
+    # the log stands off the white/dark input fields (owner request)
+    app.setStyleSheet('QTextEdit#ExecutionLog { background: %s; }'
+                      % ('#232324' if dark else '#e9e9e9'))
 
 
 def main():
     app = QApplication(sys.argv)
-    win = Preview()
     style = sys.argv[sys.argv.index('--style') + 1] if '--style' in sys.argv else 'fusion'
-    apply_style(style)
+    apply_style(style)          # before the window: the log colors by scheme
+    win = Preview()
     if '--shot' in sys.argv:
         # screenshot mode: the window is NEVER shown - grab() renders the
         # laid-out widget to a pixmap with the real platform fonts/style
