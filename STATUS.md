@@ -2,6 +2,54 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 — the .hobo sample stream is CRACKED (owner commissioned direct reading)
+
+v11.3 released (tag on `42e9c72`, installer rebuilt and smoke-tested, release
+text on the Desktop). The owner then commissioned direct `.hobo` reading, and
+the reverse engineering broke through. **What is proven, with the evidence:**
+
+- **File = 64 KB logger-memory dump, 0xFF-padded.** Header is TLV
+  (`88 tag len payload`): 0x04 maker, 0x05 model, 0x06 serial, **0x07 launch
+  datetime** (`? yy mm dd HH MM SS ?`), **0x08 logging interval in seconds**,
+  0x0A deployment name, 0x12 UTC offset in seconds (int32 BE, −10800), 0x14
+  timezone name, 0x1E battery V (float32 BE), 0x34 HOBOware version, channel
+  definition blocks (`0x0B` index, `0xB5` name). Tag **0x0D ≈ data-region
+  file offset** (matches within a byte or two; confirm before relying).
+  Data begins after the last `88 11 00`.
+- **Sample record = 18 bits, MSB-first: [light 8 bits][temp 10 bits].**
+  Preamble before sample 0 (ESQRODO: `3FFFF 3FFFF 3DDC0 03FF0` = 4 tokens;
+  per-file delta observed 2..5 — the decoder must detect the preamble length,
+  not hardcode it). ~12 stray bits at the very end.
+- **Temp: universal calibration.** Two loggers (serials 20063739, 22178335),
+  34 shared codes, **max disagreement 0.000 °C**. Locally ~−0.0977 °C/code
+  around code 500 ≈ 26 °C (thermistor curve; build the full 1024-entry LUT
+  from the 209 paired files, values are °C rounded to 3 decimals).
+- **Light: lux = raw × 10.7639** (lumen/ft² → lux) where raw = code for
+  code ≤ 127, and **raw = (code−128)×8 + 128 for code ≥ 128** (µ-law-style
+  companding; higher segments — codes far above 137 — not yet observed, map
+  them from bright-site files before trusting).
+- **Validation state:** PNOR_A4 (`HOBO2_PNOR_A4_190925_150326`, 4258 rows,
+  interval 3600 s) decodes with **0 temp deviations over the whole file**.
+  ESQRODO's 405 deviations are EXPORT-side (pt-BR Excel ate decimals; my
+  probe repair was cruder than read_hobo's). ESQNORTE_B2 14032022 misaligns
+  (agreement 0.43) — likely early event tokens (launch handling); unsolved.
+  Old-memory files (e.g. HOBO1_SGOM 47 B/row) retain PREVIOUS deployments —
+  the write-pointer / current-session-start rule is still unknown (candidate
+  fields: the 0x22 block words, tags 0x0D/0x1D).
+- Probe scripts `hobo_probe1..18.py` in the 2026-08-13/14 session scratchpad.
+- **Traps for the next session:** rank correlation lies in flat/night
+  stretches (use value-exact matching against a learned LUT); read_hobo's
+  dedup shifts alignment (align against the RAW export, repair the decimal
+  scale first); light code 0 dominates fouled deployments.
+
+**Next actions:** (1) resolve preamble/event tokens and the multi-deployment
+write pointer; (2) build the corpus-wide temp LUT + light companding table
+and validate DECODE-EXACT against all 209 paired exports; (3) only then
+implement `read_hobo_bin` in `QCS_DataHandler.py` (mirror `read_hobo`'s
+output frame; timestamps = launch + i·interval, local time, never
+GMT-corrected), wire `.hobo` into the HOBO input path, suite tests, docs —
+that release is the next MINOR (v11.4 — QC rules unchanged).
+
 ## 2026-08-13 — Owner DELETED the archive tables; v11.3 in progress; .hobo verdict
 
 **The owner deleted `_registros\`, `qualified_index.csv` and both raw
