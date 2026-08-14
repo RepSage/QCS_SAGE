@@ -2,6 +2,17 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.4.1) — GUI gate fixed; release ready to publish
+
+The owner's first real `.hobo` attempt hit "Unsupported file format": the
+extension gate in `collect_input_settings` predates the feature and was never
+wired (the corpus validation runs at the data layer, below it — gotcha now in
+`CLAUDE.md`, "four wiring points"). Fixed in v11.4.1 (PR #25, merged, tagged
+on `dd26ae5`), installer rebuilt and smoke-tested, `QCS_Setup_v11.4.1.exe` +
+release text on the Desktop. **v11.4 was never published as a Release and
+does not need to be — publish v11.4.1 directly.** Owner's real-file `.hobo`
+test still pending on the fixed build.
+
 ## 2026-08-14 (v11.4 closing) — .hobo reader SHIPPED (experimental); units auto-detected
 
 Owner decisions this round: close v11.4 so they can test raw-`.hobo` reading;
