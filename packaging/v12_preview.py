@@ -23,6 +23,30 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDockWidget,
 
 APP_TITLE = 'QCS v12.0 preview  -  choose the interface style in View > Interface style'
 
+# The REAL tooltip texts, ported verbatim from QCS_Main.TOOLTIPS so the
+# owner reviews the actual content, not stand-ins.
+TOOLTIPS = {
+    'co2_file': "OPTIONAL (Seaguard only): dissolved-CO2 file from the separate\nCO2 logger (.txt/.csv export with Year..Second columns). Its values are\ninterpolated in time onto the Seaguard timestamps (the two instruments\nsample at different rates), fill the 'CO2 Level (ppm)' column and go through\nthe CO2 quality tests (sensor/environmental range, spikes -> Flag_CO2).\nThe CO2 timestamps are used AS-IS: the GMT-3 correction is NEVER applied\nto them (the CO2 logger clock is local; the Seaguard side is corrected\nbefore the merge). Not available for a batch (one deployment at a time).",
+    'data_file': "Select the raw data file(s) to be qualified\nFormats: .csv, .xlsx, SeaGuard .bin session (Data000.bin) or raw HOBO .hobo\nSeaguard: several files = a BATCH, qualified one after another\nHOBO: several files = redundant replicates (combined)",
+    'macroregion': "Broad region of the world (currently only Brazil).\nStructured to add other regions in the future.",
+    'region': "Region within the selected macroregion.\nSets a representative latitude/longitude used only to run the\nqualification: pressure->depth and density inversion (Seaguard),\nand the seasonal correction of the light fouling analysis (HOBO).\nSmall variations do not change the results.",
+    'input_type': "Type of instrument that generated the data\nSeaguard: Standard CTD\nHOBO: Autonomous logger",
+    'data_type': "Data collection type\nProfile: Vertical data (cast)\nMooring: Fixed-point temporal data\nDoppler: DCPS current profiler (auto-detected from the .bin)",
+    'gmt_correction': "GMT-3 correction. The Seaguard clock records GMT, so EVERY\nSeaguard qualification needs this ON (it converts to local time).\nHOBO exports and the CO2 logger are already local: HOBO never\nneeds it, and the CO2 file is merged as-is (bypasses this\ncorrection) even when it is enabled for the Seaguard.",
+    'profile_selection': "Allows selecting only descent or ascent\nfor profile data (removes inversion)",
+    'variable_check': "Opens a per-variable point-cut panel to manually DISMISS\nspurious points; you pick which variables to review.\nDismissed points get flag 5 and are kept for traceability.\n(The mooring Depth review runs on its own, without this.)",
+    'light_cutoff_mode': "HOBO only - how the light usage window is decided.\nReviewed (adaptive): the fouling decline is read out of the light itself\nand the proposed cutoff is reviewed on a plot (drag to adjust).\nFixed window: light becomes BAD a fixed number of days after deployment\n(lux_fixed_days in Settings > Parameters, default 60), no review.\nThe fixed window avoids the seasonal confound: ambient light rises\ntoward summer and falls toward winter, which the adaptive rule\ncan mistake for (or mask as) fouling.",
+    'output_folder': "Folder where qualification results\nwill be saved",
+    'output_name': "Base name for output files\n(without extension)",
+    'output_format': "Output format for the qualified data\n.csv: Delimited text\n.xlsx: Excel\n(the automatic report files are always .xlsx)",
+    'remove_bad': "Automatically removes data flagged\nas BAD (flag 4) in output",
+    'remove_suspect': "Automatically removes data flagged\nas SUSPECT (flag 3) in output",
+    'site_code': "Identification code for the\ncollection site (max 20 characters)",
+    'run_button': "Runs the qualification process\nwith configured parameters",
+    'settings_button': "Opens test configuration window\nand quality parameters",
+    'summary': "What the readers detected in the selected files\n(instrument, replicates, period, interval, serials, timebase).\nFilled as soon as the files are chosen - confirm you picked the\nright deployment BEFORE running.",
+}
+
 
 def dark_palette():
     p = QPalette()
@@ -105,47 +129,62 @@ class Preview(QMainWindow):
         row.setContentsMargins(0, 0, 0, 0)
         self.file_edit = QLineEdit()
         self.file_edit.setPlaceholderText('Select or drop data files here...')
+        self.file_edit.setToolTip(TOOLTIPS['data_file'])
         self.file_edit.textChanged.connect(self._update_run_state)
         b = QPushButton('Browse...')
+        b.setToolTip(TOOLTIPS['data_file'])
         b.clicked.connect(self._browse)
+        co2 = QPushButton('Add CO\u2082 data')
+        co2.setToolTip(TOOLTIPS['co2_file'])
         row.addWidget(self.file_edit)
         row.addWidget(b)
-        row.addWidget(QPushButton('Add CO\u2082 data'))
+        row.addWidget(co2)
         holder = QWidget()
         holder.setLayout(row)
         fin.addRow('Data file(s):', holder)
         typ = QComboBox()
         typ.addItems(['Seaguard', 'HOBO'])
+        typ.setToolTip(TOOLTIPS['input_type'])
         fin.addRow('Input type:', typ)
         dt = QComboBox()
         dt.addItems(['TSCP Profile', 'TSCP Mooring', 'TSCP Doppler'])
+        dt.setToolTip(TOOLTIPS['data_type'])
         fin.addRow('Data type:', dt)
         lm = QHBoxLayout()
         lm.setContentsMargins(0, 0, 0, 0)   # radios level with their label
-        lm.addWidget(QRadioButton('Reviewed (adaptive)', checked=True))
-        lm.addWidget(QRadioButton('Fixed window'))
+        for lbl, chk in (('Reviewed (adaptive)', True), ('Fixed window', False)):
+            rb_ = QRadioButton(lbl, checked=chk)
+            rb_.setToolTip(TOOLTIPS['light_cutoff_mode'])
+            lm.addWidget(rb_)
         lm.addStretch()
         lmh = QWidget()
         lmh.setLayout(lm)
+        lmh.setToolTip(TOOLTIPS['light_cutoff_mode'])
         fin.addRow('Light cutoff:', lmh)
         mac = QComboBox()
         mac.addItems(['Brazil'])
+        mac.setToolTip(TOOLTIPS['macroregion'])
         fin.addRow('Macroregion:', mac)
         reg = QComboBox()
         reg.addItems(['Abrolhos (BA)'])
+        reg.setToolTip(TOOLTIPS['region'])
         fin.addRow('Region:', reg)
         # Site code lives with the INPUT metadata now (owner decision - it
         # identifies the deployment, not the output)
         self.site_edit = QLineEdit()
         self.site_edit.setPlaceholderText('e.g. PLES')
+        self.site_edit.setToolTip(TOOLTIPS['site_code'])
         self.site_edit.textChanged.connect(self._update_run_state)
         fin.addRow('Site code:', self.site_edit)
         # the three toggles LAST, boxed like Data filtering (owner request)
         gopt = QGroupBox('Options')
         vo = QVBoxLayout(gopt)
-        vo.addWidget(QCheckBox('Correct GMT-3'))
-        vo.addWidget(QCheckBox('Select profile data'))
-        vo.addWidget(QCheckBox('Check variables'))
+        for lbl, key in (('Correct GMT-3', 'gmt_correction'),
+                         ('Select profile data', 'profile_selection'),
+                         ('Check variables', 'variable_check')):
+            cb = QCheckBox(lbl)
+            cb.setToolTip(TOOLTIPS[key])
+            vo.addWidget(cb)
         fin.addRow(gopt)
 
         gout = QGroupBox('Output settings')
@@ -153,25 +192,32 @@ class Preview(QMainWindow):
         self.out_folder = QLineEdit()
         self.out_folder.setPlaceholderText(
             'Choose where the qualified outputs will be saved...')
+        self.out_folder.setToolTip(TOOLTIPS['output_folder'])
         self.out_folder.textChanged.connect(self._update_run_state)
         fout.addRow('Output folder:', self.out_folder)
         self.out_name = QLineEdit()
         self.out_name.setPlaceholderText(
             'Name for the qualified output (auto-filled from the selection)...')
+        self.out_name.setToolTip(TOOLTIPS['output_name'])
         self.out_name.textChanged.connect(self._update_run_state)
         fout.addRow('Output file name:', self.out_name)
         fmt = QComboBox()
         fmt.addItems(['.xlsx', '.csv'])
+        fmt.setToolTip(TOOLTIPS['output_format'])
         fout.addRow('Output format:', fmt)
         gfil = QGroupBox('Data filtering')
         vf = QVBoxLayout(gfil)
-        vf.addWidget(QCheckBox('Remove bad data'))
-        vf.addWidget(QCheckBox('Remove suspect data'))
+        for lbl, key in (('Remove bad data', 'remove_bad'),
+                         ('Remove suspect data', 'remove_suspect')):
+            cb = QCheckBox(lbl)
+            cb.setToolTip(TOOLTIPS[key])
+            vf.addWidget(cb)
         fout.addRow(gfil)
         # the dead space below Output becomes the SELECTION SUMMARY: what
         # the readers detected, at a glance, before RUN (today this scrolls
         # by in the log). Example values shown in the preview.
         gsum = QGroupBox('Selection summary')
+        gsum.setToolTip(TOOLTIPS['summary'])
         fsum = QFormLayout(gsum)
         for k, v in (('Instrument:', 'HOBO UA-002-64 Pendant Temp/Light'),
                      ('Replicates:', '2 (HOBO1 + HOBO2)'),
@@ -195,10 +241,12 @@ class Preview(QMainWindow):
         f.setBold(True)
         f.setPointSizeF(f.pointSizeF() + 1)
         self.run_btn.setFont(f)
+        self.run_btn.setToolTip(TOOLTIPS['run_button'])
         self.run_btn.clicked.connect(self._demo_run)
         self.run_hint = QLabel('')
         self.run_hint.setStyleSheet('color: palette(mid);')
         settings = QPushButton('Parameter settings')
+        settings.setToolTip(TOOLTIPS['settings_button'])
 
         grid.addWidget(gin, 0, 0)
         grid.addWidget(gout, 0, 1)
@@ -340,6 +388,18 @@ def main():
             win.progress.setVisible(True)
             win.progress.setValue(3)
             win.progress.setFormat('Stage 3/5')
+        # stage ONE tooltip (they only pop on hover, which a screenshot
+        # cannot do): a label styled with the tooltip palette, over the
+        # Light cutoff row, showing the REAL text
+        tip = QLabel(TOOLTIPS['light_cutoff_mode'], win)
+        dark_shot = (style == 'fusion-dark')
+        tip.setStyleSheet(
+            'background: %s; color: %s; border: 1px solid #767676; '
+            'padding: 6px;' % (('#3c3c3c', '#e8e8e8') if dark_shot
+                               else ('#ffffdc', '#202020')))
+        tip.adjustSize()
+        tip.move(210, 250)
+        tip.show()
         app.processEvents()
         win.grab().save(out)
         return 0
