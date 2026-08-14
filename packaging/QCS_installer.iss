@@ -20,7 +20,7 @@
 ; entry gated on WizardSilent. Compile with ISCC.exe after the PyInstaller
 ; build; steps in README.md.
 
-#define AppVersion "11.3"
+#define AppVersion "11.4"
 
 [Setup]
 AppId={{7B1C9D2E-4A31-4F5B-9C1E-QCSSAGE00001}
