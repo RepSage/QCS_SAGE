@@ -47,6 +47,9 @@ class Preview(QMainWindow):
         tabs = QTabWidget()
         tabs.addTab(self._qualification_tab(), 'Data qualification')
         tabs.addTab(self._visualization_stub(), 'Data visualization')
+        tf = tabs.tabBar().font()
+        tf.setBold(True)                     # main tabs in evidence (owner)
+        tabs.tabBar().setFont(tf)
         self.setCentralWidget(tabs)
 
         # Execution log as a DOCK: draggable, collapsible, closable - the Qt
@@ -148,9 +151,13 @@ class Preview(QMainWindow):
         gout = QGroupBox('Output settings')
         fout = QFormLayout(gout)
         self.out_folder = QLineEdit()
+        self.out_folder.setPlaceholderText(
+            'Choose where the qualified outputs will be saved...')
         self.out_folder.textChanged.connect(self._update_run_state)
         fout.addRow('Output folder:', self.out_folder)
         self.out_name = QLineEdit()
+        self.out_name.setPlaceholderText(
+            'Name for the qualified output (auto-filled from the selection)...')
         self.out_name.textChanged.connect(self._update_run_state)
         fout.addRow('Output file name:', self.out_name)
         fmt = QComboBox()
@@ -304,9 +311,12 @@ def apply_style(key):
         app.styleHints().setColorScheme(Qt.ColorScheme.Light)
         app.setStyle('Fusion')
         app.setPalette(app.style().standardPalette())
-    # the log stands off the white/dark input fields (owner request)
-    app.setStyleSheet('QTextEdit#ExecutionLog { background: %s; }'
-                      % ('#232324' if dark else '#e9e9e9'))
+    # the log stands off the white/dark input fields, and the two main tabs
+    # carry bold labels (owner requests)
+    app.setStyleSheet(
+        'QTextEdit#ExecutionLog { background: %s; }\n'
+        'QTabBar::tab { font-weight: bold; padding: 6px 14px; }'
+        % ('#232324' if dark else '#e9e9e9'))
 
 
 def main():
