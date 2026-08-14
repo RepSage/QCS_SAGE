@@ -2,6 +2,19 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.4.2 released) — ritual done; replicate outputs proven
+
+PR #26 merged, tagged on `077fc49`, branch deleted, installer rebuilt with
+the NEW check (bundle verified against the 1,266-module set of a real
+qualification - all present, backend_svg included), smoke-tested;
+`QCS_Setup_v11.4.2.exe` + release text on the Desktop, publication pending.
+
+**Replicates question (owner): already the behavior, now PROVEN by running
+two real `.hobo` replicates through the pipeline** - the output carries one
+full `<replicate>_QLF` product per file (sheet, reports, DataView plots,
+light window) PLUS the combined product (sheet, method note, per-replicate
+light plots). Nothing to change.
+
 ## 2026-08-14 (v11.4.2 pending) — the owner's test round caught three more
 
 The installed-copy path had never been walked end to end; the owner's test
