@@ -2,6 +2,22 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.6 released) — ritual done; NEXT: v12.0 Qt interface
+
+PR #28 merged, tagged `v11.6` on `b80fe72`, branch deleted, installer
+rebuilt and verified (backend_svg / HoboCal / tkinterdnd2+tcl in the
+bundle; smoke clean); `QCS_Setup_v11.6.exe` + release text on the Desktop,
+publication pending. The v11.6 round fixed: drag-and-drop registered on
+EVERY widget (tkdnd does not propagate to children - the v11.5 gotcha),
+light-cutoff persistence, combined-folder temperature plot, combine-note
+explanation of the empty Flag column; working DnD logs nothing (owner:
+the Execution log is for pipeline messages).
+
+**Next agreed with the owner: v12.0 — the Qt (PySide6) interface port.**
+Start by building 2-3 working visual variants for the owner to choose from
+(measured basis: the ~300 ms tab switch is sv-ttk's rendering; clam does
+60 ms; Qt renders natively). The QC pipeline does not change.
+
 ## 2026-08-14 (v11.5 released) — ritual done; publication pending
 
 PR #27 merged, tagged `v11.5` on `cc25365`, branch deleted, installer
