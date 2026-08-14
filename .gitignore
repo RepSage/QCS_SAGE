@@ -41,3 +41,4 @@ _smoke_test.py
 # Packaging build artifacts (rebuilt at will from packaging/*.spec + .iss)
 packaging/dist/
 packaging/Output/
+packaging/v12_env/

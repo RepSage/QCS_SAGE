@@ -2,6 +2,29 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v12.0 opened) — Qt preview delivered; owner choosing the style
+
+The v12.0 (Qt/PySide6 interface port) round is open. Delivered today:
+
+- **`packaging/v12_preview.py`** — a PySide6 mock of the Data Qualification
+  tab with live style switching (View > Interface style): Windows 11
+  native / Fusion light / Fusion dark; Execution log as a dockable panel.
+  `QCS_v12_preview.bat` on the Desktop launches it
+  (`packaging/v12_env` venv, gitignored).
+- Screenshots of the three variants rendered WITHOUT showing a window
+  (QWidget.grab() on an unshown window; the offscreen platform renders
+  tofu - no fonts) and sent to the owner in chat.
+- **Environment gotchas, hard-won:** PySide6 does NOT import in the
+  Anaconda base (Qt5 DLL conflict) NOR at 6.11.x even in a clean venv on
+  this machine ("specified procedure not found" - needs a newer MSVC
+  runtime than the installed 14.44). **PySide6 6.8.3 works** in the venv;
+  pin it. Qt 6.8 follows the Windows dark mode via styleHints
+  colorScheme - pin the scheme per variant, and v12 gets automatic
+  dark/light for free.
+
+Awaiting the owner's style choice; then the real port begins (same QC
+pipeline, new shell; matplotlib embeds via FigureCanvasQTAgg).
+
 ## 2026-08-14 (v11.6 released) — ritual done; NEXT: v12.0 Qt interface
 
 PR #28 merged, tagged `v11.6` on `b80fe72`, branch deleted, installer
