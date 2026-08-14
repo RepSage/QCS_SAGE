@@ -2,6 +2,24 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.6.1 on PR) — all tooltips standardized; awaiting merge
+
+Branch `fix-v11.6.1` pushed (commit `05ebbfa`), prefilled PR link handed to
+the owner. All ~150 tooltips rewritten to the documented editorial standard
+(comment above `TOOLTIPS` in `QCS_Main.py`); per-variable entries now
+loop-built from the variable tables; key-coverage check proved identical
+key sets (22+54+3+42). Execution log buttons got tooltips (tk app +
+preview dock); `SeaGuard` spellings normalized to `Seaguard` everywhere
+except the self-test XML fixtures (`ProdName="SeaGuard II"` is device
+data). The user manual — found stuck at v11.4.2, the v11.5/v11.6 rituals
+skipped it — was caught up to v11.6.1. Suite 52/52, ruff clean, preview
+renders.
+
+**Next after merge: the v11.6.1 ritual** (tag, branch cleanup, .iss bump
+to 11.6.1, PyInstaller build, bundle verify, smoke, ISCC, Desktop copy,
+release text). Then the real v12.0 Qt port begins — the design is
+approved through preview rev6 and the tooltips are now worth porting.
+
 ## 2026-08-14 (v12.0 opened) — Qt preview delivered; owner choosing the style
 
 The v12.0 (Qt/PySide6 interface port) round is open. Delivered today:
