@@ -13,6 +13,28 @@ holds **irreversible operations on the archive** — dated, with their evidence.
 
 ---
 
+## 2026-08-13 — the archive tables deleted by the owner
+
+The owner deleted, by hand and by their own decision, everything at the share
+root except the two data trees: `_registros\` (the historical tables filed
+there earlier the same day), `qualified_index.csv`, and both raw
+`manifest.csv`. Verified right after: `HOBO\` and `SEAGUARD\` are intact
+(137 + 177 = 314 qualified products; all raw campaigns present).
+
+What this costs, recorded so the next round is not surprised by it:
+
+- `qualified_index.csv` is regenerable (`build_index.py`) — the sweep scripts
+  and the package builder need it regenerated before they can run again.
+- The two `manifest.csv` are NOT regenerable: they were the file-level
+  provenance of the raw staging (source path, md5, every in-place clock
+  repair). From here on, this log's prose entries are the only record of
+  those operations.
+
+The folder structure remains under the owner's review; no tooling should be
+rebuilt around the current layout until that settles.
+
+---
+
 ## 2026-08-10 — the collapsed 12-hour clock reconstructed
 
 > No QC rule changed — the *data* did. 65 raw HOBO exports had half their

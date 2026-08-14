@@ -187,6 +187,7 @@ class LogConsole:
 
         text_frame = ttk.Frame(self.frame)
         text_frame.pack(fill='both', expand=True)
+        self._text_frame = text_frame
 
         self.text = tk.Text(text_frame, height=height, wrap='word', state='disabled',
                             bg='#1e1e1e', fg='#d4d4d4', font=FONT_MONO,
@@ -204,6 +205,16 @@ class LogConsole:
 
         self.clear_button = ttk.Button(self.frame, text='Clear log', command=self.clear)
         self.clear_button.pack(side='right', padx=5, pady=(6, 0))
+
+        # Hide log collapses the text area so the content above gains its
+        # vertical space (small screens); messages keep accumulating while
+        # hidden and reappear on Show log. Packed after clear_button with
+        # side='right', so it sits to its LEFT.
+        self.hide_button = ttk.Button(self.frame, text='Hide log',
+                                      command=self.toggle_visibility)
+        self.hide_button.pack(side='right', padx=5, pady=(6, 0))
+        self._text_visible = True
+        self.on_visibility_change = None   # optional callback(visible: bool)
 
     def _tag_for(self, message):
         # Severity is read from the message's leading label (case-insensitive), so
@@ -229,6 +240,26 @@ class LogConsole:
         self.text.config(state='normal')
         self.text.delete('1.0', 'end')
         self.text.config(state='disabled')
+
+    def set_visible(self, visible):
+        """Shows/hides the text area (the frame with the title and the
+        buttons always stays). log() keeps working while hidden."""
+        if bool(visible) == self._text_visible:
+            return
+        if visible:
+            # before= keeps the text ABOVE the button row (a plain pack()
+            # here would re-add it below, after the buttons)
+            self._text_frame.pack(fill='both', expand=True,
+                                  before=self.clear_button)
+        else:
+            self._text_frame.pack_forget()
+        self._text_visible = bool(visible)
+        self.hide_button.config(text='Hide log' if visible else 'Show log')
+        if self.on_visibility_change is not None:
+            self.on_visibility_change(self._text_visible)
+
+    def toggle_visibility(self):
+        self.set_visible(not self._text_visible)
 
 
 class ToolTip:

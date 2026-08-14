@@ -2,6 +2,51 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-13 — Owner DELETED the archive tables; v11.3 in progress; .hobo verdict
+
+**The owner deleted `_registros\`, `qualified_index.csv` and both raw
+`manifest.csv` from the CLAUDE share and wants none of them back** ("Não quero
+nada daquilo"); the folder structure itself is still under the owner's review,
+so nothing should be built that depends on the current layout. Verified after
+the deletion: the two trees are intact (137 + 177 = 314 qualified products,
+all raw campaigns present). Consequences, stated not fixed:
+
+- `build_index.py` can REGENERATE `qualified_index.csv` at any time — but only
+  if asked; `build_data_package.py`, `drop_stale_products.py` and
+  `sweep_value_integrity.py` need that regeneration first.
+- The two `manifest.csv` were the only NON-regenerable record (raw provenance
+  + md5 of every staged file, incl. the in-place clock repairs). Their content
+  survives only as prose in `sourceCode/batch/CORPUS_LOG.md`.
+
+**v11.3 (branch `improvements-v11.3`, in progress)** — owner request, done and
+verified, PR pending: qualification tab scrolls when the window is too short
+(the field-notebook fullscreen bug: Check variables / Light cutoff row was
+unreachable), and a **Hide log / Show log** button left of *Clear log*
+collapses the Execution log (persisted as `log_hidden`). 16 live-GUI checks +
+51/51 suite + ruff clean. Gotcha for GUI tests, twice bitten today: the
+version-reset dialog is scheduled INSIDE `QCS_App.main()` from the UI-restore
+path, so neutralizing `SETTINGS_RESET_FROM` before `main()` is useless — set
+`USER_PREFS['qcs_version'] = data.QCS_VERSION` instead, or `update()` blocks
+forever on an invisible modal.
+
+**Direct `.hobo` reading (owner asked "é possível?") — investigated, verdict:
+possible in principle, not a quick win.** Evidence from real files (250
+`.hobo` in the archive, every one with a paired export as ground truth):
+header is a clean TLV (`88 tag len payload`) and already decoded — magic
+`HOBO`, model, serial, launch datetime (tag 0x07), logging interval in
+seconds (tag 0x08), timezone, battery V (tag 0x1E, float32 BE), channel defs
+TEMP/LUZ; files are 64 KB memory dumps padded with 0xFF. The SAMPLE stream is
+the hard part: bit-packed (16-bit windows at +2 bytes show an exact ÷4 ladder
+→ 18-bit periodicity), no public documentation exists (searched), the
+[2-bit tag][16-bit value] hypothesis does NOT close cleanly, and one file
+shows 47 bytes/exported-row (memory likely retains PREVIOUS deployments'
+data). On top of the stream grammar, HOBOware's ADC→°C and →lux calibration
+curves would need to be reproduced EXACTLY to match the exports. Estimate: a
+dedicated round with real risk of partial success. Probe scripts in the
+2026-08-13 session scratchpad (`hobo_probe1..5.py`). Practical note: a direct
+reader would mainly serve future downloads and recovery when an export is
+missing — every archived `.hobo` already has its export.
+
 ## 2026-08-13 — HOBO\raw campaign-first; archive tidied; duplicate install removed
 
 Owner requests, all done and verified (full record in
