@@ -8,10 +8,11 @@ The owner's first real `.hobo` attempt hit "Unsupported file format": the
 extension gate in `collect_input_settings` predates the feature and was never
 wired (the corpus validation runs at the data layer, below it — gotcha now in
 `CLAUDE.md`, "four wiring points"). Fixed in v11.4.1 (PR #25, merged, tagged
-on `dd26ae5`), installer rebuilt and smoke-tested, `QCS_Setup_v11.4.1.exe` +
-release text on the Desktop. **v11.4 was never published as a Release and
-does not need to be — publish v11.4.1 directly.** Owner's real-file `.hobo`
-test still pending on the fixed build.
+on `dd26ae5`), installer rebuilt and smoke-tested. **Correction (owner,
+2026-08-14): v11.4 HAD been published as a Release** — that is how the bug
+was found on a real install — and **v11.4.1 is now published too** and is
+`latest`, so the in-app updater offers it over v11.4. Owner's real-file
+`.hobo` test on the fixed build in progress.
 
 ## 2026-08-14 (v11.4 closing) — .hobo reader SHIPPED (experimental); units auto-detected
 
