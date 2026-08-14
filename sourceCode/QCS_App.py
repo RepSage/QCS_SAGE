@@ -6,6 +6,7 @@ Single entry point that hosts both tools in one window: a menu bar
 Replaces the two separate .bat launchers.
 """
 import os
+import re
 import webbrowser
 
 import QCS_DataHandler as data
@@ -55,6 +56,33 @@ def main(run=True):
     theme.set_scaled_geometry(root, 1380, 860, min_width=1000, min_height=700)
     theme.apply_theme(root, viz.USER_PREFS.get('ui_theme', 'light'))
     theme.set_window_icon(root)
+
+    # The window remembers how it was left (v11.4): maximized stays
+    # maximized, a resized/moved window comes back where it was. Restoring
+    # is deferred with after() so it lands after the first geometry pass.
+    if viz.USER_PREFS.get('win_state') == 'zoomed':
+        root.after(0, lambda: root.state('zoomed'))
+    else:
+        saved_geo = str(viz.USER_PREFS.get('win_geometry', ''))
+        if re.fullmatch(r'\d+x\d+[+-]-?\d+[+-]-?\d+', saved_geo):
+            # applied twice: the first pass races the window manager's own
+            # initial layout and can land a few pixels short
+            root.after(0, lambda: root.geometry(saved_geo))
+            root.after(250, lambda: root.geometry(saved_geo))
+
+    def remember_window_state():
+        try:
+            viz.USER_PREFS['win_state'] = root.state()
+            if root.state() == 'normal':
+                viz.USER_PREFS['win_geometry'] = root.geometry()
+            viz.save_user_prefs()
+        except Exception:
+            pass
+
+    def on_app_close():
+        remember_window_state()
+        root.destroy()
+    root.protocol('WM_DELETE_WINDOW', on_app_close)
 
     # shared dark-mode state (the switch lives in the View menu)
     dark_mode = BooleanVar(value=viz.USER_PREFS.get('ui_theme', 'light') == 'dark')
@@ -150,7 +178,7 @@ def main(run=True):
     m_file.add_command(label='Set output folder…  (qualification)',
                        command=lambda: (switch_to(0), qual.selectOutputFolder()))
     m_file.add_separator()
-    m_file.add_command(label='Exit', command=root.destroy)
+    m_file.add_command(label='Exit', command=on_app_close)
     menubar.add_cascade(label='File', menu=m_file)
 
     m_edit = Menu(menubar, tearoff=0)

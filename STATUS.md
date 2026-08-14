@@ -2,6 +2,73 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.4 closing) — .hobo reader SHIPPED (experimental); units auto-detected
+
+Owner decisions this round: close v11.4 so they can test raw-`.hobo` reading;
+v12.0 will be the professional-interface (Qt) release; units auto-detection
+confirmed for v11.4.
+
+**Shipped in v11.4** (branch pushed, PR pending; suite 52/52, ruff clean):
+- `read_hobo` accepts `.hobo` directly (`_read_hobo_binary` +
+  `QCS_HoboCal.py` tables). Blind corpus validation: **42 files reproduce
+  their export 100.0% exactly in both channels** (all current-generation
+  families); older-generation files are REFUSED (layout mismatch, or the
+  night-light gate: decoded light glowing in the dark = wrong decode).
+  Timebase settled: export row0 = a launch-time in-air reading that is NOT
+  in the memory; stored sample i = launch + 1 s + (i+1)·interval.
+- Units read from the source (`read_ctd` detects `Descr[Unit]`, converts,
+  refuses unit-less text exports); the GUI Units section removed.
+- Window state persistence; Site code above Data filtering.
+
+**Known imperfect tail, documented not hidden:** ~30 pre-2023 pairs decode
+with partial mismatch or one-row offset (some older HOBOware generations DO
+store the launch reading, shifting the series by one slot) — most are
+refused by the gates; a few silent one-row-offset families remain in the
+2021-2022 range (exact_T ~0.5 in blind CSV). The corpus itself is
+unaffected (qualified from exports). Deciphering the old variant remains
+open work (blind CSV: scratchpad `blind_reader_validation.csv`).
+
+**v12.0 (next): Qt port of the GUI** — owner asked for examples; measured
+basis in the previous entry (sv-ttk theme is the 300 ms tab-switch cost).
+
+## 2026-08-14 (v11.4 round open) — light law SOLVED; GUI perf measured; window state persists
+
+Branch `improvements-v11.4` open. Owner confirmed: automatic unit detection
+ships in v11.4.
+
+**The light law is fully deciphered** (owner commissioned "decifre o problema
+da luz"). From 230,007 readings across 89 verified clean-export files, the
+code→lux map is single-valued at 99.96% and closes exactly:
+
+- code ≤ 128: `raw = code`
+- code > 128: `e = (code−129)//16`, `m = (code−129)%16`,
+  `raw = (136 + 8·m) · 2^e`  (verified exactly through every observed
+  segment, steps 8/16/32/64/128/256/512/1024, up to 198,401 lux)
+- `lux = raw × 10.7639`, rounded to 1 decimal (lumen/ft² → lux).
+- Reminder: the light byte of record *i* belongs to row *i−1*.
+- Code 255 looks like a saturation/invalid marker (7 junk rows); treat like
+  temp's 0x3FF.
+
+**GUI responsiveness, MEASURED (perf scripts in session scratchpad):**
+imports 2.6 s; first paint 1.1 s; **tab switch ≈ 300 ms — and the cause is
+the sv-ttk theme itself**: an identical synthetic ttk tree raises in ~330 ms
+under sv-ttk and **~60 ms under clam** (5.5×). The v11.3 scroll canvas adds
+only ~20 ms; a place()-offscreen swap does NOT help (Tk repaints on expose
+regardless). Options for the owner: a "fast theme" toggle (clam,styled), or
+accept, or a Qt port as a future MAJOR (full GUI rewrite, weeks). Startup
+could be cut by lazy-importing matplotlib. Resize costs ~1.5 s (sv-ttk).
+
+**Done on the branch (tested, 5/5 UI checks + suite 51/51 + ruff):**
+- Window remembers maximized/normal state and geometry across sessions
+  (`win_state`/`win_geometry` prefs; restore applied twice — the first pass
+  races the WM and lands ~20 px short; close goes through on_app_close).
+- Site code moved ABOVE Data filtering in Output settings (owner request).
+
+**Next in v11.4:** light-law validation sweep (corpus exactness with the
+−1 shift), the older-variant .hobo layout (105 files), automatic unit
+detection (drop the Units section; refuse unit-less text exports), then
+`read_hobo_bin` + GUI wiring + docs.
+
 ## 2026-08-14 (later) — .hobo: 97 files decode EXACTLY; light law found; 105 older files pending
 
 v11.3 published by the owner. The reverse-engineering round continued and the

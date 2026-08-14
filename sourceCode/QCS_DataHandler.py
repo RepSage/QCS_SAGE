@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v11.3'
+QCS_VERSION = 'v11.4'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -699,10 +699,27 @@ def read_ctd(INPUT):
         raise ValueError("Unsupported file format. Only .bin (SeaGuard session), "
                          ".xlsx and .csv files are supported.")
 
+    # Units are read from the SOURCE, not asked of the user (v11.4): every
+    # Seaguard .bin template and every AADI text export names the unit in the
+    # column itself ('Pressure[kPa]', 'Conductivity[mS/cm]'). A text export
+    # whose pressure/conductivity column names no unit is REFUSED - assuming
+    # one silently is how a wrong conversion slips into a qualified file.
+    def _unit_of(column_str, choices):
+        m = re.search(r'[\[\(]([^\]\)]*)[\]\)]', column_str)
+        if not m:
+            return None
+        txt = m.group(1).strip()
+        for canon, pattern in choices:
+            if re.fullmatch(pattern, txt, re.IGNORECASE):
+                return canon
+        return None
+
+    detected_units = {}
+
     # set flags for identified columns
     column_flags = {
         'Datetime': False,
-        'Pressure (kPa)': False,
+        'Pressure (dbar)': False,
         'Depth (m)': False,
         'Temperature (degC)': False,
         'Conductivity (mS/cm)': False,
@@ -731,10 +748,19 @@ def read_ctd(INPUT):
             column_flags['Datetime'] = True
             renamed_columns.append('Datetime')
 
-        elif not column_flags['Pressure (kPa)'] and re.search('pressure', column_str, re.IGNORECASE):
-            dataframe = dataframe.rename(columns={column: 'Pressure (kPa)'})
-            column_flags['Pressure (kPa)'] = True
-            renamed_columns.append('Pressure (kPa)')
+        elif not column_flags['Pressure (dbar)'] and re.search('pressure', column_str, re.IGNORECASE):
+            unit = _unit_of(column_str, [('dbar', r'(deci\s*bar|dbar)'),
+                                         ('kPa', r'k\s*pa'), ('bar', r'bar')])
+            if unit is None:
+                raise ValueError(
+                    "The pressure column '%s' in '%s' does not name its unit "
+                    "(expected [kPa], [dbar] or [bar] in the header). Re-export "
+                    "the file with units, or qualify from the raw .bin session."
+                    % (column_str, INPUT['file_name']))
+            detected_units['pressure'] = unit
+            dataframe = dataframe.rename(columns={column: 'Pressure (dbar)'})
+            column_flags['Pressure (dbar)'] = True
+            renamed_columns.append('Pressure (dbar)')
 
         elif not column_flags['Depth (m)'] and re.search('prof|depth', column_str, re.IGNORECASE):
             dataframe = dataframe.rename(columns={column: 'Depth (m)'})
@@ -747,6 +773,15 @@ def read_ctd(INPUT):
             renamed_columns.append('Temperature (degC)')
 
         elif not column_flags['Conductivity (mS/cm)'] and re.search('conductivity', column_str, re.IGNORECASE):
+            unit = _unit_of(column_str, [('mS/cm', r'ms\s*/\s*cm'),
+                                         ('S/m', r's\s*/\s*m')])
+            if unit is None:
+                raise ValueError(
+                    "The conductivity column '%s' in '%s' does not name its "
+                    "unit (expected [mS/cm] or [S/m] in the header). Re-export "
+                    "the file with units, or qualify from the raw .bin session."
+                    % (column_str, INPUT['file_name']))
+            detected_units['conductivity'] = unit
             dataframe = dataframe.rename(columns={column: 'Conductivity (mS/cm)'})
             column_flags['Conductivity (mS/cm)'] = True
             renamed_columns.append('Conductivity (mS/cm)')
@@ -843,6 +878,16 @@ def read_ctd(INPUT):
               % (n_invalid, INPUT['file_name']))
         dataframe = dataframe[dataframe['Datetime'].notna()]
         dataframe.index = np.arange(len(dataframe))
+
+    # convert to the software standards (dbar, mS/cm) using the units the
+    # SOURCE declared - after the numeric cleanup, so values are numbers
+    if detected_units:
+        dataframe = convert_tscp_units(
+            dataframe,
+            pressure_unit=detected_units.get('pressure', 'dbar'),
+            conductivity_unit=detected_units.get('conductivity', 'mS/cm'))
+        print('Info: units read from the file: %s.' % ', '.join(
+            '%s in %s' % (k, v) for k, v in sorted(detected_units.items())))
 
     return dataframe
 
@@ -957,6 +1002,208 @@ def _hobo_datetimes(series, say):
     return pd.to_datetime(txt, errors='coerce', dayfirst=dayfirst)
 
 
+def _read_hobo_binary(file_path, say):
+    """Decodes a raw HOBOware .hobo file (HOBO Pendant Temp/Light, UA-002
+    family) into the standard frame Datetime / Temperature (degC) /
+    Luminosity (lux) - no HOBOware export needed.
+
+    Format, reverse-engineered 2026-08-14 and validated against 97 corpus
+    file/export pairs (temperature >= 99.9% exact in every one; light >= 99%
+    in every clean export, >= 99.9% in 81 of 89):
+
+    * The file is a dump of the logger memory (0xFF-padded), preceded by a
+      TLV header: ``88 <tag> <len> <payload>``. Tags used here: 0x05 model
+      string, 0x06 serial, 0x07 launch datetime (binary bytes
+      ``? yy mm dd HH MM SS ?``), 0x08 logging interval in seconds (int32
+      BE), 0x12 the logger's UTC offset at launch in seconds (int32 BE).
+      Sample data begins after the last ``88 11 00`` and ends at the 0xFF
+      padding.
+    * One sample = 18 bits, MSB-first: [light 8 bits][temperature 10 bits].
+      The light byte of record i belongs to sample i-1 (one-slot lag).
+      The current deployment sits at the FRONT of memory, after a short
+      launch preamble whose length varies per file - hence the bit phase
+      (0..17) and token offset (0..8) are found by scanning, anchored by the
+      temperature calibration table: the right alignment is the only one
+      whose codes fall inside the physical band of the table. Old
+      deployments REMAIN in memory after the terminator and are ignored.
+    * The deployment ends at the first token whose temperature bits are all
+      ones (0x3FF) - a terminator/event marker - or at the 0xFF padding.
+    * Timestamps: stored sample i = launch + 1 s + (i + 1) * interval, in
+      the logger's own local clock (the reading HOBOware shows at launch+1s
+      was taken in air during configuration and is NOT in the memory
+      stream). When tag 0x12 differs from GMT-03 (-10800 s) the series is
+      shifted to GMT-03, matching what HOBOware's exports show.
+    * Calibration (QCS_HoboCal): temperature 10-bit code -> degC, table
+      derived from the corpus, universal across loggers (zero conflicts),
+      monotone, steps ~0.1 degC; light 8-bit companded code -> lux
+      (linear to code 128, then mantissa/exponent; lux = raw x 10.7639).
+
+    A file whose codes do not fit the table at any alignment (e.g. the
+    older-HOBOware layout variant still undeciphered) is REFUSED with a
+    clear message - never guessed.
+    """
+    from QCS_HoboCal import HOBO_TEMP_LUT, HOBO_LIGHT_LUT
+    file_name = os.path.basename(file_path)
+    with open(file_path, 'rb') as f:
+        blob = f.read()
+    if not blob.startswith(b'HOBO'):
+        raise _hobo_error(file_name, 'not a .hobo binary (missing HOBO magic).')
+
+    # ---- header TLV ----
+    tags, i = {}, 0
+    while i < min(len(blob), 0x400) - 2:
+        if blob[i] == 0x88:
+            t, ln = blob[i + 1], blob[i + 2]
+            if t not in tags and 0 < ln < 64:
+                tags[t] = blob[i + 3:i + 3 + ln]
+            i += 3 + ln if 0 < ln < 64 else 1
+        else:
+            i += 1
+    model = tags.get(0x05, b'').decode('ascii', 'replace')
+    serial = tags.get(0x06, b'').decode('ascii', 'replace')
+    if 'pendant' not in model.lower() or 'temp' not in model.lower():
+        raise _hobo_error(file_name, 'logger model %r is not a Pendant '
+                          'Temp/Light - only the UA-002 family is supported '
+                          'for direct .hobo reading.' % model)
+    p = tags.get(0x07)
+    if p is None or len(p) < 7:
+        raise _hobo_error(file_name, 'no launch datetime in the header (tag 0x07).')
+    try:
+        launch = pd.Timestamp(2000 + p[1], p[2], p[3], p[4], p[5], p[6])
+    except ValueError:
+        raise _hobo_error(file_name, 'invalid launch datetime in the header: %s'
+                          % p.hex(' ')) from None
+    p = tags.get(0x08)
+    if p is None or len(p) != 4:
+        raise _hobo_error(file_name, 'no logging interval in the header (tag 0x08).')
+    interval_s = int.from_bytes(p, 'big')
+    if not (0 < interval_s <= 24 * 3600):
+        raise _hobo_error(file_name, 'implausible logging interval: %d s.' % interval_s)
+    tz_shift_s = 0
+    p = tags.get(0x12)
+    if p is not None and len(p) == 4:
+        offset_s = int.from_bytes(p, 'big', signed=True)
+        if offset_s != -10800:
+            tz_shift_s = -10800 - offset_s
+            say('Warning: the logger clock was set at UTC offset %+d s, not '
+                'GMT-03; timestamps shifted by %+d s to GMT-03 (what the '
+                'HOBOware exports of this archive use).' % (offset_s, tz_shift_s))
+
+    # ---- sample stream ----
+    end = len(blob)
+    while end > 0 and blob[end - 1] == 0xFF:
+        end -= 1
+    dstart = blob.rfind(b'\x88\x11\x00', 0, 0x300)
+    if dstart < 0:
+        raise _hobo_error(file_name, 'no end-of-header marker (88 11 00) found.')
+    bits = np.unpackbits(np.frombuffer(blob[dstart + 3:end], dtype=np.uint8))
+
+    best = None
+    for phase in range(18):
+        ntok = (len(bits) - phase) // 18
+        if ntok < 12:
+            continue
+        seg = bits[phase:phase + ntok * 18].reshape(ntok, 18)
+        temp = (seg[:, 8:18] @ (1 << np.arange(9, -1, -1))).astype(int)
+        light = (seg[:, 0:8] @ (1 << np.arange(7, -1, -1))).astype(int)
+        terms = np.where(temp == 0x3FF)[0]
+        for off in range(0, 9):
+            ends = [int(t) for t in terms if t >= off + 10][:3] + [ntok]
+            for e in ends:
+                nn = e - off
+                if nn < 10:
+                    continue
+                codes = temp[off:off + nn]
+                inlut = np.fromiter((int(c) in HOBO_TEMP_LUT for c in codes),
+                                    bool, len(codes))
+                coverage = float(np.mean(inlut))
+                if coverage < 0.995:
+                    continue
+                # physical guards against a wrong alignment that lands in the
+                # table by accident: a real deployment walks through many
+                # temperature codes, and water temperature cannot jump
+                degs = np.array([HOBO_TEMP_LUT.get(int(c), np.nan)
+                                 for c in codes])
+                step_ok = np.abs(np.diff(degs))
+                step_ok = step_ok[~np.isnan(step_ok)]
+                smooth = float(np.mean(step_ok <= 1.0)) if len(step_ok) else 0.0
+                distinct = len(np.unique(codes[inlut]))
+                if nn >= 50 and (distinct < 8 or smooth < 0.99):
+                    continue
+                # the series must START on decodable samples with smooth
+                # steps: a leftover preamble token that lands in the table by
+                # accident would otherwise prepend a phantom first sample
+                head = degs[:4]
+                head_steps = np.abs(np.diff(head[~np.isnan(head)]))
+                if np.isnan(degs[0]) or (len(head_steps) and
+                                         float(head_steps.max()) > 1.0):
+                    continue
+                # rank by the NUMBER of decodable samples, preferring the
+                # smaller offset on ties: a stream whose tail ends in a
+                # partial token would otherwise push the alignment one slot
+                # forward (dropping the REAL first sample) just to keep a
+                # perfect coverage fraction
+                rank = (int(inlut.sum()), -off, -phase)
+                if best is None or rank > best[0]:
+                    best = (rank, coverage, phase, off, nn, temp, light)
+    if best is None:
+        raise _hobo_error(
+            file_name, 'the sample stream does not fit the deciphered layout '
+            'at any alignment. Probably an older-HOBOware layout variant - '
+            'qualify this logger from its exported sheet instead.')
+    _, coverage, phase, off, nn, temp, light = best
+
+    tcodes = temp[off:off + nn]
+    degc = np.array([HOBO_TEMP_LUT.get(int(c), np.nan) for c in tcodes])
+    n_unk = int(np.isnan(degc).sum())
+    if n_unk:
+        say('Warning: %d sample(s) with a temperature code outside the '
+            'calibration table set to NaN.' % n_unk)
+    # light of sample i lives in the NEXT record; code 255 = saturated/invalid
+    lcodes = light[off + 1:off + 1 + nn]
+    if len(lcodes) < nn:                       # stream ended at the padding
+        lcodes = np.concatenate([lcodes, [255] * (nn - len(lcodes))])
+    lux = np.array([HOBO_LIGHT_LUT.get(int(c), np.nan) for c in lcodes])
+    n_sat = int((lcodes == 255).sum())
+    if n_sat:
+        say('Warning: %d light sample(s) marked saturated/invalid (code 255) '
+            'set to NaN.' % n_sat)
+
+    # The reading HOBOware shows at launch+1s (taken in air while the logger
+    # is being configured) exists only in its exports, never in the memory
+    # stream - the stored series begins one interval later. That first
+    # reading is an out-of-water value the edge trim would drop anyway.
+    t0 = launch + pd.Timedelta(seconds=1 + interval_s + tz_shift_s)
+    times = t0 + pd.to_timedelta(np.arange(nn) * interval_s, unit='s')
+
+    # last physical gate: at night a light sensor reads ZERO. A stream from
+    # an undeciphered layout variant can land inside the temperature table by
+    # accident, but its light bytes are then noise - and noise glows in the
+    # dark. (An indoor experiment lit around the clock also trips this gate;
+    # qualify such a file from its exported sheet.)
+    hours = times.hour.to_numpy()
+    night = (hours >= 22) | (hours < 4)
+    night_lux = lux[night & ~np.isnan(lux)]
+    if len(night_lux) >= 20 and float(np.mean(night_lux == 0.0)) < 0.9:
+        raise _hobo_error(
+            file_name, 'decoded light is non-zero through the night (%.0f%% '
+            'of %d night samples), which real deployments never show - the '
+            'stream is probably an older-HOBOware layout variant decoded '
+            'wrong. Qualify this logger from its exported sheet instead.'
+            % (100.0 * float(np.mean(night_lux > 0)), len(night_lux)))
+    df = pd.DataFrame({'Datetime': times,
+                       'Temperature (degC)': degc,
+                       'Luminosity (lux)': lux})
+    say('Info: the launch-time reading (shown only in HOBOware exports, taken '
+        'in air) is not stored in the binary; the series starts one interval '
+        'after launch.')
+    say('Info: raw .hobo decoded: %s s/n %s, %d samples, launch %s, interval '
+        '%d s (alignment: bit phase %d, offset %d; %.2f%% of codes in the '
+        'calibration table).'
+        % (model, serial, nn, launch, interval_s, phase, off, 100 * coverage))
+    return df
+
+
 def read_hobo(INPUT, tsSettings):
     """Reads HOBOware exports (.xlsx/.csv) from Pendant Temp/Light sensors.
 
@@ -971,6 +1218,13 @@ def read_hobo(INPUT, tsSettings):
     file_path = os.path.join(INPUT['raw_data_path'], file_name)
     info = {'messages': []}
     say = info['messages'].append
+
+    # Raw .hobo binary (v11.4): decoded directly, then the SAME out-of-water
+    # edge trim as the export path (there are no event columns in a binary,
+    # so no deployment window - exactly like an export without event columns).
+    if file_name.lower().endswith('.hobo'):
+        df = _read_hobo_binary(file_path, say)
+        return _hobo_finish(df, tsSettings, say, info, file_name)
 
     # ---------- raw read with header line detection ----------
     def header_line(cells):
@@ -1163,7 +1417,12 @@ def read_hobo(INPUT, tsSettings):
         say('Warning: timestamps were not in chronological order; sorted by time.')
         df = df.sort_values('Datetime')
     df.index = np.arange(len(df))
+    return _hobo_finish(df, tsSettings, say, info, file_name)
 
+
+def _hobo_finish(df, tsSettings, say, info, file_name):
+    """Shared tail of read_hobo (export and raw-binary paths): the
+    out-of-water edge trim by temperature jump, and the summary line."""
     # ---------- trim of out-of-water readings at the edges (temperature jump) ----------
     tol = float(tsSettings.get('hobo_edge_temp_tol', 1.5))
     interval = df['Datetime'].diff().median()
@@ -1252,10 +1511,13 @@ def sniff_input_type(file_path):
     together with a light-intensity column (Lux / lum/ft2), in English or
     Portuguese."""
     try:
-        # AADI raw binary session: unambiguous magic at byte 0
+        # raw binaries: unambiguous magic at byte 0
         with open(file_path, 'rb') as f:
-            if f.read(8) == _AADI_MAGIC:
-                return 'Seaguard'
+            head8 = f.read(8)
+        if head8 == _AADI_MAGIC:
+            return 'Seaguard'
+        if head8[:4] == b'HOBO' and str(file_path).lower().endswith('.hobo'):
+            return 'HOBO'
         if str(file_path).lower().endswith(('.xlsx', '.xls')):
             head = pd.read_excel(file_path, header=None, nrows=40)
             lines = [' '.join(str(c) for c in row if pd.notna(c))
