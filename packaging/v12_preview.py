@@ -12,13 +12,14 @@ No QC logic here; buttons only log what they would do.
 """
 import sys
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QPalette
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDockWidget,
                                QFileDialog, QFormLayout, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                               QMainWindow, QPushButton, QRadioButton,
-                               QTabWidget, QTextEdit, QVBoxLayout, QWidget)
+                               QMainWindow, QProgressBar, QPushButton,
+                               QRadioButton, QTabWidget, QTextEdit,
+                               QVBoxLayout, QWidget)
 
 APP_TITLE = 'QCS v12.0 preview  -  choose the interface style in View > Interface style'
 
@@ -68,6 +69,13 @@ class Preview(QMainWindow):
 
         self._menus()
         self.statusBar().showMessage('Preview only - no QC logic behind the buttons')
+        # pipeline progress in the status bar, fed by the same stage
+        # messages the pipeline already logs (hidden while idle)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 5)
+        self.progress.setFixedWidth(220)
+        self.progress.setVisible(False)
+        self.statusBar().addPermanentWidget(self.progress)
 
     LOG_COLORS = {'light': {'error': '#b30000', 'warning': '#9a6a00',
                             'success': '#1f7a1f', 'default': '#202020'},
@@ -91,7 +99,10 @@ class Preview(QMainWindow):
         gin = QGroupBox('Input settings')
         fin = QFormLayout(gin)
         row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
         self.file_edit = QLineEdit()
+        self.file_edit.setPlaceholderText('Select or drop data files here...')
+        self.file_edit.textChanged.connect(self._update_run_state)
         b = QPushButton('Browse...')
         b.clicked.connect(self._browse)
         row.addWidget(self.file_edit)
@@ -120,6 +131,9 @@ class Preview(QMainWindow):
         reg = QComboBox()
         reg.addItems(['Abrolhos (BA)'])
         fin.addRow('Region:', reg)
+        # Site code lives with the INPUT metadata now (owner decision - it
+        # identifies the deployment, not the output)
+        fin.addRow('Site code:', QLineEdit('PLES'))
         # the three toggles LAST, boxed like Data filtering (owner request)
         gopt = QGroupBox('Options')
         vo = QVBoxLayout(gopt)
@@ -135,24 +149,41 @@ class Preview(QMainWindow):
         fmt = QComboBox()
         fmt.addItems(['.xlsx', '.csv'])
         fout.addRow('Output format:', fmt)
-        fout.addRow('Site code:', QLineEdit())
         gfil = QGroupBox('Data filtering')
         vf = QVBoxLayout(gfil)
         vf.addWidget(QCheckBox('Remove bad data'))
         vf.addWidget(QCheckBox('Remove suspect data'))
         fout.addRow(gfil)
+        # the dead space below Output becomes the SELECTION SUMMARY: what
+        # the readers detected, at a glance, before RUN (today this scrolls
+        # by in the log). Example values shown in the preview.
+        gsum = QGroupBox('Selection summary')
+        fsum = QFormLayout(gsum)
+        for k, v in (('Instrument:', 'HOBO UA-002-64 Pendant Temp/Light'),
+                     ('Replicates:', '2 (HOBO1 + HOBO2)'),
+                     ('Period:', '20/09/2025  to  16/03/2026'),
+                     ('Interval:', '1 h  /  2 h  (differ - see log warning)'),
+                     ('Serial(s):', '21832742, 21832736'),
+                     ('Timebase:', 'local (HOBO) - GMT-3 correction off')):
+            lab = QLabel(v)
+            lab.setStyleSheet('color: palette(mid);')
+            fsum.addRow(k, lab)
+        fout.addRow(gsum)
 
         # Parameter settings on the LEFT corner; Run qualification truly
-        # CENTERED and in evidence (owner decisions, 2026-08-14)
-        run = QPushButton('Run qualification')
-        run.setDefault(True)
-        run.setMinimumSize(260, 42)
-        f = run.font()
+        # CENTERED and in evidence (owner decisions, 2026-08-14). The button
+        # stays DISABLED until the required fields are set - the hint beside
+        # it names the missing piece; no more pop-up scolding after RUN.
+        self.run_btn = QPushButton('Run qualification')
+        self.run_btn.setDefault(True)
+        self.run_btn.setMinimumSize(260, 42)
+        f = self.run_btn.font()
         f.setBold(True)
         f.setPointSizeF(f.pointSizeF() + 1)
-        run.setFont(f)
-        run.clicked.connect(lambda: self.log.appendPlainText(
-            'Info: (preview) this would run the real pipeline.'))
+        self.run_btn.setFont(f)
+        self.run_btn.clicked.connect(self._demo_run)
+        self.run_hint = QLabel('')
+        self.run_hint.setStyleSheet('color: palette(mid);')
         settings = QPushButton('Parameter settings')
 
         grid.addWidget(gin, 0, 0)
@@ -162,12 +193,48 @@ class Preview(QMainWindow):
         actions.setColumnStretch(1, 1)
         actions.setColumnStretch(2, 1)
         actions.addWidget(settings, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        actions.addWidget(run, 0, 1, Qt.AlignHCenter)
+        run_box = QVBoxLayout()
+        run_box.setContentsMargins(0, 0, 0, 0)
+        run_box.addWidget(self.run_btn, alignment=Qt.AlignHCenter)
+        run_box.addWidget(self.run_hint, alignment=Qt.AlignHCenter)
+        rb = QWidget()
+        rb.setLayout(run_box)
+        actions.addWidget(rb, 0, 1, Qt.AlignHCenter)
         ah = QWidget()
         ah.setLayout(actions)
         grid.addWidget(ah, 1, 0, 1, 2)
         grid.setRowStretch(0, 1)
+        self._update_run_state()
         return w
+
+    def _update_run_state(self):
+        ready = bool(self.file_edit.text().strip())
+        self.run_btn.setEnabled(ready)
+        self.run_hint.setText('' if ready
+                              else 'choose or drop the data file(s) to enable')
+
+    def _demo_run(self):
+        # animated stage demo: the SAME stage messages the pipeline logs
+        # today drive a progress bar in the status bar
+        stages = ['Stage 1/5: reading the input files...',
+                  'Stage 2/5: applying the quality tests...',
+                  'Stage 3/5: reviewing the light window...',
+                  'Stage 4/5: writing the qualified sheets and reports...',
+                  'Stage 5/5: generating DataView plots...']
+        self.progress.setVisible(True)
+        self._stage = 0
+
+        def tick():
+            if self._stage < len(stages):
+                self.log_line('Info: %s' % stages[self._stage])
+                self._stage += 1
+                self.progress.setValue(self._stage)
+                self.progress.setFormat('Stage %d/5' % self._stage)
+                QTimer.singleShot(600, tick)
+            else:
+                self.log_line('Done: qualification finished (preview).')
+                QTimer.singleShot(1200, lambda: self.progress.setVisible(False))
+        tick()
 
     def _visualization_stub(self):
         w = QWidget()
@@ -186,7 +253,7 @@ class Preview(QMainWindow):
             'Data files (*.csv *.xlsx *.bin *.hobo);;All files (*.*)')
         if names:
             self.file_edit.setText(';'.join(names))
-            self.log.appendPlainText('Info: %d file(s) selected.' % len(names))
+            self.log_line('Info: %d file(s) selected.' % len(names))
 
     def _menus(self):
         # menu order fixed by the owner: File, Edit, Tools, View, Help
@@ -235,6 +302,12 @@ def main():
         # screenshot mode: the window is NEVER shown - grab() renders the
         # laid-out widget to a pixmap with the real platform fonts/style
         out = sys.argv[sys.argv.index('--shot') + 1]
+        # stage the demo state the screenshot should document
+        win.file_edit.setText('HOBO1_PLES_A1_200925_160326.hobo;'
+                              'HOBO2_PLES_A1_200925_160326.hobo')
+        win.progress.setVisible(True)
+        win.progress.setValue(3)
+        win.progress.setFormat('Stage 3/5')
         app.processEvents()
         win.grab().save(out)
         return 0
