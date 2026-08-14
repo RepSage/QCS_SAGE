@@ -41,6 +41,17 @@ datas += [(os.path.join(SRC, 'qcs_icon.ico'), '.'),
 # pandas imports its Excel engine lazily; make it explicit (the v2.2-era spec
 # needed the same).
 hiddenimports += ['openpyxl', 'openpyxl.cell._writer']
+# matplotlib loads the SVG renderer lazily on the first savefig('*.svg') -
+# and EVERY plot the app writes (light window, DataView panels, Doppler) is
+# an .svg. Without this the installed app dies at the end of the first real
+# qualification with "No module named 'matplotlib.backends.backend_svg'"
+# (found by the owner on the first end-to-end run of an installed copy,
+# v11.4.1 - the smoke test only launches the window, it never qualifies).
+# (backend_agg and backend_mixed ride along: a real-run import trace shows
+# savefig pulls all three, and hook behavior may change between versions)
+hiddenimports += ['matplotlib.backends.backend_svg',
+                  'matplotlib.backends.backend_mixed',
+                  'matplotlib.backends.backend_agg']
 
 a = Analysis(
     [os.path.join(SRC, 'QCS_App.py')],

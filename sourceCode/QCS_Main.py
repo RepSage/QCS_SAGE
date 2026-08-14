@@ -1711,8 +1711,8 @@ def build_qualification_tab(container, root, shared_log=None):
     # factory default (v11.4.2): the box used to fill only from SAVED prefs,
     # so a fresh settings store (e.g. first runs of an installed copy, whose
     # store is %APPDATA%\QCS, not the source folder's json) left it empty and
-    # RUN stopped at "Select the output format"
-    outputFilesFormat_combobox.set('.csv')
+    # RUN stopped at "Select the output format". .xlsx is the owner's choice.
+    outputFilesFormat_combobox.set('.xlsx')
     outputFilesFormat_combobox.grid(row=5, column=0, sticky='w', pady=(0,5))
     ToolTip(outputFilesFormat_combobox, TOOLTIPS['output_format'])
 

@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v11.4.1'
+QCS_VERSION = 'v11.4.2'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -1121,12 +1121,18 @@ def _read_hobo_binary(file_path, say):
                     continue
                 # physical guards against a wrong alignment that lands in the
                 # table by accident: a real deployment walks through many
-                # temperature codes, and water temperature cannot jump
+                # temperature codes, and water temperature cannot jump. The
+                # step limit scales with the sampling interval - a shallow
+                # POOL logger at 2 h steps legitimately moves 3-4 degC
+                # between samples (sun-heated), while random misdecodes jump
+                # far more, and at almost every step.
+                step_limit = max(1.5, 2.0 * interval_s / 3600.0)
                 degs = np.array([HOBO_TEMP_LUT.get(int(c), np.nan)
                                  for c in codes])
                 step_ok = np.abs(np.diff(degs))
                 step_ok = step_ok[~np.isnan(step_ok)]
-                smooth = float(np.mean(step_ok <= 1.0)) if len(step_ok) else 0.0
+                smooth = (float(np.mean(step_ok <= step_limit))
+                          if len(step_ok) else 0.0)
                 distinct = len(np.unique(codes[inlut]))
                 if nn >= 50 and (distinct < 8 or smooth < 0.99):
                     continue
@@ -1136,7 +1142,7 @@ def _read_hobo_binary(file_path, say):
                 head = degs[:4]
                 head_steps = np.abs(np.diff(head[~np.isnan(head)]))
                 if np.isnan(degs[0]) or (len(head_steps) and
-                                         float(head_steps.max()) > 1.0):
+                                         float(head_steps.max()) > step_limit):
                     continue
                 # rank by the NUMBER of decodable samples, preferring the
                 # smaller offset on ties: a stream whose tail ends in a
