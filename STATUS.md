@@ -2,6 +2,15 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.5 released) — ritual done; publication pending
+
+PR #27 merged, tagged `v11.5` on `cc25365`, branch deleted, installer
+rebuilt and verified (bundle carries backend_svg, QCS_HoboCal, tkinterdnd2
+incl. the tkdnd Tcl files; smoke test clean); `QCS_Setup_v11.5.exe` +
+release text on the Desktop, publication pending. Next planned release:
+**v12.0, the Qt interface port** (owner decision; measured basis: the
+~300 ms tab switch is the sv-ttk theme - clam does it in 60 ms).
+
 ## 2026-08-14 (v11.5, session 3) — anchor SHIPPED; round complete, PR pending
 
 The delimiter anchor is in the reader (primary path; content scan is the
