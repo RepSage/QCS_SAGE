@@ -1729,9 +1729,15 @@ def build_qualification_tab(container, root, shared_log=None):
     outputFilesFormat_combobox.grid(row=5, column=0, sticky='w', pady=(0,5))
     ToolTip(outputFilesFormat_combobox, TOOLTIPS['output_format'])
 
+    # Site selection (above Data filtering - owner request, v11.4)
+    ttk.Label(output_frame, text="Site code:", style='Header.TLabel').grid(row=6, column=0, sticky='w', pady=(5,2))
+    siteSelect_entry = ttk.Entry(output_frame, width=12)
+    siteSelect_entry.grid(row=7, column=0, sticky='w', pady=(0,5))
+    ToolTip(siteSelect_entry, TOOLTIPS['site_code'])
+
     # Data filtering
     filter_frame = ttk.LabelFrame(output_frame, text=" Data filtering ", padding=5)
-    filter_frame.grid(row=6, column=0, columnspan=2, sticky='ew', pady=5)
+    filter_frame.grid(row=8, column=0, columnspan=2, sticky='ew', pady=5)
 
     remove_bad = BooleanVar(value=False)
     bad_check = ttk.Checkbutton(filter_frame, text="Remove bad data", variable=remove_bad)
@@ -1742,12 +1748,6 @@ def build_qualification_tab(container, root, shared_log=None):
     suspect_check = ttk.Checkbutton(filter_frame, text="Remove suspect data", variable=remove_suspect)
     suspect_check.pack(anchor='w', pady=2)
     ToolTip(suspect_check, TOOLTIPS['remove_suspect'])
-
-    # Site selection
-    ttk.Label(output_frame, text="Site code:", style='Header.TLabel').grid(row=7, column=0, sticky='w', pady=(5,2))
-    siteSelect_entry = ttk.Entry(output_frame, width=12)
-    siteSelect_entry.grid(row=8, column=0, sticky='w', pady=(0,5))
-    ToolTip(siteSelect_entry, TOOLTIPS['site_code'])
 
     # Macroregion + region of collection: provide a representative latitude/longitude
     # used only to RUN the qualification - pressure->depth and density inversion
