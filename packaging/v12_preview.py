@@ -133,7 +133,10 @@ class Preview(QMainWindow):
         fin.addRow('Region:', reg)
         # Site code lives with the INPUT metadata now (owner decision - it
         # identifies the deployment, not the output)
-        fin.addRow('Site code:', QLineEdit('PLES'))
+        self.site_edit = QLineEdit()
+        self.site_edit.setPlaceholderText('e.g. PLES')
+        self.site_edit.textChanged.connect(self._update_run_state)
+        fin.addRow('Site code:', self.site_edit)
         # the three toggles LAST, boxed like Data filtering (owner request)
         gopt = QGroupBox('Options')
         vo = QVBoxLayout(gopt)
@@ -144,8 +147,12 @@ class Preview(QMainWindow):
 
         gout = QGroupBox('Output settings')
         fout = QFormLayout(gout)
-        fout.addRow('Output folder:', QLineEdit())
-        fout.addRow('Output file name:', QLineEdit())
+        self.out_folder = QLineEdit()
+        self.out_folder.textChanged.connect(self._update_run_state)
+        fout.addRow('Output folder:', self.out_folder)
+        self.out_name = QLineEdit()
+        self.out_name.textChanged.connect(self._update_run_state)
+        fout.addRow('Output file name:', self.out_name)
         fmt = QComboBox()
         fmt.addItems(['.xlsx', '.csv'])
         fout.addRow('Output format:', fmt)
@@ -208,10 +215,19 @@ class Preview(QMainWindow):
         return w
 
     def _update_run_state(self):
-        ready = bool(self.file_edit.text().strip())
-        self.run_btn.setEnabled(ready)
-        self.run_hint.setText('' if ready
-                              else 'choose or drop the data file(s) to enable')
+        """RUN enables only when EVERYTHING required is filled; the hint
+        below it names the NEXT missing step, in workflow order, updating
+        as each one is completed (owner decision - no pop-up scolding)."""
+        if not hasattr(self, 'run_btn'):
+            return                          # fields still being built
+        steps = ((self.file_edit, 'choose or drop the data file(s) to begin'),
+                 (self.site_edit, 'fill in the Site code'),
+                 (self.out_folder, 'choose the output folder'),
+                 (self.out_name, 'name the output file'))
+        missing = next((hint for widget, hint in steps
+                        if not widget.text().strip()), None)
+        self.run_btn.setEnabled(missing is None)
+        self.run_hint.setText(missing or '')
 
     def _demo_run(self):
         # animated stage demo: the SAME stage messages the pipeline logs
@@ -302,12 +318,18 @@ def main():
         # screenshot mode: the window is NEVER shown - grab() renders the
         # laid-out widget to a pixmap with the real platform fonts/style
         out = sys.argv[sys.argv.index('--shot') + 1]
-        # stage the demo state the screenshot should document
+        # stage the demo states the screenshots document: mid-guidance in
+        # light (files chosen, Site code still missing -> hint names it),
+        # ready-to-run in dark (everything filled, RUN enabled, stage 3/5)
         win.file_edit.setText('HOBO1_PLES_A1_200925_160326.hobo;'
                               'HOBO2_PLES_A1_200925_160326.hobo')
-        win.progress.setVisible(True)
-        win.progress.setValue(3)
-        win.progress.setFormat('Stage 3/5')
+        if style == 'fusion-dark':
+            win.site_edit.setText('PLES')
+            win.out_folder.setText(r'C:\dados\PLES')
+            win.out_name.setText('PLES_A1_200925_160326_combined_QLF')
+            win.progress.setVisible(True)
+            win.progress.setValue(3)
+            win.progress.setFormat('Stage 3/5')
         app.processEvents()
         win.grab().save(out)
         return 0
