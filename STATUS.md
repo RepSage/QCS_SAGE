@@ -2,6 +2,20 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.4.2 pending) — the owner's test round caught three more
+
+The installed-copy path had never been walked end to end; the owner's test
+kept finding what the layered validations could not (each documented in
+`changelog/v11.4.2.md`): the frozen bundle lacked matplotlib's lazily-
+imported SVG renderer (every plot is .svg → first real qualification died);
+the Output format box had no factory default (now `.xlsx`, owner's choice);
+the `.hobo` alignment guard refused POOL loggers (step limit now scales
+with the sampling interval). New method in the packaging README: dump
+`sys.modules` from a REAL qualification and check the bundle's PYZ toc
+against it — the launch smoke test cannot see lazy imports. Blind corpus
+validation after the guard fix: 101 decoded, 46 at 100.0% exact (pools in).
+Branch `fix-v11.4.2` pushed; PR pending; owner still testing.
+
 ## 2026-08-14 (v11.4.1) — GUI gate fixed; release ready to publish
 
 The owner's first real `.hobo` attempt hit "Unsupported file format": the
