@@ -2,6 +2,45 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v12.0 port, phase 0 done) — pipeline is toolkit-neutral
+
+Branch **`port-v12.0`** (long-lived; master stays the working tk app until
+the port completes). Phase 0 landed (`0bb8d91`): the qualification pipeline
+no longer touches tk directly.
+
+- `collect_input_settings` = `read_input_widgets()` (tk) +
+  `apply_input_settings(vals)` (toolkit-free). The Qt shell fills the same
+  `vals` dict from its own widgets.
+- Facade: `ui_info/ui_warn/ui_error` (defaults call `messagebox.*` so the
+  batch drivers' monkeypatches still intercept), `ui_busy`, `ui_pump`.
+  Already-replaceable hooks stay: `log_line`, `review_light_window`,
+  `review_replicates`, `data._show_and_wait`.
+- `light_cutoff_mode` now travels in `INPUT` (was read from a widget
+  mid-run at the fixed-window branch).
+- Proof: suite 52/52, ruff clean, and a real 2-replicate `.hobo`
+  qualification (the Desktop PLES pair) driven batch-style on this branch
+  vs. master — combined sheets **identical cell by cell** (1902 rows;
+  fixed cutoff exactly 60 days after start). Driver script pattern:
+  scratchpad `drive_real_run.py` (mimics `qualify_site.py`).
+
+**Phase plan** (each phase = working increment, committed on the branch):
+1. `QCS_QtTheme.py` (Fusion light/dark from `packaging/v12_preview.py`,
+   log dock, Qt crash dialog) + `QCS_QtApp.py` shell with the qualification
+   tab wired: prefs, browse/sniff, DnD (Qt native), regions, RUN →
+   `apply_input_settings` + `start_qualification` with a Qt facade;
+   matplotlib backend QtAgg (the `plt.show()` review windows work as-is —
+   there is NO FigureCanvasTkAgg anywhere).
+2. Settings dialog + the tk-Toplevel review windows (variable check,
+   peak review ~line 2400, replicate review, `QCS_Update` dialog).
+3. Data Visualization tab (`QCS_DatabaseView`).
+4. Packaging swap: spec/bat/requirements gain PySide6 **6.8.3 pinned**
+   (6.11 does not load on this machine's MSVC runtime), retire sv-ttk.
+
+Known non-issue found while proving: in the combine branch,
+`OUTPUT['last_qualified_df']` keeps the LAST replicate's df (the combined
+sheet on disk is the truth; `last_qualified_file` points at it correctly).
+Pre-existing, only worth fixing if something starts consuming it.
+
 ## 2026-08-14 (v11.6.1 released) — ritual done; NEXT: the real v12.0 port
 
 PR #29 merged, tagged `v11.6.1` on `106632c`, branch deleted, `.iss` bumped
