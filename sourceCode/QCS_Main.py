@@ -206,7 +206,7 @@ FACTOR_VARS = [
 # Tooltips dictionary
 TOOLTIPS = {
     'co2_file': "OPTIONAL (Seaguard only): dissolved-CO2 file from the separate\nCO2 logger (.txt/.csv export with Year..Second columns). Its values are\ninterpolated in time onto the Seaguard timestamps (the two instruments\nsample at different rates), fill the 'CO2 Level (ppm)' column and go through\nthe CO2 quality tests (sensor/environmental range, spikes -> Flag_CO2).\nThe CO2 timestamps are used AS-IS: the GMT-3 correction is NEVER applied\nto them (the CO2 logger clock is local; the Seaguard side is corrected\nbefore the merge). Not available for a batch (one deployment at a time).",
-    'data_file': "Select the raw data file(s) to be qualified\nFormats: .csv, .xlsx or SeaGuard .bin session (Data000.bin)\nSeaguard: several files = a BATCH, qualified one after another\nHOBO: several files = redundant replicates (combined)",
+    'data_file': "Select the raw data file(s) to be qualified\nFormats: .csv, .xlsx, SeaGuard .bin session (Data000.bin) or raw HOBO .hobo\nSeaguard: several files = a BATCH, qualified one after another\nHOBO: several files = redundant replicates (combined)",
     'latitude': "Latitude of the collection site (decimal degrees, -90 to 90)\nSouthern hemisphere is negative (e.g. -17.5)\nUsed to convert pressure to depth",
     'longitude': "Longitude of the collection site (decimal degrees, -180 to 180)\nWestern hemisphere is negative (e.g. -40.0)\nUsed by the density inversion test",
     'macroregion': "Broad region of the world (currently only Brazil).\nStructured to add other regions in the future.",
@@ -629,9 +629,9 @@ def collect_input_settings():
         if not os.path.isfile(f):
             messagebox.showerror("Error", "Data file not found:\n%s" % f)
             return False
-        if not re.search(r'\.(csv|xlsx|bin)$', f, re.IGNORECASE):
-            messagebox.showwarning("Warning", "Unsupported file format (use .csv, .xlsx or a "
-                                   "SeaGuard .bin session file):\n%s" % f)
+        if not re.search(r'\.(csv|xlsx|bin|hobo)$', f, re.IGNORECASE):
+            messagebox.showwarning("Warning", "Unsupported file format (use .csv, .xlsx, a "
+                                   "SeaGuard .bin session or a raw HOBO .hobo file):\n%s" % f)
             return False
     INPUT['replicate_files'] = replicate_files
     INPUT['n_replicates'] = n_rep
