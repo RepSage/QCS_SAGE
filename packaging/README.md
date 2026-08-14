@@ -72,6 +72,15 @@ then behaves exactly as on a source install (dialog on first launch, v11.1).
 - Always rebuild with `--clean` after changing the environment or the spec:
   a cached analysis silently reuses the old dependency scan (that is how the
   missing-DLL fix looked like it had failed).
+- **The launch smoke test proves almost nothing about lazy imports.** The
+  window opens fine with modules missing that only load mid-pipeline:
+  matplotlib imports `backends.backend_svg` on the FIRST `savefig('*.svg')`,
+  so every installed copy up to v11.4.1 died at the end of its first real
+  qualification ("No module named ...backend_svg") while the smoke test
+  passed. Any module imported lazily by a qualification must be a
+  `hiddenimports` entry in `QCS.spec`, and the check that catches the whole
+  class is: run a REAL qualification from source, dump `sys.modules`, and
+  verify every top-level module appears in the built `PYZ-00.toc`.
 
 ## Icons (fixed 2026-08-13)
 

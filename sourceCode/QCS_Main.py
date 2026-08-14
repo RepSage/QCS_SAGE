@@ -1708,6 +1708,11 @@ def build_qualification_tab(container, root, shared_log=None):
     # Output format
     ttk.Label(output_frame, text="Output format:", style='Header.TLabel').grid(row=4, column=0, sticky='w', pady=(0,2))
     outputFilesFormat_combobox = ttk.Combobox(output_frame, values=[".csv", ".xlsx"], width=8, state='readonly')
+    # factory default (v11.4.2): the box used to fill only from SAVED prefs,
+    # so a fresh settings store (e.g. first runs of an installed copy, whose
+    # store is %APPDATA%\QCS, not the source folder's json) left it empty and
+    # RUN stopped at "Select the output format". .xlsx is the owner's choice.
+    outputFilesFormat_combobox.set('.xlsx')
     outputFilesFormat_combobox.grid(row=5, column=0, sticky='w', pady=(0,5))
     ToolTip(outputFilesFormat_combobox, TOOLTIPS['output_format'])
 
