@@ -435,6 +435,12 @@ def selectFiles():
     names = list(names)
     if not names:
         return
+    apply_selected_files(names)
+
+def apply_selected_files(names):
+    """Shared tail of the file selection: fills the entry and runs the same
+    auto-detection whether the files came from Browse or were DROPPED onto
+    the window (v11.5)."""
     first = names[0]
     fileNames_entry.delete(0, END)
     fileNames_entry.insert(0, ';'.join(names))

@@ -2,6 +2,38 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.5, session 2) — 185/200 proven; the preamble DELIMITER found
+
+Owner approved the mixed-interval spread solution. Session results, all on
+branch `improvements-v11.5` (still NOT shippable until the anchor lands):
+
+- **With the event-skipping walk, 185 of ~200 paired files align at
+  exact_T ≥ 99.9%** (export-guided; was 97). The walk is the format's
+  missing piece confirmed at scale (`pointer_test.csv` in this session's
+  scratchpad has每 file's proven `s0_bit`).
+- **Tag 0x0D is only an approximate pointer** (predicted-vs-true diff
+  clusters: −24×102, −42×47, −46×16, −38×10, −20×6 — i.e. 1-2 metadata
+  tokens after the pointed spot, in two bit-jitter families). Use it as a
+  narrow search WINDOW, not an address.
+- **The real anchor: the LAST preamble token has a signature** — census over
+  the 185 proven files: values `03FF0/0FFF0/13FF0/07FF0/0BFF0/17FF0/...`,
+  i.e. `(token & 0x03FF0) == 0x03FF0 and (token & 0xF) == 0` (bits 4-13
+  set, low nibble clear, high bits vary — likely the launch-reading light
+  code). Minority family `3FF02/3FE00/...` = the −46/−38/−20 jitter files,
+  delimiter shifted by 2-4 bits. **Next action: sample0 = first token after
+  the LAST delimiter-signature match inside the pointer window (8·tag0x0D +
+  {10..56} bits); fall back to the count+darkness scan when no signature
+  matches; then re-run the blind validation** (expect ~185 exact) and only
+  then ship.
+- Drag-and-drop state: `apply_selected_files()` extracted in BOTH modules
+  (QCS_Main + QCS_DatabaseView, done, committed); STILL PENDING: the drop
+  wiring in QCS_App (tkinterdnd2._require(root) + drop_target_register on
+  notebook/content/log frames, active-tab dispatch), the 'Data file(s):'
+  label, tkinterdnd2 in requirements.txt + collect_all in QCS.spec.
+- Also pending: light-table refinement for high companded codes (law-filled
+  codes ≥ ~200 carry law rounding, not HOBOware's - collect from the newly
+  aligned 185), changelog v11.5, manual, PR.
+
 ## 2026-08-14 (v11.5 round OPEN — branch `improvements-v11.5`, NOT shippable yet)
 
 Owner's five requests after testing v11.4.2 with the PLES pair (the pair sits
