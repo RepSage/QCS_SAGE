@@ -74,6 +74,12 @@ archive and diff the counts against the previous `qualified_index.csv`.
 - **HOBO vs. Seaguard**: HOBO files run only the temperature tests plus the light
   fouling-window test (`light_cutoff_window`), and have their own output column
   layout. Layout detection: `detect_qualified_layout()` in `QCS_DataHandler.py`.
+- **A new input file format has FOUR wiring points**, and the readers are only
+  one of them: the extension gate in `collect_input_settings` (`QCS_Main.py`),
+  the Browse dialog `filetypes`, `sniff_input_type`, and the reader itself.
+  v11.4 shipped `.hobo` wired everywhere EXCEPT the gate, so the feature was
+  unreachable from the GUI ("Unsupported file format") — corpus validation runs
+  at the data layer and cannot catch a GUI-gate miss (v11.4.1).
 - **Theming/DPI** is centralized in `QCS_Theme.py` (sv-ttk, dark mode, DPI
   awareness). Plot colors are centralized in `getParamColors()` /
   `getSiteColors()` in `QCS_DataView.py`. Never hardcode colors or fonts in
