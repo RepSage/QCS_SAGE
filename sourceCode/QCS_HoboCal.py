@@ -1,11 +1,12 @@
-# Calibration tables for the HOBO Pendant .hobo binary reader,
-# derived 2026-08-14 from 97 corpus files whose decode matches
-# their HOBOware exports >= 99.9% exactly. Temperature: 10-bit
-# ADC code -> degC (universal across loggers, monotone, zero
-# cross-logger conflicts). Light: 8-bit companded code -> lux
-# (code <= 128 linear, then mantissa/exponent steps of 8/16/...;
-# observed codes carry HOBOware's own rounding, unobserved ones
-# follow the law lux = round(raw * 10.7639, 1)).
+# Calibration tables for the HOBO Pendant .hobo binary reader.
+# Rebuilt 2026-08-14 from 185 corpus files whose decode matches
+# their HOBOware exports >= 99.9% exactly (delimiter-anchored,
+# event-skipping walk). Temperature: 10-bit ADC code -> degC,
+# universal across loggers, monotone, zero conflicts. Light:
+# 8-bit companded code -> lux; codes observed in clean exports
+# carry HOBOware's own rounding, the rest follow the law
+# lux = round(raw * 10.7639, 1) with raw = code (<=128) or
+# (136 + 8*((code-129)%%16)) << ((code-129)//16).
 HOBO_TEMP_LUT = {
     367: 39.957,
     368: 39.843,
@@ -180,7 +181,10 @@ HOBO_TEMP_LUT = {
     537: 22.525,
     538: 22.429,
     540: 22.238,
+    542: 22.046,
     543: 21.951,
+    544: 21.855,
+    551: 21.187,
 }
 
 HOBO_LIGHT_LUT = {
@@ -399,17 +403,17 @@ HOBO_LIGHT_LUT = {
     212: 55111.5,
     213: 57867.0,
     214: 60622.6,
-    215: 63377.8,
-    216: 66133.4,
-    217: 68889.0,
+    215: 63378.2,
+    216: 66133.8,
+    217: 68889.3,
     218: 71644.9,
     219: 74400.5,
     220: 77156.1,
     221: 79911.6,
     222: 82667.2,
-    223: 484.4,
-    224: 88177.9,
-    225: 93689.0,
+    223: 85422.8,
+    224: 88178.4,
+    225: 93689.5,
     226: 99200.7,
     227: 104711.8,
     228: 110223.0,
@@ -417,7 +421,7 @@ HOBO_LIGHT_LUT = {
     230: 121245.2,
     231: 126755.7,
     232: 132266.8,
-    233: 137777.9,
+    233: 137778.7,
     234: 143289.0,
     235: 148800.2,
     236: 154311.3,

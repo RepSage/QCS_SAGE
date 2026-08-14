@@ -1583,7 +1583,7 @@ def build_qualification_tab(container, root, shared_log=None):
 
     # --- Input Section ---
     # File selection
-    ttk.Label(input_frame, text="Data file:", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
+    ttk.Label(input_frame, text="Data file(s):", style='Header.TLabel').grid(row=0, column=0, sticky='w', pady=(0,2))
     fileNames_entry = ttk.Entry(input_frame, width=24)
     fileNames_entry.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(0,5))
     ToolTip(fileNames_entry, TOOLTIPS['data_file'])

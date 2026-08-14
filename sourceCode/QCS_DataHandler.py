@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v11.4.2'
+QCS_VERSION = 'v11.5'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -1122,71 +1122,117 @@ def _read_hobo_binary(file_path, say):
 
     step_limit = max(1.5, 2.0 * interval_s / 3600.0)
     t0_local = launch + pd.Timedelta(seconds=1 + interval_s + tz_shift_s)
-    best = None
+
+    arrays = []                       # per bit phase: (temp codes, light codes)
     for phase in range(18):
         ntok = (len(bits) - phase) // 18
         if ntok < 12:
+            arrays.append(None)
             continue
         seg = bits[phase:phase + ntok * 18].reshape(ntok, 18)
-        temp = (seg[:, 8:18] @ (1 << np.arange(9, -1, -1))).astype(int)
-        light = (seg[:, 0:8] @ (1 << np.arange(7, -1, -1))).astype(int)
-        for off in range(0, 9):
-            idx, n_events = _walk(temp, off)
-            nn = len(idx)
-            if nn < 10:
-                continue
-            codes = temp[idx]
-            inlut = np.fromiter((int(c) in HOBO_TEMP_LUT for c in codes),
-                                bool, len(codes))
-            coverage = float(np.mean(inlut))
-            if coverage < 0.995:
-                continue
-            # physical guards against a wrong alignment that lands in the
-            # table by accident: a real deployment walks through many
-            # temperature codes, and water temperature cannot jump (limit
-            # scaled by the sampling interval - shallow pools legitimately
-            # move 3-4 degC between 2 h samples)
-            degs = np.array([HOBO_TEMP_LUT.get(int(c), np.nan)
-                             for c in codes])
-            step_ok = np.abs(np.diff(degs))
-            step_ok = step_ok[~np.isnan(step_ok)]
-            smooth = (float(np.mean(step_ok <= step_limit))
-                      if len(step_ok) else 0.0)
-            distinct = len(np.unique(codes[inlut]))
-            if nn >= 50 and (distinct < 8 or smooth < 0.99):
-                continue
-            # the series must START on decodable samples with smooth steps:
-            # a leftover preamble token that lands in the table by accident
-            # would otherwise prepend a phantom first sample
+        arrays.append(((seg[:, 8:18] @ (1 << np.arange(9, -1, -1))).astype(int),
+                       (seg[:, 0:8] @ (1 << np.arange(7, -1, -1))).astype(int)))
+
+    def _evaluate(phase, off, anchored):
+        """Walks one candidate alignment and applies the physical guards.
+        Returns the candidate dict, or None. Anchored candidates (found via
+        the preamble delimiter) skip the head-step guard: the anchor is
+        structural, and a real first reading taken on a hot deck may
+        legitimately jump - only UNANCHORED content scans need protection
+        against a phantom preamble sample."""
+        if arrays[phase] is None:
+            return None
+        temp, light = arrays[phase]
+        idx, n_events = _walk(temp, off)
+        nn = len(idx)
+        if nn < 10:
+            return None
+        codes = temp[idx]
+        inlut = np.fromiter((int(c) in HOBO_TEMP_LUT for c in codes),
+                            bool, len(codes))
+        coverage = float(np.mean(inlut))
+        if coverage < 0.995:
+            return None
+        # physical guards against an alignment that lands in the table by
+        # accident: a real deployment walks through many temperature codes,
+        # and water temperature cannot jump (limit scaled by the sampling
+        # interval - shallow pools move 3-4 degC between 2 h samples)
+        degs = np.array([HOBO_TEMP_LUT.get(int(c), np.nan) for c in codes])
+        step_ok = np.abs(np.diff(degs))
+        step_ok = step_ok[~np.isnan(step_ok)]
+        smooth = (float(np.mean(step_ok <= step_limit))
+                  if len(step_ok) else 0.0)
+        distinct = len(np.unique(codes[inlut]))
+        if nn >= 50 and (distinct < 8 or smooth < 0.99):
+            return None
+        if not anchored:
             head = degs[:4]
             head_steps = np.abs(np.diff(head[~np.isnan(head)]))
             if np.isnan(degs[0]) or (len(head_steps) and
                                      float(head_steps.max()) > step_limit):
-                continue
-            # nighttime darkness of THIS candidate: the true alignment is
-            # the dark one whenever the logger clock is right, so darkness
-            # ranks ABOVE tie-level differences in sample count (a wrong
-            # alignment can accidentally cover a few more in-table codes,
-            # but its light bytes are noise - and noise glows in the dark)
-            nxt = idx + 1
-            lc = np.where(nxt < len(light), light[np.minimum(nxt, len(light) - 1)], 255)
-            lx = np.array([HOBO_LIGHT_LUT.get(int(c), np.nan) for c in lc])
-            hrs = ((t0_local.hour * 3600 + t0_local.minute * 60
-                    + np.arange(nn, dtype=np.int64) * interval_s) // 3600) % 24
-            night = (hrs >= 22) | (hrs < 4)
-            nlx = lx[night & ~np.isnan(lx)]
-            dark = float(np.mean(nlx == 0.0)) if len(nlx) >= 20 else 1.0
-            rank = (int(inlut.sum()) // 10, round(dark, 2), int(inlut.sum()),
-                    -off, -phase)
-            if best is None or rank > best[0]:
-                best = (rank, coverage, phase, off, idx, n_events, temp,
-                        light, dark, lx)
+                return None
+        # nighttime darkness (used to rank unanchored candidates - a wrong
+        # alignment's light bytes are noise, and noise glows in the dark -
+        # and by the clock-coherence gate below)
+        nxt = idx + 1
+        lc = np.where(nxt < len(light),
+                      light[np.minimum(nxt, len(light) - 1)], 255)
+        lx = np.array([HOBO_LIGHT_LUT.get(int(c), np.nan) for c in lc])
+        hrs = ((t0_local.hour * 3600 + t0_local.minute * 60
+                + np.arange(nn, dtype=np.int64) * interval_s) // 3600) % 24
+        night = (hrs >= 22) | (hrs < 4)
+        nlx = lx[night & ~np.isnan(lx)]
+        dark = float(np.mean(nlx == 0.0)) if len(nlx) >= 20 else 1.0
+        return dict(coverage=coverage, phase=phase, off=off, idx=idx,
+                    n_events=n_events, temp=temp, light=light, dark=dark,
+                    lux=lx, count=int(inlut.sum()))
+
+    # ---- primary anchor: the preamble DELIMITER (v11.5) ----
+    # The last preamble token before sample 0 has a fixed signature - bits
+    # 4..13 set, low nibble clear (census over 185 export-proven files:
+    # 03FF0, 0FFF0, 13FF0, ...; the varying high bits look like the launch
+    # reading's light code). A SAMPLE can never match it: its temperature
+    # field would read 1008..1023, far outside the calibration band. Sample 0
+    # starts 18 bits after the LAST match in the head region; matches are
+    # tried last-first, and the content scan below remains the fallback for
+    # the minority whose delimiter is bit-shifted.
+    def _tok_at(p):
+        if p < 0 or p + 18 > len(bits):
+            return None
+        return int(bits[p:p + 18] @ (1 << np.arange(17, -1, -1)))
+
+    best, anchored = None, False
+    matches = [p for p in range(0, min(len(bits) - 18, 160))
+               if ((_tok_at(p) & 0x3FF0) == 0x3FF0
+                   and (_tok_at(p) & 0xF) == 0)]
+    for p in reversed(matches):
+        s0 = p + 18
+        cand = _evaluate(s0 % 18, s0 // 18, anchored=True)
+        if cand is not None:
+            best, anchored = cand, True
+            break
+
+    # ---- fallback: full content scan ranked by count and darkness ----
+    if best is None:
+        best_rank = None
+        for phase in range(18):
+            for off in range(0, 9):
+                cand = _evaluate(phase, off, anchored=False)
+                if cand is None:
+                    continue
+                rank = (cand['count'] // 10, round(cand['dark'], 2),
+                        cand['count'], -off, -phase)
+                if best_rank is None or rank > best_rank:
+                    best_rank, best = rank, cand
     if best is None:
         raise _hobo_error(
             file_name, 'the sample stream does not fit the deciphered layout '
             'at any alignment. Probably an unsupported HOBOware layout '
             'variant - qualify this logger from its exported sheet instead.')
-    _, coverage, phase, off, idx, n_events, temp, light, dark, lux = best
+    coverage, phase, off = best['coverage'], best['phase'], best['off']
+    idx, n_events = best['idx'], best['n_events']
+    temp, light, dark, lux = (best['temp'], best['light'], best['dark'],
+                              best['lux'])
     nn = len(idx)
 
     # bright nights on the CHOSEN alignment: either the logger clock is wrong
@@ -1249,9 +1295,11 @@ def _read_hobo_binary(file_path, say):
         'in air) is not stored in the binary; the series starts one interval '
         'after launch.')
     say('Info: raw .hobo decoded: %s s/n %s, %d samples, launch %s, interval '
-        '%d s (alignment: bit phase %d, offset %d; %.2f%% of codes in the '
+        '%d s (%s alignment: bit phase %d, offset %d; %.2f%% of codes in the '
         'calibration table).'
-        % (model, serial, nn, launch, interval_s, phase, off, 100 * coverage))
+        % (model, serial, nn, launch, interval_s,
+           'delimiter-anchored' if anchored else 'content-scan',
+           phase, off, 100 * coverage))
     return df
 
 

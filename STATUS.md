@@ -2,6 +2,25 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.5, session 3) — anchor SHIPPED; round complete, PR pending
+
+The delimiter anchor is in the reader (primary path; content scan is the
+fallback), the walk skips event markers, and the calibration tables were
+rebuilt from the 185 proven alignments (pooled modal, 462k light readings,
+temp 177 codes / zero conflicts / monotone; light 227 observed + 28 law).
+
+**Definitive blind validation: 124 files at exactly 100.0% temperature and
+120 at ≥ 99.9% light** (v11.4.2: 46). The owner's PLES pair: both decode
+blind - HOBO1 1.0000/0.9989, HOBO2 1.0000/0.9962 WITH the clock warning
+(its clock is genuinely wrong). Sub-0.1% light residuals are HOBOware's own
+±0.1 rounding wobble, visible between rows of its own exports.
+
+Also done this session: drag-and-drop shipped (tkinterdnd2 required into
+the app shell; drops land in the active tab's field; 4/4 GUI checks; dep in
+requirements + spec + build venv), 'Data file(s):' label, suite 52/52 with
+the delimiter in the synthetic fixture. Remaining before the PR: nothing -
+open it.
+
 ## 2026-08-14 (v11.5, session 2) — 185/200 proven; the preamble DELIMITER found
 
 Owner approved the mixed-interval spread solution. Session results, all on

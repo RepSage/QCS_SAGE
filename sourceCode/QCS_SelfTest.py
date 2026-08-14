@@ -1131,14 +1131,20 @@ def _build_mini_hobo(temp_codes, light_codes, interval_s=600):
     hdr += tlv(0x08, interval_s.to_bytes(4, 'big'))
     hdr += tlv(0x12, (-10800).to_bytes(4, 'big', signed=True))
     hdr += bytes([0x88, 0x11, 0x00])
-    # tokens: preamble (2 all-ones markers land outside the calibration and
-    # force a nonzero offset), samples with the one-slot light lag, terminator
-    tokens = [0x3FFFF, 0x3FFFF]
+    # tokens: preamble built to the spec - 2 all-ones markers plus the
+    # DELIMITER token (bits 4..13 set, low nibble clear) that anchors
+    # sample 0 in the v11.5 reader - then samples with the one-slot light
+    # lag, then the terminator
+    tokens = [0x3FFFF, 0x3FFFF, 0x03FF0]
     prev_light = 0
     for t, l in zip(temp_codes, light_codes, strict=True):
         tokens.append((prev_light << 10) | t)
         prev_light = l
     tokens.append((prev_light << 10) | 0x3FF)             # terminator
+    # old-session junk after the terminator, like real memories carry - it
+    # also keeps the 0xFF-padding trim away from the terminator's own last
+    # byte (which IS 0xFF when the stream ends on a byte boundary)
+    tokens.append(0x00000)
     bitstr = ''.join(format(t, '018b') for t in tokens)
     bitstr += '0' * ((8 - len(bitstr) % 8) % 8)
     body = bytes(int(bitstr[i:i + 8], 2) for i in range(0, len(bitstr), 8))

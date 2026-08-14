@@ -28,7 +28,9 @@ datas, binaries, hiddenimports = [], [], []
 # a plain import PyInstaller can trace, so collect them wholesale. certifi is
 # what frees the app from the target machine's certificate store - see
 # QCS_Update.ssl_context.
-for pkg in ('sv_ttk', 'gsw', 'certifi'):
+# tkinterdnd2 ships the tkdnd Tcl library as data files (loaded at runtime by
+# TkinterDnD._require), so it must be collected wholesale like sv_ttk.
+for pkg in ('sv_ttk', 'gsw', 'certifi', 'tkinterdnd2'):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b
