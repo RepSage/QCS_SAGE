@@ -2,6 +2,19 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-14 (v11.6.1 released) — ritual done; NEXT: the real v12.0 port
+
+PR #29 merged, tagged `v11.6.1` on `106632c`, branch deleted, `.iss` bumped
+(`7b9a40c`). Installer rebuilt `--clean` and verified: backend_svg /
+QCS_HoboCal / tkinterdnd2+tcl in the bundle, 12 s smoke run alive with no
+crash log. `QCS_Setup_v11.6.1.exe` (54.6 MB) + `RELEASE_v11.6.1_para_colar.md`
+on the Desktop; publication pending (owner pastes the release).
+
+**Next: the real v12.0 Qt port** — design approved through preview rev6
+(`packaging/v12_preview.py`), tooltips now standardized and worth porting.
+Start from the preview's structure; same QC pipeline, matplotlib embeds via
+FigureCanvasQTAgg; PySide6 pinned at 6.8.3 (see the v12.0 entry below).
+
 ## 2026-08-14 (v11.6.1 on PR) — all tooltips standardized; awaiting merge
 
 Branch `fix-v11.6.1` pushed (commit `05ebbfa`), prefilled PR link handed to
