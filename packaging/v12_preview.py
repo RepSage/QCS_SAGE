@@ -1,22 +1,19 @@
 # -*- coding: utf-8 -*-
 """QCS v12.0 interface preview (PySide6/Qt) - NOT the real app.
 
-Mocks the Data Qualification tab with the real widget structure so the owner
-can choose the v12 visual identity by looking and clicking, not in the
-abstract. The View > Interface style menu switches live between:
+Mocks the Data Qualification tab with the real widget structure. Owner
+decisions applied (2026-08-14): Fusion style, with a Dark mode toggle in
+the View menu (like today's app); View menu before Help; base font raised
+to 10.5 pt; 'Parameter settings' on the left corner and a bigger, centered
+'Run qualification' button.
 
-  1. Windows 11 native  - Qt's platform style, follows the system
-  2. Fusion light       - Qt's own crisp cross-platform style
-  3. Fusion dark        - the same, with a dark palette
-
-Run with:  QCS_v12_preview.bat  (Desktop)  or
-           & "C:\\Users\\LAMB\\anaconda3\\python.exe" packaging\\v12_preview.py
+Run with:  QCS_v12_preview.bat  (Desktop)
 No QC logic here; buttons only log what they would do.
 """
 import sys
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QActionGroup, QColor, QPalette
+from PySide6.QtGui import QAction, QColor, QPalette
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDockWidget,
                                QFileDialog, QFormLayout, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
@@ -117,20 +114,27 @@ class Preview(QMainWindow):
         vf.addWidget(QCheckBox('Remove suspect data'))
         fout.addRow(gfil)
 
+        # Parameter settings on the LEFT corner; Run qualification truly
+        # CENTERED and in evidence (owner decisions, 2026-08-14)
         run = QPushButton('Run qualification')
         run.setDefault(True)
-        run.setMinimumHeight(34)
+        run.setMinimumSize(260, 42)
+        f = run.font()
+        f.setBold(True)
+        f.setPointSizeF(f.pointSizeF() + 1)
+        run.setFont(f)
         run.clicked.connect(lambda: self.log.appendPlainText(
             'Info: (preview) this would run the real pipeline.'))
-        settings = QPushButton('Settings')
+        settings = QPushButton('Parameter settings')
 
         grid.addWidget(gin, 0, 0)
         grid.addWidget(gout, 0, 1)
-        actions = QHBoxLayout()
-        actions.addStretch()
-        actions.addWidget(settings)
-        actions.addWidget(run)
-        actions.addStretch()
+        actions = QGridLayout()
+        actions.setColumnStretch(0, 1)
+        actions.setColumnStretch(1, 1)
+        actions.setColumnStretch(2, 1)
+        actions.addWidget(settings, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        actions.addWidget(run, 0, 1, Qt.AlignHCenter)
         ah = QWidget()
         ah.setLayout(actions)
         grid.addWidget(ah, 1, 0, 1, 2)
@@ -157,46 +161,42 @@ class Preview(QMainWindow):
             self.log.appendPlainText('Info: %d file(s) selected.' % len(names))
 
     def _menus(self):
+        # menu order fixed by the owner: File, Edit, Tools, View, Help
         mb = self.menuBar()
-        for name in ('File', 'Edit', 'Tools', 'Help'):
+        for name in ('File', 'Edit', 'Tools'):
             mb.addMenu(name).addAction('(preview)')
         view = mb.addMenu('View')
-        style = view.addMenu('Interface style')
-        group = QActionGroup(self)
-        for label, key in (('1 - Windows 11 native', 'native'),
-                           ('2 - Fusion light', 'fusion'),
-                           ('3 - Fusion dark', 'fusion-dark')):
-            act = QAction(label, self, checkable=True)
-            act.triggered.connect(lambda _=False, k=key: apply_style(k))
-            group.addAction(act)
-            style.addAction(act)
-        group.actions()[0].setChecked(True)
+        dark = QAction('Dark mode', self, checkable=True)
+        dark.triggered.connect(
+            lambda on: apply_style('fusion-dark' if on else 'fusion'))
+        view.addAction(dark)
+        view.addSeparator()
         view.addAction(self.dock.toggleViewAction())
+        mb.addMenu('Help').addAction('(preview)')
 
 
 def apply_style(key):
-    # Qt 6.8 follows the WINDOWS dark/light mode by default; the light and
-    # dark variants pin the scheme explicitly, the native one follows the
-    # system (in v12 proper that gives automatic dark mode for free)
+    # Fusion, light or dark (owner decision) - the scheme is pinned so the
+    # toggle, not the OS, decides; the base font is raised to 10.5 pt
+    # (Qt's Windows default ~9 pt read too small)
     app = QApplication.instance()
-    if key == 'native':
-        app.styleHints().setColorScheme(Qt.ColorScheme.Light)
-        app.setStyle('windows11')
-        app.setPalette(app.style().standardPalette())
-    elif key == 'fusion':
-        app.styleHints().setColorScheme(Qt.ColorScheme.Light)
-        app.setStyle('Fusion')
-        app.setPalette(app.style().standardPalette())
-    elif key == 'fusion-dark':
+    font = app.font()
+    font.setPointSizeF(10.5)
+    app.setFont(font)
+    if key == 'fusion-dark':
         app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
         app.setStyle('Fusion')
         app.setPalette(dark_palette())
+    else:
+        app.styleHints().setColorScheme(Qt.ColorScheme.Light)
+        app.setStyle('Fusion')
+        app.setPalette(app.style().standardPalette())
 
 
 def main():
     app = QApplication(sys.argv)
     win = Preview()
-    style = sys.argv[sys.argv.index('--style') + 1] if '--style' in sys.argv else 'native'
+    style = sys.argv[sys.argv.index('--style') + 1] if '--style' in sys.argv else 'fusion'
     apply_style(style)
     if '--shot' in sys.argv:
         # screenshot mode: the window is NEVER shown - grab() renders the
