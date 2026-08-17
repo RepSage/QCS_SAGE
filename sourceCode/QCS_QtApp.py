@@ -259,6 +259,12 @@ class QtShell(QMainWindow):
             btn.setFixedWidth(width)
             label.setFixedWidth(width)
             label.setAlignment(Qt.AlignCenter)
+        # the same inset on both keeps them aligned and off the window edge
+        inset = 12
+        if self.log_dock.button_row.contentsMargins().right() != inset:
+            self.log_dock.button_row.setContentsMargins(0, 0, inset, 0)
+        if self.statusBar().contentsMargins().right() != inset:
+            self.statusBar().setContentsMargins(6, 0, inset, 0)
 
     def _align_batch_top(self):
         """Top margin that puts the batch table's top on the tab page's top

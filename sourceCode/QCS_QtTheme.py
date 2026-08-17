@@ -119,16 +119,28 @@ def apply_style(dark):
     else:
         log_bg = '#e9e9e9'
         tab_off, tab_on = '#d0d0d0', '#f6f6f6'
-    # tooltips: inverted against the window, so they read as a separate
-    # surface (owner, 2026-08-17). Combo popups drop BELOW the box
-    # (combobox-popup: 0) instead of covering it, so the current value stays
-    # readable while choosing.
-    tip_bg, tip_fg = ('#e8e8ea', '#1b1b1c') if dark else ('#3a3a3c', '#f2f2f2')
+    # Tooltips are themed through the PALETTE, not a stylesheet: a QToolTip
+    # QSS rule makes Qt rebuild the tooltip widget and its fade-in stutters
+    # (owner: "a animação está meio truncada"). Same inverted look, native
+    # animation.
+    tip_bg, tip_fg = ((QColor('#e8e8ea'), QColor('#1b1b1c')) if dark
+                      else (QColor('#3a3a3c'), QColor('#f2f2f2')))
+    pal = app.palette()
+    pal.setColor(QPalette.ToolTipBase, tip_bg)
+    pal.setColor(QPalette.ToolTipText, tip_fg)
+    app.setPalette(pal)
+    # Group boxes: title + thin frame, no filled panel. Fusion paints a grey
+    # slab inside every QGroupBox, which shows through wherever a box is
+    # taller than its content (owner). Styling the box means drawing its own
+    # border, since the stylesheet engine then owns the rendering.
+    frame = '#4a4a4c' if dark else '#c4c4c4'
     # the primary action of each tab (Run qualification / Generate panels /
     # Next) in the accent colour, like the tk app's Accent.TButton
     app.setStyleSheet(
-        'QToolTip { background: %s; color: %s; border: 1px solid %s;'
-        ' padding: 4px; }\n'
+        'QGroupBox { background: transparent; border: 1px solid %s;'
+        ' border-radius: 3px; margin-top: 8px; padding-top: 6px; }\n'
+        'QGroupBox::title { subcontrol-origin: margin; subcontrol-position:'
+        ' top left; left: 8px; padding: 0 4px; }\n'
         'QComboBox { combobox-popup: 0; }\n'
         'QTextEdit#ExecutionLog { background: %s; }\n'
         'QTabBar#MainTabs::tab { font-weight: bold; padding: 6px 16px; background: %s; }\n'
@@ -138,8 +150,7 @@ def apply_style(dark):
         'QPushButton#AccentButton:hover { background: %s; }\n'
         'QPushButton#AccentButton:pressed { background: %s; }\n'
         'QPushButton#AccentButton:disabled { background: %s; color: %s; }'
-        % (tip_bg, tip_fg, _shift(tip_bg, -40 if dark else 40),
-           log_bg, tab_off, tab_on, accent,
+        % (frame, log_bg, tab_off, tab_on, accent,
            _shift(accent, 18), _shift(accent, -22),
            '#4a4a4c' if dark else '#c8c8c8', '#8a8a8a' if dark else '#efefef'))
 
