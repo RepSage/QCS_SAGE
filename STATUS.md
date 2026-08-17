@@ -2,6 +2,21 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-17 (v12.0 field test, round 1) — owner tested; 4 findings applied
+
+Owner field-tested the phase-1 shell: the adaptive light review works under
+Qt. Findings, all applied (`acb8b2c`): Input type locks on auto-detect
+(unlocks when the selection is cleared), app icon on the matplotlib windows
+(Qt `style_plot_window` in the facade) and on the new Desktop shortcut
+("QCS v12 dev" .lnk, replacing the .bat), status-bar progress bar
+(indeterminate + File/Replicate k/n fractions from the pipeline markers),
+and `plot_variable` now draws the replicate-disagreement bars on the
+combined `Temperature series.svg` (same visual as the DataView HOBO panel;
+this one also improves the tk app). Suite 52/52, ruff clean, SVG verified
+with bars + legend. Note: on the PLES test pair the bars are LARGE — the
+replicates run at different intervals (1 h vs 2 h), so nearest-match
+pairing shows the diurnal swing as disagreement; expected, not a bug.
+
 ## 2026-08-17 (v12.0 port, phase 1 done) — the Qt shell runs the real pipeline
 
 `sourceCode/QCS_QtApp.py` + `QCS_QtTheme.py` on `port-v12.0` (`c549778`):
