@@ -340,6 +340,7 @@ class VisualizationTab(QWidget):
         year_lab.setFont(f)        # same bold section font as 'Sites:'
         ff.addWidget(year_lab)
         ygrid = QGridLayout()
+        ygrid.setContentsMargins(0, 0, 0, 0)   # level with the Sites/Parameters checks
         self.year_checks = {}
         for i, y in enumerate(sorted(dbv.year_vars)):
             cb = QCheckBox(str(y))
