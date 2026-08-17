@@ -119,16 +119,10 @@ def apply_style(dark):
     else:
         log_bg = '#e9e9e9'
         tab_off, tab_on = '#d0d0d0', '#f6f6f6'
-    # Tooltips are themed through the PALETTE, not a stylesheet: a QToolTip
-    # QSS rule makes Qt rebuild the tooltip widget and its fade-in stutters
-    # (owner: "a animação está meio truncada"). Same inverted look, native
-    # animation.
-    tip_bg, tip_fg = ((QColor('#e8e8ea'), QColor('#1b1b1c')) if dark
-                      else (QColor('#3a3a3c'), QColor('#f2f2f2')))
-    pal = app.palette()
-    pal.setColor(QPalette.ToolTipBase, tip_bg)
-    pal.setColor(QPalette.ToolTipText, tip_fg)
-    app.setPalette(pal)
+    # Tooltips: inverted against the window (dark slab with light text in the
+    # light scheme, the reverse in the dark one), through the stylesheet - the
+    # owner prefers this rendering to the palette-only version.
+    tip_bg, tip_fg = ('#e8e8ea', '#1b1b1c') if dark else ('#3a3a3c', '#f2f2f2')
     # QGroupBox is left to Fusion. Styling it through the stylesheet meant
     # drawing its frame and title by hand, and the result was worse than the
     # panel it removed (owner, 2026-08-17: "você está destruindo as
@@ -136,6 +130,8 @@ def apply_style(dark):
     # the primary action of each tab (Run qualification / Generate panels /
     # Next) in the accent colour, like the tk app's Accent.TButton
     app.setStyleSheet(
+        'QToolTip { background: %s; color: %s; border: 1px solid %s;'
+        ' padding: 4px; }\n'
         'QComboBox { combobox-popup: 0; }\n'
         'QTextEdit#ExecutionLog { background: %s; }\n'
         'QTabBar#MainTabs::tab { font-weight: bold; padding: 6px 16px; background: %s; }\n'
@@ -145,7 +141,8 @@ def apply_style(dark):
         'QPushButton#AccentButton:hover { background: %s; }\n'
         'QPushButton#AccentButton:pressed { background: %s; }\n'
         'QPushButton#AccentButton:disabled { background: %s; color: %s; }'
-        % (log_bg, tab_off, tab_on, accent,
+        % (tip_bg, tip_fg, _shift(tip_bg, -40 if dark else 40),
+           log_bg, tab_off, tab_on, accent,
            _shift(accent, 18), _shift(accent, -22),
            '#4a4a4c' if dark else '#c8c8c8', '#8a8a8a' if dark else '#efefef'))
 
