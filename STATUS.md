@@ -2,6 +2,21 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-17 (v12.0 phase 2 COMPLETE) — every interactive review runs under Qt
+
+`fdd9b08`: replicate review (pure mpl + facade wait/help, keep-all stub
+removed), profile phase picking (tk Peak Toplevel → `ui_ask_yes_no`;
+curve pick closes-on-pick + `wait_figure_close`), Check variables
+(`ChooseVariablesDialog` in Qt via facade; same None/[]/list contract).
+Both checkboxes enabled in the Qt shell, profile gated to TSCP Profile.
+Proven headless on the BURACAS cast through both refactored paths; suite
+52/52, ruff clean. The Desktop shortcut was recreated (owner deleted it).
+**The Qt shell now covers the whole qualification workflow.** Remaining:
+phase 3 = Data visualization tab (`QCS_DatabaseView` port — the big one),
+phase 4 = packaging swap. Interactive owner pass still pending for:
+replicate review window (needs a reference series), Depth review,
+adaptive light review under Qt.
+
 ## 2026-08-17 (v12.0 round 3 + Settings window) — phase 2 opened
 
 Round 3 applied (`6613d1c`): 'Remove dismissed data' unchecked+greyed for
