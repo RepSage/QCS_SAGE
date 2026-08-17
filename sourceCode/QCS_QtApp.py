@@ -321,7 +321,7 @@ class QtShell(QMainWindow):
         self.run_hint.setStyleSheet('color: palette(mid);')
         settings = QPushButton('Parameter settings')
         settings.setToolTip(TOOLTIPS['settings_button'])
-        settings.clicked.connect(self._settings_stub)
+        settings.clicked.connect(self._open_settings)
 
         grid.addWidget(gin, 0, 0)
         grid.addWidget(gout, 0, 1)
@@ -390,13 +390,9 @@ class QtShell(QMainWindow):
         else:
             QMessageBox.warning(self, 'User manual', 'Manual not found:\n%s' % path)
 
-    def _settings_stub(self):
-        QMessageBox.information(
-            self, 'Parameter settings',
-            'The Settings window arrives in the next v12.0 build.\n\n'
-            'This build qualifies with the current criteria: the software '
-            'defaults, plus whatever was saved by this same program version '
-            'in qcs_user_settings.json.')
+    def _open_settings(self):
+        from QCS_QtSettings import SettingsDialog
+        SettingsDialog(self).exec()
 
     # ----- drag-and-drop (Qt-native: one handler pair for the whole window) -----
     def dragEnterEvent(self, event):

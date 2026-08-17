@@ -556,41 +556,62 @@ def export_config():
         except Exception as e:
             messagebox.showerror("Error", f"Fail exporting settings:\n{str(e)}")
 
-def save_settings_values():
-    """Updates CONFIG with the current interface values.
-    Returns the list of invalid fields (kept with their previous value),
-    so the caller can warn the user instead of ignoring them silently."""
+def apply_settings_values(tests, settings_text, factors_text):
+    """Toolkit-free core of the Settings save (v12.0 phase 2): `tests` maps
+    test name -> 'ON'/'OFF', `settings_text` maps parameter -> typed string,
+    `factors_text` maps variable -> {'fail','susp','window'} typed strings.
+    Updates CONFIG and returns the list of invalid fields (kept with their
+    previous value), so the caller can warn the user instead of ignoring
+    them silently."""
     invalid = []
+    CONFIG['tsQualityTests'].update(tests)
 
-    # Update tsQualityTests
-    for test, var in CONFIG['tsQualityTests_vars'].items():
-        CONFIG['tsQualityTests'][test] = var.get()
-
-    # Update tsSettings (all numeric: int or float)
-    for param, entry in CONFIG['tsSettings_entries'].items():
-        value = entry.get().strip()
+    # tsSettings are all numeric: int or float
+    for param, value in settings_text.items():
+        value = value.strip()
         try:
             CONFIG['tsSettings'][param] = float(value) if '.' in value else int(value)
         except ValueError:
             invalid.append(param.replace('_', ' '))
 
-    # Update per-variable factors (fail/susp numeric, window '2D/3H/30M/45S/WHOLE')
+    # per-variable factors (fail/susp numeric, window '2D/3H/30M/45S/WHOLE')
     window_format = re.compile(r'^\d+\s*[DHMS]$|^WHOLE$', re.IGNORECASE)
-    for key, entries in CONFIG['tsFactors_entries'].items():
+    for key, entries in factors_text.items():
         try:
-            CONFIG['tsFactors'][key]['fail'] = float(entries['fail'].get())
+            CONFIG['tsFactors'][key]['fail'] = float(entries['fail'])
         except ValueError:
             invalid.append('%s fail factor' % key)
         try:
-            CONFIG['tsFactors'][key]['susp'] = float(entries['susp'].get())
+            CONFIG['tsFactors'][key]['susp'] = float(entries['susp'])
         except ValueError:
             invalid.append('%s susp factor' % key)
-        window_val = entries['window'].get().strip()
+        window_val = entries['window'].strip()
         if window_format.match(window_val):
             CONFIG['tsFactors'][key]['window'] = window_val
         else:
             invalid.append('%s time window' % key)
     return invalid
+
+def persist_quality_criteria():
+    """Writes the current quality criteria to the settings store right away,
+    version-stamped so the load-time version gate still applies."""
+    USER_PREFS.update({
+        'qcs_version': data.QCS_VERSION,
+        'tsQualityTests': dict(CONFIG['tsQualityTests']),
+        'tsSettings': dict(CONFIG['tsSettings']),
+        'tsFactors': {k: dict(v) for k, v in CONFIG['tsFactors'].items()},
+    })
+    save_user_prefs()
+
+def save_settings_values():
+    """tk side: reads the Settings widgets and applies them through the
+    toolkit-free core above."""
+    tests = {t: var.get() for t, var in CONFIG['tsQualityTests_vars'].items()}
+    settings_text = {p: e.get() for p, e in CONFIG['tsSettings_entries'].items()}
+    factors_text = {k: {'fail': es['fail'].get(), 'susp': es['susp'].get(),
+                        'window': es['window'].get()}
+                    for k, es in CONFIG['tsFactors_entries'].items()}
+    return apply_settings_values(tests, settings_text, factors_text)
 
 # ----- UI facade (v12.0 Qt port, phase 0) -----
 # The qualification pipeline talks to the interface ONLY through these hooks,
@@ -1223,8 +1244,28 @@ def create_tests_tab(parent):
     scrollbar.pack(side="right", fill="y")
     theme.enable_mousewheel(canvas)
 
-    # Organize tests into categories
-    test_categories = {
+    test_categories = TEST_CATEGORIES
+    row = 0
+    for category, tests in test_categories.items():
+        lbl = ttk.Label(scrollable_frame, text=category, font=theme.FONT_BOLD)
+        lbl.grid(row=row, column=0, sticky='w', pady=(10,5), columnspan=2)
+        row += 1
+
+        for test in tests:
+            var = StringVar(value=CONFIG['tsQualityTests'][test])
+            CONFIG['tsQualityTests_vars'][test] = var
+
+            cb = ttk.Checkbutton(scrollable_frame, text=test, variable=var,
+                               onvalue="ON", offvalue="OFF")
+            cb.grid(row=row, column=0, sticky='w', padx=20, pady=2)
+
+            # Add tooltip for each test
+            ToolTip(cb, TS_QUALITY_TESTS_TOOLTIPS[test])
+
+            row += 1
+
+# tests grouped as the Settings window shows them (shared by both shells)
+TEST_CATEGORIES = {
         "Sensor range tests": [
             'temperature sensor range',
             'salinity sensor range',
@@ -1281,26 +1322,7 @@ def create_tests_tab(parent):
         "Light tests (HOBO)": [
             'light fouling window'
         ]
-    }
-    
-    row = 0
-    for category, tests in test_categories.items():
-        lbl = ttk.Label(scrollable_frame, text=category, font=theme.FONT_BOLD)
-        lbl.grid(row=row, column=0, sticky='w', pady=(10,5), columnspan=2)
-        row += 1
-        
-        for test in tests:
-            var = StringVar(value=CONFIG['tsQualityTests'][test])
-            CONFIG['tsQualityTests_vars'][test] = var
-            
-            cb = ttk.Checkbutton(scrollable_frame, text=test, variable=var,
-                               onvalue="ON", offvalue="OFF")
-            cb.grid(row=row, column=0, sticky='w', padx=20, pady=2)
-            
-            # Add tooltip for each test
-            ToolTip(cb, TS_QUALITY_TESTS_TOOLTIPS[test])
-            
-            row += 1
+}
 
 # Parameters tab: variable code -> display name and unit (Min/Max share a row)
 _PARAM_NAME = {'temp': 'Temperature', 'sal': 'Salinity', 'cond': 'Conductivity',
@@ -1458,16 +1480,8 @@ def save_settings(window):
         return
     # Persist the quality criteria to disk right away. Before, "Save Settings"
     # only updated the in-memory CONFIG and the values were written to
-    # qcs_user_settings.json only on a RUN. Version-stamped so the load-time
-    # version gate still applies; a fresh machine (no json) still gets the code
-    # defaults, and "Reset to Defaults" keeps working.
-    USER_PREFS.update({
-        'qcs_version': data.QCS_VERSION,
-        'tsQualityTests': dict(CONFIG['tsQualityTests']),
-        'tsSettings': dict(CONFIG['tsSettings']),
-        'tsFactors': {k: dict(v) for k, v in CONFIG['tsFactors'].items()},
-    })
-    save_user_prefs()
+    # qcs_user_settings.json only on a RUN.
+    persist_quality_criteria()
     messagebox.showinfo("Success", "Success saving settings!")
     window.destroy()
 
