@@ -62,6 +62,18 @@ class ErrorLogger(theme.LogConsole):
 
 
 # ----- user preferences: shared with QCS_Main (same json file) -----
+# ----- UI facade (v12.0 Qt port): the WORKFLOW functions talk to the user
+# only through these hooks; the Qt shell assigns its own implementations.
+# GUI-side callbacks (browse, help) keep calling messagebox directly.
+def ui_info(title, message):
+    messagebox.showinfo(title, message)
+
+def ui_warn(title, message):
+    messagebox.showwarning(title, message)
+
+def ui_error(title, message):
+    messagebox.showerror(title, message)
+
 def settings_store_path():
     # must resolve IDENTICALLY to QCS_Main.settings_store_path - both tabs
     # write the same json - so both delegate to theme.writable_app_dir (v11.2:
@@ -537,26 +549,26 @@ def selectInputFolder():
 def saveInputSettings():
     # validation with clear warnings before closing the window
     if instrument_combobox.get() not in ('Seaguard', 'HOBO'):
-        messagebox.showwarning("Warning", "Select the instrument that produced the files\n('Instrument' field).")
+        ui_warn("Warning", "Select the instrument that produced the files\n('Instrument' field).")
         return
     if join.get():
         if not inputPath_entry.get().strip() or not os.path.isdir(inputPath_entry.get().strip()):
-            messagebox.showwarning("Warning", "To build the database from a folder, select a valid\ninput folder ('Input Path' field).")
+            ui_warn("Warning", "To build the database from a folder, select a valid\ninput folder ('Input Path' field).")
             return
         if not outputName_entry.get().strip():
-            messagebox.showwarning("Warning", "Define a name for the generated database\n('Output Name' field).")
+            ui_warn("Warning", "Define a name for the generated database\n('Output Name' field).")
             return
     else:
         db_file = fileNames_entry.get().strip()
         if not db_file:
-            messagebox.showwarning("Warning", "Select the database file (.xlsx) or check\n'Build database from a folder' to create a new one.")
+            ui_warn("Warning", "Select the database file (.xlsx) or check\n'Build database from a folder' to create a new one.")
             return
         first_file = db_file.split(';')[0]
         if not os.path.isfile(first_file):
-            messagebox.showerror("Error", "File not found:\n%s" % first_file)
+            ui_error("Error", "File not found:\n%s" % first_file)
             return
     if not outputPath_entry.get().strip() or not os.path.isdir(outputPath_entry.get().strip()):
-        messagebox.showwarning("Warning", "Select a valid output folder\n('Output Path' field).")
+        ui_warn("Warning", "Select a valid output folder\n('Output Path' field).")
         return
 
     inputSettings['databaseFileName'] = fileNames_entry.get()
@@ -603,7 +615,7 @@ def saveDataViewSettings():
                 dataViewSettings['longitude'] = lon_ts
                 dataViewSettings['tsParam'] = tsParam_combobox.get()
             except ValueError:
-                messagebox.showwarning("Warning",
+                ui_warn("Warning",
                                        "The T-S Diagram needs a valid Latitude and Longitude.\n\n"
                                        "Fill both (decimal degrees, e.g. -17.5 and -40.0) or uncheck\n"
                                        "'T-S Diagram'. The diagram will be skipped this run.")
@@ -631,7 +643,7 @@ def saveDataViewSettings():
                 dataViewSettings['xAxisStart'] = x_start
                 dataViewSettings['xAxisEnd'] = x_end
             except Exception:
-                messagebox.showwarning("Warning",
+                ui_warn("Warning",
                                        "Invalid X-axis time window.\n\n"
                                        "Fill BOTH fields using DD/MM/YYYY HH:MM\n"
                                        "(end after start), e.g. 15/04/2019 09:00,\n"
@@ -652,7 +664,7 @@ def saveDataViewSettings():
                 dataViewSettings['depthAxisMin'] = d_min
                 dataViewSettings['depthAxisMax'] = d_max
             except Exception:
-                messagebox.showwarning("Warning",
+                ui_warn("Warning",
                                        "Invalid depth-axis range.\n\n"
                                        "Fill BOTH fields with numbers (max > min), e.g. 0 and 50,\n"
                                        "or leave both empty to fit the data automatically.")
@@ -736,7 +748,7 @@ def generatePanels():
     years_str = ', '.join(str(y) for y in available_years)
     selected_years = [y for y in dataViewSettings.get('filterByYears', []) if y in available_years]
     if not selected_years:
-        messagebox.showwarning("No year selected",
+        ui_warn("No year selected",
                                "Check at least one year in 'Filter by year' and click "
                                "'Generate panels' again.\n\n"
                                "Years available in this database:\n%s" % years_str)
@@ -1087,7 +1099,7 @@ def load_database():
         else:
             file_paths = [p.strip() for p in inputSettings.get('databaseFileName', '').split(';') if p.strip()]
             if not file_paths:
-                messagebox.showerror("Error", "Select a database file or provide a valid input folder.")
+                ui_error("Error", "Select a database file or provide a valid input folder.")
                 return None
             # the FILE is the truth: if the selected instrument does not match
             # the first file's layout, auto-correct it instead of refusing
@@ -1113,10 +1125,10 @@ def load_database():
             database, db_build_messages = data.build_database(instrument, file_list=file_paths)
     except ValueError as e:
         # the engine messages are already self-labeled ('build_database: ...')
-        messagebox.showerror("Error", str(e))
+        ui_error("Error", str(e))
         return None
     except Exception as e:
-        messagebox.showerror("Error", "Could not build the database:\n%s" % e)
+        ui_error("Error", "Could not build the database:\n%s" % e)
         return None
     # db_build_messages are shown in the Execution log by build_step2 (below),
     # so they are not printed here (that would duplicate them via the log redirect)
@@ -1131,7 +1143,7 @@ def load_database():
         os.makedirs(databaseViewPath, exist_ok=True)
         os.chdir(databaseViewPath)
     except Exception as e:
-        messagebox.showerror("Error", "Could not create the output folder:\n%s\n\nDetails: %s" % (inputSettings.get('outputPath', ''), e))
+        ui_error("Error", "Could not create the output folder:\n%s\n\nDetails: %s" % (inputSettings.get('outputPath', ''), e))
         return None
 
     if inputSettings.get('joinFiles', False) == True:
@@ -1907,7 +1919,7 @@ def _go_step2():
     global database, _db_msgs_logged
     inputSettings.clear()
     if not saveInputSettings():
-        return  # validation failed (a warning was already shown)
+        return False  # validation failed (a warning was already shown)
     if (_preview_cache['database'] is not None
             and _preview_cache['key'] == _settings_key()):
         database = _preview_cache['database']  # already built by Preview
@@ -1915,7 +1927,7 @@ def _go_step2():
         _db_msgs_logged = False
         database = load_database()
     if database is None:
-        return  # error already shown; stay on Step 1
+        return False  # error already shown; stay on Step 1
     _update_recents()
     dataViewSettings.clear()
     for child in _step2_frame.winfo_children():
@@ -1923,6 +1935,7 @@ def _go_step2():
     build_step2(_step2_frame)
     _step1_frame.pack_forget()
     _step2_frame.pack(fill='both', expand=True)
+    return True   # the Qt shell mirrors Step 2 from the module state on True
 
 def _go_step1():
     """Back: return to Step 1 to pick another database."""

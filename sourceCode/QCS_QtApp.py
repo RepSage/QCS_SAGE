@@ -8,13 +8,12 @@ The tk pipeline closures are materialized once on a hidden tk root (the same
 pattern the batch drivers use); no tk window is ever shown and no tk event
 loop runs - every in-run interaction goes through the Qt overrides below.
 
-Working in this build: the whole qualification workflow - Seaguard
-single/batch/Doppler/Profile (including 'Select profile data' phase picking),
-CO2 merge, HOBO single and replicates in BOTH light modes with the replicate
-review, the mooring Depth review, 'Check variables' manual cut, the Settings
-window, drag-and-drop, preferences (shared qcs_user_settings.json). The
-review windows are pure matplotlib and open as Qt windows. Not yet ported
-(phase 3): the Data visualization tab.
+Working in this build: the whole program - the qualification workflow
+(Seaguard single/batch/Doppler/Profile with phase picking, CO2 merge, HOBO
+single and replicates in both light modes with the replicate review, Depth
+review, 'Check variables' manual cut), the Settings window, and the Data
+visualization tab (QCS_QtViz remote-controls the real DatabaseView wizard).
+The review windows are pure matplotlib and open as Qt windows.
 
 Run with:  QCS_v12_dev.bat  (Desktop; packaging/v12_env venv, PySide6 6.8.3).
 Master still ships the tk app - this shell is the port in progress.
@@ -40,6 +39,9 @@ _out = theme.install_output_redirect()
 import QCS_QtTheme as qtheme
 import QCS_Main as qm
 import QCS_DataHandler as data
+# installs the tk crash handler at import; main() installs the Qt one after
+import QCS_DatabaseView as dbv
+from QCS_QtViz import VisualizationTab
 
 TOOLTIPS = qm.TOOLTIPS             # single source: the real texts (v11.6.1)
 
@@ -143,7 +145,7 @@ def qt_choose_variables(candidates, root=None):
 class QtShell(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('QCS - Quality Control System %s  (v12.0 shell, phase 1)'
+        self.setWindowTitle('QCS - Quality Control System %s  (v12.0 shell)'
                             % data.QCS_VERSION)
         self.setWindowIcon(_app_icon())
         self.resize(1180, 760)
@@ -154,13 +156,17 @@ class QtShell(QMainWindow):
 
         tabs = QTabWidget()
         tabs.addTab(self._qualification_tab(), 'Data qualification')
-        tabs.addTab(self._visualization_stub(), 'Data visualization')
+        self.viz_tab = None               # attached by main() after the bootstrap
+        self._viz_placeholder = QWidget()
+        tabs.addTab(self._viz_placeholder, 'Data visualization')
+        tabs.currentChanged.connect(self._tab_changed)
+        self.tabs = tabs
         self.setCentralWidget(tabs)
 
         self.log_dock = qtheme.LogDock(self)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
         self._menus()
-        self.statusBar().showMessage('v12.0 phase 1 - the tk app on master remains the released interface')
+        self.statusBar().showMessage('v12.0 development shell - the tk app on master remains the released interface')
         # pipeline progress, bottom right: indeterminate while a single run is
         # busy, and a real fraction on the batch/replicate markers the
         # pipeline already logs ('=== File k/n ===' / '=== Replicate k/n ===')
@@ -391,16 +397,22 @@ class QtShell(QMainWindow):
         self._update_run_state()
         return w
 
-    def _visualization_stub(self):
-        w = QWidget()
-        v = QVBoxLayout(w)
-        v.addStretch()
-        lab = QLabel('The Data visualization tab arrives in a later v12.0 build.\n'
-                     'Until then, use the released (tk) app for visualization.')
-        lab.setAlignment(Qt.AlignCenter)
-        v.addWidget(lab)
-        v.addStretch()
-        return w
+    def attach_visualization_tab(self):
+        """Called by main() once the hidden tk pipeline (which the tab remote-
+        controls) exists."""
+        self.viz_tab = VisualizationTab(self)
+        idx = self.tabs.indexOf(self._viz_placeholder)
+        self.tabs.removeTab(idx)
+        self.tabs.insertTab(idx, self.viz_tab, 'Data visualization')
+
+    def _tab_changed(self, _index):
+        # hand a just-qualified file to the Visualization tab, exactly like
+        # the tk shell does on its tab switch
+        if (self.viz_tab is not None and self.tabs.currentWidget() is self.viz_tab
+                and qm.PENDING_VIZ_PREFILL):
+            dbv.apply_pending_prefill(qm.PENDING_VIZ_PREFILL)
+            qm.PENDING_VIZ_PREFILL = None
+            self.viz_tab.refresh_step1()
 
     def _menus(self):
         mb = self.menuBar()
@@ -449,7 +461,12 @@ class QtShell(QMainWindow):
     def dropEvent(self, event):
         paths = [u.toLocalFile() for u in event.mimeData().urls()
                  if u.isLocalFile()]
-        if paths:
+        if not paths:
+            return
+        # drops land in the ACTIVE tab's file field, like the tk shell
+        if self.viz_tab is not None and self.tabs.currentWidget() is self.viz_tab:
+            self.viz_tab.apply_selected_files(paths)
+        else:
             self.apply_selected_files(paths)
 
     # ----- file selection (port of QCS_Main.apply_selected_files) -----
@@ -761,6 +778,11 @@ def _bootstrap_tk_pipeline(shared_log):
     frame = qm.ttk.Frame(root)
     frame.pack()
     qm.build_qualification_tab(frame, root, shared_log=shared_log)
+    # the DatabaseView wizard too: its Step 1/2 stay the authoritative state
+    # that the Qt Visualization tab remote-controls (see QCS_QtViz)
+    viz_frame = qm.ttk.Frame(root)
+    viz_frame.pack()
+    dbv.build_visualization_tab(viz_frame, root, shared_log=shared_log)
     return root
 
 
@@ -779,6 +801,9 @@ def _install_qt_facade(shell):
     qm.wait_figure_close = wait_figure_close
     data._show_and_wait = lambda fig, tk_root=None: wait_figure_close(fig)
     theme.style_plot_window = _qt_style_plot_window   # app icon on plot windows
+    dbv.ui_info = lambda t, m: QMessageBox.information(shell, t, m)
+    dbv.ui_warn = lambda t, m: QMessageBox.warning(shell, t, m)
+    dbv.ui_error = lambda t, m: QMessageBox.critical(shell, t, m)
 
 
 def main():
@@ -793,6 +818,7 @@ def main():
     _bootstrap_tk_pipeline(shell.log_dock)  # also runs restore prefs + version gate
     _install_qt_facade(shell)
     shell.restore_prefs()
+    shell.attach_visualization_tab()       # remote-controls the hidden wizard
     if '--shot' in sys.argv:
         # screenshot mode (no dialogs, window never shown): grab() renders the
         # laid-out widget with the real platform fonts/style

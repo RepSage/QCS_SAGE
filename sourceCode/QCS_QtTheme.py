@@ -85,6 +85,9 @@ class LogDock(QDockWidget):
             elif 'close' in btn.objectName():
                 btn.setToolTip(LOG_TOOLTIPS['close'])
 
+    def clear(self):
+        self.text.clear()
+
     def log(self, message):
         head = message.lstrip().lower()
         kind = ('error' if head.startswith(('error', 'critical')) else
