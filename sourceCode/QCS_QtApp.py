@@ -179,24 +179,32 @@ class QtShell(QMainWindow):
     # ----- logging -----
     def log_line(self, message):
         # the pipeline's own markers drive the progress bar: every run logs
-        # 'Stage k/5' (value + text), and batches/replicates prefix the text
-        # with their '=== File k/n ===' / '=== Replicate k/n ===' scope
+        # 'Stage k/5', and batches/replicates scope it with '=== File k/n ==='
+        # / '=== Replicate k/n ==='. Progress is CONTINUOUS across the whole
+        # run: file k of n at stage s sits at (k-1)*5 + s out of n*5, so
+        # finishing the first of two replicates reads 50%, not a reset.
         msg = message.strip()
         m = re.match(r'=== (File|Replicate) (\d+)/(\d+)', msg)
         if m:
-            self._run_scope = '%s %s/%s' % (m.group(1), m.group(2), m.group(3))
-            self.progress.setRange(0, 5)
-            self.progress.setValue(0)
-            self.progress.setFormat(self._run_scope)
+            kind, k, n = m.group(1), int(m.group(2)), int(m.group(3))
+            self._run_scope = (kind, k, n)
+            self.progress.setRange(0, n * 5)
+            self.progress.setValue((k - 1) * 5)
+            self.progress.setFormat('%s %d/%d' % (kind, k, n))
         else:
             s = re.match(r'Stage (\d)/5', msg)
             if s:
                 stage = int(s.group(1))
-                self.progress.setRange(0, 5)
-                self.progress.setValue(stage)
-                self.progress.setFormat(
-                    '%s - Stage %d/5' % (self._run_scope, stage)
-                    if self._run_scope else 'Stage %d/5' % stage)
+                if self._run_scope:
+                    kind, k, n = self._run_scope
+                    self.progress.setRange(0, n * 5)
+                    self.progress.setValue((k - 1) * 5 + stage)
+                    self.progress.setFormat('%s %d/%d - Stage %d/5'
+                                            % (kind, k, n, stage))
+                else:
+                    self.progress.setRange(0, 5)
+                    self.progress.setValue(stage)
+                    self.progress.setFormat('Stage %d/5' % stage)
         self.log_dock.log(message)
         QApplication.processEvents()   # progress shows while the pipeline runs
 
@@ -717,9 +725,12 @@ class QtShell(QMainWindow):
         if busy:
             self._run_scope = None
             self.progress.setRange(0, 0)   # indeterminate until the first Stage marker
-            QApplication.setOverrideCursor(Qt.WaitCursor)
+            # busy cursor on the MAIN window only (like the tk watch cursor):
+            # an app-wide override cursor kept spinning over the interactive
+            # review windows and dialogs, reading as a hang
+            self.setCursor(Qt.WaitCursor)
         else:
-            QApplication.restoreOverrideCursor()
+            self.unsetCursor()
             self._update_run_state()
 
     def _update_regions(self, _macro=None):

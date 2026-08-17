@@ -186,10 +186,16 @@ def toggle_input_mode():
             fileNames_entry.insert(0, _input_mode_cache['files'])
         set_disabled_style(inputPath_entry)
         set_disabled_style(browse_input_btn)
-        # single-file mode does not use an output name: leave it blank + disabled
-        outputName_entry.config(state='normal')
-        outputName_entry.delete(0, END)
-        set_disabled_style(outputName_entry)
+        n_files = len([p for p in fileNames_entry.get().split(';') if p.strip()])
+        if n_files > 1:
+            # several qualified files build a NEW unified database (v12.0):
+            # the user names it (and picks where it is saved)
+            set_enabled_style(outputName_entry)
+        else:
+            # a single file needs no output name: blank + disabled
+            outputName_entry.config(state='normal')
+            outputName_entry.delete(0, END)
+            set_disabled_style(outputName_entry)
     # the Preview button applies to FOLDER mode only (it scans/builds a folder)
     if preview_btn is not None:
         if join.get():
@@ -487,17 +493,23 @@ def apply_selected_files(filenames):
     join.set(False)
     toggle_input_mode()
     USER_PREFS['dbv_last_db_dir'] = os.path.dirname(filenames[0])
-    # auto-fill Output Path with the qualification output root of the file
-    out_root = _default_output_root(filenames[0])
-    outputPath_entry.delete(0, END)
-    outputPath_entry.insert(0, out_root)
-    # remember an output name (used only if the user later switches to
-    # 'Build database from a folder'); the field itself stays blank/disabled
-    # in single-file mode
-    out_name = os.path.splitext(os.path.basename(filenames[0]))[0]
-    USER_PREFS['dbv_output_path'] = out_root
-    USER_PREFS['dbv_output_name'] = out_name
-    USER_PREFS['dbv_last_output_dir'] = out_root
+    if len(filenames) > 1:
+        # several files build a NEW unified database (v12.0): the output
+        # fields start EMPTY on purpose - the user picks where it is saved
+        # and names it (the Qt shell shows instructive placeholders there)
+        outputPath_entry.delete(0, END)
+        outputName_entry.config(state='normal')
+        outputName_entry.delete(0, END)
+    else:
+        # auto-fill Output Path with the qualification output root of the
+        # file: the DataView generated HERE lands beside the qualification's
+        # own plots ('DatabaseView' vs 'QCS DataView ...' subfolders)
+        out_root = _default_output_root(filenames[0])
+        outputPath_entry.delete(0, END)
+        outputPath_entry.insert(0, out_root)
+        USER_PREFS['dbv_output_path'] = out_root
+        USER_PREFS['dbv_last_output_dir'] = out_root
+        USER_PREFS['dbv_output_name'] = os.path.splitext(os.path.basename(filenames[0]))[0]
     save_user_prefs()
     autodetect_instrument(filenames[0])
 
@@ -566,6 +578,11 @@ def saveInputSettings():
         first_file = db_file.split(';')[0]
         if not os.path.isfile(first_file):
             ui_error("Error", "File not found:\n%s" % first_file)
+            return
+        if (len([p for p in db_file.split(';') if p.strip()]) > 1
+                and not outputName_entry.get().strip()):
+            ui_warn("Warning", "Several files build a NEW unified database -\n"
+                    "name it ('Output name' field).")
             return
     if not outputPath_entry.get().strip() or not os.path.isdir(outputPath_entry.get().strip()):
         ui_warn("Warning", "Select a valid output folder\n('Output Path' field).")
@@ -1123,6 +1140,10 @@ def load_database():
             except Exception:
                 pass          # unreadable head: let build_database report it
             database, db_build_messages = data.build_database(instrument, file_list=file_paths)
+            # several files = a NEW unified database: SAVE it, like the
+            # folder-scan mode always did (v12.0 - before, the combination
+            # existed only in memory)
+            inputSettings['writeUnified'] = len(file_paths) > 1
     except ValueError as e:
         # the engine messages are already self-labeled ('build_database: ...')
         ui_error("Error", str(e))
@@ -1146,7 +1167,8 @@ def load_database():
         ui_error("Error", "Could not create the output folder:\n%s\n\nDetails: %s" % (inputSettings.get('outputPath', ''), e))
         return None
 
-    if inputSettings.get('joinFiles', False) == True:
+    if (inputSettings.get('joinFiles', False) == True
+            or inputSettings.get('writeUnified', False)):
         try:
             data.save_excel_autofit(database, inputSettings['outputFileName'] + '.xlsx')
             print('Info: unified database saved to %s.xlsx'

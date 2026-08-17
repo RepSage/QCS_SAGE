@@ -39,6 +39,10 @@ class VisualizationTab(QWidget):
     def __init__(self, shell):
         super().__init__()
         self.shell = shell
+        # the folder-scan mode has no Qt surface (v12.0: several dropped
+        # files already build a unified database) - pin file mode
+        dbv.join.set(False)
+        dbv.toggle_input_mode()
         v = QVBoxLayout(self)
         self.stack = QStackedWidget()
         self.stack.addWidget(self._build_step1())
@@ -59,6 +63,9 @@ class VisualizationTab(QWidget):
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         self.files = QLineEdit()
+        self.files.setPlaceholderText(
+            'Select or drop qualified file(s) here - several files build a '
+            'unified database...')
         self.files.setToolTip(TOOLTIPS['database_files'])
         self.files.textEdited.connect(
             lambda t: _tk_set_entry(dbv.fileNames_entry, t))
@@ -70,27 +77,6 @@ class VisualizationTab(QWidget):
         h = QWidget()
         h.setLayout(row)
         fin.addRow('Database file(s):', h)
-
-        self.join = QCheckBox('Build database from a folder')
-        self.join.setToolTip(TOOLTIPS['join_files'])
-        self.join.toggled.connect(self._join_toggled)
-        fin.addRow(self.join)
-
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        self.input_path = QLineEdit()
-        self.input_path.setToolTip(TOOLTIPS['input_path'])
-        self.input_path.textEdited.connect(
-            lambda t: _tk_set_entry(dbv.inputPath_entry, t))
-        bi = QPushButton('Browse...')
-        bi.setToolTip(TOOLTIPS['input_path'])
-        bi.clicked.connect(self._browse_input_folder)
-        row.addWidget(self.input_path)
-        row.addWidget(bi)
-        self._input_browse = bi
-        h = QWidget()
-        h.setLayout(row)
-        fin.addRow('Input folder:', h)
 
         self.sort = QCheckBox('Sort data chronologically')
         self.sort.setToolTip(TOOLTIPS['sort_time'])
@@ -104,17 +90,18 @@ class VisualizationTab(QWidget):
             lambda t: dbv.instrument_combobox.set(t))
         fin.addRow('Instrument:', self.instrument)
 
+        self.recent = QComboBox()
+        self.recent.setToolTip('Recent file selections\n(pick one to fill the fields above)')
+        self.recent.activated.connect(self._apply_recent)
+        fin.addRow('Recent:', self.recent)
+
         gout = QGroupBox('Output settings')
         fout = QFormLayout(gout)
-        self.out_name = QLineEdit()
-        self.out_name.setToolTip(TOOLTIPS['output_name'])
-        self.out_name.textEdited.connect(
-            lambda t: _tk_set_entry(dbv.outputName_entry, t))
-        fout.addRow('Output name:', self.out_name)
-
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         self.out_path = QLineEdit()
+        self.out_path.setPlaceholderText(
+            'Select where the unified database will be saved...')
         self.out_path.setToolTip(TOOLTIPS['output_path'])
         self.out_path.textEdited.connect(
             lambda t: _tk_set_entry(dbv.outputPath_entry, t))
@@ -126,18 +113,11 @@ class VisualizationTab(QWidget):
         h = QWidget()
         h.setLayout(row)
         fout.addRow('Output folder:', h)
-
-        gprev = QGroupBox('Database preview')
-        pv = QHBoxLayout(gprev)
-        self.preview_btn = QPushButton('Preview')
-        self.preview_btn.setToolTip(
-            "Builds the database now and shows a summary below\n"
-            "(sites, period, rows); 'Next >' reuses this build")
-        self.preview_btn.clicked.connect(self._preview)
-        self.preview_label = QLabel('')
-        self.preview_label.setWordWrap(True)
-        pv.addWidget(self.preview_btn)
-        pv.addWidget(self.preview_label, stretch=1)
+        self.out_name = QLineEdit()
+        self.out_name.setToolTip(TOOLTIPS['output_name'])
+        self.out_name.textEdited.connect(
+            lambda t: _tk_set_entry(dbv.outputName_entry, t))
+        fout.addRow('Output name:', self.out_name)
 
         actions = QHBoxLayout()
         actions.addStretch()
@@ -151,8 +131,7 @@ class VisualizationTab(QWidget):
 
         grid.addWidget(gin, 0, 0)
         grid.addWidget(gout, 0, 1)
-        grid.addWidget(gprev, 1, 0, 1, 2)
-        grid.addWidget(ah, 2, 0, 1, 2)
+        grid.addWidget(ah, 1, 0, 1, 2)
         grid.setRowStretch(0, 1)
         qtheme.bold_form_labels(fin)
         qtheme.bold_form_labels(fout)
@@ -160,26 +139,33 @@ class VisualizationTab(QWidget):
 
     def refresh_step1(self):
         pairs = ((self.files, dbv.fileNames_entry),
-                 (self.input_path, dbv.inputPath_entry),
                  (self.out_name, dbv.outputName_entry),
                  (self.out_path, dbv.outputPath_entry))
         for qt, tk in pairs:
             with QSignalBlocker(qt):
                 qt.setText(tk.get())
                 qt.setEnabled(_tk_enabled(tk))
-        with QSignalBlocker(self.join):
-            self.join.setChecked(bool(dbv.join.get()))
+        # the name is only used when several files build a NEW database;
+        # the placeholder says which situation the field is in
+        self.out_name.setPlaceholderText(
+            'Name the new unified database...' if self.out_name.isEnabled()
+            else 'Not needed for a single file')
         with QSignalBlocker(self.sort):
             self.sort.setChecked(bool(dbv.sort.get()))
         with QSignalBlocker(self.instrument):
             self.instrument.setCurrentText(dbv.instrument_combobox.get())
-        self.preview_btn.setEnabled(_tk_enabled(dbv.preview_btn))
-        self.preview_label.setText(dbv._preview_var.get())
+        with QSignalBlocker(self.recent):
+            self.recent.clear()
+            self.recent.addItems([dbv._recent_display(r)
+                                  for r in dbv.USER_PREFS.get('dbv_recent', [])])
+            self.recent.setCurrentIndex(-1)
 
-    def _join_toggled(self, on):
-        dbv.join.set(bool(on))
-        dbv.toggle_input_mode()
-        self.refresh_step1()
+    def _apply_recent(self, index):
+        recents = dbv.USER_PREFS.get('dbv_recent', [])
+        if 0 <= index < len(recents):
+            files = [p for p in recents[index]['files'].split(';') if p.strip()]
+            if files:
+                self.apply_selected_files(files)
 
     def _browse_files(self):
         names, _f = QFileDialog.getOpenFileNames(
@@ -193,23 +179,12 @@ class VisualizationTab(QWidget):
         dbv.apply_selected_files(names)   # fills tk fields + autodetects
         self.refresh_step1()
 
-    def _browse_input_folder(self):
-        path = QFileDialog.getExistingDirectory(
-            self, 'Select the folder to scan', self.input_path.text())
-        if path:
-            _tk_set_entry(dbv.inputPath_entry, path)
-            self.refresh_step1()
-
     def _browse_output_folder(self):
         path = QFileDialog.getExistingDirectory(
             self, 'Select output folder', self.out_path.text())
         if path:
             _tk_set_entry(dbv.outputPath_entry, path)
             self.refresh_step1()
-
-    def _preview(self):
-        dbv.preview_database()
-        self.refresh_step1()
 
     def _next(self):
         if dbv._go_step2():
