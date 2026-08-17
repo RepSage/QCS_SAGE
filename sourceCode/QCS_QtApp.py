@@ -277,6 +277,9 @@ class QtShell(QMainWindow):
         self.remove_suspect = QCheckBox('Remove suspect data')
         self.remove_suspect.setToolTip(TOOLTIPS['remove_suspect'])
         vf.addWidget(self.remove_suspect)
+        self.remove_dismissed = QCheckBox('Remove dismissed data')
+        self.remove_dismissed.setToolTip(TOOLTIPS['remove_dismissed'])
+        vf.addWidget(self.remove_dismissed)
         fout.addRow(gfil)
 
         gsum = QGroupBox('Selection summary')
@@ -610,6 +613,7 @@ class QtShell(QMainWindow):
             'check_variables': False,       # phase 2 (checkbox disabled above)
             'remove_bad': self.remove_bad.isChecked(),
             'remove_suspect': self.remove_suspect.isChecked(),
+            'remove_dismissed': self.remove_dismissed.isChecked(),
             'co2_file': self._co2_file,
             'site': self.site_edit.text(),
             'macroregion': self.macroregion.currentText(),
@@ -672,6 +676,7 @@ class QtShell(QMainWindow):
             self.light_adaptive.setChecked(True)
         self.remove_bad.setChecked(bool(p.get('remove_bad', False)))
         self.remove_suspect.setChecked(bool(p.get('remove_suspect', False)))
+        self.remove_dismissed.setChecked(bool(p.get('remove_dismissed', False)))
         if p.get('macroregion') in qm.REGIONS:
             self.macroregion.setCurrentText(p['macroregion'])
         regions = [r[0] for r in qm.REGIONS.get(self.macroregion.currentText(), [])]

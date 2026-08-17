@@ -232,6 +232,7 @@ TOOLTIPS = {
     'output_format': "Qualified table format: .xlsx or .csv\n(report files are always .xlsx)",
     'remove_bad': "Blanks values flagged BAD (4) in the output\n(rows and timestamps are kept)",
     'remove_suspect': "Blanks values flagged SUSPECT (3) in the output\n(rows and timestamps are kept)",
+    'remove_dismissed': "Drops rows where EVERY variable was dismissed - DISMISSED (5) -\nfrom the output (e.g. the Depth review's whole-row cuts)\nSingle-variable dismissals keep their row: it still carries\nthe other variables' data",
     'site_code': "Site identification code, stamped on every row\n(max %d characters)" % SITE_CODE_MAX,
     'run_button': "Qualifies the selected file(s) with the current parameters",
     'settings_button': "Opens the quality tests and parameters window",
@@ -648,6 +649,7 @@ def read_input_widgets():
         'check_variables': check_variables.get(),
         'remove_bad': remove_bad.get(),
         'remove_suspect': remove_suspect.get(),
+        'remove_dismissed': remove_dismissed.get(),
         'co2_file': _co2_file,
         'site': siteSelect_entry.get(),
         'macroregion': macroregion_combobox.get(),
@@ -728,6 +730,7 @@ def apply_input_settings(vals):
     OUTPUT['output_file_name'] = vals['out_name'] + OUTPUT['output_data_format']
     OUTPUT['remove_bad'] = vals['remove_bad']
     OUTPUT['remove_suspect'] = vals['remove_suspect']
+    OUTPUT['remove_dismissed'] = vals.get('remove_dismissed', False)
 
     # optional dissolved-CO2 file (Seaguard only; cleared for HOBO/batch by the UI)
     if vals['co2_file'] and not os.path.isfile(vals['co2_file']):
@@ -779,6 +782,7 @@ def apply_input_settings(vals):
         'output_format': OUTPUT['output_data_format'],
         'remove_bad': OUTPUT['remove_bad'],
         'remove_suspect': OUTPUT['remove_suspect'],
+        'remove_dismissed': OUTPUT['remove_dismissed'],
         'site_code': INPUT['site'],
         'light_cutoff_mode': vals['light_cutoff_mode'],
         'macroregion': INPUT['macroregion'],
@@ -1107,6 +1111,7 @@ def restore_user_prefs():
     check_variables.set(p.get('check_variables', False))
     remove_bad.set(p.get('remove_bad', False))
     remove_suspect.set(p.get('remove_suspect', False))
+    remove_dismissed.set(p.get('remove_dismissed', False))
     update_profile_checkbox_state()
     update_inputtype_state()  # reapplies the input-type field states if applicable
     # Restore the quality CRITERIA only if they were saved by the SAME program
@@ -1591,6 +1596,7 @@ def build_qualification_tab(container, root, shared_log=None):
     global light_cutoff_mode, light_mode_label, light_mode_adaptive, light_mode_fixed
     global profile_check, check_variables, var_check, outputPath_entry, browse_output_btn, outputName_entry
     global outputFilesFormat_combobox, filter_frame, remove_bad, bad_check, remove_suspect, suspect_check
+    global remove_dismissed, dismissed_check
     global siteSelect_entry, macroregion_label, macroregion_combobox, region_label, region_combobox, update_regions
     global _last_seaguard, update_inputtype_state, action_frame, settings_btn, run_button
     global log_console, log_line, _error_location, review_light_window, review_replicates
@@ -1809,6 +1815,11 @@ def build_qualification_tab(container, root, shared_log=None):
     suspect_check = ttk.Checkbutton(filter_frame, text="Remove suspect data", variable=remove_suspect)
     suspect_check.pack(anchor='w', pady=2)
     ToolTip(suspect_check, TOOLTIPS['remove_suspect'])
+
+    remove_dismissed = BooleanVar(value=False)
+    dismissed_check = ttk.Checkbutton(filter_frame, text="Remove dismissed data", variable=remove_dismissed)
+    dismissed_check.pack(anchor='w', pady=2)
+    ToolTip(dismissed_check, TOOLTIPS['remove_dismissed'])
 
     # Macroregion + region of collection: provide a representative latitude/longitude
     # used only to RUN the qualification - pressure->depth and density inversion
@@ -2870,6 +2881,18 @@ def build_qualification_tab(container, root, shared_log=None):
         # qualification and, in the DatabaseView, the T-S diagram).
         qualified_data['Site'] = INPUT['site']
         qualified_data['QCS version'] = data.QCS_VERSION
+
+        # Remove dismissed data (v12.0): rows dismissed AS A WHOLE (the Depth
+        # review's whole-row cuts) are dropped from the sheet - their values
+        # are already all blank, only the flag-5 row remained. Per-variable
+        # dismissals keep their row: it still carries the other variables'
+        # data. Sample numbers keep their original values, so the dropped
+        # rows stay visible as gaps in the numbering.
+        if OUTPUT.get('remove_dismissed') and manual_dismiss_rows:
+            keep = [i for i in range(len(qualified_data)) if i not in manual_dismiss_rows]
+            qualified_data = qualified_data.iloc[keep].reset_index(drop=True)
+            log_line('Remove dismissed data: %d fully dismissed row(s) dropped from the output.'
+                     % len(manual_dismiss_rows))
 
         # HOBO gets its own output layout (temperature + light only, same metadata
         # block); Seaguard keeps the full TSCP layout. The two are never stackable.
