@@ -156,9 +156,11 @@ class QtShell(QMainWindow):
 
         self.input_type = QComboBox()
         self.input_type.addItems(['Seaguard', 'HOBO'])
+        self.input_type.setPlaceholderText('Select instrument')
+        self.input_type.setCurrentIndex(-1)   # no instrument until a file (or prefs) says so
         self.input_type.setToolTip(TOOLTIPS['input_type'])
         self.input_type.currentTextChanged.connect(self._input_type_changed)
-        fin.addRow('Input type:', self.input_type)
+        fin.addRow('Instrument:', self.input_type)
 
         self.data_type = QComboBox()
         self.data_type.addItems(['TSCP Profile', 'TSCP Mooring', 'TSCP Doppler'])
@@ -188,6 +190,10 @@ class QtShell(QMainWindow):
         ih = QWidget()
         ih.setLayout(info_row)
         fin.addRow('Replicates:', ih)
+        # the row only exists while there is a HOBO selection to count
+        self._fin = fin
+        self._replicates_holder = ih
+        fin.setRowVisible(ih, False)
 
         lm = QHBoxLayout()
         lm.setContentsMargins(0, 0, 0, 0)
@@ -417,7 +423,7 @@ class QtShell(QMainWindow):
             print('Info: could not auto-detect the input type from the file header; '
                   'kept "%s" (editable).' % self.input_type.currentText())
         if self.input_type.currentText() == 'HOBO':
-            self.replicate_value.setText(str(len(names)))
+            self._set_replicates(str(len(names)))
         elif len(names) > 1:
             print('Info: %d files selected - each will be qualified independently, '
                   'in sequence (one _QLF output per file).' % len(names))
@@ -516,6 +522,10 @@ class QtShell(QMainWindow):
         self._update_co2_controls()
 
     # ----- field-state machine (port of update_inputtype_state) -----
+    def _set_replicates(self, text):
+        self.replicate_value.setText(text)
+        self._fin.setRowVisible(self._replicates_holder, bool(text))
+
     def _input_type_changed(self, itype):
         if itype == 'HOBO':
             if self.data_type.currentText():
@@ -526,16 +536,30 @@ class QtShell(QMainWindow):
             self.gmt_check.setChecked(False)     # HOBO exports are already local
             self.gmt_check.setEnabled(False)
             if not self.replicate_value.text():
-                self.replicate_value.setText('1')
+                self._set_replicates('1')
+            else:
+                self._set_replicates(self.replicate_value.text())
             self.light_adaptive.setEnabled(True)
             self.light_fixed.setEnabled(True)
-        else:
+        elif itype == 'Seaguard':
             if self._last_seaguard.get('data_type'):
                 self.data_type.setCurrentText(self._last_seaguard['data_type'])
             self.data_type.setEnabled(True)
             self.gmt_check.setEnabled(True)
             self.gmt_check.setChecked(True)      # Seaguard records GMT: always corrected
-            self.replicate_value.setText('')     # replicates are HOBO-only
+            self._set_replicates('')             # replicates are HOBO-only
+            self.light_adaptive.setEnabled(False)
+            self.light_fixed.setEnabled(False)
+        else:
+            # no instrument selected ('Select instrument' placeholder): the
+            # dependent fields wait for a selection
+            if self.data_type.currentText():
+                self._last_seaguard['data_type'] = self.data_type.currentText()
+            self.data_type.setCurrentIndex(-1)
+            self.data_type.setEnabled(False)
+            self.gmt_check.setChecked(False)
+            self.gmt_check.setEnabled(False)
+            self._set_replicates('')
             self.light_adaptive.setEnabled(False)
             self.light_fixed.setEnabled(False)
         self._update_profile_state()
@@ -551,7 +575,12 @@ class QtShell(QMainWindow):
     # ----- run -----
     def _file_text_changed(self, text):
         if not text.strip():
-            self.input_type.setEnabled(True)   # selection cleared: type editable again
+            # selection cleared: back to 'Select instrument', editable, and
+            # the Replicates line and summary go away with it
+            self.input_type.setEnabled(True)
+            self.input_type.setCurrentIndex(-1)
+            for lab in self.sum_labels.values():
+                lab.setText('-')
         self._update_run_state()
 
     def _update_run_state(self):
@@ -589,7 +618,7 @@ class QtShell(QMainWindow):
         }
         if vals['input_type'] == 'HOBO' and vals['files_raw'].strip():
             n = len([p for p in vals['files_raw'].split(';') if p.strip()])
-            self.replicate_value.setText(str(n))
+            self._set_replicates(str(n))
         return qm.apply_input_settings(vals)
 
     def set_busy(self, busy):
