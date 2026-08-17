@@ -61,25 +61,21 @@ def apply_style(dark):
         app.styleHints().setColorScheme(Qt.ColorScheme.Light)
         app.setStyle('Fusion')
         app.setPalette(app.style().standardPalette())
-    # main tabs: no bold (owner, 2026-08-17); instead each of the two tabs
-    # carries its own pastel, selected = the stronger shade. Scoped to
-    # QTabBar#MainTabs so the Settings window's tabs stay native.
+    # main tabs: bold labels, no color - a subtle GREYSCALE step separates the
+    # active tab from the inactive one (owner, 2026-08-17; the pastel round
+    # was tried and dropped). Scoped to QTabBar#MainTabs so the Settings
+    # window's tabs stay native.
     if dark:
         log_bg = '#232324'
-        tab1, tab1_sel = '#33475e', '#41608a'    # muted blue
-        tab2, tab2_sel = '#37503b', '#4a7052'    # muted green
+        tab_off, tab_on = '#252526', '#3e3e40'
     else:
         log_bg = '#e9e9e9'
-        tab1, tab1_sel = '#d7e7f7', '#b3d4f2'    # pastel blue
-        tab2, tab2_sel = '#dcefd8', '#bce3b4'    # pastel green
+        tab_off, tab_on = '#d0d0d0', '#f6f6f6'
     app.setStyleSheet(
         'QTextEdit#ExecutionLog { background: %s; }\n'
-        'QTabBar#MainTabs::tab { padding: 6px 16px; }\n'
-        'QTabBar#MainTabs::tab:first { background: %s; }\n'
-        'QTabBar#MainTabs::tab:first:selected { background: %s; }\n'
-        'QTabBar#MainTabs::tab:last { background: %s; }\n'
-        'QTabBar#MainTabs::tab:last:selected { background: %s; }'
-        % (log_bg, tab1, tab1_sel, tab2, tab2_sel))
+        'QTabBar#MainTabs::tab { font-weight: bold; padding: 6px 16px; background: %s; }\n'
+        'QTabBar#MainTabs::tab:selected { background: %s; }'
+        % (log_bg, tab_off, tab_on))
 
 
 def bold_form_labels(form):
