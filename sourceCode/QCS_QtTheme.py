@@ -61,10 +61,38 @@ def apply_style(dark):
         app.styleHints().setColorScheme(Qt.ColorScheme.Light)
         app.setStyle('Fusion')
         app.setPalette(app.style().standardPalette())
+    # main tabs: no bold (owner, 2026-08-17); instead each of the two tabs
+    # carries its own pastel, selected = the stronger shade. Scoped to
+    # QTabBar#MainTabs so the Settings window's tabs stay native.
+    if dark:
+        log_bg = '#232324'
+        tab1, tab1_sel = '#33475e', '#41608a'    # muted blue
+        tab2, tab2_sel = '#37503b', '#4a7052'    # muted green
+    else:
+        log_bg = '#e9e9e9'
+        tab1, tab1_sel = '#d7e7f7', '#b3d4f2'    # pastel blue
+        tab2, tab2_sel = '#dcefd8', '#bce3b4'    # pastel green
     app.setStyleSheet(
         'QTextEdit#ExecutionLog { background: %s; }\n'
-        'QTabBar::tab { font-weight: bold; padding: 6px 14px; }'
-        % ('#232324' if dark else '#e9e9e9'))
+        'QTabBar#MainTabs::tab { padding: 6px 16px; }\n'
+        'QTabBar#MainTabs::tab:first { background: %s; }\n'
+        'QTabBar#MainTabs::tab:first:selected { background: %s; }\n'
+        'QTabBar#MainTabs::tab:last { background: %s; }\n'
+        'QTabBar#MainTabs::tab:last:selected { background: %s; }'
+        % (log_bg, tab1, tab1_sel, tab2, tab2_sel))
+
+
+def bold_form_labels(form):
+    """Bolds every row label of a QFormLayout ('Data file(s):', 'Instrument:'
+    ...) - owner decision 2026-08-17, applied to the Qualification and
+    Visualization forms."""
+    from PySide6.QtWidgets import QFormLayout
+    for row in range(form.rowCount()):
+        item = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+        if item is not None and item.widget() is not None:
+            f = item.widget().font()
+            f.setBold(True)
+            item.widget().setFont(f)
 
 
 class LogDock(QDockWidget):

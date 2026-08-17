@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QStackedWidget, QVBoxLayout, QWidget)
 
 import QCS_DatabaseView as dbv
+import QCS_QtTheme as qtheme
 
 TOOLTIPS = dbv.TOOLTIPS
 
@@ -48,9 +49,13 @@ class VisualizationTab(QWidget):
 
     # ---------- Step 1 ----------
     def _build_step1(self):
+        # two columns, Input and Output settings, mirroring the Qualification
+        # tab's structure (owner request, 2026-08-17)
         page = QWidget()
-        form = QFormLayout(page)
+        grid = QGridLayout(page)
 
+        gin = QGroupBox('Input settings')
+        fin = QFormLayout(gin)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         self.files = QLineEdit()
@@ -64,12 +69,12 @@ class VisualizationTab(QWidget):
         row.addWidget(b)
         h = QWidget()
         h.setLayout(row)
-        form.addRow('Database file(s):', h)
+        fin.addRow('Database file(s):', h)
 
         self.join = QCheckBox('Build database from a folder')
         self.join.setToolTip(TOOLTIPS['join_files'])
         self.join.toggled.connect(self._join_toggled)
-        form.addRow(self.join)
+        fin.addRow(self.join)
 
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -85,25 +90,27 @@ class VisualizationTab(QWidget):
         self._input_browse = bi
         h = QWidget()
         h.setLayout(row)
-        form.addRow('Input folder:', h)
+        fin.addRow('Input folder:', h)
 
         self.sort = QCheckBox('Sort data chronologically')
         self.sort.setToolTip(TOOLTIPS['sort_time'])
         self.sort.toggled.connect(lambda on: dbv.sort.set(bool(on)))
-        form.addRow(self.sort)
+        fin.addRow(self.sort)
 
         self.instrument = QComboBox()
         self.instrument.addItems(['Seaguard', 'HOBO', 'Doppler'])
         self.instrument.setToolTip(TOOLTIPS['instrument'])
         self.instrument.currentTextChanged.connect(
             lambda t: dbv.instrument_combobox.set(t))
-        form.addRow('Instrument:', self.instrument)
+        fin.addRow('Instrument:', self.instrument)
 
+        gout = QGroupBox('Output settings')
+        fout = QFormLayout(gout)
         self.out_name = QLineEdit()
         self.out_name.setToolTip(TOOLTIPS['output_name'])
         self.out_name.textEdited.connect(
             lambda t: _tk_set_entry(dbv.outputName_entry, t))
-        form.addRow('Output name:', self.out_name)
+        fout.addRow('Output name:', self.out_name)
 
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -118,7 +125,7 @@ class VisualizationTab(QWidget):
         row.addWidget(bo)
         h = QWidget()
         h.setLayout(row)
-        form.addRow('Output folder:', h)
+        fout.addRow('Output folder:', h)
 
         gprev = QGroupBox('Database preview')
         pv = QHBoxLayout(gprev)
@@ -131,17 +138,24 @@ class VisualizationTab(QWidget):
         self.preview_label.setWordWrap(True)
         pv.addWidget(self.preview_btn)
         pv.addWidget(self.preview_label, stretch=1)
-        form.addRow(gprev)
 
         actions = QHBoxLayout()
         actions.addStretch()
         nxt = QPushButton('Next >')
         nxt.setDefault(True)
+        nxt.setMinimumSize(120, 34)
         nxt.clicked.connect(self._next)
         actions.addWidget(nxt)
         ah = QWidget()
         ah.setLayout(actions)
-        form.addRow(ah)
+
+        grid.addWidget(gin, 0, 0)
+        grid.addWidget(gout, 0, 1)
+        grid.addWidget(gprev, 1, 0, 1, 2)
+        grid.addWidget(ah, 2, 0, 1, 2)
+        grid.setRowStretch(0, 1)
+        qtheme.bold_form_labels(fin)
+        qtheme.bold_form_labels(fout)
         return page
 
     def refresh_step1(self):
@@ -334,7 +348,11 @@ class VisualizationTab(QWidget):
 
         gfil = QGroupBox('Filter settings')
         ff = QVBoxLayout(gfil)
-        ff.addWidget(QLabel('Sites:'))
+        sites_lab = QLabel('Sites:')
+        f = sites_lab.font()
+        f.setBold(True)
+        sites_lab.setFont(f)
+        ff.addWidget(sites_lab)
         self.site_checks = {}
         for site in dbv.site_names:
             cb = QCheckBox(str(site))
@@ -343,7 +361,9 @@ class VisualizationTab(QWidget):
                              after=(dbv.toggle_scale_controls,))
             self.site_checks[site] = cb
             ff.addWidget(cb)
-        ff.addWidget(QLabel('Parameters:'))
+        params_lab = QLabel('Parameters:')
+        params_lab.setFont(f)      # same bold section font as 'Sites:'
+        ff.addWidget(params_lab)
         self.param_checks = {}
         for param in dbv.parameter_names:
             cb = QCheckBox(str(param))
@@ -377,6 +397,8 @@ class VisualizationTab(QWidget):
         gs.setRowStretch(len(dbv.parameter_names) + 1, 1)
         grid.addWidget(gscale, 1, 2)
 
+        qtheme.bold_form_labels(fd)
+        qtheme.bold_form_labels(fv)
         inner = QWidget()
         inner.setLayout(grid)
         area = QScrollArea()

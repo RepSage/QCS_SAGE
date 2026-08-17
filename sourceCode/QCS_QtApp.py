@@ -160,6 +160,7 @@ class QtShell(QMainWindow):
         self._viz_placeholder = QWidget()
         tabs.addTab(self._viz_placeholder, 'Data visualization')
         tabs.currentChanged.connect(self._tab_changed)
+        tabs.tabBar().setObjectName('MainTabs')   # scoped pastel tab styling
         self.tabs = tabs
         self.setCentralWidget(tabs)
 
@@ -393,6 +394,9 @@ class QtShell(QMainWindow):
         ah.setLayout(actions)
         grid.addWidget(ah, 1, 0, 1, 2)
         grid.setRowStretch(0, 1)
+        qtheme.bold_form_labels(fin)
+        qtheme.bold_form_labels(fout)
+        qtheme.bold_form_labels(fsum)
         self._input_type_changed(self.input_type.currentText())
         self._update_run_state()
         return w
