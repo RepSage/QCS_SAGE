@@ -609,6 +609,20 @@ def ui_warn(title, message):
 def ui_error(title, message):
     messagebox.showerror(title, message)
 
+def ui_info_parented(title, message, parent=None):
+    """ui_info with an owner window, used by plot-window help buttons so the
+    dialog pops over the plot instead of raising the main window behind it."""
+    messagebox.showinfo(title, message, parent=parent)
+
+def wait_figure_close(fig):
+    """Shows an interactive matplotlib figure and waits until it is closed,
+    pumping the interface's own event loop. Never plt.show(block=True) inside
+    a RUN callback: it nests event loops and hangs the main window."""
+    done = BooleanVar(window, value=False)
+    fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
+    fig.show()
+    window.wait_variable(done)
+
 def ui_busy(busy):
     """RUN in progress: disable the run button and show the wait cursor."""
     run_button.config(state='disabled' if busy else 'normal')
@@ -2064,7 +2078,7 @@ def build_qualification_tab(container, root, shared_log=None):
 
         def show_review_help(*_event):
             p = lux_info['params']
-            messagebox.showinfo(
+            ui_info_parented(
                 "Light window - help",
                 "LIGHT USABLE WINDOW (HOBO fouling review)\n\n"
                 "Controls:\n"
@@ -2149,11 +2163,7 @@ def build_qualification_tab(container, root, shared_log=None):
         except Exception:
             pass
         theme.style_plot_window(fig, 'Light window review - %s' % site)  # app icon + title
-        # waits on the Tk loop (never plt.show(block=True) inside the RUN callback)
-        done = BooleanVar(window, value=False)
-        fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
-        fig.show()
-        window.wait_variable(done)
+        wait_figure_close(fig)
         if state['cancelled']:
             raise data.ManualCutCancelled('Light window review cancelled.')
         return state['cutoff']
