@@ -14,7 +14,9 @@ import traceback
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDockWidget,
-                               QMessageBox, QProxyStyle, QStyle, QTextEdit)
+                               QHBoxLayout, QMessageBox, QProxyStyle,
+                               QPushButton, QStyle, QTextEdit, QVBoxLayout,
+                               QWidget)
 
 import QCS_Theme as theme   # writable_app_dir + crash-log path (toolkit-free)
 
@@ -43,20 +45,23 @@ class AccentStyle(QProxyStyle):
     mark with palette.text(), so swapping that ONE role for the primitive is
     enough - no bitmap assets, and it survives freezing."""
 
-    def __init__(self, base, accent):
+    def __init__(self, base, accent, muted):
         super().__init__(base)
         self._accent = QColor(accent)
+        self._muted = QColor(muted)
 
     def drawPrimitive(self, element, option, painter, widget=None):
         marks = (QStyle.PrimitiveElement.PE_IndicatorCheckBox,
                  QStyle.PrimitiveElement.PE_IndicatorRadioButton)
-        if (element in marks
-                and option.state & QStyle.StateFlag.State_Enabled
-                and option.state & (QStyle.StateFlag.State_On
-                                    | QStyle.StateFlag.State_NoChange)):
+        if element in marks and option.state & (QStyle.StateFlag.State_On
+                                                | QStyle.StateFlag.State_NoChange):
             opt = type(option)(option)
-            opt.palette.setColor(QPalette.ColorRole.Text, self._accent)
-            opt.palette.setColor(QPalette.ColorRole.WindowText, self._accent)
+            # a DISABLED checked box keeps a (muted) accent instead of fading
+            # into the background - it still carries information
+            colour = (self._accent if option.state & QStyle.StateFlag.State_Enabled
+                      else self._muted)
+            opt.palette.setColor(QPalette.ColorRole.Text, colour)
+            opt.palette.setColor(QPalette.ColorRole.WindowText, colour)
             super().drawPrimitive(element, opt, painter, widget)
             return
         super().drawPrimitive(element, option, painter, widget)
@@ -73,6 +78,16 @@ def dark_palette():
                         (QPalette.HighlightedText, QColor('white')),
                         (QPalette.ToolTipBase, base), (QPalette.ToolTipText, text)):
         p.setColor(role, color)
+    # Secondary text (hints, the Selection summary, 'Data available: ...')
+    # reads through palette(mid); Qt's derived value is far too dark on this
+    # background (owner, 2026-08-17: "clareia tudo que fica com pouco
+    # contraste"), as is placeholder text.
+    p.setColor(QPalette.Mid, QColor(170, 170, 172))
+    p.setColor(QPalette.PlaceholderText, QColor(150, 150, 152))
+    # Disabled controls must stay READABLE, just clearly inactive: the derived
+    # dark-on-dark grey made unavailable checkboxes almost invisible.
+    for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText):
+        p.setColor(QPalette.Disabled, role, QColor(140, 140, 142))
     return p
 
 
@@ -85,13 +100,14 @@ def apply_style(dark):
     app.setFont(font)
     app.setProperty('qcs_dark', bool(dark))
     accent = ACCENT_DARK if dark else ACCENT
+    muted_accent = _shift(accent, -60) if dark else _shift(accent, 70)
     if dark:
         app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
-        app.setStyle(AccentStyle('Fusion', accent))
+        app.setStyle(AccentStyle('Fusion', accent, muted_accent))
         app.setPalette(dark_palette())
     else:
         app.styleHints().setColorScheme(Qt.ColorScheme.Light)
-        app.setStyle(AccentStyle('Fusion', accent))
+        app.setStyle(AccentStyle('Fusion', accent, muted_accent))
         app.setPalette(app.style().standardPalette())
     # main tabs: bold labels, no color - a subtle GREYSCALE step separates the
     # active tab from the inactive one (owner, 2026-08-17; the pastel round
@@ -127,6 +143,15 @@ def _shift(hex_color, delta):
                   min(255, max(0, c.blue() + delta))).name()
 
 
+def dock_tooltips(dock, float_tip, close_tip):
+    """Qt names the dock title-bar buttons but gives them no tooltips."""
+    for btn in dock.findChildren(QAbstractButton):
+        if 'float' in btn.objectName():
+            btn.setToolTip(float_tip)
+        elif 'close' in btn.objectName():
+            btn.setToolTip(close_tip)
+
+
 def bold_form_labels(form):
     """Bolds every row label of a QFormLayout ('Data file(s):', 'Instrument:'
     ...) - owner decision 2026-08-17, applied to the Qualification and
@@ -151,12 +176,22 @@ class LogDock(QDockWidget):
         self.text = QTextEdit(readOnly=True)
         self.text.setObjectName('ExecutionLog')
         self.text.setToolTip(LOG_TOOLTIPS['area'])
-        self.setWidget(self.text)
-        for btn in self.findChildren(QAbstractButton):
-            if 'float' in btn.objectName():
-                btn.setToolTip(LOG_TOOLTIPS['float'])
-            elif 'close' in btn.objectName():
-                btn.setToolTip(LOG_TOOLTIPS['close'])
+        # 'Clear log' was a button of the tk log console and is expected here
+        # too (owner, 2026-08-17); 'Hide log' is the dock's own close button
+        holder = QWidget()
+        v = QVBoxLayout(holder)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.addWidget(self.text)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addStretch()
+        clear = QPushButton('Clear log')
+        clear.setToolTip('Erases the messages shown so far')
+        clear.clicked.connect(self.clear)
+        row.addWidget(clear)
+        v.addLayout(row)
+        self.setWidget(holder)
+        dock_tooltips(self, LOG_TOOLTIPS['float'], LOG_TOOLTIPS['close'])
 
     def clear(self):
         self.text.clear()

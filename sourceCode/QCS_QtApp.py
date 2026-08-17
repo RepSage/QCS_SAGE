@@ -198,10 +198,27 @@ class QtShell(QMainWindow):
         self.batch_table.horizontalHeader().setStretchLastSection(True)
         self.batch_table.setColumnWidth(0, 320)
         self.batch_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # smooth (per-pixel) horizontal scrolling: the default per-item mode
+        # jumps a whole column and reads as a truncated scrollbar
+        self.batch_table.setHorizontalScrollMode(
+            QTableWidget.ScrollMode.ScrollPerPixel)
+        self.batch_table.setVerticalScrollMode(
+            QTableWidget.ScrollMode.ScrollPerPixel)
+        self.batch_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # the dock's content starts at the tab PAGE's top, so the table lines
+        # up with the boxes beside it instead of floating above them
+        batch_holder = QWidget()
+        self._batch_layout = QVBoxLayout(batch_holder)
+        self._batch_layout.setContentsMargins(0, 0, 0, 0)
+        self._batch_layout.addWidget(self.batch_table)
         self.batch_dock = QDockWidget('Batch status', self)
-        self.batch_dock.setWidget(self.batch_table)
+        self.batch_dock.setWidget(batch_holder)
         self.addDockWidget(Qt.RightDockWidgetArea, self.batch_dock)
         self.batch_dock.hide()
+        qtheme.dock_tooltips(
+            self.batch_dock,
+            'Detaches the batch status into its own window (drag it back to re-dock)',
+            'Hides the batch status; View > Batch status brings it back')
         self._batch_rows = {}
         self._menus()
         self.statusBar().showMessage('v12.0 development shell - the tk app on master remains the released interface')
@@ -216,6 +233,27 @@ class QtShell(QMainWindow):
         self.progress.setFixedWidth(220)
         self.progress.setVisible(False)
         self.statusBar().addPermanentWidget(self.progress)
+
+    def _align_batch_top(self):
+        """Top margin that puts the batch table's top on the tab page's top
+        (the dock title bar sits higher than the tab bar's baseline)."""
+        if not self.batch_dock.isVisible() or self.batch_dock.isFloating():
+            return
+        bar = self.tabs.tabBar()
+        page_top = bar.mapTo(self, bar.rect().bottomLeft()).y()
+        table_top = self.batch_table.mapTo(self, self.batch_table.rect().topLeft()).y()
+        current = self._batch_layout.contentsMargins().top()
+        delta = page_top - table_top + current
+        if delta >= 0 and delta != current:
+            self._batch_layout.setContentsMargins(0, delta, 0, 0)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._align_batch_top()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._align_batch_top()
 
     def update_criteria_indicator(self):
         d = qm.DEFAULT_QUALITY_CONFIG
@@ -462,7 +500,10 @@ class QtShell(QMainWindow):
         actions = QGridLayout()
         for col in range(3):
             actions.setColumnStretch(col, 1)
-        actions.addWidget(settings, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        # vertically centred on the RUN button, not on the run box (which also
+        # holds the hint and the post-run shortcuts below it)
+        actions.addWidget(settings, 0, 0, Qt.AlignLeft | Qt.AlignTop)
+        settings.setMinimumHeight(self.run_btn.minimumHeight())
         # after a successful run: the two things the operator does next
         # (owner request) - the log line with the path stays, this is a
         # shortcut, not a replacement
@@ -991,6 +1032,7 @@ class QtShell(QMainWindow):
             self.batch_table.setRowCount(n)
             self._batch_rows = {}
             self.batch_dock.show()
+            self._align_batch_top()
         self._finish_running_batch_row()
         row = k - 1
         self._batch_rows[name] = row

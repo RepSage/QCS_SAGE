@@ -12,7 +12,8 @@ from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton, QScrollArea,
-                               QStackedWidget, QVBoxLayout, QWidget)
+                               QSizePolicy, QStackedWidget, QVBoxLayout,
+                               QWidget)
 
 import pandas as pd
 
@@ -242,9 +243,8 @@ class VisualizationTab(QWidget):
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         for text, state in (('All', True), ('None', False)):
-            btn = QPushButton(text)
-            btn.setFlat(True)
-            btn.setMaximumWidth(56)
+            btn = QPushButton(text)        # framed, like '< Back' (owner)
+            btn.setMaximumWidth(64)
             btn.clicked.connect(
                 lambda _c=False, s=state, get=boxes: [cb.setChecked(s) for cb in get()])
             row.addWidget(btn)
@@ -269,6 +269,9 @@ class VisualizationTab(QWidget):
         self._checks = []    # (QCheckBox, tk BooleanVar, tk widget or None)
         page = QWidget()
         outer = QVBoxLayout(page)
+        # same margins as the Qualification tab's grid, so the primary button
+        # sits at the same distance from the boxes above it
+        outer.setContentsMargins(9, 9, 9, 9)
         grid = QGridLayout()
 
         gdata = QGroupBox('Data settings')
@@ -283,7 +286,7 @@ class VisualizationTab(QWidget):
         self.dtype_label.setToolTip(TOOLTIPS['data_type'])
         self.dtype_label.setStyleSheet('color: palette(mid);')
         fd.addRow('Data type:', self.dtype_label)
-        grid.addWidget(gdata, 0, 0, 1, 2)
+        grid.addWidget(gdata, 0, 0, 1, 2, Qt.AlignTop)
 
         gvis = QGroupBox('Visualization settings')
         fv = QFormLayout(gvis)
@@ -374,7 +377,7 @@ class VisualizationTab(QWidget):
         self.depth_available.setStyleSheet('color: palette(mid);')
         fv.addRow('', self.depth_available)
         self._depth_rows = [self.depth_min, self.depth_max, self.depth_available]
-        grid.addWidget(gvis, 1, 0)
+        grid.addWidget(gvis, 1, 0, Qt.AlignTop)
 
         gfil = QGroupBox('Filter settings')
         ff = QVBoxLayout(gfil)
@@ -425,13 +428,11 @@ class VisualizationTab(QWidget):
             ff.addWidget(cb)
         ff.addLayout(self._all_none_row(lambda: self.param_checks.values()))
         ff.addStretch()
-        grid.addWidget(gfil, 1, 1)
+        grid.addWidget(gfil, 1, 1, Qt.AlignTop)
 
         gscale = QGroupBox('Scale settings')
         gs = QGridLayout(gscale)
-        param_hdr = QLabel('Parameter')
-        param_hdr.setFont(f)
-        gs.addWidget(param_hdr, 0, 0)
+        gs.addWidget(QLabel('Parameter'), 0, 0)   # plain, not bold (owner)
         gs.addWidget(QLabel('Min'), 0, 1)
         gs.addWidget(QLabel('Max'), 0, 2)
         self.scale_edits = {}
@@ -440,25 +441,46 @@ class VisualizationTab(QWidget):
             plab.setFont(f)        # bold, like the other section labels
             gs.addWidget(plab, r, 0)
             mn = QLineEdit()
-            mn.setFixedWidth(80)
+            mn.setMinimumWidth(80)
             mn.setToolTip(TOOLTIPS['min_scale'])
             self._entry_pair(mn, dbv.min_scale_entries[param])
             mx = QLineEdit()
-            mx.setFixedWidth(80)
+            mx.setMinimumWidth(80)
             mx.setToolTip(TOOLTIPS['max_scale'])
             self._entry_pair(mx, dbv.max_scale_entries[param])
             gs.addWidget(mn, r, 1)
             gs.addWidget(mx, r, 2)
             self.scale_edits[param] = (mn, mx)
+        # the name column keeps its width; only the value boxes stretch when
+        # the window grows (their text stays left-justified)
+        gs.setColumnStretch(0, 0)
+        gs.setColumnStretch(1, 1)
+        gs.setColumnStretch(2, 1)
         gs.setRowStretch(len(dbv.parameter_names) + 1, 1)
-        grid.addWidget(gscale, 1, 2)
+        grid.addWidget(gscale, 1, 2, Qt.AlignTop)
+        # the settings column takes the slack; the filter and scale columns
+        # keep their natural width, so their checkboxes stop drifting apart
+        # when the window is resized (owner)
+        grid.setColumnStretch(0, 3)
+        grid.setColumnStretch(1, 0)
+        grid.setColumnStretch(2, 2)
+        grid.setRowStretch(0, 0)     # the source box keeps its natural height
+        grid.setRowStretch(1, 1)
+        for box in (gdata, gvis, gfil, gscale):
+            box.setSizePolicy(box.sizePolicy().horizontalPolicy(),
+                              QSizePolicy.Policy.Preferred)
 
         qtheme.bold_form_labels(fd)
         qtheme.bold_form_labels(fv)
         inner = QWidget()
         inner.setLayout(grid)
+        grid.setContentsMargins(0, 0, 0, 0)
         area = QScrollArea()
         area.setWidgetResizable(True)
+        # no frame: the scroll area's border drew a box around the whole page
+        # (which also pushed 'Generate panels' further down than 'Run
+        # qualification' sits on the other tab) - owner
+        area.setFrameShape(QScrollArea.Shape.NoFrame)
         area.setWidget(inner)
         outer.addWidget(area)
 
