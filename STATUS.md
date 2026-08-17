@@ -2,6 +2,21 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-17 (v12.0 field test, round 4) — 7 findings applied; viz Step 1 redesigned
+
+`521ddf1` (+ styling rounds `4fd3880`/`8ba79c1`: bold field labels,
+two-column viz Step 1, tabs bold with greyscale active/inactive — pastel
+tried and dropped). Round 4: continuous progress ((k-1)*5+s of n*5),
+busy cursor on the main window only (the app-wide override span over the
+review windows read as a hang), Recent combo restored, Output folder
+above name, **'Build database from a folder' removed from the Qt shell**
+(several dropped files build the database; tk folder-scan logic kept for
+batch), single file auto-fills its _QLF root (DataView lands beside the
+qualification plots), and — behavior change — **a multi-file build now
+WRITES the unified database** (before, only folder mode saved it): empty
+output fields with instructive placeholders + name required. All proven
+E2E on the PLES pair (progress 10/10; database written; panel made).
+
 ## 2026-08-17 (v12.0 PORT COMPLETE — phases 3+4) — awaiting owner field test + merge
 
 Phase 3 (`4b2df34`): `QCS_QtViz.py` — the Data visualization tab as a
