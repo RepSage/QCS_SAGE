@@ -1891,6 +1891,9 @@ def build_qualification_tab(container, root, shared_log=None):
             light_mode_label.config(state='normal')        # light cutoff mode is HOBO-only
             light_mode_adaptive.config(state='normal')
             light_mode_fixed.config(state='normal')
+            # HOBO has no Depth column, so no whole-row dismissals ever exist
+            remove_dismissed.set(False)
+            dismissed_check.config(state='disabled')
         else:
             # restore the last stored Seaguard selection (if any)
             if _last_seaguard.get('data_type'):
@@ -1911,6 +1914,7 @@ def build_qualification_tab(container, root, shared_log=None):
             light_mode_label.config(state='disabled')      # light cutoff mode is HOBO-only
             light_mode_adaptive.config(state='disabled')
             light_mode_fixed.config(state='disabled')
+            dismissed_check.config(state='normal')         # whole-row dismissals are Seaguard-only
             update_profile_checkbox_state()
         apply_output_name()  # keep the Output File Name in sync (single vs combined)
         update_co2_controls()  # CO2 import is Seaguard-only (single file)

@@ -99,6 +99,7 @@ class QtShell(QMainWindow):
         self.setAcceptDrops(True)   # Qt-native drag-and-drop, whole window
         self._last_seaguard = {}    # Data type/GMT stored while HOBO is selected
         self._co2_file = ''
+        self._run_scope = None      # 'File k/n' / 'Replicate k/n' progress prefix
 
         tabs = QTabWidget()
         tabs.addTab(self._qualification_tab(), 'Data qualification')
@@ -119,12 +120,25 @@ class QtShell(QMainWindow):
 
     # ----- logging -----
     def log_line(self, message):
-        m = re.match(r'=== (File|Replicate) (\d+)/(\d+)', message.strip())
+        # the pipeline's own markers drive the progress bar: every run logs
+        # 'Stage k/5' (value + text), and batches/replicates prefix the text
+        # with their '=== File k/n ===' / '=== Replicate k/n ===' scope
+        msg = message.strip()
+        m = re.match(r'=== (File|Replicate) (\d+)/(\d+)', msg)
         if m:
-            kind, k, n = m.group(1), int(m.group(2)), int(m.group(3))
-            self.progress.setRange(0, n)
-            self.progress.setValue(k)
-            self.progress.setFormat('%s %d/%d' % (kind, k, n))
+            self._run_scope = '%s %s/%s' % (m.group(1), m.group(2), m.group(3))
+            self.progress.setRange(0, 5)
+            self.progress.setValue(0)
+            self.progress.setFormat(self._run_scope)
+        else:
+            s = re.match(r'Stage (\d)/5', msg)
+            if s:
+                stage = int(s.group(1))
+                self.progress.setRange(0, 5)
+                self.progress.setValue(stage)
+                self.progress.setFormat(
+                    '%s - Stage %d/5' % (self._run_scope, stage)
+                    if self._run_scope else 'Stage %d/5' % stage)
         self.log_dock.log(message)
         QApplication.processEvents()   # progress shows while the pipeline runs
 
@@ -544,6 +558,9 @@ class QtShell(QMainWindow):
                 self._set_replicates(self.replicate_value.text())
             self.light_adaptive.setEnabled(True)
             self.light_fixed.setEnabled(True)
+            # HOBO has no Depth column, so no whole-row dismissals ever exist
+            self.remove_dismissed.setChecked(False)
+            self.remove_dismissed.setEnabled(False)
         elif itype == 'Seaguard':
             if self._last_seaguard.get('data_type'):
                 self.data_type.setCurrentText(self._last_seaguard['data_type'])
@@ -553,6 +570,7 @@ class QtShell(QMainWindow):
             self._set_replicates('')             # replicates are HOBO-only
             self.light_adaptive.setEnabled(False)
             self.light_fixed.setEnabled(False)
+            self.remove_dismissed.setEnabled(True)
         else:
             # no instrument selected ('Select instrument' placeholder): the
             # dependent fields wait for a selection
@@ -565,6 +583,8 @@ class QtShell(QMainWindow):
             self._set_replicates('')
             self.light_adaptive.setEnabled(False)
             self.light_fixed.setEnabled(False)
+            self.remove_dismissed.setChecked(False)
+            self.remove_dismissed.setEnabled(False)
         self._update_profile_state()
         self._apply_output_name()
         self._update_co2_controls()
@@ -629,7 +649,8 @@ class QtShell(QMainWindow):
         self.run_btn.setEnabled(not busy)
         self.progress.setVisible(busy)
         if busy:
-            self.progress.setRange(0, 0)   # indeterminate until a File/Replicate marker
+            self._run_scope = None
+            self.progress.setRange(0, 0)   # indeterminate until the first Stage marker
             QApplication.setOverrideCursor(Qt.WaitCursor)
         else:
             QApplication.restoreOverrideCursor()
@@ -676,7 +697,8 @@ class QtShell(QMainWindow):
             self.light_adaptive.setChecked(True)
         self.remove_bad.setChecked(bool(p.get('remove_bad', False)))
         self.remove_suspect.setChecked(bool(p.get('remove_suspect', False)))
-        self.remove_dismissed.setChecked(bool(p.get('remove_dismissed', False)))
+        if self.remove_dismissed.isEnabled():   # HOBO keeps it off and greyed
+            self.remove_dismissed.setChecked(bool(p.get('remove_dismissed', False)))
         if p.get('macroregion') in qm.REGIONS:
             self.macroregion.setCurrentText(p['macroregion'])
         regions = [r[0] for r in qm.REGIONS.get(self.macroregion.currentText(), [])]
