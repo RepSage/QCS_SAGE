@@ -636,6 +636,9 @@ def ui_info_parented(title, message, parent=None):
     dialog pops over the plot instead of raising the main window behind it."""
     messagebox.showinfo(title, message, parent=parent)
 
+def ui_ask_yes_no(title, message):
+    return messagebox.askyesno(title, message)
+
 def wait_figure_close(fig):
     """Shows an interactive matplotlib figure and waits until it is closed,
     pumping the interface's own event loop. Never plt.show(block=True) inside
@@ -2018,7 +2021,7 @@ def build_qualification_tab(container, root, shared_log=None):
             redraw()
 
         def show_help(*_e):
-            messagebox.showinfo(
+            ui_info_parented(
                 "Replicate review - help",
                 "REDUNDANT REPLICATE REVIEW\n\n"
                 "Why: redundant replicates only help while BOTH loggers work. The\n"
@@ -2067,12 +2070,7 @@ def build_qualification_tab(container, root, shared_log=None):
         fig.canvas.mpl_connect('key_press_event', on_key)
         redraw()
         theme.style_plot_window(fig, 'Replicate review - %s' % site)
-        # waits on the Tk loop, exactly like the light-window review
-        # (never plt.show(block=True) inside the RUN callback)
-        done = BooleanVar(window, value=False)
-        fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
-        fig.show()
-        window.wait_variable(done)
+        wait_figure_close(fig)
         return state['keep']
 
     def review_light_window(lux_info, site):
@@ -2444,44 +2442,20 @@ def build_qualification_tab(container, root, shared_log=None):
                         ax1.plot(raw_data[name], label='Pressure (dbar)')
                         ax1.plot(peak, raw_data[name].loc[peak], '.', c='red', linestyle='none')
                         ax1.set_ylabel('Pressure (dbar)')
+                        theme.style_plot_window(fig1, 'Peak validation')
                         fig1.show()
-                        #plt.show(block=True)
-                        ans = []
-                        # Peak validation window: child of the main window (a second
-                        # Tk() root would conflict with the already running interface)
-                        peak_window = Toplevel(window)
-
-                        # ans/fig1/peak_window are passed as default arguments: a callback
-                        # defined inside a loop captures the variable by late binding
-                        # (it would use the value of the LAST iteration, not this one)
-                        def acceptPeak(ans=ans, fig1=fig1, peak_window=peak_window):
+                        # the modal question pumps the interface loop, so the
+                        # plot window above renders while it is open (v12.0:
+                        # the custom tk Toplevel became a facade dialog)
+                        accepted = ui_ask_yes_no('Peak validation',
+                                                 'Do you accept the data peak?')
+                        plt.close(fig1)
+                        if accepted:
                             print('Info: Peak accepted, proceding to profile selection')
-                            ans.append('y')
-                            plt.close(fig1)
-                            peak_window.destroy()
-
-                        def doNotAcceptPeak(fig1=fig1, peak_window=peak_window):
+                        else:
                             print('Info: Ignoring data peak, data qualification will continue with the whole dataset')
-                            plt.close(fig1)
-                            peak_window.destroy()
 
-                        peak_window.title("Peak validation")
-                        theme.set_scaled_geometry(peak_window, 280, 110)
-                        peak_window.resizable(False, False)
-                        peak_window.configure(bg=theme.surface_color())
-                        peak_frame = ttk.Frame(peak_window, padding=12)
-                        peak_frame.pack(fill='both', expand=True)
-                        ttk.Label(peak_frame, text="Do you accept the data peak?").pack(anchor='w', pady=(0, 8))
-                        btn_row = ttk.Frame(peak_frame)
-                        btn_row.pack(anchor='e')
-                        ttk.Button(btn_row, text="Yes", command=acceptPeak,
-                                   style='Accent.TButton', width=8).pack(side='left', padx=(0, 6))
-                        ttk.Button(btn_row, text="No", command=doNotAcceptPeak, width=8).pack(side='left')
-                        # block here until the user answers Yes or No
-                        peak_window.grab_set()
-                        window.wait_window(peak_window)
-
-                        if len(ans) > 0 and ans[0] == 'y':
+                        if accepted:
                             for subname in raw_data.columns:
                                 if re.search('temperature', subname, re.IGNORECASE):
                                     temp = subname
@@ -2503,25 +2477,21 @@ def build_qualification_tab(container, root, shared_log=None):
                             ax2.grid()
 
                             selected = None
-                            pick_done = BooleanVar(window, value=False)
-                            # pick_done as a default argument: same reason as
-                            # acceptPeak above (late binding in a loop callback)
-                            def on_pick(event, pick_done=pick_done):
+                            def on_pick(event, fig2=fig2):
+                                # picking a curve decides and closes the window;
+                                # closing without picking keeps the whole dataset
+                                # (fig2 as a default argument: late binding in a
+                                # loop callback)
                                 nonlocal selected
                                 selected = event.artist.get_label()
-                                pick_done.set(True)
-                            def on_close(event, pick_done=pick_done):
-                                pick_done.set(True)
+                                plt.close(fig2)
 
                             line1.set_picker(True)
                             line2.set_picker(True)
                             fig2.canvas.mpl_connect('pick_event', on_pick)
-                            fig2.canvas.mpl_connect('close_event', on_close)
                             fig2.canvas.mpl_connect('motion_notify_event', data.on_motion)
-                            # show non-blocking and wait on the Tk loop. plt.show(block=True)
-                            # inside the running Tk app starts a nested loop and freezes the UI.
-                            fig2.show()
-                            window.wait_variable(pick_done)
+                            theme.style_plot_window(fig2, 'Profile phase selection')
+                            wait_figure_close(fig2)
 
                             if selected is None:
                                 print('Info: No dataset selected, keeping the whole dataset')
@@ -2529,7 +2499,6 @@ def build_qualification_tab(container, root, shared_log=None):
                                 raw_data = desc.copy()
                             elif selected == 'ascending data':
                                 raw_data = asc.copy()
-                            plt.close(fig2)
                             raw_data.index =  np.arange(len(raw_data))
                     except TypeError:
                         print("Could not find turning point")

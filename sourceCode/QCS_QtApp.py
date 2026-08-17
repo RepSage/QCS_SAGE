@@ -8,14 +8,13 @@ The tk pipeline closures are materialized once on a hidden tk root (the same
 pattern the batch drivers use); no tk window is ever shown and no tk event
 loop runs - every in-run interaction goes through the Qt overrides below.
 
-Working in this build: Seaguard single/batch/Doppler/Profile qualification
-(without 'Select profile data'), CO2 merge, HOBO single and replicates in
-BOTH light modes (the adaptive review plot is pure matplotlib and opens as a
-Qt window), the mooring Depth review, drag-and-drop, preferences (shared
-qcs_user_settings.json). Not yet ported (phase 2): the Settings window,
-'Select profile data' phase picking, 'Check variables' manual cut, the
-replicate-review window (all replicates are kept, with a logged warning),
-and the Data visualization tab.
+Working in this build: the whole qualification workflow - Seaguard
+single/batch/Doppler/Profile (including 'Select profile data' phase picking),
+CO2 merge, HOBO single and replicates in BOTH light modes with the replicate
+review, the mooring Depth review, 'Check variables' manual cut, the Settings
+window, drag-and-drop, preferences (shared qcs_user_settings.json). The
+review windows are pure matplotlib and open as Qt windows. Not yet ported
+(phase 3): the Data visualization tab.
 
 Run with:  QCS_v12_dev.bat  (Desktop; packaging/v12_env venv, PySide6 6.8.3).
 Master still ships the tk app - this shell is the port in progress.
@@ -29,12 +28,12 @@ matplotlib.use('QtAgg')            # before any QCS import binds pyplot
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QIcon
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox,
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QFileDialog, QFormLayout, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
                                QMainWindow, QMessageBox, QProgressBar,
-                               QPushButton, QRadioButton, QTabWidget,
-                               QToolButton, QVBoxLayout, QWidget)
+                               QPushButton, QRadioButton, QScrollArea,
+                               QTabWidget, QToolButton, QVBoxLayout, QWidget)
 
 import QCS_Theme as theme          # writable_app_dir + output redirect (shared)
 _out = theme.install_output_redirect()
@@ -87,6 +86,58 @@ def wait_figure_close(fig):
         pass
     if state['open']:
         fig.canvas.start_event_loop()
+
+
+class ChooseVariablesDialog(QDialog):
+    """Qt replacement for choose_variables_to_check: same contract - a list
+    of chosen columns, [] = review nothing, None = cancel (abort the run)."""
+
+    def __init__(self, candidates, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Check variables - choose which to review')
+        self.resize(440, 560)
+        v = QVBoxLayout(self)
+        v.addWidget(QLabel('Select the variables to review and cut manually:'))
+        inner = QWidget()
+        iv = QVBoxLayout(inner)
+        self._boxes = {}
+        for name in candidates:
+            cb = QCheckBox(name, checked=True)
+            iv.addWidget(cb)
+            self._boxes[name] = cb
+        iv.addStretch()
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setWidget(inner)
+        v.addWidget(area)
+        toggles = QHBoxLayout()
+        all_btn = QPushButton('All variables')
+        all_btn.clicked.connect(lambda: [cb.setChecked(True) for cb in self._boxes.values()])
+        none_btn = QPushButton('None')
+        none_btn.clicked.connect(lambda: [cb.setChecked(False) for cb in self._boxes.values()])
+        toggles.addWidget(all_btn)
+        toggles.addWidget(none_btn)
+        toggles.addStretch()
+        v.addLayout(toggles)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        review = QPushButton('Review selected')
+        review.setDefault(True)
+        review.clicked.connect(self.accept)
+        cancel = QPushButton('Cancel')
+        cancel.clicked.connect(self.reject)   # Esc and the window X reject too
+        actions.addWidget(review)
+        actions.addWidget(cancel)
+        v.addLayout(actions)
+
+    def chosen(self):
+        return [n for n, cb in self._boxes.items() if cb.isChecked()]
+
+
+def qt_choose_variables(candidates, root=None):
+    dlg = ChooseVariablesDialog(candidates)
+    dlg.setWindowIcon(_app_icon())
+    return dlg.chosen() if dlg.exec() == QDialog.DialogCode.Accepted else None
 
 
 class QtShell(QMainWindow):
@@ -247,14 +298,10 @@ class QtShell(QMainWindow):
         self.gmt_check.setToolTip(TOOLTIPS['gmt_correction'])
         vo.addWidget(self.gmt_check)
         self.profile_check = QCheckBox('Select profile data')
-        self.profile_check.setToolTip(TOOLTIPS['profile_selection']
-                                      + '\n(not yet in this v12.0 build)')
-        self.profile_check.setEnabled(False)     # phase 2: tk phase-pick windows
+        self.profile_check.setToolTip(TOOLTIPS['profile_selection'])
         vo.addWidget(self.profile_check)
         self.varcheck = QCheckBox('Check variables')
-        self.varcheck.setToolTip(TOOLTIPS['variable_check']
-                                 + '\n(not yet in this v12.0 build)')
-        self.varcheck.setEnabled(False)          # phase 2: manual-cut chooser
+        self.varcheck.setToolTip(TOOLTIPS['variable_check'])
         vo.addWidget(self.varcheck)
         fin.addRow(gopt)
 
@@ -586,10 +633,12 @@ class QtShell(QMainWindow):
         self._update_co2_controls()
 
     def _update_profile_state(self):
-        # 'Select profile data' applies to profiles only - and stays disabled
-        # in this build anyway (phase 2); the state machine is kept so
-        # enabling it later is one line
-        pass
+        # 'Select profile data' applies to profiles only (port of
+        # update_profile_checkbox_state)
+        is_profile = self.data_type.currentText() == 'TSCP Profile'
+        self.profile_check.setEnabled(is_profile)
+        if not is_profile:
+            self.profile_check.setChecked(False)
 
     # ----- run -----
     def _file_text_changed(self, text):
@@ -625,8 +674,8 @@ class QtShell(QMainWindow):
             'out_name': self.out_name.text(),
             'out_format': self.out_format.currentText(),
             'correct_gmt3h': self.gmt_check.isChecked(),
-            'select_profile_data': False,   # phase 2 (checkbox disabled above)
-            'check_variables': False,       # phase 2 (checkbox disabled above)
+            'select_profile_data': self.profile_check.isChecked(),
+            'check_variables': self.varcheck.isChecked(),
             'remove_bad': self.remove_bad.isChecked(),
             'remove_suspect': self.remove_suspect.isChecked(),
             'remove_dismissed': self.remove_dismissed.isChecked(),
@@ -651,12 +700,6 @@ class QtShell(QMainWindow):
         else:
             QApplication.restoreOverrideCursor()
             self._update_run_state()
-
-    def review_replicates_stub(self, qualified_dfs, referee, reference, site):
-        self.log_line('Warning: the replicate-review window is not ported yet in '
-                      'this v12.0 build - ALL replicates were kept and combined. '
-                      'To accept/drop a named replicate, use the released app.')
-        return None
 
     def _update_regions(self, _macro=None):
         macro = self.macroregion.currentText()
@@ -700,10 +743,9 @@ class QtShell(QMainWindow):
         regions = [r[0] for r in qm.REGIONS.get(self.macroregion.currentText(), [])]
         if p.get('region') in regions:
             self.region.setCurrentText(p['region'])
-        if p.get('select_profile_data') or p.get('check_variables'):
-            print('Info: "Select profile data" / "Check variables" are saved in '
-                  'your preferences but not yet available in this v12.0 build - '
-                  'they stay OFF here.')
+        if self.profile_check.isEnabled():
+            self.profile_check.setChecked(bool(p.get('select_profile_data', False)))
+        self.varcheck.setChecked(bool(p.get('check_variables', False)))
 
 
 def _bootstrap_tk_pipeline(shared_log):
@@ -731,7 +773,9 @@ def _install_qt_facade(shell):
     qm.ui_pump = QApplication.processEvents
     qm.log_line = shell.log_line
     qm.collect_input_settings = shell.collect_from_qt
-    qm.review_replicates = shell.review_replicates_stub
+    qm.choose_variables_to_check = qt_choose_variables
+    qm.ui_ask_yes_no = lambda t, m: (QMessageBox.question(shell, t, m)
+                                     == QMessageBox.StandardButton.Yes)
     qm.wait_figure_close = wait_figure_close
     data._show_and_wait = lambda fig, tk_root=None: wait_figure_close(fig)
     theme.style_plot_window = _qt_style_plot_window   # app icon on plot windows
