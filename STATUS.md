@@ -2,6 +2,16 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-17 (v12.0 field test, round 5) — plots carry the year; step 2 polish
+
+`7d328ee`: panel X axes carry the year (mooring panel1 `%d/%m/%y %H:%M`,
+HOBO at-site `%d/%m/%y`) and titles drop the redundant year; years moved
+into Filter settings under Sites (2 columns); scale parameter names bold;
+**T-S rows only exist for TSCP Profile** (hidden + auto-unchecked
+otherwise); panel checkboxes + Generate got their missing tooltips;
+Generate panels centered and styled like Run qualification. E2E-proven
+on the PLES pair; suite 52/52; ruff clean.
+
 ## 2026-08-17 (v12.0 field test, round 4) — 7 findings applied; viz Step 1 redesigned
 
 `521ddf1` (+ styling rounds `4fd3880`/`8ba79c1`: bold field labels,
