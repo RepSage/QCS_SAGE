@@ -2,6 +2,22 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-17 (v12.0 field test, round 2) — Instrument empty state; Remove dismissed
+
+Round 2 applied (`35f62d7` + `591b2b3`): the combo is now **Instrument**
+with a 'Select instrument' placeholder — clearing Data file(s) resets it,
+hides the Replicates row and clears the summary. New **Remove dismissed
+data** in Data filtering (both shells, persisted): dismissed VALUES were
+already blanked at the manual cut, so the option (semantics decided with
+the owner) drops the rows where EVERY variable was dismissed — the Depth
+review's whole-row cuts — leaving a gap in the original Sample numbers;
+always selectable, like the other two filters. Proven on a real BURACAS
+cast: 625 → 622 rows, sheet starts at Sample number 4. Also fixed a
+v11.6.1 tooltip erratum found on the way: remove_bad/suspect said "Drops
+rows" but the implementation BLANKS values and keeps every row (both
+tooltip copies corrected). **The tk shell on master still says "Drops
+rows" in its shipped v11.6.1 build** — carried by the next release.
+
 ## 2026-08-17 (v12.0 field test, round 1) — owner tested; 4 findings applied
 
 Owner field-tested the phase-1 shell: the adaptive light review works under
