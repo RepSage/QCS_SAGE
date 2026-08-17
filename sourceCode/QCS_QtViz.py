@@ -9,7 +9,9 @@ duplicated here; Preview/Next/Generate call the same functions the tk app
 uses, with the dialogs routed to Qt through the QCS_DatabaseView facade.
 """
 from PySide6.QtCore import QSignalBlocker, Qt
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QFileDialog,
+                               QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton, QScrollArea,
                                QSizePolicy, QStackedWidget, QVBoxLayout,
@@ -184,6 +186,8 @@ class VisualizationTab(QWidget):
             else 'Not needed for a single file')
         with QSignalBlocker(self.sort):
             self.sort.setChecked(bool(dbv.sort.get()))
+            # only meaningful when several files build a database
+            self.sort.setEnabled(_tk_enabled(dbv.sort_cb))
         with QSignalBlocker(self.instrument):
             self.instrument.setCurrentText(dbv.instrument_combobox.get())
         with QSignalBlocker(self.recent):
@@ -432,14 +436,25 @@ class VisualizationTab(QWidget):
 
         gscale = QGroupBox('Scale settings')
         gs = QGridLayout(gscale)
-        gs.addWidget(QLabel('Parameter'), 0, 0)   # plain, not bold (owner)
-        gs.addWidget(QLabel('Min'), 0, 1)
-        gs.addWidget(QLabel('Max'), 0, 2)
+        for col, title in ((1, 'Parameter'), (2, 'Min'), (3, 'Max')):
+            hdr = QLabel(title)
+            hdr.setFont(f)         # bold headers, like the other sections
+            gs.addWidget(hdr, 0, col)
         self.scale_edits = {}
+        self.colour_buttons = {}
         for r, param in enumerate(dbv.parameter_names, start=1):
+            # the plot colour, clickable: opens the colour wheel (which has a
+            # hex field, so a house palette can be typed in) - v12.0
+            swatch = QPushButton()
+            swatch.setFixedSize(18, 18)
+            swatch.setToolTip('Colour of %s in the plots\nClick to change it '
+                              '(the picker takes hex codes too)' % param)
+            swatch.clicked.connect(lambda _c=False, p=param: self._pick_colour(p))
+            gs.addWidget(swatch, r, 0)
+            self.colour_buttons[param] = swatch
             plab = QLabel(str(param))
             plab.setFont(f)        # bold, like the other section labels
-            gs.addWidget(plab, r, 0)
+            gs.addWidget(plab, r, 1)
             mn = QLineEdit()
             mn.setMinimumWidth(80)
             mn.setToolTip(TOOLTIPS['min_scale'])
@@ -448,14 +463,16 @@ class VisualizationTab(QWidget):
             mx.setMinimumWidth(80)
             mx.setToolTip(TOOLTIPS['max_scale'])
             self._entry_pair(mx, dbv.max_scale_entries[param])
-            gs.addWidget(mn, r, 1)
-            gs.addWidget(mx, r, 2)
+            gs.addWidget(mn, r, 2)
+            gs.addWidget(mx, r, 3)
             self.scale_edits[param] = (mn, mx)
-        # the name column keeps its width; only the value boxes stretch when
-        # the window grows (their text stays left-justified)
+        self._refresh_colour_buttons()
+        # the swatch and name columns keep their width; only the value boxes
+        # stretch when the window grows (their text stays left-justified)
         gs.setColumnStretch(0, 0)
-        gs.setColumnStretch(1, 1)
+        gs.setColumnStretch(1, 0)
         gs.setColumnStretch(2, 1)
+        gs.setColumnStretch(3, 1)
         gs.setRowStretch(len(dbv.parameter_names) + 1, 1)
         grid.addWidget(gscale, 1, 2, Qt.AlignTop)
         # the settings column takes the slack; the filter and scale columns
@@ -531,6 +548,24 @@ class VisualizationTab(QWidget):
         with QSignalBlocker(self.ts_param):
             self.ts_param.setCurrentText(dbv.tsParam_combobox.get())
             self.ts_param.setEnabled(_tk_enabled(dbv.tsParam_combobox))
+
+    # ---------- plot colours ----------
+    def _refresh_colour_buttons(self):
+        for param, btn in self.colour_buttons.items():
+            colour = dbv.param_color(param)
+            btn.setStyleSheet('QPushButton { background: %s; border: 1px solid '
+                              'palette(mid); border-radius: 2px; }' % colour)
+
+    def _pick_colour(self, param):
+        current = QColor(dbv.param_color(param))
+        chosen = QColorDialog.getColor(
+            current, self, 'Plot colour - %s' % param)
+        if not chosen.isValid() or chosen == current:
+            return
+        dbv.set_param_color(param, chosen.name())
+        self._refresh_colour_buttons()
+        self.shell.log_line('Info: %s will be plotted in %s (saved).'
+                            % (param, chosen.name()))
 
     def _generate(self):
         dbv.generatePanels()

@@ -22,10 +22,10 @@ from tkinter import messagebox
 TOOLTIPS = {
     'database_files': "Qualified file(s) or database(s) to visualize\nSeveral files are combined, validated and deduplicated",
     'join_files': "Sweeps a whole folder tree instead of picking files one by one:\nfinds every 'QCS qualified ... data' subfolder, skips report files\nand combines everything into one database\n(selecting several files above already joins them)",
-    'sort_time': "Row order of the SAVED database: purely chronological,\n"
-                 "with the sites interleaved\n"
-                 "Off: grouped by site, chronological within each site\n"
-                 "Either way the plots filter and group by site themselves",
+    'sort_time': "Order of the site blocks in the database built from several\n"
+                 "files: by each site's first sample instead of alphabetically\n"
+                 "Sites are never interleaved and rows stay chronological\n"
+                 "within each site",
     'instrument': "Instrument family of the qualified files\nSeaguard (TSCP) and HOBO tables are never stackable -\nbuild separate databases",
     'output_name': "Base name of the database file",
     'input_path': "Folder with the input files",
@@ -101,6 +101,24 @@ def save_user_prefs():
         print('Warning: could not save user preferences: %s' % e)
 
 load_user_prefs()
+# operator plot colours, saved per parameter (v12.0): every plot reads them
+# through view.getParamColors
+view.PARAM_COLOR_OVERRIDES.update(USER_PREFS.get('dbv_param_colors', {}))
+
+def set_param_color(param, colour):
+    """Sets (or clears, with colour=None) a parameter's plot colour and
+    persists it. Toolkit-free: both shells call this."""
+    if colour:
+        view.PARAM_COLOR_OVERRIDES[param] = colour
+    else:
+        view.PARAM_COLOR_OVERRIDES.pop(param, None)
+    USER_PREFS['dbv_param_colors'] = dict(view.PARAM_COLOR_OVERRIDES)
+    save_user_prefs()
+
+def param_color(param):
+    """The colour a parameter is currently plotted with (override or default)."""
+    cParam, _bc = view.getParamColors()
+    return view.PARAM_COLOR_OVERRIDES.get(param) or cParam.get(param, '#1f77b4')
 
 def restore_entry(entry, value):
     # fills a field even if it is currently disabled
@@ -199,6 +217,14 @@ def toggle_input_mode():
             outputName_entry.config(state='normal')
             outputName_entry.delete(0, END)
             set_disabled_style(outputName_entry)
+        # the site-block order only means something in a database built from
+        # SEVERAL files (v12.0)
+        if sort_cb is not None:
+            if n_files > 1:
+                set_enabled_style(sort_cb)
+            else:
+                sort.set(False)
+                set_disabled_style(sort_cb)
     # the Preview button applies to FOLDER mode only (it scans/builds a folder)
     if preview_btn is not None:
         if join.get():
@@ -971,7 +997,7 @@ def build_step1(parent):
     the unified app's Visualization tab. The root window, header and dark-mode
     switch are owned by the QCS_App shell."""
     global fileNames_entry, inputPath_entry, browse_file_btn, browse_input_btn
-    global join, sort, instrument_combobox, outputName_entry, outputPath_entry
+    global join, sort, sort_cb, instrument_combobox, outputName_entry, outputPath_entry
 
     # Main container
     main_frame = ttk.Frame(parent, padding="16")
@@ -1166,10 +1192,18 @@ def load_database():
     # db_build_messages are shown in the Execution log by build_step2 (below),
     # so they are not printed here (that would duplicate them via the log redirect)
 
+    # Sites are NEVER interleaved (v12.0): the option only decides the order of
+    # the site BLOCKS - alphabetical (build_database's own Site+Datetime order)
+    # or by each site's first sample. Rows stay chronological within a site.
     if inputSettings.get('sortByTime', False) == True:
-        # purely chronological order (the engine sorts by Site+Datetime)
-        database = database.sort_values('Datetime', kind='stable')
+        first_sample = database.groupby('Site')['Datetime'].min().sort_values()
+        rank = {site: i for i, site in enumerate(first_sample.index)}
+        database = database.assign(_site_rank=database['Site'].map(rank))
+        database = database.sort_values(['_site_rank', 'Datetime'], kind='stable')
+        database = database.drop(columns='_site_rank')
         database.index = range(len(database))
+        print('Info: site blocks ordered by first sample: %s'
+              % ', '.join(str(s) for s in first_sample.index))
 
     try:
         databaseViewPath = os.path.join(inputSettings['outputPath'], 'DatabaseView')
@@ -1811,6 +1845,7 @@ _shared_log = None        # app-wide Execution log (owned by the QCS_App shell)
 _db_msgs_logged = False   # True once db_build_messages went to the log (no dupes)
 _recent_combobox = None   # Step 1 'Recent' picker (created in build_step1)
 preview_btn = None        # Step 1 'Preview' button (folder mode only)
+sort_cb = None            # Step 1 site-order checkbox (created in build_step1)
 _preview_var = None       # Step 1 preview summary text (created in build_step1)
 _input_mode_cache = {}    # stashes Database File(s) while folder-scan mode is on
 _auto_scale = set()       # params whose Min/Max still hold auto-computed defaults

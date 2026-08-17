@@ -324,6 +324,22 @@ def renameParameters (parameter_names):
             rParam.append(param)
     return rParam
 
+# Operator colour overrides, {parameter: '#rrggbb'} (v12.0). Set from the
+# Visualization tab's Scale settings and persisted in the user settings, so a
+# site keeps its house colours across sessions. EVERY plot goes through
+# getParamColors, so an override reaches all of them.
+PARAM_COLOR_OVERRIDES = {}
+
+
+def darker(hex_color, factor=0.62):
+    """The dark tone (trend lines, axes) of a chosen colour."""
+    c = str(hex_color).lstrip('#')
+    if len(c) != 6:
+        return hex_color
+    r, g, b = (int(c[i:i + 2], 16) for i in (0, 2, 4))
+    return '#%02x%02x%02x' % (int(r * factor), int(g * factor), int(b * factor))
+
+
 def getParamColors (parameter_names=None):
     # Fixed variable -> color mapping used by EVERY plot in the software, so the
     # same variable always gets the same color in any panel or output figure.
@@ -364,6 +380,12 @@ def getParamColors (parameter_names=None):
                 'Pressure (dbar)': '#1a1a1a',
                 'Luminosity (lux)': '#a3781f'
                 }
+
+    # operator overrides win, and their dark tone is derived from the choice
+    for param, colour in PARAM_COLOR_OVERRIDES.items():
+        if colour:
+            cParam[param] = colour
+            bcParam[param] = darker(colour)
 
     return cParam, bcParam
 

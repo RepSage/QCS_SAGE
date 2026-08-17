@@ -129,18 +129,13 @@ def apply_style(dark):
     pal.setColor(QPalette.ToolTipBase, tip_bg)
     pal.setColor(QPalette.ToolTipText, tip_fg)
     app.setPalette(pal)
-    # Group boxes: title + thin frame, no filled panel. Fusion paints a grey
-    # slab inside every QGroupBox, which shows through wherever a box is
-    # taller than its content (owner). Styling the box means drawing its own
-    # border, since the stylesheet engine then owns the rendering.
-    frame = '#4a4a4c' if dark else '#c4c4c4'
+    # QGroupBox is left to Fusion. Styling it through the stylesheet meant
+    # drawing its frame and title by hand, and the result was worse than the
+    # panel it removed (owner, 2026-08-17: "você está destruindo as
+    # visualizações") - so the native look stays, slab included.
     # the primary action of each tab (Run qualification / Generate panels /
     # Next) in the accent colour, like the tk app's Accent.TButton
     app.setStyleSheet(
-        'QGroupBox { background: transparent; border: 1px solid %s;'
-        ' border-radius: 3px; margin-top: 8px; padding-top: 6px; }\n'
-        'QGroupBox::title { subcontrol-origin: margin; subcontrol-position:'
-        ' top left; left: 8px; padding: 0 4px; }\n'
         'QComboBox { combobox-popup: 0; }\n'
         'QTextEdit#ExecutionLog { background: %s; }\n'
         'QTabBar#MainTabs::tab { font-weight: bold; padding: 6px 16px; background: %s; }\n'
@@ -150,7 +145,7 @@ def apply_style(dark):
         'QPushButton#AccentButton:hover { background: %s; }\n'
         'QPushButton#AccentButton:pressed { background: %s; }\n'
         'QPushButton#AccentButton:disabled { background: %s; color: %s; }'
-        % (frame, log_bg, tab_off, tab_on, accent,
+        % (log_bg, tab_off, tab_on, accent,
            _shift(accent, 18), _shift(accent, -22),
            '#4a4a4c' if dark else '#c8c8c8', '#8a8a8a' if dark else '#efefef'))
 
