@@ -67,8 +67,7 @@ class VisualizationTab(QWidget):
             'Select or drop qualified file(s) here - several files build a '
             'unified database...')
         self.files.setToolTip(TOOLTIPS['database_files'])
-        self.files.textEdited.connect(
-            lambda t: _tk_set_entry(dbv.fileNames_entry, t))
+        self.files.textEdited.connect(self._files_edited)
         b = QPushButton('Browse...')
         b.setToolTip(TOOLTIPS['database_files'])
         b.clicked.connect(self._browse_files)
@@ -77,6 +76,16 @@ class VisualizationTab(QWidget):
         h = QWidget()
         h.setLayout(row)
         fin.addRow('Database file(s):', h)
+
+        # Recent right under the files row; usable only while NO files are
+        # selected (owner, 2026-08-17 - either pick files or reopen a recent
+        # selection, never both at once)
+        self.recent = QComboBox()
+        self.recent.setPlaceholderText('Select a recent file to open')
+        self.recent.setToolTip('Reopens one of the most recent file selections\n'
+                               '(available while no file is selected above)')
+        self.recent.activated.connect(self._apply_recent)
+        fin.addRow('Recent:', self.recent)
 
         self.sort = QCheckBox('Sort data chronologically')
         self.sort.setToolTip(TOOLTIPS['sort_time'])
@@ -89,13 +98,6 @@ class VisualizationTab(QWidget):
         self.instrument.currentTextChanged.connect(
             lambda t: dbv.instrument_combobox.set(t))
         fin.addRow('Instrument:', self.instrument)
-
-        self.recent = QComboBox()
-        self.recent.setPlaceholderText('Select a recent file selection to reopen it...')
-        self.recent.setToolTip('Reopens one of the most recent file selections\n'
-                               '(fills the fields above)')
-        self.recent.activated.connect(self._apply_recent)
-        fin.addRow('Recent:', self.recent)
 
         gout = QGroupBox('Output settings')
         fout = QFormLayout(gout)
@@ -164,6 +166,11 @@ class VisualizationTab(QWidget):
             self.recent.addItems([dbv._recent_display(r)
                                   for r in dbv.USER_PREFS.get('dbv_recent', [])])
             self.recent.setCurrentIndex(-1)
+        self.recent.setEnabled(not self.files.text().strip())
+
+    def _files_edited(self, text):
+        _tk_set_entry(dbv.fileNames_entry, text)
+        self.recent.setEnabled(not text.strip())
 
     def _apply_recent(self, index):
         recents = dbv.USER_PREFS.get('dbv_recent', [])

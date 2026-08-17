@@ -1337,8 +1337,11 @@ def plot_hobo_params_across_sites (database, dataViewSettings):
             site_origin = db['Datetime'].min().normalize()
             x_hours = (pd.DatetimeIndex(db['Datetime']) - site_origin).total_seconds() / 3600
             if win is not None:
+                # x_hours is an Index, so the comparison already yields a
+                # plain numpy bool array - '.values' on it crashed the panel
+                # whenever a time window was set (latent since the B6 window)
                 keep = (x_hours >= win[0]) & (x_hours <= win[1])
-                db, values, x_hours = db[keep.values], values[keep.values], x_hours[keep]
+                db, values, x_hours = db[keep], values[keep], x_hours[keep]
                 if db.empty:
                     print('\nNo %s data for %s inside the X-axis window.' % (param, site))
                     continue
