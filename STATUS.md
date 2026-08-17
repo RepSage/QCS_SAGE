@@ -2,6 +2,31 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-17 (v12.0 port, phase 1 done) — the Qt shell runs the real pipeline
+
+`sourceCode/QCS_QtApp.py` + `QCS_QtTheme.py` on `port-v12.0` (`c549778`):
+the approved design wired to the real pipeline via the phase-0 facade, tk
+closures materialized on a hidden root (batch-driver pattern), matplotlib
+on QtAgg, figure waits via `canvas.start_event_loop`. Launcher:
+`QCS_v12_dev.bat` on the Desktop (`packaging/v12_env`).
+
+- **Proof:** PLES 2-replicate `.hobo`, fixed mode, driven through the Qt
+  widgets vs the tk widgets — combined sheets identical cell by cell
+  (1902×11). Suite 52/52; ruff clean.
+- **Gotcha (cost a debug round):** pip-latest pandas 3.0.5 breaks
+  `save_excel_autofit` (`astype(str)` keeps NaN as float → `len()` dies).
+  `v12_env` is now PINNED to the shipping stack (pandas 2.2.3, numpy
+  2.1.3, matplotlib 3.10.0, scipy 1.15.3, gsw 3.6.21). The pandas-3
+  migration is a separate future task, not part of the port.
+- **Owner has NOT field-tested this build yet.** The interactive pieces
+  (adaptive light review window, Depth review, dialogs) run under Qt by
+  design but were not exercised interactively — automated proof covers
+  the fixed-mode path only.
+- Phase 2 next: Settings window (QDialog, 3 tabs), profile phase picking
+  and Check variables (tk Toplevels at ~2470/2530 in `QCS_Main.py`),
+  replicate-review window (the Qt stub keeps all replicates, logged),
+  then phase 3 = Visualization tab, phase 4 = packaging swap.
+
 ## 2026-08-14 (v12.0 port, phase 0 done) — pipeline is toolkit-neutral
 
 Branch **`port-v12.0`** (long-lived; master stays the working tk app until
