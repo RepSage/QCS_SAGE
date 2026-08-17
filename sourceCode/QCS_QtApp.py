@@ -32,9 +32,9 @@ from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox,
                                QFileDialog, QFormLayout, QGridLayout,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                               QMainWindow, QMessageBox, QPushButton,
-                               QRadioButton, QTabWidget, QToolButton,
-                               QVBoxLayout, QWidget)
+                               QMainWindow, QMessageBox, QProgressBar,
+                               QPushButton, QRadioButton, QTabWidget,
+                               QToolButton, QVBoxLayout, QWidget)
 
 import QCS_Theme as theme          # writable_app_dir + output redirect (shared)
 _out = theme.install_output_redirect()
@@ -43,6 +43,28 @@ import QCS_Main as qm
 import QCS_DataHandler as data
 
 TOOLTIPS = qm.TOOLTIPS             # single source: the real texts (v11.6.1)
+
+_ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'qcs_icon.png')
+
+
+def _app_icon():
+    return QIcon(_ICON_PATH) if os.path.isfile(_ICON_PATH) else QIcon()
+
+
+def _qt_style_plot_window(fig, title=None):
+    """Qt replacement for theme.style_plot_window: app icon + meaningful title
+    on the matplotlib window, brought to the front."""
+    try:
+        mgr = fig.canvas.manager
+        if title:
+            mgr.set_window_title(title)
+        win = getattr(mgr, 'window', None)
+        if win is not None:
+            win.setWindowIcon(_app_icon())
+            win.raise_()
+            win.activateWindow()
+    except Exception:
+        pass
 
 
 def wait_figure_close(fig):
@@ -58,6 +80,7 @@ def wait_figure_close(fig):
     fig.show()
     try:
         win = fig.canvas.manager.window
+        win.setWindowIcon(_app_icon())   # figures not routed through style_plot_window
         win.raise_()
         win.activateWindow()
     except Exception:
@@ -71,9 +94,7 @@ class QtShell(QMainWindow):
         super().__init__()
         self.setWindowTitle('QCS - Quality Control System %s  (v12.0 shell, phase 1)'
                             % data.QCS_VERSION)
-        icon = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'qcs_icon.png')
-        if os.path.isfile(icon):
-            self.setWindowIcon(QIcon(icon))
+        self.setWindowIcon(_app_icon())
         self.resize(1180, 760)
         self.setAcceptDrops(True)   # Qt-native drag-and-drop, whole window
         self._last_seaguard = {}    # Data type/GMT stored while HOBO is selected
@@ -88,9 +109,22 @@ class QtShell(QMainWindow):
         self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
         self._menus()
         self.statusBar().showMessage('v12.0 phase 1 - the tk app on master remains the released interface')
+        # pipeline progress, bottom right: indeterminate while a single run is
+        # busy, and a real fraction on the batch/replicate markers the
+        # pipeline already logs ('=== File k/n ===' / '=== Replicate k/n ===')
+        self.progress = QProgressBar()
+        self.progress.setFixedWidth(220)
+        self.progress.setVisible(False)
+        self.statusBar().addPermanentWidget(self.progress)
 
     # ----- logging -----
     def log_line(self, message):
+        m = re.match(r'=== (File|Replicate) (\d+)/(\d+)', message.strip())
+        if m:
+            kind, k, n = m.group(1), int(m.group(2)), int(m.group(3))
+            self.progress.setRange(0, n)
+            self.progress.setValue(k)
+            self.progress.setFormat('%s %d/%d' % (kind, k, n))
         self.log_dock.log(message)
         QApplication.processEvents()   # progress shows while the pipeline runs
 
@@ -106,7 +140,7 @@ class QtShell(QMainWindow):
         self.file_edit = QLineEdit()
         self.file_edit.setPlaceholderText('Select or drop data files here...')
         self.file_edit.setToolTip(TOOLTIPS['data_file'])
-        self.file_edit.textChanged.connect(self._update_run_state)
+        self.file_edit.textChanged.connect(self._file_text_changed)
         browse = QPushButton('Browse...')
         browse.setToolTip(TOOLTIPS['data_file'])
         browse.clicked.connect(self._browse)
@@ -369,12 +403,19 @@ class QtShell(QMainWindow):
         qm.USER_PREFS['last_data_dir'] = os.path.dirname(first)
         qm.save_user_prefs()
         detected = data.sniff_input_type(first)
-        if detected and detected != self.input_type.currentText():
-            self.input_type.setCurrentText(detected)   # triggers the state update
-            print('Info: input type auto-detected as %s (from the file header).' % detected)
-        elif not detected:
+        if detected:
+            if detected != self.input_type.currentText():
+                self.input_type.setCurrentText(detected)   # triggers the state update
+                print('Info: input type auto-detected as %s (from the file header).' % detected)
+            # the detected family is a fact of the file, not a choice: lock the
+            # box so it cannot be overridden by mistake (owner request); it
+            # unlocks when the selection is cleared or an unrecognized file
+            # is selected
+            self.input_type.setEnabled(False)
+        else:
+            self.input_type.setEnabled(True)
             print('Info: could not auto-detect the input type from the file header; '
-                  'kept "%s".' % self.input_type.currentText())
+                  'kept "%s" (editable).' % self.input_type.currentText())
         if self.input_type.currentText() == 'HOBO':
             self.replicate_value.setText(str(len(names)))
         elif len(names) > 1:
@@ -508,6 +549,11 @@ class QtShell(QMainWindow):
         pass
 
     # ----- run -----
+    def _file_text_changed(self, text):
+        if not text.strip():
+            self.input_type.setEnabled(True)   # selection cleared: type editable again
+        self._update_run_state()
+
     def _update_run_state(self):
         if not hasattr(self, 'run_btn'):
             return
@@ -548,7 +594,9 @@ class QtShell(QMainWindow):
 
     def set_busy(self, busy):
         self.run_btn.setEnabled(not busy)
+        self.progress.setVisible(busy)
         if busy:
+            self.progress.setRange(0, 0)   # indeterminate until a File/Replicate marker
             QApplication.setOverrideCursor(Qt.WaitCursor)
         else:
             QApplication.restoreOverrideCursor()
@@ -634,10 +682,12 @@ def _install_qt_facade(shell):
     qm.review_replicates = shell.review_replicates_stub
     qm.wait_figure_close = wait_figure_close
     data._show_and_wait = lambda fig, tk_root=None: wait_figure_close(fig)
+    theme.style_plot_window = _qt_style_plot_window   # app icon on plot windows
 
 
 def main():
     app = QApplication(sys.argv)
+    app.setWindowIcon(_app_icon())
     qtheme.install_crash_handler('QCS (v12.0 shell)')
     dark = qm.USER_PREFS.get('ui_theme') == 'dark'
     qtheme.apply_style(dark)

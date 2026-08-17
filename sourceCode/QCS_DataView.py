@@ -443,6 +443,21 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
     ax1.set_ylabel(display_name)
     ax1.plot(qualified_data['Datetime'], qualified_data[variable], marker='o', linestyle='none', markersize=2, color=plot_color, label='Approved data')
 
+    # combined-replicates sheet: the between-replicate disagreement, one
+    # vertical bar per sample (bar = max - min, centered on the plotted mean) -
+    # the same visual as the DataView HOBO panel. Single-logger sheets carry
+    # the spread column EMPTY, so nothing is drawn for them.
+    if variable == 'Temperature (degC)' and 'Temperature spread (degC)' in qualified_data.columns:
+        spread = pd.to_numeric(qualified_data['Temperature spread (degC)'], errors='coerce')
+        temp = pd.to_numeric(qualified_data[variable], errors='coerce')
+        valid = spread.notna() & temp.notna() & (spread > 0)
+        if valid.any():
+            ax1.errorbar(qualified_data.loc[valid.values, 'Datetime'], temp[valid],
+                         yerr=spread[valid] / 2, fmt='none',
+                         ecolor=cParam.get(variable, plot_color), elinewidth=1.0,
+                         alpha=0.7, label='Replicate disagreement (bar = max - min)')
+            ax1.legend(loc='best', fontsize=8)
+
     #not_nan = np.asarray(qualified_data.index[~np.isnan(qualified_data[variable])])
     #mirror_var = raw_data.copy()
     #mirror_var.loc[not_nan, variable] = np.nan
