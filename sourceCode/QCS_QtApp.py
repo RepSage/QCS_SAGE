@@ -25,14 +25,16 @@ import sys
 import matplotlib
 matplotlib.use('QtAgg')            # before any QCS import binds pyplot
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
-                               QFileDialog, QFormLayout, QGridLayout,
-                               QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                               QMainWindow, QMessageBox, QProgressBar,
-                               QPushButton, QRadioButton, QScrollArea,
-                               QTabWidget, QToolButton, QVBoxLayout, QWidget)
+                               QDockWidget, QFileDialog, QFormLayout,
+                               QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+                               QLineEdit, QMainWindow, QMessageBox,
+                               QProgressBar, QProgressDialog, QPushButton,
+                               QRadioButton, QScrollArea, QTableWidget,
+                               QTableWidgetItem, QTabWidget, QToolButton,
+                               QVBoxLayout, QWidget)
 
 import QCS_Theme as theme          # writable_app_dir + output redirect (shared)
 _out = theme.install_output_redirect()
@@ -41,7 +43,20 @@ import QCS_Main as qm
 import QCS_DataHandler as data
 # installs the tk crash handler at import; main() installs the Qt one after
 import QCS_DatabaseView as dbv
+import QCS_Update as upd
 from QCS_QtViz import VisualizationTab
+
+# QCS_Main/QCS_DatabaseView install the TK crash handler at import (it pops a
+# tk dialog that never shows in a Qt app, and a crash then looks like a hang).
+# Claim the hook for Qt as soon as this module is imported - main() is too
+# late for anything that runs the shell without it (drivers, tests).
+qtheme.install_crash_handler('QCS (v12.0)')
+
+
+class _UpdateBridge(QObject):
+    """Marshals the background update check's result onto the Qt main thread
+    (the tk shell used root.after for the same purpose)."""
+    newer = Signal(dict)
 
 TOOLTIPS = qm.TOOLTIPS             # single source: the real texts (v11.6.1)
 
@@ -50,6 +65,15 @@ _ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'qcs_icon.
 
 def _app_icon():
     return QIcon(_ICON_PATH) if os.path.isfile(_ICON_PATH) else QIcon()
+
+
+def _interval_text(seconds):
+    """'3600' -> '1 h', '1800' -> '30 min', '45' -> '45 s'."""
+    if seconds % 3600 == 0:
+        return '%d h' % (seconds // 3600)
+    if seconds % 60 == 0:
+        return '%d min' % (seconds // 60)
+    return '%d s' % seconds
 
 
 def _qt_style_plot_window(fig, title=None):
@@ -166,8 +190,25 @@ class QtShell(QMainWindow):
 
         self.log_dock = qtheme.LogDock(self)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
+        # batch status: one row per file of a Seaguard batch, filled from the
+        # pipeline's own markers (hidden outside batches). Built BEFORE the
+        # menus: View lists its toggle action.
+        self.batch_table = QTableWidget(0, 2)
+        self.batch_table.setHorizontalHeaderLabels(['File', 'Status'])
+        self.batch_table.horizontalHeader().setStretchLastSection(True)
+        self.batch_table.setColumnWidth(0, 320)
+        self.batch_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.batch_dock = QDockWidget('Batch status', self)
+        self.batch_dock.setWidget(self.batch_table)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.batch_dock)
+        self.batch_dock.hide()
+        self._batch_rows = {}
         self._menus()
         self.statusBar().showMessage('v12.0 development shell - the tk app on master remains the released interface')
+        # criteria indicator: at a glance, are the quality criteria the
+        # software defaults or operator-edited? (owner request, 2026-08-17)
+        self.criteria_label = QLabel('')
+        self.statusBar().addPermanentWidget(self.criteria_label)
         # pipeline progress, bottom right: indeterminate while a single run is
         # busy, and a real fraction on the batch/replicate markers the
         # pipeline already logs ('=== File k/n ===' / '=== Replicate k/n ===')
@@ -175,6 +216,19 @@ class QtShell(QMainWindow):
         self.progress.setFixedWidth(220)
         self.progress.setVisible(False)
         self.statusBar().addPermanentWidget(self.progress)
+
+    def update_criteria_indicator(self):
+        d = qm.DEFAULT_QUALITY_CONFIG
+        default = (qm.CONFIG['tsQualityTests'] == d['tsQualityTests']
+                   and qm.CONFIG['tsSettings'] == d['tsSettings']
+                   and {k: dict(v) for k, v in qm.CONFIG['tsFactors'].items()}
+                   == d['tsFactors'])
+        self.criteria_label.setText('criteria: defaults' if default
+                                    else 'criteria: CUSTOM')
+        self.criteria_label.setToolTip(
+            'The quality criteria are the software defaults' if default else
+            'At least one quality criterion differs from the defaults\n'
+            '(the edited fields show in bold in Parameter settings)')
 
     # ----- logging -----
     def log_line(self, message):
@@ -184,13 +238,19 @@ class QtShell(QMainWindow):
         # run: file k of n at stage s sits at (k-1)*5 + s out of n*5, so
         # finishing the first of two replicates reads 50%, not a reset.
         msg = message.strip()
-        m = re.match(r'=== (File|Replicate) (\d+)/(\d+)', msg)
+        m = re.match(r'=== (File|Replicate) (\d+)/(\d+): (.+?) ===', msg)
         if m:
             kind, k, n = m.group(1), int(m.group(2)), int(m.group(3))
             self._run_scope = (kind, k, n)
             self.progress.setRange(0, n * 5)
             self.progress.setValue((k - 1) * 5)
             self.progress.setFormat('%s %d/%d' % (kind, k, n))
+            if kind == 'File':
+                self._batch_mark(m.group(4), k, n)
+        fail = re.match(r'File (.+?) could not be qualified', msg)
+        if fail and fail.group(1) in self._batch_rows:
+            row = self._batch_rows[fail.group(1)]
+            self.batch_table.setItem(row, 1, QTableWidgetItem('FAILED (see log)'))
         else:
             s = re.match(r'Stage (\d)/5', msg)
             if s:
@@ -233,6 +293,15 @@ class QtShell(QMainWindow):
         holder = QWidget()
         holder.setLayout(row)
         fin.addRow('Data file(s):', holder)
+
+        # Recent selections, right under the files row and usable only while
+        # NO file is selected - the same rule as the Visualization tab
+        self.recent = QComboBox()
+        self.recent.setPlaceholderText('Select a recent file to open')
+        self.recent.setToolTip('Reopens one of the most recent file selections\n'
+                               '(available while no file is selected above)')
+        self.recent.activated.connect(self._apply_recent)
+        fin.addRow('Recent:', self.recent)
 
         self.input_type = QComboBox()
         self.input_type.addItems(['Seaguard', 'HOBO'])
@@ -363,7 +432,9 @@ class QtShell(QMainWindow):
         fsum = QFormLayout(gsum)
         self.sum_labels = {}
         for key, label in (('instrument', 'Instrument:'), ('files', 'Files:'),
-                           ('mode', 'Mode:'), ('timebase', 'Timebase:')):
+                           ('mode', 'Mode:'), ('period', 'Period:'),
+                           ('interval', 'Interval:'), ('serials', 'Serial(s):'),
+                           ('timebase', 'Timebase:')):
             lab = QLabel('-')
             lab.setStyleSheet('color: palette(mid);')
             self.sum_labels[key] = lab
@@ -391,10 +462,26 @@ class QtShell(QMainWindow):
         for col in range(3):
             actions.setColumnStretch(col, 1)
         actions.addWidget(settings, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        # after a successful run: the two things the operator does next
+        # (owner request) - the log line with the path stays, this is a
+        # shortcut, not a replacement
+        self.postrun_bar = QWidget()
+        pr = QHBoxLayout(self.postrun_bar)
+        pr.setContentsMargins(0, 0, 0, 0)
+        open_out = QPushButton('Open output folder')
+        open_out.clicked.connect(self._open_output_folder)
+        to_viz = QPushButton('Go to visualization')
+        to_viz.clicked.connect(
+            lambda: self.tabs.setCurrentIndex(self.tabs.count() - 1))
+        pr.addWidget(open_out)
+        pr.addWidget(to_viz)
+        self.postrun_bar.setVisible(False)
+
         run_box = QVBoxLayout()
         run_box.setContentsMargins(0, 0, 0, 0)
         run_box.addWidget(self.run_btn, alignment=Qt.AlignHCenter)
         run_box.addWidget(self.run_hint, alignment=Qt.AlignHCenter)
+        run_box.addWidget(self.postrun_bar, alignment=Qt.AlignHCenter)
         rb = QWidget()
         rb.setLayout(run_box)
         actions.addWidget(rb, 0, 1, Qt.AlignHCenter)
@@ -427,26 +514,144 @@ class QtShell(QMainWindow):
             self.viz_tab.refresh_step1()
 
     def _menus(self):
+        # File carries the file-level actions of the active workflow, so the
+        # keyboard reaches what the buttons do (owner asked what belongs here:
+        # selection, output folder, settings, exit)
         mb = self.menuBar()
         filem = mb.addMenu('File')
+        act_open = QAction('Select data file(s)...', self)
+        act_open.setShortcut('Ctrl+O')
+        act_open.triggered.connect(self._browse)
+        filem.addAction(act_open)
+        act_co2 = QAction('Add CO₂ data...', self)
+        act_co2.triggered.connect(self._select_co2)
+        filem.addAction(act_co2)
+        act_outdir = QAction('Select output folder...', self)
+        act_outdir.triggered.connect(self._browse_output)
+        filem.addAction(act_outdir)
+        filem.addSeparator()
+        act_showout = QAction('Open output folder', self)
+        act_showout.triggered.connect(self._open_output_folder)
+        filem.addAction(act_showout)
+        act_settings = QAction('Parameter settings...', self)
+        act_settings.triggered.connect(self._open_settings)
+        filem.addAction(act_settings)
+        filem.addSeparator()
         act_exit = QAction('Exit', self)
+        act_exit.setShortcut('Ctrl+Q')
         act_exit.triggered.connect(self.close)
         filem.addAction(act_exit)
+
         view = mb.addMenu('View')
         self.dark_action = QAction('Dark mode', self, checkable=True)
         self.dark_action.triggered.connect(self._toggle_dark)
         view.addAction(self.dark_action)
         view.addSeparator()
         view.addAction(self.log_dock.toggleViewAction())
+        view.addAction(self.batch_dock.toggleViewAction())
+
         helpm = mb.addMenu('Help')
         manual = QAction('User manual', self)
         manual.triggered.connect(self._open_manual)
         helpm.addAction(manual)
+        updates = QAction('Check for updates', self)
+        updates.triggered.connect(self.check_for_updates)
+        helpm.addAction(updates)
         about = QAction('About', self)
         about.triggered.connect(lambda: QMessageBox.information(
             self, 'QCS', 'QCS - Quality Control System %s\n'
-            'v12.0 interface port, phase 1 (Qt/PySide6).' % data.QCS_VERSION))
+            'Quality control of oceanographic sensor data (SAGE / COPPE-UFRJ).'
+            % data.QCS_VERSION))
         helpm.addAction(about)
+
+    # ----- update check (the network parts are shared with the tk shell) -----
+    def check_for_updates(self):
+        """Help > Check for updates: reports EVERY outcome (unlike the silent
+        startup check)."""
+        self.log_line('Info: checking for updates...')
+        QApplication.processEvents()
+        try:
+            latest = upd.fetch_latest()
+        except Exception as exc:
+            QMessageBox.warning(self, 'Check for updates',
+                                'The update check failed: %s' % upd.describe_error(exc))
+            return
+        if latest and upd.is_newer(latest['tag'], data.QCS_VERSION):
+            self.offer_update(latest)
+        else:
+            QMessageBox.information(
+                self, 'Check for updates',
+                'QCS %s is the latest version.' % data.QCS_VERSION)
+
+    def start_background_update_check(self):
+        """Startup path: silent on every outcome except a newer release."""
+        self._update_bridge = _UpdateBridge()
+        self._update_bridge.newer.connect(self.offer_update)
+        upd.check_in_background(data.QCS_VERSION, self._update_bridge.newer.emit)
+
+    def offer_update(self, latest):
+        size = (' (~%.0f MB)' % latest['size_mb']) if latest.get('size_mb') else ''
+        answer = QMessageBox.question(
+            self, 'Update available',
+            'QCS %s is available - you are running %s.\n\n'
+            'Download and install it now%s? The program will close and reopen '
+            'updated; your settings and preferences are kept.'
+            % (latest['tag'], data.QCS_VERSION, size))
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if self._download_and_run(latest):
+            self.close()
+
+    def _download_and_run(self, latest):
+        """Qt version of QCS_Update.download_and_run (that one builds a tk
+        progress window): same contract - True when the installer started."""
+        import subprocess
+        import tempfile
+        import urllib.request
+        import webbrowser
+        if not latest.get('setup_url'):
+            webbrowser.open(upd.RELEASES_PAGE)      # release without an asset
+            return False
+        dest = os.path.join(tempfile.gettempdir(), latest['setup_name'])
+        dlg = QProgressDialog('Downloading %s (%.0f MB)...'
+                              % (latest['setup_name'], latest['size_mb'] or 0),
+                              'Cancel', 0, 100, self)
+        dlg.setWindowTitle('Downloading %s' % latest['tag'])
+        dlg.setWindowModality(Qt.WindowModal)
+        dlg.setValue(0)
+        try:
+            req = urllib.request.Request(latest['setup_url'], headers=upd._HEADERS)
+            with urllib.request.urlopen(req, timeout=30,
+                                        context=upd.ssl_context()) as resp, \
+                    open(dest, 'wb') as f:
+                total = int(resp.headers.get('Content-Length') or 0)
+                got = 0
+                while True:
+                    if dlg.wasCanceled():
+                        self.log_line('Info: update download cancelled.')
+                        return False
+                    chunk = resp.read(1 << 16)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    got += len(chunk)
+                    if total:
+                        dlg.setValue(int(100 * got / total))
+                    QApplication.processEvents()
+            if total and got != total:
+                raise OSError('incomplete download: %d of %d bytes' % (got, total))
+        except Exception as exc:
+            dlg.close()
+            QMessageBox.warning(
+                self, 'Update download failed',
+                'The installer could not be downloaded: %s\n\nThe release page '
+                'will open in the browser instead.' % upd.describe_error(exc))
+            webbrowser.open(upd.RELEASES_PAGE)
+            return False
+        dlg.close()
+        # /SILENT: the .iss closes a running QCS and relaunches it updated
+        subprocess.Popen([dest, '/SILENT', '/NORESTART'])
+        return True
 
     def _toggle_dark(self, on):
         qtheme.apply_style(on)
@@ -464,6 +669,7 @@ class QtShell(QMainWindow):
     def _open_settings(self):
         from QCS_QtSettings import SettingsDialog
         SettingsDialog(self).exec()
+        self.update_criteria_indicator()   # the edit may have left the defaults
 
     # ----- drag-and-drop (Qt-native: one handler pair for the whole window) -----
     def dragEnterEvent(self, event):
@@ -528,6 +734,8 @@ class QtShell(QMainWindow):
         self._apply_output_name()
         self._update_co2_controls()
         self._update_summary(names)
+        qm.push_qual_recent(';'.join(names), self.input_type.currentText())
+        self._refresh_recent()
 
     def _apply_output_name(self):
         paths = [p.strip() for p in self.file_edit.text().split(';') if p.strip()]
@@ -545,12 +753,67 @@ class QtShell(QMainWindow):
         else:
             self.out_name.setText(base + '_QLF')
 
+    def _refresh_recent(self):
+        with QSignalBlocker(self.recent):
+            self.recent.clear()
+            self.recent.addItems([qm.qual_recent_display(r)
+                                  for r in qm.USER_PREFS.get('qual_recent', [])])
+            self.recent.setCurrentIndex(-1)
+        self.recent.setEnabled(not self.file_edit.text().strip())
+
+    def _apply_recent(self, index):
+        recents = qm.USER_PREFS.get('qual_recent', [])
+        if 0 <= index < len(recents):
+            files = [p for p in recents[index]['files'].split(';') if p.strip()]
+            existing = [f for f in files if os.path.isfile(f)]
+            if not existing:
+                QMessageBox.warning(self, 'Recent selection',
+                                    'None of those files exist any more:\n\n%s'
+                                    % '\n'.join(files))
+                return
+            if len(existing) < len(files):
+                self.log_line('Warning: %d file(s) of that recent selection no '
+                              'longer exist and were skipped.'
+                              % (len(files) - len(existing)))
+            self.apply_selected_files(existing)
+
+    def _open_output_folder(self):
+        root = qm.OUTPUT.get('last_output_root') or self.out_folder.text().strip()
+        if root and os.path.isdir(root):
+            os.startfile(root)
+        else:
+            QMessageBox.warning(self, 'Output folder',
+                                'The output folder no longer exists:\n%s' % root)
+
     def _update_summary(self, names):
         itype = self.input_type.currentText()
         self.sum_labels['instrument'].setText(itype or '-')
         self.sum_labels['files'].setText(
             '%d  (%s%s)' % (len(names), os.path.basename(names[0]),
                             ', ...' if len(names) > 1 else ''))
+        # raw .hobo: the header is a 1 KB read, so the summary can state what
+        # the logger itself recorded before anything is qualified (v12.0)
+        heads = [data.peek_hobo_header(f) for f in names
+                 if f.lower().endswith('.hobo')]
+        heads = [h for h in heads if h]
+        if heads:
+            models = {h['model'] for h in heads if h['model']}
+            if models:
+                self.sum_labels['instrument'].setText('%s  (%s)'
+                                                      % (itype, ', '.join(sorted(models))))
+            serials = [h['serial'] for h in heads if h['serial']]
+            if serials:
+                self.sum_labels['serials'].setText(', '.join(serials))
+            intervals = {h['interval_s'] for h in heads if h['interval_s']}
+            if intervals:
+                text = ', '.join(_interval_text(s) for s in sorted(intervals))
+                if len(intervals) > 1:
+                    text += '   (differ - see the log warning)'
+                self.sum_labels['interval'].setText(text)
+            launches = [h['launch'] for h in heads if h['launch'] is not None]
+            if launches:
+                self.sum_labels['period'].setText(
+                    'launched %s' % min(launches).strftime('%d/%m/%Y %H:%M'))
         if itype == 'HOBO':
             mode = ('%d replicates of one deployment, combined' % len(names)
                     if len(names) > 1 else 'single logger')
@@ -678,6 +941,7 @@ class QtShell(QMainWindow):
             self.input_type.setCurrentIndex(-1)
             for lab in self.sum_labels.values():
                 lab.setText('-')
+        self.recent.setEnabled(not text.strip())
         self._update_run_state()
 
     def _update_run_state(self):
@@ -719,11 +983,34 @@ class QtShell(QMainWindow):
             self._set_replicates(str(n))
         return qm.apply_input_settings(vals)
 
+    def _batch_mark(self, name, k, n):
+        """Batch table: file k of n starts. The previous file, unless already
+        FAILED, is done - a batch only advances past a finished file."""
+        if k == 1:
+            self.batch_table.setRowCount(n)
+            self._batch_rows = {}
+            self.batch_dock.show()
+        self._finish_running_batch_row()
+        row = k - 1
+        self._batch_rows[name] = row
+        self.batch_table.setItem(row, 0, QTableWidgetItem(name))
+        self.batch_table.setItem(row, 1, QTableWidgetItem('running...'))
+
+    def _finish_running_batch_row(self):
+        for row in range(self.batch_table.rowCount()):
+            item = self.batch_table.item(row, 1)
+            if item is not None and item.text() == 'running...':
+                self.batch_table.setItem(row, 1, QTableWidgetItem('ok'))
+
     def set_busy(self, busy):
         self.run_btn.setEnabled(not busy)
         self.progress.setVisible(busy)
         if busy:
             self._run_scope = None
+            self.batch_dock.hide()          # reappears on the first File marker
+            self.batch_table.setRowCount(0)
+            self._batch_rows = {}
+            self.postrun_bar.setVisible(False)
             self.progress.setRange(0, 0)   # indeterminate until the first Stage marker
             # busy cursor on the MAIN window only (like the tk watch cursor):
             # an app-wide override cursor kept spinning over the interactive
@@ -731,7 +1018,10 @@ class QtShell(QMainWindow):
             self.setCursor(Qt.WaitCursor)
         else:
             self.unsetCursor()
+            self._finish_running_batch_row()
             self._update_run_state()
+            # a run that produced an output offers the two next steps
+            self.postrun_bar.setVisible(bool(qm.OUTPUT.get('last_output_root')))
 
     def _update_regions(self, _macro=None):
         macro = self.macroregion.currentText()
@@ -785,6 +1075,8 @@ class QtShell(QMainWindow):
             self._update_summary(files)
             if self.input_type.currentText() == 'HOBO':
                 self._set_replicates(str(len(files)))
+        self._refresh_recent()
+        self.update_criteria_indicator()
 
 
 def _bootstrap_tk_pipeline(shared_log):
@@ -831,7 +1123,6 @@ def _install_qt_facade(shell):
 def main():
     app = QApplication(sys.argv)
     app.setWindowIcon(_app_icon())
-    qtheme.install_crash_handler('QCS (v12.0 shell)')
     dark = qm.USER_PREFS.get('ui_theme') == 'dark'
     qtheme.apply_style(dark)
     shell = QtShell()
@@ -848,6 +1139,7 @@ def main():
         app.processEvents()
         shell.grab().save(out_path)
         return 0
+    shell.start_background_update_check()   # silent unless a newer release exists
     if qm.SETTINGS_RESET_FROM:
         QMessageBox.information(
             shell, 'Quality criteria reset',

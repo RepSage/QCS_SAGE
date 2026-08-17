@@ -1002,6 +1002,45 @@ def _hobo_datetimes(series, say):
     return pd.to_datetime(txt, errors='coerce', dayfirst=dayfirst)
 
 
+def peek_hobo_header(file_path):
+    """Header-only peek at a raw .hobo file: model, serial, launch time,
+    logging interval and the logger's UTC offset - without decoding the
+    sample stream (v12.0, for the interface's Selection summary). Returns
+    None when the file is not a readable .hobo; NEVER raises."""
+    try:
+        with open(file_path, 'rb') as f:
+            blob = f.read(0x400)
+        if not blob.startswith(b'HOBO'):
+            return None
+        tags, i = {}, 0
+        while i < len(blob) - 2:
+            if blob[i] == 0x88:
+                t, ln = blob[i + 1], blob[i + 2]
+                if t not in tags and 0 < ln < 64:
+                    tags[t] = blob[i + 3:i + 3 + ln]
+                i += 3 + ln if 0 < ln < 64 else 1
+            else:
+                i += 1
+        out = {'model': tags.get(0x05, b'').decode('ascii', 'replace'),
+               'serial': tags.get(0x06, b'').decode('ascii', 'replace'),
+               'launch': None, 'interval_s': None, 'utc_offset_s': None}
+        p = tags.get(0x07)
+        if p is not None and len(p) >= 7:
+            try:
+                out['launch'] = pd.Timestamp(2000 + p[1], p[2], p[3], p[4], p[5], p[6])
+            except ValueError:
+                pass
+        p = tags.get(0x08)
+        if p is not None and len(p) == 4:
+            out['interval_s'] = int.from_bytes(p, 'big')
+        p = tags.get(0x12)
+        if p is not None and len(p) == 4:
+            out['utc_offset_s'] = int.from_bytes(p, 'big', signed=True)
+        return out
+    except Exception:
+        return None
+
+
 def _read_hobo_binary(file_path, say):
     """Decodes a raw HOBOware .hobo file (HOBO Pendant Temp/Light, UA-002
     family) into the standard frame Datetime / Temperature (degC) /

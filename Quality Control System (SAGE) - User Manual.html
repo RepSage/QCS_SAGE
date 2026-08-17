@@ -209,8 +209,13 @@
 
     <h3>The interface at a glance</h3>
     <p>Both tools live in a <strong>single window</strong> (since v12.0 built on Qt, with the
-    Fusion style): a menu bar (File / View / Help) plus two tabs,
-    <strong>Data Qualification</strong> and <strong>Data Visualization</strong>. The interface
+    Fusion style): a menu bar plus two tabs,
+    <strong>Data Qualification</strong> and <strong>Data Visualization</strong>.
+    <strong>File</strong> carries the file-level actions of the tab (select data file(s),
+    <code>Ctrl+O</code>; add CO&#8322; data; select or open the output folder; parameter
+    settings; exit, <code>Ctrl+Q</code>), <strong>View</strong> the dark mode and the
+    Execution log / Batch status panels, and <strong>Help</strong> the user manual,
+    <strong>Check for updates</strong> and About. The interface
     offers a <strong>dark mode</strong> (View menu, remembered across sessions) and crisp text
     on high-resolution displays. The <strong>Run qualification</strong> button enables only when
     everything required is filled &mdash; the hint under it names the next missing step &mdash;
@@ -221,7 +226,16 @@
     window, the same log for every pipeline stage (qualification, database building/preview and
     panel generation), color-coded by severity. The log is a <strong>dockable panel</strong>:
     drag it, detach it into its own window, or close it — <em>View &gt; Execution log</em>
-    brings it back; messages keep accumulating while hidden.
+    brings it back; messages keep accumulating while hidden. During a
+    <strong>batch</strong> a <em>Batch status</em> panel lists one row per file with its state
+    (running / ok / FAILED), and when a run finishes two shortcuts appear under the RUN
+    button: <strong>Open output folder</strong> and <strong>Go to visualization</strong>.</p>
+    <p>The status bar states which quality criteria are in force:
+    <strong>criteria: defaults</strong> or <strong>criteria: CUSTOM</strong>. In the
+    Settings window every field that differs from the software default is shown in
+    <strong>bold</strong>, each row has a <strong>&#8634;</strong> button that restores just
+    that parameter, and a <em>Find</em> box filters the rows by name — so it is always
+    visible whether a qualification ran with the canonical criteria or with edited ones.
     If a fatal error happens before the window can
     open, a message box appears and a <code>QCS_crash.log</code> file is written with the
     details — next to <code>QCS.exe</code> on an installed copy (in <code>%APPDATA%\QCS</code>

@@ -9,7 +9,8 @@ so the two shells can never validate or persist differently.
 """
 from PySide6.QtWidgets import (QCheckBox, QDialog, QGridLayout, QHBoxLayout,
                                QLabel, QLineEdit, QMessageBox, QPushButton,
-                               QScrollArea, QTabWidget, QVBoxLayout, QWidget)
+                               QScrollArea, QTabWidget, QToolButton,
+                               QVBoxLayout, QWidget)
 
 import QCS_Main as qm
 
@@ -35,11 +36,21 @@ class SettingsDialog(QDialog):
         self.setWindowTitle('Quality control settings')
         self.resize(900, 700)
         v = QVBoxLayout(self)
+        # search box: the Parameters tab is long, and hunting for one limit
+        # by scrolling was the slow part (owner request, 2026-08-17)
+        search_row = QHBoxLayout()
+        search_row.addWidget(QLabel('Find:'))
+        self.search = QLineEdit()
+        self.search.setPlaceholderText('Filter the rows by name, e.g. "temp" or "lux"')
+        self.search.textChanged.connect(self._apply_filter)
+        search_row.addWidget(self.search)
+        v.addLayout(search_row)
         tabs = QTabWidget()
         tabs.addTab(self._tests_tab(), 'Quality control tests')
         tabs.addTab(self._params_tab(), 'Parameters')
         tabs.addTab(self._factors_tab(), 'Factors per variable')
         v.addWidget(tabs)
+        self._mark_non_defaults()
         btns = QHBoxLayout()
         reset = QPushButton('Reset to defaults')
         reset.clicked.connect(self._reset)
@@ -52,26 +63,45 @@ class SettingsDialog(QDialog):
         v.addLayout(btns)
 
     # ----- tabs -----
+    def _add_row(self, widgets, text):
+        """Registers a logical row for the search filter (hiding every widget
+        of a grid row collapses it)."""
+        self._rows.append((widgets, text.lower()))
+
     def _tests_tab(self):
         w = QWidget()
         v = QVBoxLayout(w)
         self.test_boxes = {}
+        self._rows = getattr(self, '_rows', [])
         for category, tests in qm.TEST_CATEGORIES.items():
-            v.addWidget(_bold(category))
+            head = _bold(category)
+            v.addWidget(head)
+            self._add_row([head], category)
             for test in tests:
                 cb = QCheckBox(test)
                 cb.setChecked(qm.CONFIG['tsQualityTests'][test] == 'ON')
                 cb.setToolTip(qm.TS_QUALITY_TESTS_TOOLTIPS[test])
                 cb.setStyleSheet('margin-left: 18px;')
+                cb.toggled.connect(lambda _on: self._mark_non_defaults())
                 v.addWidget(cb)
                 self.test_boxes[test] = cb
+                self._add_row([cb], test)
         v.addStretch()
         return _scrolled(w)
+
+    def _reset_button(self, tip, on_click):
+        btn = QToolButton()
+        btn.setText('↺')
+        btn.setToolTip(tip)
+        btn.setAutoRaise(True)
+        btn.clicked.connect(on_click)
+        return btn
 
     def _params_tab(self):
         w = QWidget()
         grid = QGridLayout(w)
         self.setting_edits = {}
+        self._rows = getattr(self, '_rows', [])
 
         def add_edit(key, r, col):
             edit = QLineEdit(str(qm.CONFIG['tsSettings'][key]))
@@ -79,14 +109,26 @@ class SettingsDialog(QDialog):
             edit.setToolTip(qm.TS_SETTINGS_TOOLTIPS[key])
             grid.addWidget(edit, r, col)
             self.setting_edits[key] = edit
+            edit.textChanged.connect(lambda _t: self._mark_non_defaults())
+            return edit
+
+        def reset_keys(keys):
+            for k in keys:
+                if k in self.setting_edits:
+                    self.setting_edits[k].setText(
+                        str(qm.DEFAULT_QUALITY_CONFIG['tsSettings'][k]))
 
         row = 0
         # range sections: one row per variable, Min and Max side by side
         for prefix, title in (('sensor', 'Sensor Range'), ('env', 'Environmental Range')):
-            grid.addWidget(_bold(title), row, 0, 1, 4)
+            head = _bold(title)
+            grid.addWidget(head, row, 0, 1, 5)
+            self._add_row([head], title)
             row += 1
-            grid.addWidget(QLabel('Min'), row, 1)
-            grid.addWidget(QLabel('Max'), row, 2)
+            hmin, hmax = QLabel('Min'), QLabel('Max')
+            grid.addWidget(hmin, row, 1)
+            grid.addWidget(hmax, row, 2)
+            self._add_row([hmin, hmax], title)
             row += 1
             variables = []
             for k in qm.CONFIG['tsSettings']:
@@ -95,66 +137,150 @@ class SettingsDialog(QDialog):
                     if var not in variables:
                         variables.append(var)
             for var in variables:
-                grid.addWidget(QLabel(qm._PARAM_NAME.get(var, var) + ':'), row, 0)
-                add_edit('%s_min_%s' % (prefix, var), row, 1)
+                name = qm._PARAM_NAME.get(var, var)
+                lab = QLabel(name + ':')
+                grid.addWidget(lab, row, 0)
+                keys = ['%s_min_%s' % (prefix, var)]
+                widgets = [lab, add_edit(keys[0], row, 1)]
                 max_key = '%s_max_%s' % (prefix, var)
                 if max_key in qm.CONFIG['tsSettings']:
-                    add_edit(max_key, row, 2)
+                    keys.append(max_key)
+                    widgets.append(add_edit(max_key, row, 2))
                 unit = qm._PARAM_UNIT.get(var, '')
                 if unit:
-                    grid.addWidget(QLabel(unit), row, 3)
+                    ulab = QLabel(unit)
+                    grid.addWidget(ulab, row, 3)
+                    widgets.append(ulab)
+                btn = self._reset_button('Restores the default %s %s range'
+                                         % (title.lower(), name.lower()),
+                                         lambda _c=False, kk=tuple(keys): reset_keys(kk))
+                grid.addWidget(btn, row, 4)
+                widgets.append(btn)
+                self._add_row(widgets, '%s %s %s' % (title, name, var))
                 row += 1
 
-        grid.addWidget(_bold('Current profiler (Doppler)'), row, 0, 1, 4)
+        head = _bold('Current profiler (Doppler)')
+        grid.addWidget(head, row, 0, 1, 5)
+        self._add_row([head], 'current profiler doppler')
         row += 1
         for key, label, unit in qm._DOPPLER_PARAMS:
-            grid.addWidget(QLabel(label + ':'), row, 0)
-            add_edit(key, row, 1)
-            grid.addWidget(QLabel(unit), row, 2)
+            lab = QLabel(label + ':')
+            grid.addWidget(lab, row, 0)
+            widgets = [lab, add_edit(key, row, 1)]
+            ulab = QLabel(unit)
+            grid.addWidget(ulab, row, 2)
+            btn = self._reset_button('Restores the default %s' % label.lower(),
+                                     lambda _c=False, kk=(key,): reset_keys(kk))
+            grid.addWidget(btn, row, 4)
+            widgets += [ulab, btn]
+            self._add_row(widgets, '%s %s doppler current' % (label, key))
             row += 1
 
-        grid.addWidget(_bold('Other parameters'), row, 0, 1, 4)
+        head = _bold('Other parameters')
+        grid.addWidget(head, row, 0, 1, 5)
+        self._add_row([head], 'other parameters')
         row += 1
         for key in qm.CONFIG['tsSettings']:
             if 'sensor_' in key or 'env_' in key or key.startswith('doppler_'):
                 continue
-            grid.addWidget(QLabel(key.replace('_', ' ').title() + ':'), row, 0)
-            add_edit(key, row, 1)
+            label = key.replace('_', ' ').title()
+            lab = QLabel(label + ':')
+            grid.addWidget(lab, row, 0)
+            widgets = [lab, add_edit(key, row, 1)]
             unit = qm._OTHER_UNIT.get(key, '')
             if unit:
-                grid.addWidget(QLabel(unit), row, 2)
+                ulab = QLabel(unit)
+                grid.addWidget(ulab, row, 2)
+                widgets.append(ulab)
+            btn = self._reset_button('Restores the default %s' % label.lower(),
+                                     lambda _c=False, kk=(key,): reset_keys(kk))
+            grid.addWidget(btn, row, 4)
+            widgets.append(btn)
+            self._add_row(widgets, '%s %s' % (label, key))
             row += 1
         grid.setRowStretch(row, 1)
-        grid.setColumnStretch(4, 1)
+        grid.setColumnStretch(5, 1)
         return _scrolled(w)
 
     def _factors_tab(self):
         w = QWidget()
         grid = QGridLayout(w)
-        grid.addWidget(_bold('Spike / rate of change / vertical gradient thresholds'),
-                       0, 0, 1, 4)
+        self._rows = getattr(self, '_rows', [])
+        head = _bold('Spike / rate of change / vertical gradient thresholds')
+        grid.addWidget(head, 0, 0, 1, 5)
+        self._add_row([head], 'spike rate of change vertical gradient thresholds')
+        headers = []
         for col, title in enumerate(['Variable', 'Fail factor', 'Susp factor',
                                      'Time window']):
-            grid.addWidget(_bold(title), 1, col)
+            lab = _bold(title)
+            grid.addWidget(lab, 1, col)
+            headers.append(lab)
+        self._add_row(headers, 'variable fail susp window')
         self.factor_edits = {}
+
+        def reset_factor(key):
+            for field in ('fail', 'susp', 'window'):
+                self.factor_edits[key][field].setText(
+                    str(qm.DEFAULT_QUALITY_CONFIG['tsFactors'][key][field]))
+
         for i, (key, display) in enumerate(qm.FACTOR_VARS):
             r = i + 2
-            grid.addWidget(QLabel(display), r, 0)
+            lab = QLabel(display)
+            grid.addWidget(lab, r, 0)
             cfg = qm.CONFIG['tsFactors'][key]
             edits = {}
+            widgets = [lab]
             for col, field in ((1, 'fail'), (2, 'susp'), (3, 'window')):
                 edit = QLineEdit(str(cfg[field]))
                 edit.setFixedWidth(80)
                 edit.setToolTip(qm.TS_FACTORS_TOOLTIPS[field])
+                edit.textChanged.connect(lambda _t: self._mark_non_defaults())
                 grid.addWidget(edit, r, col)
                 edits[field] = edit
+                widgets.append(edit)
             self.factor_edits[key] = edits
+            btn = self._reset_button('Restores the default %s factors' % display.lower(),
+                                     lambda _c=False, kk=key: reset_factor(kk))
+            grid.addWidget(btn, r, 4)
+            widgets.append(btn)
+            self._add_row(widgets, '%s %s factors' % (display, key))
         grid.setRowStretch(len(qm.FACTOR_VARS) + 2, 1)
-        grid.setColumnStretch(4, 1)
+        grid.setColumnStretch(5, 1)
         return _scrolled(w)
+
+    # ----- default markers and search -----
+    def _mark_non_defaults(self):
+        """Bolds every field whose value differs from the software default, so
+        a custom criterion is visible at a glance (owner request)."""
+        d = qm.DEFAULT_QUALITY_CONFIG
+
+        def mark(widget, differs):
+            f = widget.font()
+            if f.bold() != differs:
+                f.setBold(differs)
+                widget.setFont(f)
+            widget.setToolTip(widget.toolTip().split('\n[edited')[0]
+                              + ('\n[edited - differs from the default]' if differs else ''))
+
+        for key, edit in self.setting_edits.items():
+            mark(edit, edit.text().strip() != str(d['tsSettings'][key]))
+        for test, cb in self.test_boxes.items():
+            mark(cb, ('ON' if cb.isChecked() else 'OFF') != d['tsQualityTests'][test])
+        for key, edits in self.factor_edits.items():
+            for field, edit in edits.items():
+                mark(edit, edit.text().strip() != str(d['tsFactors'][key][field]))
+
+    def _apply_filter(self, text):
+        needle = text.strip().lower()
+        for widgets, haystack in self._rows:
+            visible = not needle or needle in haystack
+            for w in widgets:
+                w.setVisible(visible)
 
     # ----- actions -----
     def _save(self):
+        # a filtered view must not save a partial picture: every widget is
+        # read regardless of visibility (the filter only hides rows)
         tests = {t: ('ON' if cb.isChecked() else 'OFF')
                  for t, cb in self.test_boxes.items()}
         settings_text = {p: e.text() for p, e in self.setting_edits.items()}
@@ -191,3 +317,4 @@ class SettingsDialog(QDialog):
         for key, edits in self.factor_edits.items():
             for field in ('fail', 'susp', 'window'):
                 edits[field].setText(str(qm.CONFIG['tsFactors'][key][field]))
+        self._mark_non_defaults()

@@ -347,6 +347,24 @@ def save_user_prefs():
     except Exception as e:
         print('Warning: could not save user preferences: %s' % e)
 
+# recent data-file selections, for one-click reopening (v12.0; the
+# Visualization tab has had its own list since v11.4)
+QUAL_RECENT_MAX = 8
+
+def push_qual_recent(files_raw, input_type):
+    entry = {'files': files_raw, 'input_type': input_type}
+    recents = [r for r in USER_PREFS.get('qual_recent', [])
+               if r.get('files') != files_raw]
+    recents.insert(0, entry)
+    USER_PREFS['qual_recent'] = recents[:QUAL_RECENT_MAX]
+    save_user_prefs()
+
+def qual_recent_display(entry):
+    names = ', '.join(os.path.basename(f) for f in entry['files'].split(';') if f)
+    if len(names) > 70:
+        names = names[:67] + '…'
+    return '%s   [%s]' % (names, entry.get('input_type', '?'))
+
 load_user_prefs()
 
 _co2_file = ''   # optional dissolved-CO2 file (Seaguard only), set by its button

@@ -2,6 +2,42 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-17 (v12.0 round 8) — update check, File menu, criteria visibility, flow
+
+Owner approved a batch of suggestions; all applied except the worker
+thread (deferred, see below).
+
+- **Check for updates** in Help + the silent startup check: the network
+  parts are reused from `QCS_Update`; only the dialog and the download
+  progress are Qt (`QProgressDialog`, cancellable).
+- **File menu** now carries the tab's file-level actions (select files
+  `Ctrl+O`, CO₂, select/open output folder, settings, exit `Ctrl+Q`);
+  View gained the Batch status toggle.
+- **Criteria visibility**: status-bar `criteria: defaults|CUSTOM`;
+  Settings bolds every non-default field, each row has a ↺ per-field
+  reset, and a Find box filters the rows (99 rows registered).
+- **Flow**: batch status table (running/ok/FAILED per file), post-run
+  "Open output folder" / "Go to visualization", `.hobo` header peek in
+  the Selection summary (model, serial(s), launch, interval - reads 1 KB
+  via the new `data.peek_hobo_header`), Recent in the qualification tab.
+- **Two bugs found while building this** (both mine, both fixed):
+  `_menus()` referenced `batch_dock` before it existed, and the **tk**
+  crash handler inherited from the `QCS_DatabaseView` import swallowed
+  the traceback into an invisible tk dialog — the app just hung.
+  `QCS_QtApp` now claims the crash hook for Qt at import.
+
+**Refused for now (owner, 2026-08-17), kept as an idea:** writing
+`QCS_criteria_used.json` beside each run's outputs, so a qualification
+archives the exact criteria it ran with. Reconsider if corpus work ever
+needs to prove which thresholds produced a given product.
+
+**Deferred to v12.1 (owner):** run the pipeline in a WORKER THREAD with a
+Cancel button — today it runs on the interface thread (the window freezes
+in the heavy stages and a wrong batch cannot be aborted). Needs the
+interactive reviews marshalled back to the main thread; pairs naturally
+with extracting `run_full_qualification` out of the tk closure and
+dropping the hidden-tk bootstrap.
+
 ## 2026-08-17 (v12.0 field test, round 6) — summary persists; plain scale numbers
 
 `1c3f4cd`: Selection summary refills on prefs restore; Recent gets
