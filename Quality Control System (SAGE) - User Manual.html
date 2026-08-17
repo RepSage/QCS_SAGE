@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v11.6.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v12.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -208,18 +208,20 @@
     </div>
 
     <h3>The interface at a glance</h3>
-    <p>Both tools live in a <strong>single window</strong>: a menu bar (File / Edit / View /
-    Tools / Help) plus two tabs, <strong>Data Qualification</strong> and
-    <strong>Data Visualization</strong>. The interface offers a <strong>dark mode</strong>
-    (View menu, remembered across sessions) and crisp text on high-resolution displays.</p>
+    <p>Both tools live in a <strong>single window</strong> (since v12.0 built on Qt, with the
+    Fusion style): a menu bar (File / View / Help) plus two tabs,
+    <strong>Data Qualification</strong> and <strong>Data Visualization</strong>. The interface
+    offers a <strong>dark mode</strong> (View menu, remembered across sessions) and crisp text
+    on high-resolution displays. The <strong>Run qualification</strong> button enables only when
+    everything required is filled &mdash; the hint under it names the next missing step &mdash;
+    and a <strong>progress bar</strong> (bottom right) follows the pipeline stages, prefixed
+    with the batch/replicate scope (e.g. <em>Replicate 2/2 - Stage 3/5</em>).</p>
     <p>The app runs with <strong>no terminal window</strong>: all progress, warnings and errors
-    appear in the <strong>Execution log</strong> — one single panel, fixed at the bottom of the
+    appear in the <strong>Execution log</strong> — one single panel at the bottom of the
     window, the same log for every pipeline stage (qualification, database building/preview and
-    panel generation), color-coded by severity. The <strong>Hide log</strong> button (left of
-    <em>Clear log</em>) collapses the log's text area to give its space to the tabs — useful on
-    small screens; messages keep accumulating while hidden, <em>Show log</em> brings them back,
-    and the choice is remembered across sessions. On a window too short for the whole
-    Data Qualification tab, a vertical scrollbar appears so every option stays reachable.
+    panel generation), color-coded by severity. The log is a <strong>dockable panel</strong>:
+    drag it, detach it into its own window, or close it — <em>View &gt; Execution log</em>
+    brings it back; messages keep accumulating while hidden.
     If a fatal error happens before the window can
     open, a message box appears and a <code>QCS_crash.log</code> file is written with the
     details — next to <code>QCS.exe</code> on an installed copy (in <code>%APPDATA%\QCS</code>
@@ -284,14 +286,16 @@
             <em>Replicates</em>, with an &times; to remove it.</td>
         </tr>
         <tr>
-            <td>Input type</td>
-            <td>Dropdown with the instrument type (Seaguard or HOBO). It is
-            <strong>auto-detected from the selected file's header</strong> (Seaguard device
-            block vs HOBOware export) and stays editable. When set to
+            <td>Instrument</td>
+            <td>Dropdown with the instrument family (Seaguard or HOBO), starting at
+            <em>Select instrument</em>. It is <strong>auto-detected from the selected file's
+            header</strong> (Seaguard device block vs HOBOware export) and then
+            <strong>locks</strong> &mdash; the family is a fact of the file, not a choice;
+            clearing the file selection unlocks it. When set to
             <strong>HOBO</strong>, the fields that do not apply to a temperature/light logger
             are disabled: Data Type, Correct GMT-3 and Select Profile Data. Data Type is
             cleared (to avoid misleading the user), but it remembers the last Seaguard
-            selection and restores it when Input Type is switched back to Seaguard.
+            selection and restores it when the Instrument is switched back to Seaguard.
             <br><br><strong>Pressure and conductivity units are read from the source
             itself</strong>: every Seaguard <code>.bin</code> template and every AADI text
             export names the unit in its own column header (<code>Pressure[kPa]</code>,
@@ -380,11 +384,22 @@
         </tr>
         <tr>
             <td>Remove bad data</td>
-            <td>Checkbox to automatically drop data with flag 4.</td>
+            <td>Checkbox to <strong>blank</strong> the values flagged BAD (4) in the output.
+            Rows and timestamps are kept; only the flagged values become empty.</td>
         </tr>
         <tr>
             <td>Remove suspect data</td>
-            <td>Checkbox to automatically drop data with flag 3.</td>
+            <td>Checkbox to <strong>blank</strong> the values flagged SUSPECT (3) in the
+            output. Rows and timestamps are kept.</td>
+        </tr>
+        <tr>
+            <td>Remove dismissed data</td>
+            <td>(v12.0, Seaguard only) Drops the rows where <strong>every</strong> variable was
+            dismissed &mdash; the Depth review's whole-row cuts &mdash; leaving a gap in the
+            original Sample numbers. Dismissed values are always blanked; this also removes the
+            empty rows they leave behind. Single-variable dismissals keep their row (it still
+            carries the other variables' data). Greyed for HOBO: with no Depth column, whole-row
+            dismissals cannot exist.</td>
         </tr>
         <tr>
             <td>Site code</td>
@@ -1013,7 +1028,9 @@
     <code>QCS_combine_method.txt</code> in the combined folder, each replicate's
     <code>QCS_light_window_&lt;replicate&gt;.svg</code> is copied there, and a
     <code>Temperature series.svg</code> plot shows the combined temperature at a glance
-    (since v11.6). The combined sheet's <code>Flag</code> column is intentionally
+    (since v11.6; since v12.0 it also draws the replicate-disagreement bars &mdash;
+    bar = max &minus; min, centered on the mean &mdash; the same visual as the Data
+    visualization HOBO panel). The combined sheet's <code>Flag</code> column is intentionally
     <strong>empty</strong>: each replicate ran its own tests, so a combined series has no
     single per-test flag string &mdash; the combined verdicts are <code>Flag_T</code> /
     <code>Flag_lux</code>, and the column stays only so single and combined sheets share one

@@ -2,6 +2,34 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-17 (v12.0 PORT COMPLETE — phases 3+4) — awaiting owner field test + merge
+
+Phase 3 (`4b2df34`): `QCS_QtViz.py` — the Data visualization tab as a
+remote control over the real DatabaseView wizard (hidden tk = authoritative
+state, zero duplicated logic); DatabaseView gained the ui facade and
+`_go_step2` returns success; DnD routes to the active tab; the
+qualification→visualization prefill handoff works. E2E-proven: database
+built from a folder join through the Qt tab, panels generated.
+
+Phase 4: entry point swapped to `QCS_QtApp` (spec + `QCS.bat` →
+`packaging/v12_env`), `requirements.txt` gains `PySide6==6.8.3` and
+`pandas<3`, build venv recipe updated (SHORT PATH — PySide6 qml assets
+overflow MAX_PATH in deep folders; that killed the first install).
+`QCS_VERSION = 'v12.0'`, `.iss` 12.0, `changelog/v12.0.md`, manual
+updated (Qt interface, Instrument, corrected Remove bad/suspect wording,
+Remove dismissed row, spread bars). Test build: bundle verified (PySide6,
+backend_qtagg, backend_svg, QCS_QtViz/QtSettings, HoboCal, tkinter+tcl),
+frozen app alive 15 s, no crash log. Suite 52/52; ruff clean.
+
+**NOT yet done:** owner field test of the full Qt app (esp. Depth review,
+adaptive light review, replicate review, the viz tab and the frozen exe
+running a REAL qualification — the launch smoke can't prove lazy imports;
+the release ritual after merge rebuilds and re-verifies). PR link handed
+to the owner. After merge: v12.0 ritual (tag on merge commit, rebuild,
+ISCC, Desktop copy, release text). Post-release cleanup candidates: strip
+the hidden-tk bootstrap (extract run_full_qualification to module level),
+retire the tk shells, pandas-3 migration.
+
 ## 2026-08-17 (v12.0 phase 2 COMPLETE) — every interactive review runs under Qt
 
 `fdd9b08`: replicate review (pure mpl + facade wait/help, keep-all stub
