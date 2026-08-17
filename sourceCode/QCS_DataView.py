@@ -702,7 +702,9 @@ def plot_database_panel1 (database, dataViewSettings):
                 # set y label
                 ax1.set_ylabel(rParam[0], color=bcParam[y_list[0].name], fontsize=10 * fscale)
                 # set title
-                ax1.set_title('Parameters for %s over %s during %s'%(site, _SEM_LABEL.get(semester, semester), year))
+                # the year lives on the X axis since v12.0 (owner: the axis
+                # must carry it; the title then drops the redundant year)
+                ax1.set_title('Parameters for %s over %s'%(site, _SEM_LABEL.get(semester, semester)))
                 # set y axis color and position
                 ax1.spines['left'].set_color(bcParam[y_list[0].name])
                 ax1.spines['left'].set_position(('outward', 1))
@@ -768,7 +770,7 @@ def plot_database_panel1 (database, dataViewSettings):
                     ax1.set_xlim(pd.Timestamp(dataViewSettings['xAxisStart']),
                                  pd.Timestamp(dataViewSettings['xAxisEnd']))
                 #defining data format
-                plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m %H:%M'))
+                plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m/%y %H:%M'))
                 # shrink y tick fonts if the widest label would not fit between the
                 # stacked spines, so adjacent axes' numbers never overlap
                 _fit_stacked_yticks(fig, spacing)
@@ -830,7 +832,8 @@ def plot_database_panel2(database, dataViewSettings):
         for parameter in parameter_names:
             display_param = rParam[parameter_names.index(parameter)]
             fig, ax1 = plt.subplots(figsize=(980/100, 500/100))
-            plt.title(f'{display_param} on {_SEM_LABEL.get(semester, semester)} for each site - {year}')
+            # the year lives on the X axis since v12.0 (title drops it)
+            plt.title(f'{display_param} on {_SEM_LABEL.get(semester, semester)} for each site')
             plt.grid(True, linestyle='dotted', linewidth=0.5)
             ax1.set_ylabel(display_param)
             control = 0
@@ -986,7 +989,9 @@ def plot_database_panel3(database, dataViewSettings):
                 # Configure first axis
                 ax1.set_xlabel('')  # Remove x-axis label but keep ticks
                 ax1.set_ylabel('Depth (m)')
-                ax1.set_title('Parameters for %s over %s during %s'%(site, _SEM_LABEL.get(semester, semester), year))
+                # the year lives on the X axis since v12.0 (owner: the axis
+                # must carry it; the title then drops the redundant year)
+                ax1.set_title('Parameters for %s over %s'%(site, _SEM_LABEL.get(semester, semester)))
                 # optional fixed depth axis (shallow at top, deep at bottom)
                 if dataViewSettings.get('depthAxisMin') is not None and dataViewSettings.get('depthAxisMax') is not None:
                     ax1.set_ylim(dataViewSettings['depthAxisMax'], dataViewSettings['depthAxisMin'])
@@ -1277,10 +1282,10 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
         if dataViewSettings.get('fixedScale') and param in dataViewSettings.get('scaleSettings', {}):
             ax.set_ylim(dataViewSettings['scaleSettings'][param]['min'],
                         dataViewSettings['scaleSettings'][param]['max'])
-    years = dataViewSettings.get('filterByYears') or []
-    year_text = ', '.join(str(y) for y in years)
-    ax1.set_title('HOBO parameters for %s%s' % (site, ' (%s)' % year_text if year_text else ''))
-    ax1.xaxis.set_major_formatter(_mdates.DateFormatter('%d/%m %H:%M'))
+    # the year lives on the X axis since v12.0 (owner: day/month alone was
+    # confusing; the title then drops the redundant year list)
+    ax1.set_title('HOBO parameters for %s' % site)
+    ax1.xaxis.set_major_formatter(_mdates.DateFormatter('%d/%m/%y'))
     ax1.legend(handles=handles, fontsize=8)
     plt.savefig('hobo_params_%s.svg' % site, bbox_inches='tight')
     enable_scroll_zoom(fig)

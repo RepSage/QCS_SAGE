@@ -8,7 +8,7 @@ Qt widgets are refreshed from the tk states. No visualization logic is
 duplicated here; Preview/Next/Generate call the same functions the tk app
 uses, with the dialogs routed to Qt through the QCS_DatabaseView facade.
 """
-from PySide6.QtCore import QSignalBlocker
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton, QScrollArea,
@@ -236,30 +236,23 @@ class VisualizationTab(QWidget):
             self.refresh_step2()
         self.dtype.currentTextChanged.connect(push_dtype)
         fd.addRow('Data type:', self.dtype)
-        years = QHBoxLayout()
-        self.year_checks = {}
-        for y in sorted(dbv.year_vars):
-            cb = QCheckBox(str(y))
-            cb.setToolTip(TOOLTIPS['filter_year'])
-            self._check_pair(cb, dbv.year_vars[y], dbv.year_widgets.get(y),
-                             after=(dbv.toggle_scale_controls,))
-            self.year_checks[y] = cb
-            years.addWidget(cb)
-        years.addStretch()
-        yh = QWidget()
-        yh.setLayout(years)
-        fd.addRow('Filter by year:', yh)
         grid.addWidget(gdata, 0, 0, 1, 2)
 
         gvis = QGroupBox('Visualization settings')
         fv = QFormLayout(gvis)
+        self._fv = fv
         self.panel_checks = []
-        for pvar, pcb in ((dbv.panel1, dbv.panel1_cb),
-                          (dbv.panel2, dbv.panel2_cb),
-                          (dbv.panel3, dbv.panel3_cb)):
+        panel_tips = ((TOOLTIPS['hobo_params_site'], TOOLTIPS['hobo_params_across'], '')
+                      if dbv.is_hobo_input() else
+                      (TOOLTIPS['panel1'], TOOLTIPS['panel2'], TOOLTIPS['panel3']))
+        for i, (pvar, pcb) in enumerate(((dbv.panel1, dbv.panel1_cb),
+                                         (dbv.panel2, dbv.panel2_cb),
+                                         (dbv.panel3, dbv.panel3_cb))):
             if not pcb.winfo_ismapped() and str(pcb.grid_info()) == '{}':
                 continue     # HOBO hides its unused third panel entirely
             cb = QCheckBox(pcb.cget('text'))
+            if panel_tips[i]:
+                cb.setToolTip(panel_tips[i])
             self._check_pair(cb, pvar, pcb,
                              after=(dbv.toggle_panel_dependent_controls,
                                     dbv.toggle_parameter_checkboxes))
@@ -284,6 +277,11 @@ class VisualizationTab(QWidget):
         self.ts_param.currentTextChanged.connect(
             lambda t: dbv.tsParam_combobox.set(t))
         fv.addRow('T-S variables:', self.ts_param)
+        # the T-S diagram needs T, S and depth together: profiles only.
+        # These rows only EXIST while Data type is TSCP Profile
+        # (visibility handled in refresh_step2)
+        self._ts_rows = [self.ts_check, self.latitude, self.longitude,
+                         self.ts_param]
         self.tendency = QCheckBox('Tendency lines')
         self.tendency.setToolTip(TOOLTIPS['tendency'])
         self._check_pair(self.tendency, dbv.tendency, dbv.tendency_cb,
@@ -336,6 +334,23 @@ class VisualizationTab(QWidget):
                              after=(dbv.toggle_scale_controls,))
             self.site_checks[site] = cb
             ff.addWidget(cb)
+        # years live under Sites in Filter settings (owner, 2026-08-17; two
+        # columns so many years stay compact)
+        year_lab = QLabel('Filter by year:')
+        year_lab.setFont(f)        # same bold section font as 'Sites:'
+        ff.addWidget(year_lab)
+        ygrid = QGridLayout()
+        self.year_checks = {}
+        for i, y in enumerate(sorted(dbv.year_vars)):
+            cb = QCheckBox(str(y))
+            cb.setToolTip(TOOLTIPS['filter_year'])
+            self._check_pair(cb, dbv.year_vars[y], dbv.year_widgets.get(y),
+                             after=(dbv.toggle_scale_controls,))
+            self.year_checks[y] = cb
+            ygrid.addWidget(cb, i // 2, i % 2)
+        yh = QWidget()
+        yh.setLayout(ygrid)
+        ff.addWidget(yh)
         params_lab = QLabel('Parameters:')
         params_lab.setFont(f)      # same bold section font as 'Sites:'
         ff.addWidget(params_lab)
@@ -357,7 +372,9 @@ class VisualizationTab(QWidget):
         gs.addWidget(QLabel('Max'), 0, 2)
         self.scale_edits = {}
         for r, param in enumerate(dbv.parameter_names, start=1):
-            gs.addWidget(QLabel(str(param)), r, 0)
+            plab = QLabel(str(param))
+            plab.setFont(f)        # bold, like the other section labels
+            gs.addWidget(plab, r, 0)
             mn = QLineEdit()
             mn.setFixedWidth(80)
             mn.setToolTip(TOOLTIPS['min_scale'])
@@ -381,21 +398,36 @@ class VisualizationTab(QWidget):
         area.setWidget(inner)
         outer.addWidget(area)
 
-        actions = QHBoxLayout()
+        # Back on the left, Generate truly CENTERED and styled like the
+        # Run qualification button (owner, 2026-08-17)
+        actions = QGridLayout()
+        for col in range(3):
+            actions.setColumnStretch(col, 1)
         back = QPushButton('< Back')
         back.clicked.connect(self._back)
+        actions.addWidget(back, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
         gen = QPushButton('Generate panels')
         gen.setDefault(True)
-        gen.setMinimumSize(200, 38)
+        gen.setMinimumSize(260, 42)
+        gf = gen.font()
+        gf.setBold(True)
+        gf.setPointSizeF(gf.pointSizeF() + 1)
+        gen.setFont(gf)
+        gen.setToolTip('Generates the selected panels with the current settings')
         gen.clicked.connect(self._generate)
-        actions.addWidget(back)
-        actions.addStretch()
-        actions.addWidget(gen)
-        actions.addStretch()
+        actions.addWidget(gen, 0, 1, Qt.AlignHCenter)
         outer.addLayout(actions)
         return page
 
     def refresh_step2(self):
+        # T-S rows exist only for profile data (owner: the diagram makes no
+        # sense for HOBO, Doppler or moorings); hiding also unchecks it
+        is_profile = dbv.dType_combobox.get() == 'TSCP Profile'
+        if not is_profile and dbv.tsDiagram.get():
+            dbv.tsDiagram.set(False)
+            dbv.toggle_ts_controls()
+        for w in self._ts_rows:
+            self._fv.setRowVisible(w, is_profile)
         for qt, tk in self._entries:
             with QSignalBlocker(qt):
                 qt.setText(tk.get())
