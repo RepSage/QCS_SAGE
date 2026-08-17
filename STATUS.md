@@ -2,6 +2,28 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-17 (v12.0 round 3 + Settings window) — phase 2 opened
+
+Round 3 applied (`6613d1c`): 'Remove dismissed data' unchecked+greyed for
+HOBO in both shells (no Depth column → no whole-row dismissals; re-enables
+for Seaguard), and the Qt progress bar now follows the pipeline's own
+'Stage k/5' lines, prefixed with the batch/replicate scope ('Replicate
+2/2 - Stage 3/5'); a single Seaguard run shows plain stages.
+
+**Phase 2 opened with the Settings window** (`6ab675d`):
+`QCS_QtSettings.py`, three tabs mirroring tk, same CONFIG. Validation and
+persistence extracted to toolkit-free cores in `QCS_Main`
+(`apply_settings_values` / `persist_quality_criteria`; `TEST_CATEGORIES`
+now module-level) — the tk window goes through them too. E2E-proven:
+sensor_max_temp=10 typed in the dialog flags 397/625 rows of the BURACAS
+cast BAD in a real run; invalid entries rejected; Reset restores
+defaults. The first driver run HUNG at the Depth review — the real Qt
+figure wait engaging, which is the desired interactive behavior.
+
+Phase 2 remaining: profile phase picking + Check variables (tk Toplevels),
+replicate-review window. Then phase 3 (Visualization tab), phase 4
+(packaging swap: PySide6 6.8.3 pinned).
+
 ## 2026-08-17 (v12.0 field test, round 2) — Instrument empty state; Remove dismissed
 
 Round 2 applied (`35f62d7` + `591b2b3`): the combo is now **Instrument**
