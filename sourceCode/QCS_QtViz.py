@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QLineEdit, QPushButton, QScrollArea,
                                QStackedWidget, QVBoxLayout, QWidget)
 
+import pandas as pd
+
 import QCS_DatabaseView as dbv
 import QCS_QtTheme as qtheme
 
@@ -25,6 +27,27 @@ def _tk_enabled(widget):
         return not widget.instate(['disabled'])
     except Exception:
         return True
+
+
+def _coverage_text():
+    """The period the loaded database covers (the tk step 2 showed this under
+    the X-axis fields; kept permanently on screen in Qt)."""
+    db = dbv.database
+    if db is None or 'Datetime' not in db.columns:
+        return 'Data available: unknown'
+    start, end = db['Datetime'].min(), db['Datetime'].max()
+    if pd.isna(start) or pd.isna(end):
+        return 'Data available: unknown (invalid dates)'
+    return 'Data available: %s to %s' % (start.strftime('%d/%m/%Y %H:%M'),
+                                         end.strftime('%d/%m/%Y %H:%M'))
+
+
+def _depth_text():
+    db = dbv.database
+    if db is None or 'Depth (m)' not in db.columns or not db['Depth (m)'].notna().any():
+        return 'Depth available: no depth column'
+    return 'Depth available: %.2f to %.2f m' % (db['Depth (m)'].min(),
+                                                db['Depth (m)'].max())
 
 
 def _tk_set_entry(entry, text):
@@ -87,17 +110,17 @@ class VisualizationTab(QWidget):
         self.recent.activated.connect(self._apply_recent)
         fin.addRow('Recent:', self.recent)
 
-        self.sort = QCheckBox('Sort data chronologically')
-        self.sort.setToolTip(TOOLTIPS['sort_time'])
-        self.sort.toggled.connect(lambda on: dbv.sort.set(bool(on)))
-        fin.addRow(self.sort)
-
         self.instrument = QComboBox()
         self.instrument.addItems(['Seaguard', 'HOBO', 'Doppler'])
         self.instrument.setToolTip(TOOLTIPS['instrument'])
         self.instrument.currentTextChanged.connect(
             lambda t: dbv.instrument_combobox.set(t))
         fin.addRow('Instrument:', self.instrument)
+
+        self.sort = QCheckBox('Sort data chronologically')
+        self.sort.setToolTip(TOOLTIPS['sort_time'])
+        self.sort.toggled.connect(lambda on: dbv.sort.set(bool(on)))
+        fin.addRow(self.sort)
 
         gout = QGroupBox('Output settings')
         fout = QFormLayout(gout)
@@ -131,6 +154,7 @@ class VisualizationTab(QWidget):
         nf = nxt.font()
         nf.setBold(True)
         nxt.setFont(nf)
+        nxt.setObjectName('AccentButton')   # blue primary action
         nxt.clicked.connect(self._next)
         actions.addWidget(nxt)
         ah = QWidget()
@@ -212,6 +236,21 @@ class VisualizationTab(QWidget):
         self.stack.addWidget(self._step2_page)
         self.refresh_step2()
 
+    def _all_none_row(self, boxes):
+        """Compact 'All | None' pair for a filter group (owner request). The
+        boxes are fetched lazily: the group is still being built here."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        for text, state in (('All', True), ('None', False)):
+            btn = QPushButton(text)
+            btn.setFlat(True)
+            btn.setMaximumWidth(56)
+            btn.clicked.connect(
+                lambda _c=False, s=state, get=boxes: [cb.setChecked(s) for cb in get()])
+            row.addWidget(btn)
+        row.addStretch()
+        return row
+
     def _entry_pair(self, qt, tk):
         qt.textEdited.connect(lambda t, tk=tk: _tk_set_entry(tk, t))
         self._entries.append((qt, tk))
@@ -238,16 +277,12 @@ class VisualizationTab(QWidget):
         src.setWordWrap(True)
         src.setStyleSheet('color: palette(mid);')
         fd.addRow('Source:', src)
-        self.dtype = QComboBox()
-        self.dtype.addItems(list(dbv.dType_combobox.cget('values')))
-        self.dtype.setToolTip(TOOLTIPS['data_type'])
-
-        def push_dtype(text):
-            dbv.dType_combobox.set(text)
-            dbv.dType_combobox.event_generate('<<ComboboxSelected>>')
-            self.refresh_step2()
-        self.dtype.currentTextChanged.connect(push_dtype)
-        fd.addRow('Data type:', self.dtype)
+        # the data type is decided by what was imported in Step 1 - it is a
+        # fact of the database, not a choice (owner, 2026-08-17)
+        self.dtype_label = QLabel(dbv.dType_combobox.get() or '-')
+        self.dtype_label.setToolTip(TOOLTIPS['data_type'])
+        self.dtype_label.setStyleSheet('color: palette(mid);')
+        fd.addRow('Data type:', self.dtype_label)
         grid.addWidget(gdata, 0, 0, 1, 2)
 
         gvis = QGroupBox('Visualization settings')
@@ -321,6 +356,12 @@ class VisualizationTab(QWidget):
         self.time_end.setToolTip(TOOLTIPS['time_end'])
         self._entry_pair(self.time_end, dbv.time_end_entry)
         fv.addRow('Time window end:', self.time_end)
+        # what the database actually covers, permanently on screen: editing
+        # the window must not cost the operator the reference (owner request;
+        # the tk step 2 had these two lines)
+        self.data_available = QLabel(_coverage_text())
+        self.data_available.setStyleSheet('color: palette(mid);')
+        fv.addRow('', self.data_available)
         self.depth_min = QLineEdit()
         self.depth_min.setToolTip(TOOLTIPS['depth_min'])
         self._entry_pair(self.depth_min, dbv.depth_min_entry)
@@ -329,11 +370,15 @@ class VisualizationTab(QWidget):
         self.depth_max.setToolTip(TOOLTIPS['depth_max'])
         self._entry_pair(self.depth_max, dbv.depth_max_entry)
         fv.addRow('Depth axis max (m):', self.depth_max)
+        self.depth_available = QLabel(_depth_text())
+        self.depth_available.setStyleSheet('color: palette(mid);')
+        fv.addRow('', self.depth_available)
+        self._depth_rows = [self.depth_min, self.depth_max, self.depth_available]
         grid.addWidget(gvis, 1, 0)
 
         gfil = QGroupBox('Filter settings')
         ff = QVBoxLayout(gfil)
-        sites_lab = QLabel('Sites:')
+        sites_lab = QLabel('Filter by site:')
         f = sites_lab.font()
         f.setBold(True)
         sites_lab.setFont(f)
@@ -346,6 +391,7 @@ class VisualizationTab(QWidget):
                              after=(dbv.toggle_scale_controls,))
             self.site_checks[site] = cb
             ff.addWidget(cb)
+        ff.addLayout(self._all_none_row(lambda: self.site_checks.values()))
         # years live under Sites in Filter settings (owner, 2026-08-17; two
         # columns so many years stay compact)
         year_lab = QLabel('Filter by year:')
@@ -364,7 +410,8 @@ class VisualizationTab(QWidget):
         yh = QWidget()
         yh.setLayout(ygrid)
         ff.addWidget(yh)
-        params_lab = QLabel('Parameters:')
+        ff.addLayout(self._all_none_row(lambda: self.year_checks.values()))
+        params_lab = QLabel('Filter by parameter:')
         params_lab.setFont(f)      # same bold section font as 'Sites:'
         ff.addWidget(params_lab)
         self.param_checks = {}
@@ -376,11 +423,15 @@ class VisualizationTab(QWidget):
                              after=(dbv.toggle_scale_controls,))
             self.param_checks[param] = cb
             ff.addWidget(cb)
+        ff.addLayout(self._all_none_row(lambda: self.param_checks.values()))
         ff.addStretch()
         grid.addWidget(gfil, 1, 1)
 
         gscale = QGroupBox('Scale settings')
         gs = QGridLayout(gscale)
+        param_hdr = QLabel('Parameter')
+        param_hdr.setFont(f)
+        gs.addWidget(param_hdr, 0, 0)
         gs.addWidget(QLabel('Min'), 0, 1)
         gs.addWidget(QLabel('Max'), 0, 2)
         self.scale_edits = {}
@@ -426,6 +477,7 @@ class VisualizationTab(QWidget):
         gf.setBold(True)
         gf.setPointSizeF(gf.pointSizeF() + 1)
         gen.setFont(gf)
+        gen.setObjectName('AccentButton')   # blue primary action
         gen.setToolTip('Generates the selected panels with the current settings')
         gen.clicked.connect(self._generate)
         actions.addWidget(gen, 0, 1, Qt.AlignHCenter)
@@ -441,6 +493,10 @@ class VisualizationTab(QWidget):
             dbv.toggle_ts_controls()
         for w in self._ts_rows:
             self._fv.setRowVisible(w, is_profile)
+        # HOBO has no depth at all: the whole depth block goes away
+        for w in self._depth_rows:
+            self._fv.setRowVisible(w, not dbv.is_hobo_input())
+        self.dtype_label.setText(dbv.dType_combobox.get() or '-')
         for qt, tk in self._entries:
             with QSignalBlocker(qt):
                 qt.setText(tk.get())
@@ -450,9 +506,6 @@ class VisualizationTab(QWidget):
                 qt.setChecked(bool(var.get()))
                 if widget is not None:
                     qt.setEnabled(_tk_enabled(widget))
-        with QSignalBlocker(self.dtype):
-            self.dtype.setCurrentText(dbv.dType_combobox.get())
-            self.dtype.setEnabled(_tk_enabled(dbv.dType_combobox))
         with QSignalBlocker(self.ts_param):
             self.ts_param.setCurrentText(dbv.tsParam_combobox.get())
             self.ts_param.setEnabled(_tk_enabled(dbv.tsParam_combobox))

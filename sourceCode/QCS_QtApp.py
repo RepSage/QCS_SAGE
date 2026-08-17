@@ -448,6 +448,7 @@ class QtShell(QMainWindow):
         f.setBold(True)
         f.setPointSizeF(f.pointSizeF() + 1)
         self.run_btn.setFont(f)
+        self.run_btn.setObjectName('AccentButton')   # blue primary action
         self.run_btn.setToolTip(TOOLTIPS['run_button'])
         self.run_btn.clicked.connect(self._run)
         self.run_hint = QLabel('')

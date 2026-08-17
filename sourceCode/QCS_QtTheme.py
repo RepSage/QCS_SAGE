@@ -14,7 +14,7 @@ import traceback
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDockWidget,
-                               QMessageBox, QTextEdit)
+                               QMessageBox, QProxyStyle, QStyle, QTextEdit)
 
 import QCS_Theme as theme   # writable_app_dir + crash-log path (toolkit-free)
 
@@ -29,6 +29,37 @@ LOG_COLORS = {'light': {'error': '#b30000', 'warning': '#9a6a00',
                         'success': '#1f7a1f', 'default': '#202020'},
               'dark': {'error': '#f48771', 'warning': '#dcdcaa',
                        'success': '#89d185', 'default': '#d4d4d4'}}
+
+
+# the accent used for checked boxes/radios and the primary action buttons
+# (owner, 2026-08-17: the tk app's blue check marks were missed)
+ACCENT = '#2a6fb5'
+ACCENT_DARK = '#4a90d9'      # lighter, for the dark scheme
+
+
+class AccentStyle(QProxyStyle):
+    """Draws the check/radio indicators with the accent colour instead of the
+    plain text colour, keeping Fusion's own shape: the base style paints the
+    mark with palette.text(), so swapping that ONE role for the primitive is
+    enough - no bitmap assets, and it survives freezing."""
+
+    def __init__(self, base, accent):
+        super().__init__(base)
+        self._accent = QColor(accent)
+
+    def drawPrimitive(self, element, option, painter, widget=None):
+        marks = (QStyle.PrimitiveElement.PE_IndicatorCheckBox,
+                 QStyle.PrimitiveElement.PE_IndicatorRadioButton)
+        if (element in marks
+                and option.state & QStyle.StateFlag.State_Enabled
+                and option.state & (QStyle.StateFlag.State_On
+                                    | QStyle.StateFlag.State_NoChange)):
+            opt = type(option)(option)
+            opt.palette.setColor(QPalette.ColorRole.Text, self._accent)
+            opt.palette.setColor(QPalette.ColorRole.WindowText, self._accent)
+            super().drawPrimitive(element, opt, painter, widget)
+            return
+        super().drawPrimitive(element, option, painter, widget)
 
 
 def dark_palette():
@@ -53,13 +84,14 @@ def apply_style(dark):
     font.setPointSizeF(10.5)
     app.setFont(font)
     app.setProperty('qcs_dark', bool(dark))
+    accent = ACCENT_DARK if dark else ACCENT
     if dark:
         app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
-        app.setStyle('Fusion')
+        app.setStyle(AccentStyle('Fusion', accent))
         app.setPalette(dark_palette())
     else:
         app.styleHints().setColorScheme(Qt.ColorScheme.Light)
-        app.setStyle('Fusion')
+        app.setStyle(AccentStyle('Fusion', accent))
         app.setPalette(app.style().standardPalette())
     # main tabs: bold labels, no color - a subtle GREYSCALE step separates the
     # active tab from the inactive one (owner, 2026-08-17; the pastel round
@@ -71,11 +103,28 @@ def apply_style(dark):
     else:
         log_bg = '#e9e9e9'
         tab_off, tab_on = '#d0d0d0', '#f6f6f6'
+    # the primary action of each tab (Run qualification / Generate panels /
+    # Next) in the accent colour, like the tk app's Accent.TButton
     app.setStyleSheet(
         'QTextEdit#ExecutionLog { background: %s; }\n'
         'QTabBar#MainTabs::tab { font-weight: bold; padding: 6px 16px; background: %s; }\n'
-        'QTabBar#MainTabs::tab:selected { background: %s; }'
-        % (log_bg, tab_off, tab_on))
+        'QTabBar#MainTabs::tab:selected { background: %s; }\n'
+        'QPushButton#AccentButton { background: %s; color: white; border: none;'
+        ' border-radius: 3px; padding: 6px 18px; }\n'
+        'QPushButton#AccentButton:hover { background: %s; }\n'
+        'QPushButton#AccentButton:pressed { background: %s; }\n'
+        'QPushButton#AccentButton:disabled { background: %s; color: %s; }'
+        % (log_bg, tab_off, tab_on, accent,
+           _shift(accent, 18), _shift(accent, -22),
+           '#4a4a4c' if dark else '#c8c8c8', '#8a8a8a' if dark else '#efefef'))
+
+
+def _shift(hex_color, delta):
+    """Lighter (delta > 0) or darker shade of an accent, for hover/pressed."""
+    c = QColor(hex_color)
+    return QColor(min(255, max(0, c.red() + delta)),
+                  min(255, max(0, c.green() + delta)),
+                  min(255, max(0, c.blue() + delta))).name()
 
 
 def bold_form_labels(form):

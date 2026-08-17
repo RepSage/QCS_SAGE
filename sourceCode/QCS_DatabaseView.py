@@ -22,7 +22,10 @@ from tkinter import messagebox
 TOOLTIPS = {
     'database_files': "Qualified file(s) or database(s) to visualize\nSeveral files are combined, validated and deduplicated",
     'join_files': "Sweeps a whole folder tree instead of picking files one by one:\nfinds every 'QCS qualified ... data' subfolder, skips report files\nand combines everything into one database\n(selecting several files above already joins them)",
-    'sort_time': "Sorts the database chronologically",
+    'sort_time': "Row order of the SAVED database: purely chronological,\n"
+                 "with the sites interleaved\n"
+                 "Off: grouped by site, chronological within each site\n"
+                 "Either way the plots filter and group by site themselves",
     'instrument': "Instrument family of the qualified files\nSeaguard (TSCP) and HOBO tables are never stackable -\nbuild separate databases",
     'output_name': "Base name of the database file",
     'input_path': "Folder with the input files",
