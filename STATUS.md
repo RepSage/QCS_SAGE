@@ -2,6 +2,16 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-17 (v12.0 field test, round 6) — summary persists; plain scale numbers
+
+`1c3f4cd`: Selection summary refills on prefs restore; Recent gets
+placeholder+tooltip; Next bold; HOBO panel tooltips drop the 'HOBO only:'
+prefix (context makes it noise); **shared-toggle bug fixed** — unchecking
+Tendency lines never re-greyed the degree entry (latent in tk too);
+scale defaults are plain numbers (>=100 rounds to integers — '51254',
+not '5.125e+04'; the light plot itself is linear, only the text was
+scientific). E2E-proven; suite 52/52; ruff clean.
+
 ## 2026-08-17 (v12.0 field test, round 5) — plots carry the year; step 2 polish
 
 `7d328ee`: panel X axes carry the year (mooring panel1 `%d/%m/%y %H:%M`,
