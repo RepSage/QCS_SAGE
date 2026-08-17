@@ -222,17 +222,43 @@ class QtShell(QMainWindow):
         self._batch_rows = {}
         self._menus()
         self.statusBar().showMessage('v12.0 development shell - the tk app on master remains the released interface')
-        # criteria indicator: at a glance, are the quality criteria the
-        # software defaults or operator-edited? (owner request, 2026-08-17)
-        self.criteria_label = QLabel('')
-        self.statusBar().addPermanentWidget(self.criteria_label)
-        # pipeline progress, bottom right: indeterminate while a single run is
-        # busy, and a real fraction on the batch/replicate markers the
-        # pipeline already logs ('=== File k/n ===' / '=== Replicate k/n ===')
+        # no size grip: it reserved a ~24 px strip that pushed the criteria
+        # indicator out of line with the log's Clear button (the window edges
+        # and corners still resize normally)
+        self.statusBar().setSizeGripEnabled(False)
+        # Permanent status widgets, left to right: progress, criteria
+        # indicator, alignment spacer. The progress bar comes FIRST so that
+        # showing it during a run cannot shift the indicator sideways.
+        #
+        # pipeline progress: indeterminate while a single run is busy, and a
+        # real fraction on the batch/replicate markers the pipeline already
+        # logs ('=== File k/n ===' / '=== Replicate k/n ===')
         self.progress = QProgressBar()
         self.progress.setFixedWidth(220)
         self.progress.setVisible(False)
         self.statusBar().addPermanentWidget(self.progress)
+        # criteria indicator: at a glance, are the quality criteria the
+        # software defaults or operator-edited? (owner request, 2026-08-17)
+        self.criteria_label = QLabel('')
+        # the indicator shares its width with the log's 'Clear log' button so
+        # the two line up on one axis (see _align_clear_button)
+        self.statusBar().addPermanentWidget(self.criteria_label)
+
+    def _align_clear_button(self):
+        """Puts 'Clear log' on the same vertical axis as the status bar's
+        criteria indicator right below it (owner)."""
+        if self.log_dock.isFloating() or not self.log_dock.isVisible():
+            return
+        # Both sit flush against the right edge, so equal WIDTHS put them on
+        # the same axis - deterministic, unlike nudging margins (the widths
+        # differ by theme, text and DPI, so they are measured, not hardcoded).
+        btn = self.log_dock.clear_button
+        label = self.criteria_label
+        width = max(btn.sizeHint().width(), label.sizeHint().width())
+        if btn.width() != width or label.width() != width:
+            btn.setFixedWidth(width)
+            label.setFixedWidth(width)
+            label.setAlignment(Qt.AlignCenter)
 
     def _align_batch_top(self):
         """Top margin that puts the batch table's top on the tab page's top
@@ -250,10 +276,12 @@ class QtShell(QMainWindow):
     def showEvent(self, event):
         super().showEvent(event)
         self._align_batch_top()
+        self._align_clear_button()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._align_batch_top()
+        self._align_clear_button()
 
     def update_criteria_indicator(self):
         d = qm.DEFAULT_QUALITY_CONFIG
@@ -474,7 +502,7 @@ class QtShell(QMainWindow):
                            ('interval', 'Interval:'), ('serials', 'Serial(s):'),
                            ('timebase', 'Timebase:')):
             lab = QLabel('-')
-            lab.setStyleSheet('color: palette(mid);')
+            qtheme.muted(lab)
             self.sum_labels[key] = lab
             fsum.addRow(label, lab)
         fout.addRow(gsum)
@@ -490,7 +518,7 @@ class QtShell(QMainWindow):
         self.run_btn.setToolTip(TOOLTIPS['run_button'])
         self.run_btn.clicked.connect(self._run)
         self.run_hint = QLabel('')
-        self.run_hint.setStyleSheet('color: palette(mid);')
+        qtheme.muted(self.run_hint)
         settings = QPushButton('Parameter settings')
         settings.setToolTip(TOOLTIPS['settings_button'])
         settings.clicked.connect(self._open_settings)
@@ -500,10 +528,17 @@ class QtShell(QMainWindow):
         actions = QGridLayout()
         for col in range(3):
             actions.setColumnStretch(col, 1)
-        # vertically centred on the RUN button, not on the run box (which also
-        # holds the hint and the post-run shortcuts below it)
-        actions.addWidget(settings, 0, 0, Qt.AlignLeft | Qt.AlignTop)
-        settings.setMinimumHeight(self.run_btn.minimumHeight())
+        # ordinary button height, but vertically centred on the RUN button -
+        # not on the run box, which also holds the hint and the post-run
+        # shortcuts below it (owner)
+        settings_box = QWidget()
+        sv = QVBoxLayout(settings_box)
+        pad = max(0, (self.run_btn.minimumHeight()
+                      - settings.sizeHint().height()) // 2)
+        sv.setContentsMargins(0, pad, 0, 0)
+        sv.addWidget(settings)
+        sv.addStretch()
+        actions.addWidget(settings_box, 0, 0, Qt.AlignLeft | Qt.AlignTop)
         # after a successful run: the two things the operator does next
         # (owner request) - the log line with the path stays, this is a
         # shortcut, not a replacement

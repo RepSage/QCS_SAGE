@@ -274,23 +274,22 @@ class VisualizationTab(QWidget):
         outer.setContentsMargins(9, 9, 9, 9)
         grid = QGridLayout()
 
-        gdata = QGroupBox('Data settings')
-        fd = QFormLayout(gdata)
+        # No separate 'Data settings' band: the page follows the Qualification
+        # tab's pattern - boxes side by side and nothing else (owner). What was
+        # imported is stated as the first two rows here.
+        gvis = QGroupBox('Visualization settings')
+        fv = QFormLayout(gvis)
+        self._fv = fv
         src = QLabel(dbv._current_source_label())
         src.setWordWrap(True)
-        src.setStyleSheet('color: palette(mid);')
-        fd.addRow('Source:', src)
+        qtheme.muted(src)
+        fv.addRow('Source:', src)
         # the data type is decided by what was imported in Step 1 - it is a
         # fact of the database, not a choice (owner, 2026-08-17)
         self.dtype_label = QLabel(dbv.dType_combobox.get() or '-')
         self.dtype_label.setToolTip(TOOLTIPS['data_type'])
-        self.dtype_label.setStyleSheet('color: palette(mid);')
-        fd.addRow('Data type:', self.dtype_label)
-        grid.addWidget(gdata, 0, 0, 1, 2, Qt.AlignTop)
-
-        gvis = QGroupBox('Visualization settings')
-        fv = QFormLayout(gvis)
-        self._fv = fv
+        qtheme.muted(self.dtype_label)
+        fv.addRow('Data type:', self.dtype_label)
         self.panel_checks = []
         panel_tips = ((TOOLTIPS['hobo_params_site'], TOOLTIPS['hobo_params_across'], '')
                       if dbv.is_hobo_input() else
@@ -363,7 +362,7 @@ class VisualizationTab(QWidget):
         # the window must not cost the operator the reference (owner request;
         # the tk step 2 had these two lines)
         self.data_available = QLabel(_coverage_text())
-        self.data_available.setStyleSheet('color: palette(mid);')
+        qtheme.muted(self.data_available)
         fv.addRow('', self.data_available)
         self.depth_min = QLineEdit()
         self.depth_min.setToolTip(TOOLTIPS['depth_min'])
@@ -374,10 +373,10 @@ class VisualizationTab(QWidget):
         self._entry_pair(self.depth_max, dbv.depth_max_entry)
         fv.addRow('Depth axis max (m):', self.depth_max)
         self.depth_available = QLabel(_depth_text())
-        self.depth_available.setStyleSheet('color: palette(mid);')
+        qtheme.muted(self.depth_available)
         fv.addRow('', self.depth_available)
         self._depth_rows = [self.depth_min, self.depth_max, self.depth_available]
-        grid.addWidget(gvis, 1, 0, Qt.AlignTop)
+        grid.addWidget(gvis, 0, 0, Qt.AlignTop)
 
         gfil = QGroupBox('Filter settings')
         ff = QVBoxLayout(gfil)
@@ -428,7 +427,7 @@ class VisualizationTab(QWidget):
             ff.addWidget(cb)
         ff.addLayout(self._all_none_row(lambda: self.param_checks.values()))
         ff.addStretch()
-        grid.addWidget(gfil, 1, 1, Qt.AlignTop)
+        grid.addWidget(gfil, 0, 1, Qt.AlignTop)
 
         gscale = QGroupBox('Scale settings')
         gs = QGridLayout(gscale)
@@ -457,20 +456,18 @@ class VisualizationTab(QWidget):
         gs.setColumnStretch(1, 1)
         gs.setColumnStretch(2, 1)
         gs.setRowStretch(len(dbv.parameter_names) + 1, 1)
-        grid.addWidget(gscale, 1, 2, Qt.AlignTop)
+        grid.addWidget(gscale, 0, 2, Qt.AlignTop)
         # the settings column takes the slack; the filter and scale columns
         # keep their natural width, so their checkboxes stop drifting apart
         # when the window is resized (owner)
         grid.setColumnStretch(0, 3)
         grid.setColumnStretch(1, 0)
         grid.setColumnStretch(2, 2)
-        grid.setRowStretch(0, 0)     # the source box keeps its natural height
-        grid.setRowStretch(1, 1)
-        for box in (gdata, gvis, gfil, gscale):
+        grid.setRowStretch(0, 1)
+        for box in (gvis, gfil, gscale):
             box.setSizePolicy(box.sizePolicy().horizontalPolicy(),
                               QSizePolicy.Policy.Preferred)
 
-        qtheme.bold_form_labels(fd)
         qtheme.bold_form_labels(fv)
         inner = QWidget()
         inner.setLayout(grid)

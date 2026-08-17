@@ -119,9 +119,17 @@ def apply_style(dark):
     else:
         log_bg = '#e9e9e9'
         tab_off, tab_on = '#d0d0d0', '#f6f6f6'
+    # tooltips: inverted against the window, so they read as a separate
+    # surface (owner, 2026-08-17). Combo popups drop BELOW the box
+    # (combobox-popup: 0) instead of covering it, so the current value stays
+    # readable while choosing.
+    tip_bg, tip_fg = ('#e8e8ea', '#1b1b1c') if dark else ('#3a3a3c', '#f2f2f2')
     # the primary action of each tab (Run qualification / Generate panels /
     # Next) in the accent colour, like the tk app's Accent.TButton
     app.setStyleSheet(
+        'QToolTip { background: %s; color: %s; border: 1px solid %s;'
+        ' padding: 4px; }\n'
+        'QComboBox { combobox-popup: 0; }\n'
         'QTextEdit#ExecutionLog { background: %s; }\n'
         'QTabBar#MainTabs::tab { font-weight: bold; padding: 6px 16px; background: %s; }\n'
         'QTabBar#MainTabs::tab:selected { background: %s; }\n'
@@ -130,7 +138,8 @@ def apply_style(dark):
         'QPushButton#AccentButton:hover { background: %s; }\n'
         'QPushButton#AccentButton:pressed { background: %s; }\n'
         'QPushButton#AccentButton:disabled { background: %s; color: %s; }'
-        % (log_bg, tab_off, tab_on, accent,
+        % (tip_bg, tip_fg, _shift(tip_bg, -40 if dark else 40),
+           log_bg, tab_off, tab_on, accent,
            _shift(accent, 18), _shift(accent, -22),
            '#4a4a4c' if dark else '#c8c8c8', '#8a8a8a' if dark else '#efefef'))
 
@@ -141,6 +150,17 @@ def _shift(hex_color, delta):
     return QColor(min(255, max(0, c.red() + delta)),
                   min(255, max(0, c.green() + delta)),
                   min(255, max(0, c.blue() + delta))).name()
+
+
+def muted(widget):
+    """Secondary text (hints, summaries, 'Data available: ...').
+
+    Uses the PALETTE, never a stylesheet: setting a stylesheet on a child
+    makes Qt re-render its ancestors through the stylesheet engine, which
+    painted a grey slab behind the enclosing QGroupBox (that was the
+    unexplained box around 'Data settings' and 'Selection summary')."""
+    widget.setForegroundRole(QPalette.Mid)
+    return widget
 
 
 def dock_tooltips(dock, float_tip, close_tip):
@@ -182,14 +202,14 @@ class LogDock(QDockWidget):
         v = QVBoxLayout(holder)
         v.setContentsMargins(0, 0, 0, 0)
         v.addWidget(self.text)
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addStretch()
-        clear = QPushButton('Clear log')
-        clear.setToolTip('Erases the messages shown so far')
-        clear.clicked.connect(self.clear)
-        row.addWidget(clear)
-        v.addLayout(row)
+        self.button_row = QHBoxLayout()
+        self.button_row.setContentsMargins(0, 0, 0, 0)
+        self.button_row.addStretch()
+        self.clear_button = QPushButton('Clear log')
+        self.clear_button.setToolTip('Erases the messages shown so far')
+        self.clear_button.clicked.connect(self.clear)
+        self.button_row.addWidget(self.clear_button)
+        v.addLayout(self.button_row)
         self.setWidget(holder)
         dock_tooltips(self, LOG_TOOLTIPS['float'], LOG_TOOLTIPS['close'])
 
