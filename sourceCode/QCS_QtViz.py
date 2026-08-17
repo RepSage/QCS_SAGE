@@ -452,8 +452,7 @@ class VisualizationTab(QWidget):
             swatch.clicked.connect(lambda _c=False, p=param: self._pick_colour(p))
             gs.addWidget(swatch, r, 0)
             self.colour_buttons[param] = swatch
-            plab = QLabel(str(param))
-            plab.setFont(f)        # bold, like the other section labels
+            plab = QLabel(str(param))   # plain, like the other value rows
             gs.addWidget(plab, r, 1)
             mn = QLineEdit()
             mn.setMinimumWidth(80)
