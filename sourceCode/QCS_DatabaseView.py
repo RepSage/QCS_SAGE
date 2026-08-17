@@ -36,8 +36,8 @@ TOOLTIPS = {
     'panel1': "Panel 1: parameters compared at the same site",
     'panel2': "Panel 2: one parameter compared between sites",
     'panel3': "Panel 3: parameters compared at the same site (vertical profile)",
-    'hobo_params_site': "HOBO only: temperature/light at one site, one figure per site,\nall selected years in a single plot\nLight is drawn as its daily-peak envelope with the fouling window\nshaded; SUSPECT/BAD temperature is highlighted",
-    'hobo_params_across': "HOBO only: one figure per parameter, all sites together,\naligned by time of day (hours since each site's first midnight)\nLight uses the daily-peak envelope; each site's fouling cutoff\nis marked",
+    'hobo_params_site': "Temperature/light at one site, one figure per site,\nall selected years in a single plot\nLight is drawn as its daily-peak envelope with the fouling window\nshaded; SUSPECT/BAD temperature is highlighted",
+    'hobo_params_across': "One figure per parameter, all sites together,\naligned by time of day (hours since each site's first midnight)\nLight uses the daily-peak envelope; each site's fouling cutoff\nis marked",
     'ts_diagram': "Temperature-Salinity (T-S) diagram: temperature vs salinity with\ndepth as the colour, to identify water masses",
     'latitude': "Latitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'longitude': "Longitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
@@ -212,6 +212,10 @@ def toggle_panel_dependent_controls():
         set_enabled_style(tendency_cb)
         if tendency.get():
             set_enabled_style(tendency_entry)
+        else:
+            # unchecking Tendency lines must grey the degree again (the old
+            # code only ever enabled it)
+            set_disabled_style(tendency_entry)
         set_enabled_style(points_cb)
         set_enabled_style(fixed_scale_cb)
     else:
@@ -334,7 +338,12 @@ def _param_data_extreme(param, kind):
         # discarded/clamped at qualification), so the breathing room must not
         # push the default below zero (e.g. PAR spanning 0..4500 gave -900)
         value = 0.0
-    return '%.4g' % value
+    # plain numbers, never scientific notation (owner: '3.803e+04' reads
+    # badly): large values round to whole numbers, small ones keep up to
+    # three decimals
+    if abs(value) >= 100:
+        return '%d' % round(value)
+    return ('%.3f' % value).rstrip('0').rstrip('.')
 
 def toggle_data_type():
     data_type = dType_combobox.get()

@@ -91,7 +91,9 @@ class VisualizationTab(QWidget):
         fin.addRow('Instrument:', self.instrument)
 
         self.recent = QComboBox()
-        self.recent.setToolTip('Recent file selections\n(pick one to fill the fields above)')
+        self.recent.setPlaceholderText('Select a recent file selection to reopen it...')
+        self.recent.setToolTip('Reopens one of the most recent file selections\n'
+                               '(fills the fields above)')
         self.recent.activated.connect(self._apply_recent)
         fin.addRow('Recent:', self.recent)
 
@@ -124,6 +126,9 @@ class VisualizationTab(QWidget):
         nxt = QPushButton('Next >')
         nxt.setDefault(True)
         nxt.setMinimumSize(120, 34)
+        nf = nxt.font()
+        nf.setBold(True)
+        nxt.setFont(nf)
         nxt.clicked.connect(self._next)
         actions.addWidget(nxt)
         ah = QWidget()

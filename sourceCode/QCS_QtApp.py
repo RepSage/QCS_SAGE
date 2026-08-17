@@ -778,6 +778,13 @@ class QtShell(QMainWindow):
         if self.profile_check.isEnabled():
             self.profile_check.setChecked(bool(p.get('select_profile_data', False)))
         self.varcheck.setChecked(bool(p.get('check_variables', False)))
+        # the Selection summary must survive a restart with the restored
+        # selection (it only filled on Browse/drop before)
+        files = [f for f in self.file_edit.text().split(';') if f.strip()]
+        if files:
+            self._update_summary(files)
+            if self.input_type.currentText() == 'HOBO':
+                self._set_replicates(str(len(files)))
 
 
 def _bootstrap_tk_pipeline(shared_log):
