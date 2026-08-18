@@ -109,7 +109,7 @@ def apply_style(dark):
         app.styleHints().setColorScheme(Qt.ColorScheme.Light)
         app.setStyle(AccentStyle('Fusion', accent, muted_accent))
         app.setPalette(app.style().standardPalette())
-    # main tabs: bold labels, no color - a subtle GREYSCALE step separates the
+    # main tabs: bold labels, no color - a subtle GRAYSCALE step separates the
     # active tab from the inactive one (owner, 2026-08-17; the pastel round
     # was tried and dropped). Scoped to QTabBar#MainTabs so the Settings
     # window's tabs stay native.
