@@ -11,8 +11,12 @@ log; ISCC -> `QCS_Setup_v12.1.exe`, **77.8 MB**, on the Desktop beside
 `RELEASE_v12.1.md` (which now carries the release TITLE as its first line,
 owner request: same shape as the GitHub release names).
 
-**Left to the owner:** publish the GitHub Release for `v12.1` with that
-text and the installer as the asset. The field test of the FROZEN exe
+**A DRAFT release is waiting** (created through the API, owner's call):
+name 'v12.1 - the manual cut shows the manoeuvres; drag and Reset view
+fixed', body from `RELEASE_v12.1.md` minus its heading, with
+`QCS_Setup_v12.1.exe` already uploaded (state=uploaded). A draft shows an
+'untagged-...' URL until it is published - the tag `v12.1` itself is
+already on `08bc2c7`. **Left to the owner: press Publish.** The field test of the FROZEN exe
 running a real qualification is still the open item from v12.0.
 
 **Gotcha distilled into `CLAUDE.md`** (`4eb971a`): never name a branch
