@@ -51,6 +51,13 @@ root, so run it from there:
 & "C:\Users\LAMB\anaconda3\python.exe" -m ruff check .
 ```
 
+Any throwaway driver that BOOTS THE SHELL must no-op `save_user_prefs` in
+both `QCS_DatabaseView` and `QCS_Main` before touching anything. They write
+`qcs_user_settings.json` on ordinary actions (selecting files, advancing to
+step 2), so a test run silently rewrites the operator's own settings —
+and backing the file up first is worse: restoring it overwrites whatever
+the RUNNING app saved meanwhile.
+
 **Passing the suite is necessary, not sufficient** — the global rule, with
 force here: every non-trivial defect in new analysis code was found by sweeping
 the **real corpus**, never by the synthetic tests (one export alone carries
@@ -126,7 +133,13 @@ archive and diff the counts against the previous `qualified_index.csv`.
   results (flags, thresholds, test logic) is a MAJOR bump.
 - On each release: add a file to `changelog/` listing the version's changes,
   update the HTML user manual (`Quality Control System (SAGE) - User Manual.html`)
-  with the version and changes, and tag the version in Git.
+  with the version and changes, and tag the version in Git. The installer is
+  rebuilt and smoke-tested before the tag — recipe in `packaging/README.md`.
+- **Before tagging, read what the interface says about ITSELF.** A branch
+  banner hides there and ships silently: v12.0 was tagged with the window
+  title carrying '(v12.0 shell)' and the status bar announcing a
+  'development shell', and the tag had to be moved. Window title, status
+  bar and About are release text, not scaffolding.
 - After a PR merges, delete the feature branch (local and remote) and return to
   an updated `master` before branching again.
 

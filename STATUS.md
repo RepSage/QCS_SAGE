@@ -2,7 +2,7 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
-## 2026-08-18 - v12.0 RELEASED (tag + installer); publication pending
+## 2026-08-18 - v12.0 RELEASED and PUBLISHED
 
 PR #30 merged (`51eb277`). Ritual run to the end except the publication:
 
@@ -30,12 +30,26 @@ PR #30 merged (`51eb277`). Ritual run to the end except the publication:
 - Release text ready in `Desktop\RELEASE_v12.0.md` (English name; the old
   convention was `RELEASE_..._para_colar.md`).
 
-**Still to do:** the GitHub Release for `v12.0` (notes + the installer as
-the asset) is NOT published, and the **owner field test of the frozen exe
-running a REAL qualification** is still open (Depth review, adaptive light
-review, replicate review, the viz tab). The launch smoke cannot prove lazy
-imports - a review window that only imports on demand can still fail in
-the frozen build. Field-test before publishing.
+**Published by the owner** on 2026-08-18 18:15 UTC as
+"v12.0 - ported interface to Qt", with `QCS_Setup_v12.0.exe` attached
+(81.5 MB, size matches the local build). `v12.0` is now the latest
+release; the remote tag resolves to `7cb6d62`.
+
+**Cleanup done the same day:** `packaging/dist/` and the PyInstaller work
+dir were removed (regenerable in ~3 min from `packaging/README.md`); the
+build venv `%TEMP%\qcs_build_env` and `packaging/v12_env` were KEPT - the
+first is expensive to rebuild, the second is what `QCS.bat` launches.
+`packaging/Output/` keeps every past installer (675 MB, 12 files); each
+one is also a Release asset on GitHub, so it can be emptied when the disk
+matters. The stale `fix-v11.4.2` remote-tracking ref was pruned (the
+branch itself was already gone from GitHub). `master` is the only branch,
+local and remote.
+
+**Not recorded as done:** the field test of the FROZEN exe running a real
+qualification end to end (Depth review, adaptive light review, replicate
+review, the viz tab). The launch smoke cannot prove lazy imports - a
+review window that only imports on demand can still fail in the frozen
+build. First thing to do with the published installer.
 
 **Open, deliberately:** the worker thread with a Cancel button (deferred to
 v12.1 on 2026-08-17 - the pipeline still runs on the interface thread).
