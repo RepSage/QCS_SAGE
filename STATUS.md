@@ -17,39 +17,44 @@ git log -p -- STATUS.md             # how it got there
 Everything that was still OPEN in those entries was carried into the second
 section below, each line dated with when it was last touched - not with today.
 
-## 2026-08-18 - v12.2 OPEN (branch `improvements-v12.2`)
+## 2026-08-18 - v12.2 RELEASED; publication pending
 
-- **Nothing persists between sessions - FIXED on the branch (`a0994bf`), not
-  yet seen in an installed build.** The root cause was not either of the two
-  gaps diagnosed that morning: the Qt shell never aliased the preferences
-  dicts the way `QCS_App.py:29` does, so `QCS_Main.USER_PREFS` and
-  `QCS_DatabaseView.USER_PREFS` were two dicts and each `save_user_prefs()`
-  rewrote the WHOLE file from its own copy - whichever module saved LAST
-  silently reverted everything the other had written that session (proven on a
-  scratch copy before the fix). The rule is now in `CLAUDE.md`. On top of it:
-  `QtShell.closeEvent` -> `remember_window_state()` (`qt_win_geometry`,
-  `qt_win_layout`, `log_hidden`; both docks needed `objectName`s or
-  `saveState` skips them), `restore_window_state()` before `show()` with the
-  batch dock forced hidden, the form written by `QCS_Main.store_form_prefs()`
-  from BOTH the RUN path and the close path, and the duplicated save points
-  reconnected (`remember_data_dir()` in both shells, `dbv_last_output_dir` in
-  the Qt viz browse).
-  Verified by opening the shell twice in one driver against a scratch settings
-  file: 1234x812 at (140, 96), log hidden and two never-run form fields all
-  came back; maximized round-trips; cross-module saves no longer clobber;
-  `apply_input_settings` re-checked on a real `.hobo` (returns True, stores
-  the 20 keys, a refused form stores nothing). Suite 52/52, ruff clean.
-- **Drag-and-drop broke again on the INSTALLED app - not a regression.** The
-  app was running ELEVATED (started from the elevated installer's finish page)
-  and Windows UIPI forbids a normal-integrity Explorer from posting drag
-  messages to a higher-integrity window. The signature that found it: a
-  non-elevated shell could not read the running QCS process's path. Fixed at
-  the source - both `[Run]` entries of `QCS_installer.iss` carry
-  `runasoriginaluser`. Confirmed by the owner only by reopening from the
-  shortcut; a real upgrade install has not exercised it.
-- **CO2 row in the Selection summary is now conditional**: shown for a Seaguard
-  scalar run, hidden for HOBO and for TSCP Doppler (measured on the running
-  shell).
+Merged (PR #32, merge commit `7c9bbbe`), **tagged `v12.2` there**, branch
+`improvements-v12.2` deleted both sides. `QCS_VERSION = 'v12.2'`, installer
+recipe at `AppVersion 12.2`, `changelog/v12.2.md` written, manual carrying the
+version line and a 'What v12.2 added' section.
+
+What shipped: the preferences fix (one settings dict for both tabs - the port
+had two, and the last save reverted the other; `QtShell.closeEvent` saving
+window geometry, dock layout and log visibility; the form written by
+`QCS_Main.store_form_prefs()` from both the RUN path and the close path), the
+installer starting the app as the original user on both `[Run]` paths, and the
+conditional CO2 row. Two self-description strings were also fixed before
+tagging: the Qt crash dialog was hardcoded 'QCS (v12.0)' and the module
+docstring still called the shell a DEV build.
+
+Installer built and smoke-tested: PyInstaller from `%TEMP%\qcs_build_env`,
+manual copied beside the exe, frozen app alive 20 s with the title 'QCS -
+Quality Control System (SAGE)  -  v12.2', closed cleanly, no crash log. ISCC ->
+`QCS_Setup_v12.2.exe`, **77.8 MB**, on the Desktop beside `RELEASE_v12.2.md`,
+md5 checked against `packaging\Output`.
+
+**A DRAFT release is waiting** - name 'v12.2 - the interface remembers again',
+body from `RELEASE_v12.2.md` minus its heading, `QCS_Setup_v12.2.exe` already
+uploaded (state=uploaded, 81,553,054 bytes). A draft shows an 'untagged-...'
+URL until it is published; the tag `v12.2` is already on `7c9bbbe`.
+**Left to the owner: press Publish.**
+
+**The persistence fix is proven in the FROZEN build, in part**: closing the
+smoke-tested exe wrote its own `qcs_user_settings.json` beside it with
+`qt_win_geometry`, `qt_win_layout` and `log_hidden` (23 keys, stamped v12.2).
+What is still unproven is the `%APPDATA%\QCS` path of a Program Files install,
+which only a real install exercises.
+
+**Installing v12.2 over v12.1 IS the test of the queued 'does not reopen after
+an update' item** - both `[Run]` paths now carry `runasoriginaluser`. Try it
+both ways: the in-app one-click update (silent, `Check: WizardSilent`) and
+double-clicking the setup over the existing install (Finish-page checkbox).
 
 ## Open items carried over
 
@@ -62,14 +67,18 @@ section below, each line dated with when it was last touched - not with today.
   the `runasoriginaluser` flags now address - reproduce on a real upgrade
   (v12.2 over v12.1, both ways) before changing anything.
 - **The installer wizard pages have never been seen on screen** (2026-08-18).
-  `DisableDirPage=no` and the two Finish-page checkboxes are right in the
-  recipe and the script compiles clean; only a real installer run proves them.
+  The two Finish-page checkboxes ('Open the user manual', 'Launch QCS') are in
+  the recipe and it compiles clean; only a real installer run proves them. The
+  folder page deliberately stays on Inno's default 'auto' - shown on a fresh
+  install, hidden on an upgrade - after the owner asked for the old rule back
+  in v12.1; an earlier note here claiming `DisableDirPage=no` was wrong.
 - **The FROZEN exe has never run a real qualification end to end** (open since
-  v12.0, 2026-08-18): Depth review, adaptive light review, replicate review,
+  v12.0; the v12.2 build was launch-smoked and closed cleanly, 2026-08-18): Depth review, adaptive light review, replicate review,
   the viz tab. A launch smoke test cannot prove lazy imports - a review window
   that only imports on demand can still fail in the frozen build.
-- **The persistence round trip in the INSTALLED build** (the `%APPDATA%` store)
-  - 2026-08-18, waiting on the next installer.
+- **The persistence round trip in an INSTALLED build** (the `%APPDATA%\QCS`
+  store of a Program Files install) - 2026-08-18. The frozen exe already
+  proved the save path beside its own folder.
 - **Worker thread with a Cancel button** - deferred on 2026-08-17; the pipeline
   still runs on the interface thread.
 - **All-users installs land in `C:\Program Files (x86)\QCS`** (2026-08-13):
