@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v12.0'
+QCS_VERSION = 'v12.1'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -36,15 +36,35 @@ _AADI_SYNC = b'\x11\x22\x33\x44\x55\x66\x77\x88'
 _AADI_TICK0 = pd.Timestamp('0001-01-01').to_pydatetime()
 
 
-def _decode_aadi_bin(file_path):
+def _decode_aadi_bin(file_path, max_records=None):
     """Decodes ONE DataNNN.bin file into a DataFrame with the same column
     names as the instrument's CSV export ('Record Time', 'Record Number',
     'Pressure[kPa]', ...), so the standard column mapping applies unchanged.
-    Times are GMT, as in the export (the GMT-3 correction stays an option)."""
+    Times are GMT, as in the export (the GMT-3 correction stays an option).
+
+    max_records stops after that many records - the Selection summary asks for
+    a handful just to read the sampling interval (v12.1) and must not pay for
+    a whole mooring."""
     import struct
     import datetime as _dt
     with open(file_path, 'rb') as f:
-        blob = f.read()
+        if max_records is None:
+            blob = f.read()
+        else:
+            # A peek reads the header, the template and the dictionary (their
+            # offsets live in the first 0x40 bytes) plus half a megabyte of
+            # records - thousands of them, far more than a peek asks for.
+            # Reading the whole file would make the PREVIEW cost grow with the
+            # deployment: measured 1 s for a 10 MB session over the share.
+            head = f.read(0x40)
+            if head.startswith(_AADI_MAGIC) and len(head) >= 0x38:
+                t_off, _a, _b, _c, t_len, d_off, d_len = struct.unpack_from(
+                    '<7I', head, 0x1c)
+                need = max(t_off + t_len, d_off + d_len) + 512 * 1024
+            else:
+                need = 1 << 20
+            f.seek(0)
+            blob = f.read(need)
     if not blob.startswith(_AADI_MAGIC):
         raise ValueError("'%s' is not an AADI binary session file (missing "
                          "AADIBXML header)." % os.path.basename(file_path))
@@ -125,6 +145,8 @@ def _decode_aadi_bin(file_path):
             raise ValueError('AADI reader (%s): corrupted record at byte %d (%s).'
                              % (os.path.basename(file_path), pos, e)) from e
         rows.append(row)
+        if max_records is not None and len(rows) >= max_records:
+            break
         pos = blob.find(_AADI_SYNC, pos + 1)
     if not rows:
         raise ValueError('AADI reader (%s): no data records found.'
@@ -203,39 +225,46 @@ def _merge_sensor_groups(groups):
     return master
 
 
-def read_seaguard_deployment(file_path):
-    """Reads a whole Seaguard deployment: the selected sensor-group folder plus
-    any sibling sensor-group folders of the SAME cast (same instrument serial and
-    start time, within a small tolerance), merged onto one time axis by
-    _merge_sensor_groups. Doppler/DCPS groups are skipped. Falls back to the
-    single-folder read when the folder is not a '<serial>-<group>-<timestamp>'
-    session folder (e.g. a lone Data000.bin)."""
+SESSION_FOLDER_RE = re.compile(
+    r'(\d+-\d+)-(\d+)-(\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d)')
+
+
+def seaguard_cast_folders(file_path):
+    """The sensor-group folders that belong to the SAME cast as `file_path`.
+
+    A Seaguard session folder is named '<serial>-<group>-<start>Z'. The groups
+    of one cast start close together (seconds to a couple of minutes apart -
+    each group's logging begins at a slightly different instant, and the
+    Doppler group can start a few minutes off), while different casts in the
+    same folder are far apart, so a start-time gap larger than CAST_GAP opens a
+    new cast. Anchoring on the SELECTED group's own start (the old 90 s window)
+    missed groups when the selected one was the time outlier - picking the
+    Doppler group made its sensor siblings invisible and the whole cast was
+    lost.
+
+    Returns (serial, [(start, folder_name), ...]) for the cast holding the
+    selection, or (None, None) when the selection is not a session folder (a
+    lone Data000.bin, an export). The deployment READER and the Selection
+    summary both read the cast through this one function - the clustering rule
+    lives here and nowhere else.
+    """
     import datetime as _dt
     group_folder = os.path.dirname(file_path)
     parent = os.path.dirname(group_folder)
-    pat = re.compile(r'(\d+-\d+)-(\d+)-(\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d)')
-    m = pat.match(os.path.basename(group_folder))
-    if not m:
-        return read_seaguard_bin(file_path)
-    serial = m.group(1)
     sel_name = os.path.basename(group_folder)
-    # every same-serial session folder in the parent, with its start time
+    m = SESSION_FOLDER_RE.match(sel_name)
+    if not m:
+        return None, None
+    serial = m.group(1)
     sessions = []
     for name in os.listdir(parent):
-        mm = pat.match(name)
+        mm = SESSION_FOLDER_RE.match(name)
         if not mm or mm.group(1) != serial:
             continue
         if os.path.exists(os.path.join(parent, name, 'Data000.bin')):
-            sessions.append((_dt.datetime.strptime(mm.group(3), '%Y-%m-%dT%H-%M-%S'), name))
+            sessions.append((_dt.datetime.strptime(mm.group(3),
+                                                   '%Y-%m-%dT%H-%M-%S'), name))
     sessions.sort()
-    # Cluster into CASTS. The sensor groups of one cast start close together
-    # (seconds to a couple of minutes apart - each group's logging begins at a
-    # slightly different instant, and the Doppler group can start a few minutes
-    # off), while different casts in the same folder are far apart. A start-time
-    # gap larger than CAST_GAP opens a new cast. Anchoring on the SELECTED group's
-    # own start (the old 90 s window) missed groups when the selected one was the
-    # time outlier - e.g. picking the Doppler group made its sensor siblings
-    # invisible and the whole cast was lost.
     CAST_GAP = 15 * 60
     clusters, cur = [], []
     for st, name in sessions:
@@ -246,7 +275,72 @@ def read_seaguard_deployment(file_path):
     if cur:
         clusters.append(cur)
     cast = next((c for c in clusters if any(n == sel_name for _, n in c)), None)
-    siblings = [(name, os.path.join(parent, name, 'Data000.bin')) for _, name in (cast or [])]
+    if cast is None or len(cast) <= 1:
+        return serial, None
+    return serial, cast
+
+
+def peek_seaguard_session(file_path):
+    """What a Seaguard selection says about itself WITHOUT decoding anything.
+
+    The folder names carry the serial and the deployment start, and a directory
+    listing says how many sensor groups the cast has and how many DataNNN.bin
+    parts the selected group was split into - enough for the Selection summary,
+    for the price of a listdir (decoding a long mooring just to preview it
+    would freeze the window). Returns {} for anything that is not a session
+    folder (v12.1).
+    """
+    group_folder = os.path.dirname(file_path)
+    m = SESSION_FOLDER_RE.match(os.path.basename(group_folder))
+    if not m:
+        return {}
+    import datetime as _dt
+    serial, cast = seaguard_cast_folders(file_path)
+    parts = [f for f in os.listdir(group_folder)
+             if re.fullmatch(r'Data\d+\.bin', f, re.IGNORECASE)]
+    out = {'serial': m.group(1),
+           'start': _dt.datetime.strptime(m.group(3), '%Y-%m-%dT%H-%M-%S'),
+           'groups': len(cast) if cast else 1,
+           'parts': len(parts) or 1,
+           'interval_s': None}
+    # The sampling interval is NOT in the folder names: it takes decoding,
+    # but only of the first records of each sensor group. The FINEST group is
+    # the one to report, because that is the axis the deployment reader merges
+    # everything onto - reporting the selected group's own 10 s while the
+    # qualified sheet carries 5 s rows would be a lie. A DCPS group raises
+    # here (its own layout): skipped, never fatal - a preview must not be the
+    # thing that fails.
+    steps = []
+    folders = [os.path.join(os.path.dirname(os.path.dirname(file_path)), name)
+               for _st, name in (cast or [])] or [group_folder]
+    for folder in folders:
+        try:
+            head = _decode_aadi_bin(os.path.join(folder, 'Data000.bin'),
+                                    max_records=60)
+            times = pd.to_datetime(head['Record Time']).dropna()
+            if len(times) >= 3:
+                step = times.diff().dropna().median().total_seconds()
+                if step > 0:
+                    steps.append(step)
+        except Exception:
+            continue
+    if steps:
+        out['interval_s'] = min(steps)
+    return out
+
+
+def read_seaguard_deployment(file_path):
+    """Reads a whole Seaguard deployment: the selected sensor-group folder plus
+    any sibling sensor-group folders of the SAME cast (same instrument serial and
+    start time, within a small tolerance), merged onto one time axis by
+    _merge_sensor_groups. Doppler/DCPS groups are skipped. Falls back to the
+    single-folder read when the folder is not a '<serial>-<group>-<timestamp>'
+    session folder (e.g. a lone Data000.bin)."""
+    parent = os.path.dirname(os.path.dirname(file_path))
+    _serial, cast = seaguard_cast_folders(file_path)
+    if cast is None:
+        return read_seaguard_bin(file_path)
+    siblings = [(name, os.path.join(parent, name, 'Data000.bin')) for _, name in cast]
     if len(siblings) <= 1:
         return read_seaguard_bin(file_path)
     groups, skipped = [], []
@@ -2065,6 +2159,135 @@ def on_motion(event):
                 # update plot
                 event.inaxes.figure.canvas.draw_idle()
 
+# Deployment/recovery vs tide (v12.1). The tide moves the depth of a moored
+# instrument by centimetres per minute; lowering it to the bottom or hauling it
+# up moves METRES per minute. One rate threshold separates the two cleanly, and
+# it is 60x above any tidal rate on this coast, so the natural cycle is never
+# marked.
+TRANSIT_RATE_M_PER_MIN = 0.5
+TRANSIT_JOIN_MIN = 2.0         # windows closer than this are one manoeuvre
+# The movement is measured as NET displacement over this many minutes, not
+# between consecutive samples: a shallow mooring rides the waves, and at a
+# 5-10 s cadence that beats any instantaneous rate test (the TIM2 2019S1
+# mooring came out 84% shaded). Over two minutes a wave returns to where it
+# started and sums to nothing, while a descent or a recovery accumulates
+# metres. Where the cadence is coarser than the window - the 10-min moorings
+# that are the routine here - the window collapses to one step and the test is
+# the plain rate it always was.
+TRANSIT_WINDOW_MIN = 2.0
+# Nothing about HANDLING is thrown away - handling can be the error the
+# operator is hunting - so the amplitude test only has to clear the depth
+# sensor's own noise. Measured on the PLES 2019S1 mooring (17,690 samples,
+# 5 s): with no test at all, noise crossing 0.5 m/min gives 194 windows and
+# shades 34% of the record; the real events are 16.0, 10.9 and 1.15 m and the
+# noise cluster stops at 0.25 m. Any value from 0.3 to 1.0 keeps exactly those
+# three, so the low end of that plateau is the one that discards least.
+TRANSIT_MIN_AMPLITUDE_M = 0.3
+# an in/out MARKER is a stronger claim than shading: it needs a real vertical
+# excursion, not a step
+TRANSIT_MARK_NET_M = 1.0
+
+
+def depth_transit_windows(depth, times):
+    """Sample ranges where the instrument was going INTO or OUT OF the water.
+
+    Returns [(first_index, last_index), ...] in POSITIONAL indices, ordered in
+    time: the first window is normally the descent and the last the recovery.
+    Empty when nothing moves fast enough - a profile already at depth, or a
+    series with no depth at all.
+    """
+    depth = pd.to_numeric(pd.Series(depth), errors='coerce').to_numpy(dtype=float)
+    t = pd.to_datetime(pd.Series(times), errors='coerce')
+    if len(depth) < 3 or t.isna().all():
+        return []
+    minutes = (t - t.iloc[0]).dt.total_seconds().to_numpy() / 60.0
+    # partner sample: the last one still inside the window, never the sample
+    # itself (a coarse cadence then compares neighbours, as before)
+    partner = np.searchsorted(minutes, minutes + TRANSIT_WINDOW_MIN, side='right') - 1
+    partner = np.minimum(np.maximum(partner, np.arange(len(minutes)) + 1),
+                         len(minutes) - 1)
+    elapsed = minutes[partner] - minutes
+    net = np.abs(depth[partner] - depth)
+    with np.errstate(invalid='ignore'):
+        moved = np.nan_to_num(net, nan=0.0) >= TRANSIT_RATE_M_PER_MIN * elapsed
+    fast = (moved & (elapsed > 0))[:-1]
+    if not fast.any():
+        return []
+    # runs of fast samples -> windows, then join the ones a pause apart (a
+    # manoeuvre is rarely one smooth movement: the instrument stops on deck,
+    # on a ledge, at a stop for a reading)
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], fast.view(np.int8), [0]))))
+    runs = [(edges[i], edges[i + 1]) for i in range(0, len(edges), 2)]
+    windows = []
+    for start, stop in runs:                       # stop is exclusive on diffs
+        # the window reaches the PARTNER of its last fast sample: that is where
+        # the movement measured at that sample actually ends
+        i0 = int(start)
+        i1 = int(min(max(stop, partner[min(stop, len(depth) - 1)]), len(depth) - 1))
+        if windows and minutes[i0] - minutes[windows[-1][1]] <= TRANSIT_JOIN_MIN:
+            windows[-1] = (windows[-1][0], i1)
+        else:
+            windows.append((i0, i1))
+    # the test is on the depth RANGE inside the window, not on its endpoints:
+    # a lift-and-lower (the instrument pulled up and put back, sample ~3600 of
+    # the PLES 2019 mooring) nets to zero and would be discarded
+    kept = []
+    for i0, i1 in windows:
+        segment = depth[i0:i1 + 1]
+        if np.nanmax(segment) - np.nanmin(segment) >= TRANSIT_MIN_AMPLITUDE_M:
+            kept.append((i0, i1))
+    return kept
+
+
+def draw_depth_context(ax, x, depth, times):
+    """Shades the transit windows on a manual-cut panel and marks the water
+    entry and exit, so the operator sees WHERE the instrument was still being
+    handled instead of reading it off the parameter's own noise (owner, v12.1).
+    Returns the number of windows drawn."""
+    windows = depth_transit_windows(depth, times)
+    if not windows:
+        return 0
+    x = np.asarray(x)
+    depth_values = pd.to_numeric(pd.Series(depth), errors='coerce').to_numpy(float)
+    seen = set()
+
+    def once(text):
+        """One legend entry per kind, however many manoeuvres there were."""
+        if text in seen:
+            return None
+        seen.add(text)
+        return text
+
+    # a manoeuvre at a 10-min cadence is ONE step: two samples out of a few
+    # hundred, a hairline nobody sees. Every band gets at least this share of
+    # the axis (owner, v12.1)
+    span_lo, span_hi = float(np.min(x)), float(np.max(x))
+    floor_w = 0.006 * (span_hi - span_lo)
+    for i0, i1 in windows:
+        left, right = float(x[i0]), float(x[i1])
+        if right - left < floor_w:
+            mid = 0.5 * (left + right)
+            left, right = mid - floor_w / 2, mid + floor_w / 2
+        ax.axvspan(left, right, color='#b30000', alpha=0.10, zorder=0,
+                   label=once('Being lowered / hauled up'))
+        # WHICH manoeuvre it is comes from the direction, never from the
+        # position in the record: most deployments here start logging already
+        # in the water, so the only window is the RECOVERY - labelling the
+        # first window's end 'at working depth' marked the moment the
+        # instrument LEFT the water (caught on the 2019S1 moorings)
+        net = depth_values[i1] - depth_values[i0]
+        if abs(net) < TRANSIT_MARK_NET_M:
+            continue          # handled in place: shaded, but neither in nor out
+        if net > 0:
+            ax.axvline(x[i1], color='#b30000', linestyle='--', linewidth=1,
+                       zorder=1, label=once('At working depth'))
+        else:
+            ax.axvline(x[i0], color='#b30000', linestyle='--', linewidth=1,
+                       zorder=1, label=once('Recovery starts'))
+    ax.legend(loc='best', fontsize=8)
+    return len(windows)
+
+
 def _show_and_wait(fig, tk_root):
     # Shows the interactive figure without freezing the interface. plt.show(block=True)
     # inside a Tkinter callback creates a nested event loop that hangs the main
@@ -2098,7 +2321,8 @@ class ManualCutCanceled(Exception):
     returns to the input form instead of proceeding."""
 
 
-def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
+def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
+                     depth=None, times=None):
     """Interactive panel to manually DISMISS points of a series. Drag a rectangle
     over points to mark them dismissed; mouse wheel zooms; Undo/Reset/Skip/Done/
     Help buttons and a live counter. Returns a SET of positional indices to
@@ -2106,7 +2330,10 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
 
     locked:   indices already dismissed upstream (e.g. the Depth whole-row cut) -
               shown grayed and not selectable, and excluded from the returned set.
-    progress: (i, total) shown in the title, e.g. '[2 of 5]'."""
+    progress: (i, total) shown in the title, e.g. '[2 of 5]'.
+    depth/times: the deployment's depth series and timestamps - the panel then
+              shades the moments the instrument was being lowered or hauled up
+              (see draw_depth_context), which is where a cut usually belongs."""
     x = np.asarray(x)
     y = np.asarray(y, dtype=float)
     locked = set() if locked is None else set(int(i) for i in locked)
@@ -2153,6 +2380,8 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
         ax.set_title('%s%s - drag a box to DISMISS points (flag 5)   |   wheel = zoom\n'
                      '%d dismissed here%s    |    Enter = Done'
                      % (label, prog, len(dismissed), extra))
+        if depth is not None and times is not None:
+            draw_depth_context(ax, x, depth, times)
         ax.set_ylabel(label)
         ax.set_xlabel('Sample number')
         if restore:
@@ -2293,7 +2522,8 @@ def trim_by_depth(data, tk_root=None, locked=None, progress=None):
     caller flags those rows DISMISSED (5) and blanks their values."""
     got = manual_cut_panel(data['Depth (m)'].index.to_numpy(),
                            data['Depth (m)'].to_numpy(), 'Depth (m)', tk_root,
-                           locked=locked, progress=progress)
+                           locked=locked, progress=progress,
+                           depth=data['Depth (m)'], times=data.get('Datetime'))
     return set() if got is None else set(got)
 
 
@@ -2303,7 +2533,8 @@ def trim_selected_variable(data, name, tk_root=None, locked=None, progress=None)
     upstream). Does not modify `data`; the caller flags those points DISMISSED (5)
     for this variable and blanks the value."""
     got = manual_cut_panel(np.arange(len(data)), data[name].to_numpy(), name, tk_root,
-                           locked=locked, progress=progress)
+                           locked=locked, progress=progress,
+                           depth=data.get('Depth (m)'), times=data.get('Datetime'))
     return set() if got is None else set(got)
 
 

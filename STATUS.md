@@ -2,6 +2,136 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-18 - v12.1 OPEN (branch `v12.1`), 8 items from the owner
+
+1. installer pages - **DONE in the recipe, not yet seen on screen**.
+   `DisableDirPage=no` (Inno's default is 'auto', which HIDES the folder
+   page whenever a previous install is found - that is why an upgrade
+   never asked); the desktop-icon task already existed and its page shows
+   because `[Tasks]` is not empty; the Finish page now offers TWO
+   checkboxes, 'Open the user manual' (shellexec, unchecked by default)
+   and the existing 'Launch QCS'. The script compiles clean (ISCC, checked
+   against a dummy payload, output discarded). The wizard itself can only
+   be confirmed by running an installer - it will be built at the v12.1
+   release.
+2. file drag-and-drop stopped working - **FIXED, needs a real drag to
+   confirm**. Diagnosis: the fields and buttons cover most of the window
+   and a QLineEdit/QTextEdit handles drops ITSELF (it would paste the path
+   as text), so only drops on bare background reached the shell - the same
+   class of bug v11.5 fixed in tk. `QtShell` now filters drops at the
+   APPLICATION level and routes any file drag to the active tab. Note for
+   whoever tests this: a synthesized QDropEvent proves nothing here - Qt
+   never delivers it to an event filter, and calling the filter by hand
+   SEGFAULTS outside a real drag. Only the routing is testable headless
+   (it is: both tabs take the file).
+3. manual point cut: depth inflections - **DONE**. New
+   `data.depth_transit_windows()` + `data.draw_depth_context()`: a rate of
+   change over **0.5 m/min** is a manoeuvre, anything slower is the tide
+   (60x below that on this coast), so the natural cycle is never marked.
+   The panel shades the manoeuvre windows and drops a dashed marker at
+   'At working depth' / 'Recovery starts'. Both mooring callers hand the
+   depth and the timestamps over.
+   Two things the REAL corpus corrected, neither of which a fixture would
+   have shown: (a) the label cannot come from the window's POSITION - the
+   2019S1 moorings start logging already submerged, so the only window is
+   the recovery, and calling the first window's end 'at working depth'
+   marked the moment the instrument LEFT the water; the direction of the
+   depth change decides now. (b) The keep/drop test is on the depth RANGE
+   inside the window, not on its endpoints - the PLES 2019 mooring was
+   lifted and put back around sample 3600 (15 m -> 4 m -> 15 m), which
+   nets to zero and was being discarded; it is now shaded (handled here)
+   but carries no in/out marker.
+   **Owner, 2026-08-18: nothing about HANDLING may be discarded** - it can
+   be the error being hunted; the shading only has to make the manual cut
+   easy to see. So the amplitude test just has to clear the depth sensor's
+   noise, and it was MEASURED on the PLES mooring (17,690 samples, 5 s):
+   with no test at all, 194 windows and 34% of the record shaded (noise
+   crosses 0.5 m/min at that cadence); the real events are 16.0, 10.9 and
+   1.15 m and the noise cluster stops at 0.25 m, so every threshold from
+   0.3 to 1.0 keeps exactly those three. `TRANSIT_MIN_AMPLITUDE_M = 0.3`
+   (low end of the plateau = least discarded); the in/out MARKER keeps a
+   separate, stronger test, `TRANSIT_MARK_NET_M = 1.0`.
+   **Owner asked whether it holds at the 10-min cadence they actually use
+   (2026-08-18): it does, and the scan found the real failure at the other
+   end.** The movement is now measured as NET displacement over a 2-minute
+   window instead of between consecutive samples (`TRANSIT_WINDOW_MIN`):
+   a shallow mooring rides the waves, and at 5-10 s that beat any
+   instantaneous rate - TIM2 2019S1 came out **84% shaded**. Over two
+   minutes a wave returns to where it started and sums to nothing, while a
+   descent accumulates metres. Where the cadence is coarser than the
+   window (the 10-min moorings) it collapses to one step and the test is
+   the plain rate it always was. The shaded band also has a floor of 0.6%
+   of the axis: a 10-min manoeuvre is ONE step, two samples, a hairline.
+   Re-measured over the WHOLE mooring corpus, 35 qualified files: TIM2
+   2019S1 84% -> 3.45%, PLES 2019S1 3.22% -> 3.05%, every 10-min file
+   0-4.2% except a 19-sample record at 10.5%, 1-min PISCINA files
+   0.26-0.89%, 30-min PONTO19 1.5%. Seven files show no window at all -
+   expected, their out-of-water rows were already cut by the Depth review
+   before the product was written.
+   Measured on 2019S1: CALIFORNIA 1 window (29.0 -> 0.1 m, recovery),
+   PAB3 1 window, PLES SEAGUARD 3 windows (lift-and-lower, a small
+   0.5 m step, and the recovery 16.1 -> 0.1 m), PLES DOPPLER none (its
+   depth column does not move). The tidal swing of ~1.5 m over 17k samples
+   is untouched in every one.
+4. regression degree pre-filled with 5 for every data type - **DONE**
+   (`dbv_degree` empty now means 'never chosen', not 'no regression').
+5. 'Go to visualization' landed on Step 2 of an OLD database - **FIXED**:
+   `VisualizationTab.apply_prefill()` pushes the stack back to Step 1 with
+   the just-qualified file (the tk side already did its half).
+6. 'Reset view' did nothing in the plot windows - **FIXED**.
+   `enable_scroll_zoom` customised the toolbar through the **tk** API only
+   (`_ttk.Button`, `_buttons`, `pack_forget`), inside a bare
+   `except Exception: pass` - under the Qt shell (backend_qtagg) the whole
+   block raised and was swallowed, so the button never existed. There are
+   now two branches, chosen by `hasattr(tb, 'addAction')`. Measured on a Qt
+   figure: Reset view restores the exact opening limits; Home/Zoom/
+   Subplots/Customize hidden as intended; Back, Forward and Pan work
+   (`tb.mode` toggles, the view stack walks); Save opens a file dialog and
+   was not exercised headlessly.
+7. Selection summary is thin for Seaguard, especially with a CO2 file -
+   **DONE**. A Seaguard session says as much in its FOLDER NAMES as a
+   `.hobo` says in its header: new `data.peek_seaguard_session()` returns
+   serial, logging start, how many sensor groups the cast has and how many
+   `DataNNN.bin` parts the group holds - all from a listdir, because
+   decoding a mooring just to preview it would freeze the window. The cast
+   clustering that the deployment READER already did was extracted to
+   `data.seaguard_cast_folders()` and both now share it (the 15-min
+   CAST_GAP rule lives in one place). New **CO2 data** row: file name,
+   number of readings, its own period and the reminder that its clock is
+   LOCAL. Proven on CALIFORNIA/FUNDEIO 2019: serial 5650-2097, start
+   23/04/2019 13:15, '2 sensor groups merged', CO2 715 readings
+   23/04 09:12 -> 24/04 09:24. The refactor was checked against a real
+   deployment read before and after: 625 x 25, same time span, same
+   columns, still 2 groups merged.
+   **Interval added too** (owner asked for it if cheap, and it is):
+   `_decode_aadi_bin` takes an optional `max_records`, and when it is given
+   it reads only the header + template + dictionary + 512 KB of records
+   instead of the whole file - the preview cost stops growing with the
+   deployment (10 MB Doppler session: 0.99 s -> 0.22 s over the share).
+   The interval reported is the FINEST sensor group's, because that is the
+   axis the deployment reader merges everything onto: for the BURACAS cast
+   the selected group alone says 10 s while the qualified sheet carries
+   5 s rows, and the peek now says 5 s - checked against the real merged
+   deployment (625 x 25, median step 5.0 s). Measured peeks: cast 0.06 s,
+   2.4 MB mooring 0.20 s, 10 MB Doppler 0.22 s (interval None - the DCPS
+   layout raises, and a preview must never be the thing that fails).
+
+9. (new, owner 2026-08-18) the parameters that start unchecked carry a
+   heading again - **DONE**. The tk Step 2 had a 'Rarely used:' separator;
+   the Qt port listed everything flat. `secondary_params` is now a module
+   global of `QCS_DatabaseView` and the Qt filter list prints the heading
+   before the first of them, with the existing `param_secondary` tooltip.
+   Measured: the heading sits between 'Dissolved organic matter (ppb)' and
+   'Conductivity (mS/cm)'.
+8. post-run shortcuts sit closer to RUN - **DONE**: the action column lost
+   its slack (spacing 4) and the hint label is hidden while empty instead
+   of holding a whole line.
+
+`4c14c49` carries 2, 4, 5, 8; the next commit carries 6 and 9.
+Suite 52/52, ruff clean. Left: 1 (installer), 3 (depth inflections,
+design agreed: shaded transit windows + entry/exit markers, split
+from the tide by rate of change), 7 (Selection summary).
+
 ## 2026-08-18 - v12.0 RELEASED and PUBLISHED
 
 PR #30 merged (`51eb277`). Ritual run to the end except the publication:

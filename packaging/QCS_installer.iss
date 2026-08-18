@@ -20,7 +20,7 @@
 ; entry gated on WizardSilent. Compile with ISCC.exe after the PyInstaller
 ; build; steps in README.md.
 
-#define AppVersion "12.0"
+#define AppVersion "12.1"
 
 [Setup]
 AppId={{7B1C9D2E-4A31-4F5B-9C1E-QCSSAGE00001}
@@ -30,6 +30,10 @@ AppPublisher=SAGE (COPPE/UFRJ)
 DefaultDirName={autopf}\QCS
 DefaultGroupName=QCS
 DisableProgramGroupPage=yes
+; The folder page stays on Inno's default 'auto': shown on a FRESH install,
+; hidden when a previous install is found, so an upgrade keeps its folder
+; without asking (owner, v12.1 - the v12.1 first draft forced it always on
+; and the owner asked for the old rule back).
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 OutputBaseFilename=QCS_Setup_v{#AppVersion}
@@ -59,6 +63,10 @@ Name: "{group}\QCS User Manual"; Filename: "{app}\Quality Control System (SAGE) 
 Name: "{autodesktop}\QCS"; Filename: "{app}\QCS.exe"; Tasks: desktopicon
 
 [Run]
+; the two Finish-page checkboxes (v12.1, owner request): open the manual and
+; start the program. 'postinstall' is what makes them checkboxes; the manual
+; needs shellexec because it is an .html, not an executable.
+Filename: "{app}\Quality Control System (SAGE) - User Manual.html"; Description: "Open the user manual"; Flags: postinstall shellexec skipifsilent nowait unchecked
 Filename: "{app}\QCS.exe"; Description: "{cm:LaunchProgram,QCS}"; Flags: nowait postinstall skipifsilent
 ; a SILENT run is the self-update path (QCS_Update passes /SILENT): the app
 ; closed itself to let the installer work, so reopen it updated

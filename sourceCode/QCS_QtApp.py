@@ -25,7 +25,7 @@ import sys
 import matplotlib
 matplotlib.use('QtAgg')            # before any QCS import binds pyplot
 
-from PySide6.QtCore import QObject, QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QDockWidget, QFileDialog, QFormLayout,
@@ -174,6 +174,12 @@ class QtShell(QMainWindow):
         self.setWindowIcon(_app_icon())
         self.resize(1180, 760)
         self.setAcceptDrops(True)   # Qt-native drag-and-drop, whole window
+        # ...but the fields and buttons cover most of the window, and a
+        # QLineEdit/QTextEdit/QComboBox handles drops ITSELF (it would paste
+        # the path as text instead of loading the file). An application-wide
+        # filter takes file drops before they get there - the Qt answer to
+        # the v11.5 'register every widget' fix (v12.1)
+        QApplication.instance().installEventFilter(self)
         self._last_seaguard = {}    # Data type/GMT stored while HOBO is selected
         self._co2_file = ''
         self._run_scope = None      # 'File k/n' / 'Replicate k/n' progress prefix
@@ -509,9 +515,12 @@ class QtShell(QMainWindow):
         for key, label in (('instrument', 'Instrument:'), ('files', 'Files:'),
                            ('mode', 'Mode:'), ('period', 'Period:'),
                            ('interval', 'Interval:'), ('serials', 'Serial(s):'),
-                           ('timebase', 'Timebase:')):
+                           ('co2', 'CO₂ data:'), ('timebase', 'Timebase:')):
             lab = QLabel('-')
             qtheme.muted(lab)
+            # the CO2 line is the long one (file, readings, period): it wraps
+            # instead of widening the whole Output column
+            lab.setWordWrap(key == 'co2')
             self.sum_labels[key] = lab
             fsum.addRow(label, lab)
         fout.addRow(gsum)
@@ -565,6 +574,7 @@ class QtShell(QMainWindow):
 
         run_box = QVBoxLayout()
         run_box.setContentsMargins(0, 0, 0, 0)
+        run_box.setSpacing(4)   # the shortcuts hug RUN (owner, v12.1)
         run_box.addWidget(self.run_btn, alignment=Qt.AlignHCenter)
         run_box.addWidget(self.run_hint, alignment=Qt.AlignHCenter)
         run_box.addWidget(self.postrun_bar, alignment=Qt.AlignHCenter)
@@ -597,9 +607,8 @@ class QtShell(QMainWindow):
         if (self.viz_tab is not None
                 and self.tabs.currentWidget() is self._viz_page
                 and qm.PENDING_VIZ_PREFILL):
-            dbv.apply_pending_prefill(qm.PENDING_VIZ_PREFILL)
+            self.viz_tab.apply_prefill(qm.PENDING_VIZ_PREFILL)
             qm.PENDING_VIZ_PREFILL = None
-            self.viz_tab.refresh_step1()
 
     def _menus(self):
         # File carries the file-level actions of the active workflow, so the
@@ -760,13 +769,23 @@ class QtShell(QMainWindow):
         self.update_criteria_indicator()   # the edit may have left the defaults
 
     # ----- drag-and-drop (Qt-native: one handler pair for the whole window) -----
+    @staticmethod
+    def _dropped_files(event):
+        """Local file paths of a drag, or [] when it carries something else
+        (dragged text, a URL from a browser)."""
+        if not event.mimeData().hasUrls():
+            return []
+        return [u.toLocalFile() for u in event.mimeData().urls()
+                if u.isLocalFile()]
+
     def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
+        if self._dropped_files(event):
             event.acceptProposedAction()
 
     def dropEvent(self, event):
-        paths = [u.toLocalFile() for u in event.mimeData().urls()
-                 if u.isLocalFile()]
+        self._take_dropped_files(self._dropped_files(event))
+
+    def _take_dropped_files(self, paths):
         if not paths:
             return
         # drops land in the ACTIVE tab's file field, like the tk shell
@@ -774,6 +793,21 @@ class QtShell(QMainWindow):
             self.viz_tab.apply_selected_files(paths)
         else:
             self.apply_selected_files(paths)
+
+    def eventFilter(self, obj, event):
+        """File drops belong to the shell wherever they land: over a field,
+        a button or the log, a widget that handles drops itself would swallow
+        them (v12.1). Only drags carrying FILES are taken - dragging text
+        inside a field still behaves normally."""
+        kind = event.type()
+        if kind in (QEvent.Type.DragEnter, QEvent.Type.DragMove,
+                    QEvent.Type.Drop) and isinstance(obj, QWidget):
+            if obj.window() is self and self._dropped_files(event):
+                event.acceptProposedAction()
+                if kind == QEvent.Type.Drop:
+                    self._take_dropped_files(self._dropped_files(event))
+                return True
+        return super().eventFilter(obj, event)
 
     # ----- file selection (port of QCS_Main.apply_selected_files) -----
     def _browse(self):
@@ -875,6 +909,8 @@ class QtShell(QMainWindow):
 
     def _update_summary(self, names):
         itype = self.input_type.currentText()
+        for lab in self.sum_labels.values():
+            lab.setText('-')
         self.sum_labels['instrument'].setText(itype or '-')
         self.sum_labels['files'].setText(
             '%d  (%s%s)' % (len(names), os.path.basename(names[0]),
@@ -902,6 +938,23 @@ class QtShell(QMainWindow):
             if launches:
                 self.sum_labels['period'].setText(
                     'launched %s' % min(launches).strftime('%d/%m/%Y %H:%M'))
+        # Seaguard says as much about itself in its FOLDER NAMES as the .hobo
+        # header does: serial, deployment start, how many sensor groups the
+        # cast has and how many binary parts the group was split into. All of
+        # it is a listdir - decoding the session to preview it would freeze
+        # the window (v12.1)
+        peek = (data.peek_seaguard_session(names[0])
+                if itype in ('Seaguard', 'Doppler') else {})
+        if peek:
+            self.sum_labels['serials'].setText(peek['serial'])
+            self.sum_labels['period'].setText(
+                'logging started %s' % peek['start'].strftime('%d/%m/%Y %H:%M'))
+            if peek.get('interval_s'):
+                # the FINEST sensor group's interval: that is the axis the
+                # deployment is merged onto, so it is the one the qualified
+                # sheet will carry
+                self.sum_labels['interval'].setText(
+                    _interval_text(peek['interval_s']))
         if itype == 'HOBO':
             mode = ('%d replicates of one deployment, combined' % len(names)
                     if len(names) > 1 else 'single logger')
@@ -912,7 +965,12 @@ class QtShell(QMainWindow):
                     ('current profiler (DCPS)'
                      if self.data_type.currentText() == 'TSCP Doppler'
                      else 'single deployment'))
+            if peek and peek.get('groups', 1) > 1 and len(names) == 1:
+                mode += ', %d sensor groups merged' % peek['groups']
+            if peek and peek.get('parts', 1) > 1 and len(names) == 1:
+                mode += ' (%d binary parts)' % peek['parts']
             tb = 'GMT (Seaguard) -> corrected to local (GMT-3)'
+            self._summarize_co2()
         self.sum_labels['mode'].setText(mode)
         self.sum_labels['timebase'].setText(tb)
 
@@ -939,6 +997,26 @@ class QtShell(QMainWindow):
         self.co2_btn.setEnabled(allowed)
         self.co2_label.setText(os.path.basename(self._co2_file) if self._co2_file else '')
         self.co2_clear.setVisible(bool(self._co2_file))
+        if allowed and self.file_edit.text().strip():
+            self._summarize_co2()   # the summary must follow the CO2 choice
+
+    def _summarize_co2(self):
+        """The CO2 addition in the Selection summary: what file, what period it
+        covers and the reminder that its clock is LOCAL - the one timebase the
+        GMT-3 correction must not touch (v12.1)."""
+        if not self._co2_file:
+            self.sum_labels['co2'].setText('none')
+            return
+        base = os.path.basename(self._co2_file)
+        try:
+            frame, _msgs = data.read_co2_file(self._co2_file)
+            span = '%s to %s' % (frame['Datetime'].min().strftime('%d/%m/%Y %H:%M'),
+                                 frame['Datetime'].max().strftime('%d/%m/%Y %H:%M'))
+            self.sum_labels['co2'].setText(
+                '%s  (%d readings, %s - local clock, interpolated onto the '
+                'Seaguard times)' % (base, len(frame), span))
+        except Exception as exc:
+            self.sum_labels['co2'].setText('%s  (unreadable: %s)' % (base, exc))
 
     def _select_co2(self):
         path, _f = QFileDialog.getOpenFileName(
@@ -1043,6 +1121,9 @@ class QtShell(QMainWindow):
                         if not widget.text().strip()), None)
         self.run_btn.setEnabled(missing is None)
         self.run_hint.setText(missing or '')
+        # an empty hint keeps a whole line of height, which pushed the
+        # post-run shortcuts away from RUN (owner, v12.1)
+        self.run_hint.setVisible(bool(missing))
 
     def collect_from_qt(self):
         """Qt replacement for QCS_Main.collect_input_settings: same vals dict,
