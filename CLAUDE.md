@@ -165,7 +165,18 @@ do not copy it.
 - **`CLAUDE.md`** (this file) — durable rules and invariants. Read every
   session, so every line costs context on every task.
 - **`STATUS.md`** — dated, volatile state: current phase, what is unfinished,
-  known-bad artifacts. Read the top entry before starting.
+  known-bad artifacts. Read the top entry before starting. **It holds the OPEN
+  version only**, plus the carried-over open items and the environment notes:
+  when a version is published, its entries leave `STATUS.md` in the same commit
+  that writes `changelog/vX.Y.md`, and whatever is still pending drops into the
+  open-items list dated with when it was last touched — not with today. Past
+  ~150 lines, prune before writing more; it reached 1,922 by pure accretion
+  (pruned 2026-08-18; full text in `git show a0994bf:STATUS.md`). Prune by
+  SWEEPING the entries for what is still live, never by summarizing a summary:
+  two claims in that file were already superseded and would have survived the
+  cut as if true. What a cold session cannot re-derive — approaches rejected
+  and why, the current hypothesis, the next command — stays until it closes,
+  however long the file gets.
 - **`changelog/`** — one file per released version of the PROGRAM.
 - **`sourceCode/batch/CORPUS_LOG.md`** — what was done to the archived DATA,
   dated and with its evidence: requalification rounds, raw repairs, discarded
