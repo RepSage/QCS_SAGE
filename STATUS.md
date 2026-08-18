@@ -24,9 +24,28 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
    never delivers it to an event filter, and calling the filter by hand
    SEGFAULTS outside a real drag. Only the routing is testable headless
    (it is: both tabs take the file).
-3. manual point cut: show depth inflections so the water entry/exit are
-   visible, allowing for the tide - NOT STARTED, needs a design decision
-   (see the question put to the owner).
+3. manual point cut: depth inflections - **DONE**. New
+   `data.depth_transit_windows()` + `data.draw_depth_context()`: a rate of
+   change over **0.5 m/min** is a manoeuvre, anything slower is the tide
+   (60x below that on this coast), so the natural cycle is never marked.
+   The panel shades the manoeuvre windows and drops a dashed marker at
+   'At working depth' / 'Recovery starts'. Both mooring callers hand the
+   depth and the timestamps over.
+   Two things the REAL corpus corrected, neither of which a fixture would
+   have shown: (a) the label cannot come from the window's POSITION - the
+   2019S1 moorings start logging already submerged, so the only window is
+   the recovery, and calling the first window's end 'at working depth'
+   marked the moment the instrument LEFT the water; the direction of the
+   depth change decides now. (b) The keep/drop test is on the depth RANGE
+   inside the window, not on its endpoints - the PLES 2019 mooring was
+   lifted and put back around sample 3600 (15 m -> 4 m -> 15 m), which
+   nets to zero and was being discarded; it is now shaded (handled here)
+   but carries no in/out marker.
+   Measured on 2019S1: CALIFORNIA 1 window (29.0 -> 0.1 m, recovery),
+   PAB3 1 window, PLES SEAGUARD 3 windows (lift-and-lower, a small
+   0.5 m step, and the recovery 16.1 -> 0.1 m), PLES DOPPLER none (its
+   depth column does not move). The tidal swing of ~1.5 m over 17k samples
+   is untouched in every one.
 4. regression degree pre-filled with 5 for every data type - **DONE**
    (`dbv_degree` empty now means 'never chosen', not 'no regression').
 5. 'Go to visualization' landed on Step 2 of an OLD database - **FIXED**:

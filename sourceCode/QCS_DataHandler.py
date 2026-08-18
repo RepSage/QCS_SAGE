@@ -2159,6 +2159,99 @@ def on_motion(event):
                 # update plot
                 event.inaxes.figure.canvas.draw_idle()
 
+# Deployment/recovery vs tide (v12.1). The tide moves the depth of a moored
+# instrument by centimetres per minute; lowering it to the bottom or hauling it
+# up moves METRES per minute. One rate threshold separates the two cleanly, and
+# it is 60x above any tidal rate on this coast, so the natural cycle is never
+# marked.
+TRANSIT_RATE_M_PER_MIN = 0.5
+TRANSIT_MIN_DROP_M = 1.0       # a window has to cover a real depth change
+TRANSIT_JOIN_MIN = 2.0         # windows closer than this are one manoeuvre
+
+
+def depth_transit_windows(depth, times):
+    """Sample ranges where the instrument was going INTO or OUT OF the water.
+
+    Returns [(first_index, last_index), ...] in POSITIONAL indices, ordered in
+    time: the first window is normally the descent and the last the recovery.
+    Empty when nothing moves fast enough - a profile already at depth, or a
+    series with no depth at all.
+    """
+    depth = pd.to_numeric(pd.Series(depth), errors='coerce').to_numpy(dtype=float)
+    t = pd.to_datetime(pd.Series(times), errors='coerce')
+    if len(depth) < 3 or t.isna().all():
+        return []
+    minutes = (t - t.iloc[0]).dt.total_seconds().to_numpy() / 60.0
+    dt = np.diff(minutes)
+    dd = np.diff(depth)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        rate = np.abs(np.where(dt > 0, dd / dt, np.nan))
+    fast = np.nan_to_num(rate, nan=0.0) > TRANSIT_RATE_M_PER_MIN
+    if not fast.any():
+        return []
+    # runs of fast samples -> windows, then join the ones a pause apart (a
+    # manoeuvre is rarely one smooth movement: the instrument stops on deck,
+    # on a ledge, at a stop for a reading)
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], fast.view(np.int8), [0]))))
+    runs = [(edges[i], edges[i + 1]) for i in range(0, len(edges), 2)]
+    windows = []
+    for start, stop in runs:                       # stop is exclusive on diffs
+        i0, i1 = int(start), int(min(stop, len(depth) - 1))
+        if windows and minutes[i0] - minutes[windows[-1][1]] <= TRANSIT_JOIN_MIN:
+            windows[-1] = (windows[-1][0], i1)
+        else:
+            windows.append((i0, i1))
+    # the test is on the depth RANGE inside the window, not on its endpoints:
+    # a lift-and-lower (the instrument pulled up and put back, sample ~3600 of
+    # the PLES 2019 mooring) nets to zero and was being discarded
+    kept = []
+    for i0, i1 in windows:
+        segment = depth[i0:i1 + 1]
+        if np.nanmax(segment) - np.nanmin(segment) >= TRANSIT_MIN_DROP_M:
+            kept.append((i0, i1))
+    return kept
+
+
+def draw_depth_context(ax, x, depth, times):
+    """Shades the transit windows on a manual-cut panel and marks the water
+    entry and exit, so the operator sees WHERE the instrument was still being
+    handled instead of reading it off the parameter's own noise (owner, v12.1).
+    Returns the number of windows drawn."""
+    windows = depth_transit_windows(depth, times)
+    if not windows:
+        return 0
+    x = np.asarray(x)
+    depth_values = pd.to_numeric(pd.Series(depth), errors='coerce').to_numpy(float)
+    seen = set()
+
+    def once(text):
+        """One legend entry per kind, however many manoeuvres there were."""
+        if text in seen:
+            return None
+        seen.add(text)
+        return text
+
+    for i0, i1 in windows:
+        ax.axvspan(x[i0], x[i1], color='#b30000', alpha=0.10, zorder=0,
+                   label=once('Being lowered / hauled up'))
+        # WHICH manoeuvre it is comes from the direction, never from the
+        # position in the record: most deployments here start logging already
+        # in the water, so the only window is the RECOVERY - labelling the
+        # first window's end 'at working depth' marked the moment the
+        # instrument LEFT the water (caught on the 2019S1 moorings)
+        net = depth_values[i1] - depth_values[i0]
+        if abs(net) < TRANSIT_MIN_DROP_M:
+            continue          # lifted and put back: shaded, but neither in nor out
+        if net > 0:
+            ax.axvline(x[i1], color='#b30000', linestyle='--', linewidth=1,
+                       zorder=1, label=once('At working depth'))
+        else:
+            ax.axvline(x[i0], color='#b30000', linestyle='--', linewidth=1,
+                       zorder=1, label=once('Recovery starts'))
+    ax.legend(loc='best', fontsize=8)
+    return len(windows)
+
+
 def _show_and_wait(fig, tk_root):
     # Shows the interactive figure without freezing the interface. plt.show(block=True)
     # inside a Tkinter callback creates a nested event loop that hangs the main
@@ -2192,7 +2285,8 @@ class ManualCutCanceled(Exception):
     returns to the input form instead of proceeding."""
 
 
-def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
+def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
+                     depth=None, times=None):
     """Interactive panel to manually DISMISS points of a series. Drag a rectangle
     over points to mark them dismissed; mouse wheel zooms; Undo/Reset/Skip/Done/
     Help buttons and a live counter. Returns a SET of positional indices to
@@ -2200,7 +2294,10 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
 
     locked:   indices already dismissed upstream (e.g. the Depth whole-row cut) -
               shown grayed and not selectable, and excluded from the returned set.
-    progress: (i, total) shown in the title, e.g. '[2 of 5]'."""
+    progress: (i, total) shown in the title, e.g. '[2 of 5]'.
+    depth/times: the deployment's depth series and timestamps - the panel then
+              shades the moments the instrument was being lowered or hauled up
+              (see draw_depth_context), which is where a cut usually belongs."""
     x = np.asarray(x)
     y = np.asarray(y, dtype=float)
     locked = set() if locked is None else set(int(i) for i in locked)
@@ -2247,6 +2344,8 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
         ax.set_title('%s%s - drag a box to DISMISS points (flag 5)   |   wheel = zoom\n'
                      '%d dismissed here%s    |    Enter = Done'
                      % (label, prog, len(dismissed), extra))
+        if depth is not None and times is not None:
+            draw_depth_context(ax, x, depth, times)
         ax.set_ylabel(label)
         ax.set_xlabel('Sample number')
         if restore:
@@ -2387,7 +2486,8 @@ def trim_by_depth(data, tk_root=None, locked=None, progress=None):
     caller flags those rows DISMISSED (5) and blanks their values."""
     got = manual_cut_panel(data['Depth (m)'].index.to_numpy(),
                            data['Depth (m)'].to_numpy(), 'Depth (m)', tk_root,
-                           locked=locked, progress=progress)
+                           locked=locked, progress=progress,
+                           depth=data['Depth (m)'], times=data.get('Datetime'))
     return set() if got is None else set(got)
 
 
@@ -2397,7 +2497,8 @@ def trim_selected_variable(data, name, tk_root=None, locked=None, progress=None)
     upstream). Does not modify `data`; the caller flags those points DISMISSED (5)
     for this variable and blanks the value."""
     got = manual_cut_panel(np.arange(len(data)), data[name].to_numpy(), name, tk_root,
-                           locked=locked, progress=progress)
+                           locked=locked, progress=progress,
+                           depth=data.get('Depth (m)'), times=data.get('Datetime'))
     return set() if got is None else set(got)
 
 
