@@ -20,7 +20,7 @@
 ; entry gated on WizardSilent. Compile with ISCC.exe after the PyInstaller
 ; build; steps in README.md.
 
-#define AppVersion "12.1"
+#define AppVersion "12.2"
 
 [Setup]
 AppId={{7B1C9D2E-4A31-4F5B-9C1E-QCSSAGE00001}
@@ -67,10 +67,15 @@ Name: "{autodesktop}\QCS"; Filename: "{app}\QCS.exe"; Tasks: desktopicon
 ; start the program. 'postinstall' is what makes them checkboxes; the manual
 ; needs shellexec because it is an .html, not an executable.
 Filename: "{app}\Quality Control System (SAGE) - User Manual.html"; Description: "Open the user manual"; Flags: postinstall shellexec skipifsilent nowait unchecked
-Filename: "{app}\QCS.exe"; Description: "{cm:LaunchProgram,QCS}"; Flags: nowait postinstall skipifsilent
+; runasoriginaluser on BOTH: an install into Program Files runs elevated, and
+; an app started from here inherits that token. Windows then blocks drag-and-
+; drop from Explorer into it (UIPI: a lower integrity level cannot post to a
+; higher one) - the app looked broken until it was reopened from its shortcut
+; (owner, 2026-08-18, confirmed on the v12.1 install).
+Filename: "{app}\QCS.exe"; Description: "{cm:LaunchProgram,QCS}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 ; a SILENT run is the self-update path (QCS_Update passes /SILENT): the app
 ; closed itself to let the installer work, so reopen it updated
-Filename: "{app}\QCS.exe"; Flags: nowait; Check: WizardSilent
+Filename: "{app}\QCS.exe"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [UninstallDelete]
 ; the app writes these beside the exe at runtime (user-area installs); remove

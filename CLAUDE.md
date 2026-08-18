@@ -94,6 +94,14 @@ archive and diff the counts against the previous `qualified_index.csv`.
 - **User settings** live in `sourceCode/qcs_user_settings.json` (auto-generated,
   gitignored, version-gated: a version bump may intentionally reset QC criteria
   to new defaults while preserving file paths).
+- **One preferences dict per shell.** `QCS_Main.USER_PREFS` and
+  `QCS_DatabaseView.USER_PREFS` are separate module globals, and each
+  `save_user_prefs()` rewrites the WHOLE settings file from its own copy. A
+  shell MUST alias them (`qm.USER_PREFS = dbv.USER_PREFS`, as `QCS_App` and
+  `QCS_QtApp` do) or the module that saves LAST silently reverts everything the
+  other wrote that session - which is how the Qt port shipped with 'nothing
+  persists between sessions' (v12.2). The window state is saved by the shell's
+  own close handler; a shell without one loses it entirely.
 - **Version**: `QCS_VERSION` in `QCS_DataHandler.py` is the single source of
   truth for the app version.
 
@@ -157,7 +165,18 @@ do not copy it.
 - **`CLAUDE.md`** (this file) — durable rules and invariants. Read every
   session, so every line costs context on every task.
 - **`STATUS.md`** — dated, volatile state: current phase, what is unfinished,
-  known-bad artifacts. Read the top entry before starting.
+  known-bad artifacts. Read the top entry before starting. **It holds the OPEN
+  version only**, plus the carried-over open items and the environment notes:
+  when a version is published, its entries leave `STATUS.md` in the same commit
+  that writes `changelog/vX.Y.md`, and whatever is still pending drops into the
+  open-items list dated with when it was last touched — not with today. Past
+  ~150 lines, prune before writing more; it reached 1,922 by pure accretion
+  (pruned 2026-08-18; full text in `git show a0994bf:STATUS.md`). Prune by
+  SWEEPING the entries for what is still live, never by summarizing a summary:
+  two claims in that file were already superseded and would have survived the
+  cut as if true. What a cold session cannot re-derive — approaches rejected
+  and why, the current hypothesis, the next command — stays until it closes,
+  however long the file gets.
 - **`changelog/`** — one file per released version of the PROGRAM.
 - **`sourceCode/batch/CORPUS_LOG.md`** — what was done to the archived DATA,
   dated and with its evidence: requalification rounds, raw repairs, discarded

@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
-"""QCS v12.0 Qt shell - phase 1 of the interface port (DEV build).
+"""QCS Qt shell - the released interface since v12.0.
 
-The REAL qualification pipeline behind the approved Qt design: this window
-fills the same `vals` dict as the tk interface (QCS_Main.apply_input_settings)
+The REAL qualification pipeline behind the Qt design: this window fills the
+same `vals` dict as the retired tk interface (QCS_Main.apply_input_settings)
 and runs the same start_qualification, with the UI facade pointed at Qt.
 The tk pipeline closures are materialized once on a hidden tk root (the same
 pattern the batch drivers use); no tk window is ever shown and no tk event
 loop runs - every in-run interaction goes through the Qt overrides below.
 
-Working in this build: the whole program - the qualification workflow
-(Seaguard single/batch/Doppler/Profile with phase picking, CO2 merge, HOBO
-single and replicates in both light modes with the replicate review, Depth
-review, 'Check variables' manual cut), the Settings window, and the Data
-visualization tab (QCS_QtViz remote-controls the real DatabaseView wizard).
-The review windows are pure matplotlib and open as Qt windows.
+It hosts the whole program: the qualification workflow (Seaguard
+single/batch/Doppler/Profile with phase picking, CO2 merge, HOBO single and
+replicates in both light modes with the replicate review, Depth review,
+'Check variables' manual cut), the Settings window, and the Data visualization
+tab (QCS_QtViz remote-controls the real DatabaseView wizard). The review
+windows are pure matplotlib and open as Qt windows.
 
-Run with:  QCS_v12_dev.bat  (Desktop; packaging/v12_env venv, PySide6 6.8.3).
-Master still ships the tk app - this shell is the port in progress.
+Run with:  QCS.bat  (packaging/v12_env venv, PySide6 6.8.3).
 """
 import os
 import re
@@ -25,7 +24,8 @@ import sys
 import matplotlib
 matplotlib.use('QtAgg')            # before any QCS import binds pyplot
 
-from PySide6.QtCore import QEvent, QObject, QSignalBlocker, Qt, Signal
+from PySide6.QtCore import (QByteArray, QEvent, QObject, QSignalBlocker, Qt,
+                            Signal)
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QDockWidget, QFileDialog, QFormLayout,
@@ -46,11 +46,19 @@ import QCS_DatabaseView as dbv
 import QCS_Update as upd
 from QCS_QtViz import VisualizationTab
 
+# Both tools share ONE preferences dict, so saving from either tab writes the
+# same qcs_user_settings.json without clobbering the other tab's keys (the tk
+# shell does this in QCS_App). The port shipped without it and the two modules
+# each wrote the WHOLE file from their own copy, so whichever saved LAST
+# silently reverted everything the other had written that session - this is why
+# 'nothing persisted between sessions' (v12.2).
+qm.USER_PREFS = dbv.USER_PREFS
+
 # QCS_Main/QCS_DatabaseView install the TK crash handler at import (it pops a
 # tk dialog that never shows in a Qt app, and a crash then looks like a hang).
 # Claim the hook for Qt as soon as this module is imported - main() is too
 # late for anything that runs the shell without it (drivers, tests).
-qtheme.install_crash_handler('QCS (v12.0)')
+qtheme.install_crash_handler('QCS %s' % data.QCS_VERSION)
 
 
 class _UpdateBridge(QObject):
@@ -199,6 +207,7 @@ class QtShell(QMainWindow):
         self.setCentralWidget(tabs)
 
         self.log_dock = qtheme.LogDock(self)
+        self.log_dock.setObjectName('LogDock')   # saveState skips unnamed docks
         self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
         # batch status: one row per file of a Seaguard batch, filled from the
         # pipeline's own markers (hidden outside batches). Built BEFORE the
@@ -222,6 +231,7 @@ class QtShell(QMainWindow):
         self._batch_layout.setContentsMargins(0, 0, 0, 0)
         self._batch_layout.addWidget(self.batch_table)
         self.batch_dock = QDockWidget('Batch status', self)
+        self.batch_dock.setObjectName('BatchDock')
         self.batch_dock.setWidget(batch_holder)
         self.addDockWidget(Qt.RightDockWidgetArea, self.batch_dock)
         self.batch_dock.hide()
@@ -292,6 +302,45 @@ class QtShell(QMainWindow):
         super().showEvent(event)
         self._align_batch_top()
         self._align_clear_button()
+
+    def closeEvent(self, event):
+        """The window remembers how it was left, and so does the form: the tk
+        shell saved on exit (QCS_App.remember_window_state) and the port had no
+        closeEvent at all, so every session reopened at the default size
+        (v12.2)."""
+        try:
+            self.remember_window_state()
+        except Exception as e:
+            print('Warning: could not save the window state: %s' % e)
+        super().closeEvent(event)
+
+    def remember_window_state(self):
+        """Window geometry, dock layout, log visibility and the form itself.
+        saveGeometry() already carries the maximized flag, so there is no
+        separate win_state key on this side; the tk shell's own win_state /
+        win_geometry are left untouched (different format, other shell)."""
+        p = qm.USER_PREFS
+        p['qt_win_geometry'] = bytes(self.saveGeometry().toBase64()).decode('ascii')
+        p['qt_win_layout'] = bytes(self.saveState().toBase64()).decode('ascii')
+        p['log_hidden'] = not self.log_dock.isVisible()
+        # the form was only ever stored by a successful RUN (inside
+        # apply_input_settings): anything selected and not run was lost
+        qm.store_form_prefs(self._form_vals())   # writes the settings file
+
+    def restore_window_state(self):
+        """Reopens the window the way it was left. Called before show(), so
+        the restored geometry is the one the window is first mapped with."""
+        p = qm.USER_PREFS
+        geo = p.get('qt_win_geometry')
+        if geo:
+            self.restoreGeometry(QByteArray.fromBase64(geo.encode('ascii')))
+        layout = p.get('qt_win_layout')
+        if layout:
+            self.restoreState(QByteArray.fromBase64(layout.encode('ascii')))
+        # the batch table is filled by the pipeline's own markers and starts
+        # empty, so a restored layout must never bring it back on its own
+        self.batch_dock.hide()
+        self.log_dock.setVisible(not p.get('log_hidden', False))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -523,6 +572,7 @@ class QtShell(QMainWindow):
             lab.setWordWrap(key == 'co2')
             self.sum_labels[key] = lab
             fsum.addRow(label, lab)
+        self._fsum = fsum          # the CO2 row is hidden for HOBO/Doppler
         fout.addRow(gsum)
 
         self.run_btn = QPushButton('Run qualification')
@@ -823,8 +873,7 @@ class QtShell(QMainWindow):
     def apply_selected_files(self, names):
         first = names[0]
         self.file_edit.setText(';'.join(names))
-        qm.USER_PREFS['last_data_dir'] = os.path.dirname(first)
-        qm.save_user_prefs()
+        qm.remember_data_dir(first)
         detected = data.sniff_input_type(first)
         if detected:
             if detected != self.input_type.currentText():
@@ -907,8 +956,19 @@ class QtShell(QMainWindow):
             QMessageBox.warning(self, 'Output folder',
                                 'The output folder no longer exists:\n%s' % root)
 
+    def _co2_applies(self):
+        """CO2 is an addition to a SEAGUARD scalar run: no CO2 logger goes with
+        a HOBO pendant or a current profiler, so the row does not belong in
+        their summary at all (owner, v12.2)."""
+        return (self.input_type.currentText() == 'Seaguard'
+                and self.data_type.currentText() != 'TSCP Doppler')
+
+    def _sync_co2_row(self):
+        self._fsum.setRowVisible(self.sum_labels['co2'], self._co2_applies())
+
     def _update_summary(self, names):
         itype = self.input_type.currentText()
+        self._sync_co2_row()
         for lab in self.sum_labels.values():
             lab.setText('-')
         self.sum_labels['instrument'].setText(itype or '-')
@@ -997,6 +1057,7 @@ class QtShell(QMainWindow):
         self.co2_btn.setEnabled(allowed)
         self.co2_label.setText(os.path.basename(self._co2_file) if self._co2_file else '')
         self.co2_clear.setVisible(bool(self._co2_file))
+        self._sync_co2_row()
         if allowed and self.file_edit.text().strip():
             self._summarize_co2()   # the summary must follow the CO2 choice
 
@@ -1125,10 +1186,10 @@ class QtShell(QMainWindow):
         # post-run shortcuts away from RUN (owner, v12.1)
         self.run_hint.setVisible(bool(missing))
 
-    def collect_from_qt(self):
-        """Qt replacement for QCS_Main.collect_input_settings: same vals dict,
-        same toolkit-free validation."""
-        vals = {
+    def _form_vals(self):
+        """The vals dict the pipeline expects (QCS_Main.read_input_widgets is
+        the tk half). Read-only: the close path persists the form through it."""
+        return {
             'files_raw': self.file_edit.text(),
             'input_type': self.input_type.currentText(),
             'data_type': self.data_type.currentText(),
@@ -1147,6 +1208,11 @@ class QtShell(QMainWindow):
             'region': self.region.currentText(),
             'light_cutoff_mode': 'fixed' if self.light_fixed.isChecked() else 'adaptive',
         }
+
+    def collect_from_qt(self):
+        """Qt replacement for QCS_Main.collect_input_settings: same vals dict,
+        same toolkit-free validation."""
+        vals = self._form_vals()
         if vals['input_type'] == 'HOBO' and vals['files_raw'].strip():
             n = len([p for p in vals['files_raw'].split(';') if p.strip()])
             self._set_replicates(str(n))
@@ -1247,6 +1313,7 @@ class QtShell(QMainWindow):
                 self._set_replicates(str(len(files)))
         self._refresh_recent()
         self.update_criteria_indicator()
+        self.restore_window_state()
 
 
 def _bootstrap_tk_pipeline(shared_log):
