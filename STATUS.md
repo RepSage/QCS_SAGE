@@ -2,7 +2,25 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
-## 2026-08-18 - v12.1 OPEN (branch `v12.1`), 8 items from the owner
+## 2026-08-18 - v12.1 RELEASED (tag + installer); publication pending
+
+PR #31 merged (`08bc2c7`), **tagged `v12.1` there**, branch deleted both
+sides. Installer rebuilt and smoke-tested: frozen app alive 20 s, title
+'QCS - Quality Control System (SAGE)  -  v12.1', closed cleanly, no crash
+log; ISCC -> `QCS_Setup_v12.1.exe`, **77.8 MB**, on the Desktop beside
+`RELEASE_v12.1.md` (which now carries the release TITLE as its first line,
+owner request: same shape as the GitHub release names).
+
+**Left to the owner:** publish the GitHub Release for `v12.1` with that
+text and the installer as the asset. The field test of the FROZEN exe
+running a real qualification is still the open item from v12.0.
+
+**Gotcha distilled into `CLAUDE.md`** (`4eb971a`): never name a branch
+after its version tag - with both called `v12.1`, `git push origin v12.1`
+is ambiguous, git refuses with "src refspec matches more than one" and the
+TAG silently does not go up.
+
+## 2026-08-18 - v12.1 (branch, now merged), 8 items from the owner
 
 1. installer pages - **DONE in the recipe, not yet seen on screen**.
    `DisableDirPage=no` (Inno's default is 'auto', which HIDES the folder
