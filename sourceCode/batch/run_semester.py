@@ -21,7 +21,7 @@ for camp in os.listdir(qs.SG_RAW):
     p = os.path.join(qs.SG_RAW, camp)
     if os.path.isdir(p) and qs.sem_tag(camp) == sem:
         sites.update(d for d in os.listdir(p) if os.path.isdir(os.path.join(p, d)))
-# HOBO is campaign-first (like Seaguard) since the 2026-08-13 reorganisation:
+# HOBO is campaign-first (like Seaguard) since the 2026-08-13 reorganization:
 # HOBO\raw\<RRDM campaign>\<site>. The _ buckets never match sem_tag.
 for camp in os.listdir(qs.H_RAW):
     p = os.path.join(qs.H_RAW, camp)

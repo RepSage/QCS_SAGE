@@ -34,7 +34,7 @@ when the light is too weak to decide (a sensor dark from the start), the file
 is REFUSED rather than guessed.
 
 Nothing is written until every gate passes: strictly increasing times, no
-duplicates left, enough steps on the sampling interval, a noon-centred light
+duplicates left, enough steps on the sampling interval, a noon-centered light
 phase, and - the strongest one - proof that ONLY clock fields changed, checked
 by blanking every clock field in both texts and requiring the remainder to be
 byte-identical. (Row counts are deliberately not compared: the reader trims

@@ -230,8 +230,9 @@ TOOLTIPS = {
     'output_folder': "Folder for the qualification outputs",
     'output_name': "Base name of the output files (no extension);\nauto-filled from the selection",
     'output_format': "Qualified table format: .xlsx or .csv\n(report files are always .xlsx)",
-    'remove_bad': "Drops rows flagged BAD (4) from the output",
-    'remove_suspect': "Drops rows flagged SUSPECT (3) from the output",
+    'remove_bad': "Blanks values flagged BAD (4) in the output\n(rows and timestamps are kept)",
+    'remove_suspect': "Blanks values flagged SUSPECT (3) in the output\n(rows and timestamps are kept)",
+    'remove_dismissed': "Drops rows where EVERY variable was dismissed - DISMISSED (5) -\nfrom the output (e.g. the Depth review's whole-row cuts)\nSingle-variable dismissals keep their row: it still carries\nthe other variables' data",
     'site_code': "Site identification code, stamped on every row\n(max %d characters)" % SITE_CODE_MAX,
     'run_button': "Qualifies the selected file(s) with the current parameters",
     'settings_button': "Opens the quality tests and parameters window",
@@ -345,6 +346,24 @@ def save_user_prefs():
             json.dump(USER_PREFS, f, indent=4)
     except Exception as e:
         print('Warning: could not save user preferences: %s' % e)
+
+# recent data-file selections, for one-click reopening (v12.0; the
+# Visualization tab has had its own list since v11.4)
+QUAL_RECENT_MAX = 8
+
+def push_qual_recent(files_raw, input_type):
+    entry = {'files': files_raw, 'input_type': input_type}
+    recents = [r for r in USER_PREFS.get('qual_recent', [])
+               if r.get('files') != files_raw]
+    recents.insert(0, entry)
+    USER_PREFS['qual_recent'] = recents[:QUAL_RECENT_MAX]
+    save_user_prefs()
+
+def qual_recent_display(entry):
+    names = ', '.join(os.path.basename(f) for f in entry['files'].split(';') if f)
+    if len(names) > 70:
+        names = names[:67] + '…'
+    return '%s   [%s]' % (names, entry.get('input_type', '?'))
 
 load_user_prefs()
 
@@ -555,84 +574,182 @@ def export_config():
         except Exception as e:
             messagebox.showerror("Error", f"Fail exporting settings:\n{str(e)}")
 
-def save_settings_values():
-    """Updates CONFIG with the current interface values.
-    Returns the list of invalid fields (kept with their previous value),
-    so the caller can warn the user instead of ignoring them silently."""
+def apply_settings_values(tests, settings_text, factors_text):
+    """Toolkit-free core of the Settings save (v12.0 phase 2): `tests` maps
+    test name -> 'ON'/'OFF', `settings_text` maps parameter -> typed string,
+    `factors_text` maps variable -> {'fail','susp','window'} typed strings.
+    Updates CONFIG and returns the list of invalid fields (kept with their
+    previous value), so the caller can warn the user instead of ignoring
+    them silently."""
     invalid = []
+    CONFIG['tsQualityTests'].update(tests)
 
-    # Update tsQualityTests
-    for test, var in CONFIG['tsQualityTests_vars'].items():
-        CONFIG['tsQualityTests'][test] = var.get()
-
-    # Update tsSettings (all numeric: int or float)
-    for param, entry in CONFIG['tsSettings_entries'].items():
-        value = entry.get().strip()
+    # tsSettings are all numeric: int or float
+    for param, value in settings_text.items():
+        value = value.strip()
         try:
             CONFIG['tsSettings'][param] = float(value) if '.' in value else int(value)
         except ValueError:
             invalid.append(param.replace('_', ' '))
 
-    # Update per-variable factors (fail/susp numeric, window '2D/3H/30M/45S/WHOLE')
+    # per-variable factors (fail/susp numeric, window '2D/3H/30M/45S/WHOLE')
     window_format = re.compile(r'^\d+\s*[DHMS]$|^WHOLE$', re.IGNORECASE)
-    for key, entries in CONFIG['tsFactors_entries'].items():
+    for key, entries in factors_text.items():
         try:
-            CONFIG['tsFactors'][key]['fail'] = float(entries['fail'].get())
+            CONFIG['tsFactors'][key]['fail'] = float(entries['fail'])
         except ValueError:
             invalid.append('%s fail factor' % key)
         try:
-            CONFIG['tsFactors'][key]['susp'] = float(entries['susp'].get())
+            CONFIG['tsFactors'][key]['susp'] = float(entries['susp'])
         except ValueError:
             invalid.append('%s susp factor' % key)
-        window_val = entries['window'].get().strip()
+        window_val = entries['window'].strip()
         if window_format.match(window_val):
             CONFIG['tsFactors'][key]['window'] = window_val
         else:
             invalid.append('%s time window' % key)
     return invalid
 
+def persist_quality_criteria():
+    """Writes the current quality criteria to the settings store right away,
+    version-stamped so the load-time version gate still applies."""
+    USER_PREFS.update({
+        'qcs_version': data.QCS_VERSION,
+        'tsQualityTests': dict(CONFIG['tsQualityTests']),
+        'tsSettings': dict(CONFIG['tsSettings']),
+        'tsFactors': {k: dict(v) for k, v in CONFIG['tsFactors'].items()},
+    })
+    save_user_prefs()
+
+def save_settings_values():
+    """tk side: reads the Settings widgets and applies them through the
+    toolkit-free core above."""
+    tests = {t: var.get() for t, var in CONFIG['tsQualityTests_vars'].items()}
+    settings_text = {p: e.get() for p, e in CONFIG['tsSettings_entries'].items()}
+    factors_text = {k: {'fail': es['fail'].get(), 'susp': es['susp'].get(),
+                        'window': es['window'].get()}
+                    for k, es in CONFIG['tsFactors_entries'].items()}
+    return apply_settings_values(tests, settings_text, factors_text)
+
+# ----- UI facade (v12.0 Qt port, phase 0) -----
+# The qualification pipeline talks to the interface ONLY through these hooks,
+# plus log_line and the review functions (review_light_window,
+# review_replicates, data._show_and_wait) that the batch drivers already
+# replace. The defaults are the tk implementations; the Qt shell assigns its
+# own. The dialog defaults go through the module-level `messagebox` attribute
+# on purpose: the batch drivers monkeypatch messagebox.* and must keep
+# intercepting every dialog.
+
+def ui_info(title, message):
+    messagebox.showinfo(title, message)
+
+def ui_warn(title, message):
+    messagebox.showwarning(title, message)
+
+def ui_error(title, message):
+    messagebox.showerror(title, message)
+
+def ui_info_parented(title, message, parent=None):
+    """ui_info with an owner window, used by plot-window help buttons so the
+    dialog pops over the plot instead of raising the main window behind it."""
+    messagebox.showinfo(title, message, parent=parent)
+
+def ui_ask_yes_no(title, message):
+    return messagebox.askyesno(title, message)
+
+def wait_figure_close(fig):
+    """Shows an interactive matplotlib figure and waits until it is closed,
+    pumping the interface's own event loop. Never plt.show(block=True) inside
+    a RUN callback: it nests event loops and hangs the main window."""
+    done = BooleanVar(window, value=False)
+    fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
+    fig.show()
+    window.wait_variable(done)
+
+def ui_busy(busy):
+    """RUN in progress: disable the run button and show the wait cursor."""
+    run_button.config(state='disabled' if busy else 'normal')
+    window.config(cursor='watch' if busy else '')
+
+def ui_pump():
+    """Lets the interface redraw between pipeline stages (the pipeline runs
+    on the interface thread)."""
+    window.update_idletasks()
+
+def read_input_widgets():
+    """tk side of collect_input_settings: raw widget values, no validation.
+    The Qt shell builds the same dict from its own widgets instead."""
+    return {
+        'files_raw': fileNames_entry.get(),
+        'input_type': inputType_combobox.get(),
+        'data_type': dType_combobox.get(),
+        'out_dir': outputPath_entry.get(),
+        'out_name': outputName_entry.get(),
+        'out_format': outputFilesFormat_combobox.get(),
+        'correct_gmt3h': correct_gmt3h.get(),
+        'select_profile_data': select_profile_data.get(),
+        'check_variables': check_variables.get(),
+        'remove_bad': remove_bad.get(),
+        'remove_suspect': remove_suspect.get(),
+        'remove_dismissed': remove_dismissed.get(),
+        'co2_file': _co2_file,
+        'site': siteSelect_entry.get(),
+        'macroregion': macroregion_combobox.get(),
+        'region': region_combobox.get(),
+        'light_cutoff_mode': light_cutoff_mode.get(),
+    }
+
 def collect_input_settings():
     """Validates and collects the interface settings. Returns True if all is ok."""
-    if not fileNames_entry.get().strip():
-        messagebox.showwarning("Warning", "Select the data file to be qualified\n('Data File' field).")
+    vals = read_input_widgets()
+    if vals['input_type'] == 'HOBO' and vals['files_raw'].strip():
+        # HOBO redundant replicates: the replicate count FOLLOWS the selection
+        n_rep = len([p for p in vals['files_raw'].split(';') if p.strip()])
+        replicate_var.set(str(n_rep))   # display-only, kept in sync
+    return apply_input_settings(vals)
+
+def apply_input_settings(vals):
+    """Toolkit-free core of collect_input_settings: validates `vals` (the
+    read_input_widgets dict) and fills INPUT/OUTPUT/USER_PREFS. Returns True
+    when all is ok; problems are reported through ui_warn/ui_error."""
+    if not vals['files_raw'].strip():
+        ui_warn("Warning", "Select the data file to be qualified\n('Data File' field).")
         return False
     # HOBO redundant replicates: the user selects as many files as they want
     # (';'-separated) and the replicate count FOLLOWS the selection - the
     # program says how many replicates there are, not the user.
-    replicate_files = [p.strip() for p in fileNames_entry.get().split(';') if p.strip()]
-    n_rep = len(replicate_files) if inputType_combobox.get() == 'HOBO' else 1
-    if inputType_combobox.get() == 'HOBO':
-        replicate_var.set(str(n_rep))   # display-only, kept in sync
+    replicate_files = [p.strip() for p in vals['files_raw'].split(';') if p.strip()]
+    n_rep = len(replicate_files) if vals['input_type'] == 'HOBO' else 1
     for f in replicate_files:
         if not os.path.isfile(f):
-            messagebox.showerror("Error", "Data file not found:\n%s" % f)
+            ui_error("Error", "Data file not found:\n%s" % f)
             return False
         if not re.search(r'\.(csv|xlsx|bin|hobo)$', f, re.IGNORECASE):
-            messagebox.showwarning("Warning", "Unsupported file format (use .csv, .xlsx, a "
-                                   "Seaguard .bin session or a raw HOBO .hobo file):\n%s" % f)
+            ui_warn("Warning", "Unsupported file format (use .csv, .xlsx, a "
+                    "Seaguard .bin session or a raw HOBO .hobo file):\n%s" % f)
             return False
     INPUT['replicate_files'] = replicate_files
     INPUT['n_replicates'] = n_rep
     data_path = replicate_files[0]   # drives file_name/raw_data_path below
-    if inputType_combobox.get() not in ('Seaguard', 'HOBO'):
-        messagebox.showwarning("Warning", "Select the instrument type\n('Input Type' field).")
+    if vals['input_type'] not in ('Seaguard', 'HOBO'):
+        ui_warn("Warning", "Select the instrument type\n('Input Type' field).")
         return False
     # HOBO has no TSCP collection type (it is a time series): Data Type stays empty
-    if inputType_combobox.get() != 'HOBO' and dType_combobox.get() not in ('TSCP Profile', 'TSCP Mooring', 'TSCP Doppler'):
-        messagebox.showwarning("Warning", "Select the data collection type\n('Data Type' field).")
+    if vals['input_type'] != 'HOBO' and vals['data_type'] not in ('TSCP Profile', 'TSCP Mooring', 'TSCP Doppler'):
+        ui_warn("Warning", "Select the data collection type\n('Data Type' field).")
         return False
-    out_dir = outputPath_entry.get().strip()
+    out_dir = vals['out_dir'].strip()
     if not out_dir:
-        messagebox.showwarning("Warning", "Select the folder where results will be saved\n('Output Folder' field).")
+        ui_warn("Warning", "Select the folder where results will be saved\n('Output Folder' field).")
         return False
     if not os.path.isdir(out_dir):
-        messagebox.showerror("Error", "The output folder does not exist:\n%s" % out_dir)
+        ui_error("Error", "The output folder does not exist:\n%s" % out_dir)
         return False
-    if not outputName_entry.get().strip():
-        messagebox.showwarning("Warning", "Define a name for the output files\n('Output File Name' field).")
+    if not vals['out_name'].strip():
+        ui_warn("Warning", "Define a name for the output files\n('Output File Name' field).")
         return False
-    if outputFilesFormat_combobox.get() not in ('.csv', '.xlsx'):
-        messagebox.showwarning("Warning", "Select the output format\n(.csv or .xlsx).")
+    if vals['out_format'] not in ('.csv', '.xlsx'):
+        ui_warn("Warning", "Select the output format\n(.csv or .xlsx).")
         return False
 
     file_name_match = re.search(r'[^\\/]+$', data_path, re.IGNORECASE)
@@ -641,28 +758,32 @@ def collect_input_settings():
 
     # pressure/conductivity units are read from the source file itself since
     # v11.4 (the .bin template and AADI export headers always name them)
-    INPUT['correct_gmt3h'] = correct_gmt3h.get()
-    INPUT['select_profile_data'] = select_profile_data.get()
-    INPUT['check_variables'] = check_variables.get()
-    INPUT['input_type'] = inputType_combobox.get()
-    INPUT['data_type'] = dType_combobox.get()
+    INPUT['correct_gmt3h'] = vals['correct_gmt3h']
+    INPUT['select_profile_data'] = vals['select_profile_data']
+    INPUT['check_variables'] = vals['check_variables']
+    INPUT['input_type'] = vals['input_type']
+    INPUT['data_type'] = vals['data_type']
+    # read mid-run by the light-window step, so it travels in INPUT instead of
+    # being read from a widget there (v12.0 phase 0)
+    INPUT['light_cutoff_mode'] = vals['light_cutoff_mode']
 
     OUTPUT['output_file_path'] = out_dir
-    OUTPUT['output_data_format'] = outputFilesFormat_combobox.get()
-    OUTPUT['output_file_name'] = outputName_entry.get() + OUTPUT['output_data_format']
-    OUTPUT['remove_bad'] = remove_bad.get()
-    OUTPUT['remove_suspect'] = remove_suspect.get()
+    OUTPUT['output_data_format'] = vals['out_format']
+    OUTPUT['output_file_name'] = vals['out_name'] + OUTPUT['output_data_format']
+    OUTPUT['remove_bad'] = vals['remove_bad']
+    OUTPUT['remove_suspect'] = vals['remove_suspect']
+    OUTPUT['remove_dismissed'] = vals.get('remove_dismissed', False)
 
     # optional dissolved-CO2 file (Seaguard only; cleared for HOBO/batch by the UI)
-    if _co2_file and not os.path.isfile(_co2_file):
-        messagebox.showerror("Error", "CO2 file not found:\n%s" % _co2_file)
+    if vals['co2_file'] and not os.path.isfile(vals['co2_file']):
+        ui_error("Error", "CO2 file not found:\n%s" % vals['co2_file'])
         return False
-    INPUT['co2_file'] = _co2_file or None
+    INPUT['co2_file'] = vals['co2_file'] or None
 
-    INPUT['site'] = siteSelect_entry.get().strip().upper()
+    INPUT['site'] = vals['site'].strip().upper()
     if len(INPUT['site']) > SITE_CODE_MAX:
-        messagebox.showwarning("Warning", "Site Code must have at most %d characters\n"
-                               "('Site Code' field)." % SITE_CODE_MAX)
+        ui_warn("Warning", "Site Code must have at most %d characters\n"
+                "('Site Code' field)." % SITE_CODE_MAX)
         return False
 
     # The selected coastal region provides a representative latitude/longitude,
@@ -670,8 +791,8 @@ def collect_input_settings():
     # pressure->depth and the density inversion test (Seaguard), and the
     # seasonal correction of the light fouling analysis (HOBO). Small lat/long
     # variations do not affect these results meaningfully.
-    macroregion = macroregion_combobox.get()
-    region = region_combobox.get()
+    macroregion = vals['macroregion']
+    region = vals['region']
     INPUT['macroregion'] = macroregion
     INPUT['region'] = region
     INPUT['latitude'], INPUT['longitude'] = REGION_COORDS.get(macroregion, {}).get(
@@ -699,12 +820,13 @@ def collect_input_settings():
         'select_profile_data': INPUT['select_profile_data'],
         'check_variables': INPUT['check_variables'],
         'output_folder': out_dir,
-        'output_name': outputName_entry.get(),
+        'output_name': vals['out_name'],
         'output_format': OUTPUT['output_data_format'],
         'remove_bad': OUTPUT['remove_bad'],
         'remove_suspect': OUTPUT['remove_suspect'],
+        'remove_dismissed': OUTPUT['remove_dismissed'],
         'site_code': INPUT['site'],
-        'light_cutoff_mode': light_cutoff_mode.get(),
+        'light_cutoff_mode': vals['light_cutoff_mode'],
         'macroregion': INPUT['macroregion'],
         'region': INPUT['region'],
         'qcs_version': data.QCS_VERSION,
@@ -818,8 +940,7 @@ def start_qualification():
     another (a BATCH), each with its own '<file>_QLF' output."""
     if not collect_input_settings():
         return
-    run_button.config(state='disabled')
-    window.config(cursor='watch')
+    ui_busy(True)
     QC.reset_run_warnings()   # once-per-run warnings (window span etc.) start fresh
     # one entry per qualified file: (file_name, light_clock_phase result). The
     # batch driver reads this to stamp the clock verdict into provenance - its
@@ -855,13 +976,13 @@ def start_qualification():
             else:
                 log_line('=== Qualification started: %s (the window may not respond while processing) ==='
                          % INPUT['file_name'])
-            window.update_idletasks()
+            ui_pump()
             if batch:
                 # isolate each batch file: one bad session (e.g. a 1-record capture)
                 # must not cancel the files queued after it.
                 try:
                     run_full_qualification()
-                except data.ManualCutCancelled:
+                except data.ManualCutCanceled:
                     raise
                 except Exception as exc:
                     batch_failures.append((INPUT['file_name'], str(exc)))
@@ -885,7 +1006,7 @@ def start_qualification():
                 light_plots.append(OUTPUT.get('last_light_plot'))
         if combine_hobo:
             log_line('Combining %d replicates...' % n)
-            window.update_idletasks()
+            ui_pump()
             # Before averaging them: do the replicates actually agree? A logger
             # stuck on a plausible value passes its OWN tests, so only this
             # comparison can catch it - and the mean of a sound and a faulty
@@ -970,35 +1091,34 @@ def start_qualification():
                             "\n\n%d file(s) were SKIPPED (an error is logged for each):\n%s"
                             % (len(batch_failures), "\n".join('- %s: %s' % (f, e)
                                                               for f, e in batch_failures)))
-            messagebox.showinfo("Done",
-                                "Batch finished: %d of %d files qualified.%s\n\n"
-                                "Each qualified file has its own _QLF output in "
-                                "the output folder." % (n_done, n, skipped_note))
+            ui_info("Done",
+                    "Batch finished: %d of %d files qualified.%s\n\n"
+                    "Each qualified file has its own _QLF output in "
+                    "the output folder." % (n_done, n, skipped_note))
         else:
-            messagebox.showinfo("Done",
-                                "Qualification completed.\n\nResults saved to:\n%s"
-                                % OUTPUT.get('last_output_root', ''))
-    except data.ManualCutCancelled:
+            ui_info("Done",
+                    "Qualification completed.\n\nResults saved to:\n%s"
+                    % OUTPUT.get('last_output_root', ''))
+    except data.ManualCutCanceled:
         # Cancel/Esc during a manual-cut panel or the variable chooser: abort
         # cleanly and return to the form (no error dialog, nothing written)
-        log_line('Qualification cancelled by the user (manual point cut).')
+        log_line('Qualification canceled by the user (manual point cut).')
         plt.close('all')
         os.chdir(rootPath)
     except Exception as e:
         # the full traceback goes to the log; the dialog points to file/line
         for line in traceback.format_exc().strip().splitlines():
             log_line('Error: %s' % line)
-        messagebox.showerror("Qualification error",
-                             "The qualification was interrupted by an error:\n\n%s\n\n"
-                             "Location: %s\n(full traceback in the Execution log)\n\n"
-                             "Some files may have been partially generated in the output "
-                             "folder before the error. Check the input file and the "
-                             "settings and try again." % (e, _error_location(e)))
+        ui_error("Qualification error",
+                 "The qualification was interrupted by an error:\n\n%s\n\n"
+                 "Location: %s\n(full traceback in the Execution log)\n\n"
+                 "Some files may have been partially generated in the output "
+                 "folder before the error. Check the input file and the "
+                 "settings and try again." % (e, _error_location(e)))
     finally:
         plt.close('all')
         os.chdir(rootPath)
-        run_button.config(state='normal')
-        window.config(cursor='')
+        ui_busy(False)
 
 def restore_user_prefs():
     """Restores the user's last choices in the interface."""
@@ -1033,6 +1153,7 @@ def restore_user_prefs():
     check_variables.set(p.get('check_variables', False))
     remove_bad.set(p.get('remove_bad', False))
     remove_suspect.set(p.get('remove_suspect', False))
+    remove_dismissed.set(p.get('remove_dismissed', False))
     update_profile_checkbox_state()
     update_inputtype_state()  # reapplies the input-type field states if applicable
     # Restore the quality CRITERIA only if they were saved by the SAME program
@@ -1144,8 +1265,28 @@ def create_tests_tab(parent):
     scrollbar.pack(side="right", fill="y")
     theme.enable_mousewheel(canvas)
 
-    # Organize tests into categories
-    test_categories = {
+    test_categories = TEST_CATEGORIES
+    row = 0
+    for category, tests in test_categories.items():
+        lbl = ttk.Label(scrollable_frame, text=category, font=theme.FONT_BOLD)
+        lbl.grid(row=row, column=0, sticky='w', pady=(10,5), columnspan=2)
+        row += 1
+
+        for test in tests:
+            var = StringVar(value=CONFIG['tsQualityTests'][test])
+            CONFIG['tsQualityTests_vars'][test] = var
+
+            cb = ttk.Checkbutton(scrollable_frame, text=test, variable=var,
+                               onvalue="ON", offvalue="OFF")
+            cb.grid(row=row, column=0, sticky='w', padx=20, pady=2)
+
+            # Add tooltip for each test
+            ToolTip(cb, TS_QUALITY_TESTS_TOOLTIPS[test])
+
+            row += 1
+
+# tests grouped as the Settings window shows them (shared by both shells)
+TEST_CATEGORIES = {
         "Sensor range tests": [
             'temperature sensor range',
             'salinity sensor range',
@@ -1202,26 +1343,7 @@ def create_tests_tab(parent):
         "Light tests (HOBO)": [
             'light fouling window'
         ]
-    }
-    
-    row = 0
-    for category, tests in test_categories.items():
-        lbl = ttk.Label(scrollable_frame, text=category, font=theme.FONT_BOLD)
-        lbl.grid(row=row, column=0, sticky='w', pady=(10,5), columnspan=2)
-        row += 1
-        
-        for test in tests:
-            var = StringVar(value=CONFIG['tsQualityTests'][test])
-            CONFIG['tsQualityTests_vars'][test] = var
-            
-            cb = ttk.Checkbutton(scrollable_frame, text=test, variable=var,
-                               onvalue="ON", offvalue="OFF")
-            cb.grid(row=row, column=0, sticky='w', padx=20, pady=2)
-            
-            # Add tooltip for each test
-            ToolTip(cb, TS_QUALITY_TESTS_TOOLTIPS[test])
-            
-            row += 1
+}
 
 # Parameters tab: variable code -> display name and unit (Min/Max share a row)
 _PARAM_NAME = {'temp': 'Temperature', 'sal': 'Salinity', 'cond': 'Conductivity',
@@ -1379,16 +1501,8 @@ def save_settings(window):
         return
     # Persist the quality criteria to disk right away. Before, "Save Settings"
     # only updated the in-memory CONFIG and the values were written to
-    # qcs_user_settings.json only on a RUN. Version-stamped so the load-time
-    # version gate still applies; a fresh machine (no json) still gets the code
-    # defaults, and "Reset to Defaults" keeps working.
-    USER_PREFS.update({
-        'qcs_version': data.QCS_VERSION,
-        'tsQualityTests': dict(CONFIG['tsQualityTests']),
-        'tsSettings': dict(CONFIG['tsSettings']),
-        'tsFactors': {k: dict(v) for k, v in CONFIG['tsFactors'].items()},
-    })
-    save_user_prefs()
+    # qcs_user_settings.json only on a RUN.
+    persist_quality_criteria()
     messagebox.showinfo("Success", "Success saving settings!")
     window.destroy()
 
@@ -1460,8 +1574,8 @@ def choose_variables_to_check(candidates, root):
     ttk.Button(btns, text="None",
                command=lambda: [v.set(False) for v in vars_map.values()]).pack(side='left', padx=6)
 
-    # 'chosen' None means the user cancelled -> abort the whole run (the caller
-    # raises ManualCutCancelled); an empty list means "review nothing, proceed".
+    # 'chosen' None means the user canceled -> abort the whole run (the caller
+    # raises ManualCutCanceled); an empty list means "review nothing, proceed".
     result = {'chosen': None}
     def confirm():
         result['chosen'] = [n for n, v in vars_map.items() if v.get()]
@@ -1517,6 +1631,7 @@ def build_qualification_tab(container, root, shared_log=None):
     global light_cutoff_mode, light_mode_label, light_mode_adaptive, light_mode_fixed
     global profile_check, check_variables, var_check, outputPath_entry, browse_output_btn, outputName_entry
     global outputFilesFormat_combobox, filter_frame, remove_bad, bad_check, remove_suspect, suspect_check
+    global remove_dismissed, dismissed_check
     global siteSelect_entry, macroregion_label, macroregion_combobox, region_label, region_combobox, update_regions
     global _last_seaguard, update_inputtype_state, action_frame, settings_btn, run_button
     global log_console, log_line, _error_location, review_light_window, review_replicates
@@ -1736,6 +1851,11 @@ def build_qualification_tab(container, root, shared_log=None):
     suspect_check.pack(anchor='w', pady=2)
     ToolTip(suspect_check, TOOLTIPS['remove_suspect'])
 
+    remove_dismissed = BooleanVar(value=False)
+    dismissed_check = ttk.Checkbutton(filter_frame, text="Remove dismissed data", variable=remove_dismissed)
+    dismissed_check.pack(anchor='w', pady=2)
+    ToolTip(dismissed_check, TOOLTIPS['remove_dismissed'])
+
     # Macroregion + region of collection: provide a representative latitude/longitude
     # used only to RUN the qualification - pressure->depth and density inversion
     # (Seaguard), and the seasonal correction of the light fouling analysis (HOBO,
@@ -1787,7 +1907,7 @@ def build_qualification_tab(container, root, shared_log=None):
                 _last_seaguard['data_type'] = dType_combobox.get()
             dType_combobox.set('')            # HOBO is neither TSCP profile nor mooring
             dType_combobox.config(state='disabled')
-            # GMT-3 does not apply: greyed out AND unchecked (the last Seaguard
+            # GMT-3 does not apply: grayed out AND unchecked (the last Seaguard
             # choice is remembered and restored when switching back)
             _last_seaguard['gmt'] = correct_gmt3h.get()
             correct_gmt3h.set(False)
@@ -1806,6 +1926,9 @@ def build_qualification_tab(container, root, shared_log=None):
             light_mode_label.config(state='normal')        # light cutoff mode is HOBO-only
             light_mode_adaptive.config(state='normal')
             light_mode_fixed.config(state='normal')
+            # HOBO has no Depth column, so no whole-row dismissals ever exist
+            remove_dismissed.set(False)
+            dismissed_check.config(state='disabled')
         else:
             # restore the last stored Seaguard selection (if any)
             if _last_seaguard.get('data_type'):
@@ -1826,6 +1949,7 @@ def build_qualification_tab(container, root, shared_log=None):
             light_mode_label.config(state='disabled')      # light cutoff mode is HOBO-only
             light_mode_adaptive.config(state='disabled')
             light_mode_fixed.config(state='disabled')
+            dismissed_check.config(state='normal')         # whole-row dismissals are Seaguard-only
             update_profile_checkbox_state()
         apply_output_name()  # keep the Output File Name in sync (single vs combined)
         update_co2_controls()  # CO2 import is Seaguard-only (single file)
@@ -1915,7 +2039,7 @@ def build_qualification_tab(container, root, shared_log=None):
             redraw()
 
         def show_help(*_e):
-            messagebox.showinfo(
+            ui_info_parented(
                 "Replicate review - help",
                 "REDUNDANT REPLICATE REVIEW\n\n"
                 "Why: redundant replicates only help while BOTH loggers work. The\n"
@@ -1964,12 +2088,7 @@ def build_qualification_tab(container, root, shared_log=None):
         fig.canvas.mpl_connect('key_press_event', on_key)
         redraw()
         theme.style_plot_window(fig, 'Replicate review - %s' % site)
-        # waits on the Tk loop, exactly like the light-window review
-        # (never plt.show(block=True) inside the RUN callback)
-        done = BooleanVar(window, value=False)
-        fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
-        fig.show()
-        window.wait_variable(done)
+        wait_figure_close(fig)
         return state['keep']
 
     def review_light_window(lux_info, site):
@@ -1983,7 +2102,7 @@ def build_qualification_tab(container, root, shared_log=None):
         ax.set_title(ax.get_title() +
                      '\nClick = move cutoff  |  buttons below (keys: S / R / Enter = Done / Esc = Cancel)')
         fig.subplots_adjust(bottom=0.30)  # room for the button row above the rule text
-        state = {'cutoff': lux_info['proposed_cutoff'], 'artists': [], 'cancelled': False}
+        state = {'cutoff': lux_info['proposed_cutoff'], 'artists': [], 'canceled': False}
 
         def redraw():
             for artist in state['artists']:
@@ -2004,7 +2123,7 @@ def build_qualification_tab(container, root, shared_log=None):
 
         def show_review_help(*_event):
             p = lux_info['params']
-            messagebox.showinfo(
+            ui_info_parented(
                 "Light window - help",
                 "LIGHT USABLE WINDOW (HOBO fouling review)\n\n"
                 "Controls:\n"
@@ -2048,7 +2167,7 @@ def build_qualification_tab(container, root, shared_log=None):
 
         def cancel(*_event):
             # same behavior as the manual-cut panels: abort the qualification
-            state['cancelled'] = True
+            state['canceled'] = True
             plt.close(fig)
 
         def on_key(event):
@@ -2089,13 +2208,9 @@ def build_qualification_tab(container, root, shared_log=None):
         except Exception:
             pass
         theme.style_plot_window(fig, 'Light window review - %s' % site)  # app icon + title
-        # waits on the Tk loop (never plt.show(block=True) inside the RUN callback)
-        done = BooleanVar(window, value=False)
-        fig.canvas.mpl_connect('close_event', lambda event: done.set(True))
-        fig.show()
-        window.wait_variable(done)
-        if state['cancelled']:
-            raise data.ManualCutCancelled('Light window review cancelled.')
+        wait_figure_close(fig)
+        if state['canceled']:
+            raise data.ManualCutCanceled('Light window review canceled.')
         return state['cutoff']
 
     # The whole qualification pipeline runs inside this function so the main
@@ -2345,44 +2460,20 @@ def build_qualification_tab(container, root, shared_log=None):
                         ax1.plot(raw_data[name], label='Pressure (dbar)')
                         ax1.plot(peak, raw_data[name].loc[peak], '.', c='red', linestyle='none')
                         ax1.set_ylabel('Pressure (dbar)')
+                        theme.style_plot_window(fig1, 'Peak validation')
                         fig1.show()
-                        #plt.show(block=True)
-                        ans = []
-                        # Peak validation window: child of the main window (a second
-                        # Tk() root would conflict with the already running interface)
-                        peak_window = Toplevel(window)
-
-                        # ans/fig1/peak_window are passed as default arguments: a callback
-                        # defined inside a loop captures the variable by late binding
-                        # (it would use the value of the LAST iteration, not this one)
-                        def acceptPeak(ans=ans, fig1=fig1, peak_window=peak_window):
+                        # the modal question pumps the interface loop, so the
+                        # plot window above renders while it is open (v12.0:
+                        # the custom tk Toplevel became a facade dialog)
+                        accepted = ui_ask_yes_no('Peak validation',
+                                                 'Do you accept the data peak?')
+                        plt.close(fig1)
+                        if accepted:
                             print('Info: Peak accepted, proceding to profile selection')
-                            ans.append('y')
-                            plt.close(fig1)
-                            peak_window.destroy()
-
-                        def doNotAcceptPeak(fig1=fig1, peak_window=peak_window):
+                        else:
                             print('Info: Ignoring data peak, data qualification will continue with the whole dataset')
-                            plt.close(fig1)
-                            peak_window.destroy()
 
-                        peak_window.title("Peak validation")
-                        theme.set_scaled_geometry(peak_window, 280, 110)
-                        peak_window.resizable(False, False)
-                        peak_window.configure(bg=theme.surface_color())
-                        peak_frame = ttk.Frame(peak_window, padding=12)
-                        peak_frame.pack(fill='both', expand=True)
-                        ttk.Label(peak_frame, text="Do you accept the data peak?").pack(anchor='w', pady=(0, 8))
-                        btn_row = ttk.Frame(peak_frame)
-                        btn_row.pack(anchor='e')
-                        ttk.Button(btn_row, text="Yes", command=acceptPeak,
-                                   style='Accent.TButton', width=8).pack(side='left', padx=(0, 6))
-                        ttk.Button(btn_row, text="No", command=doNotAcceptPeak, width=8).pack(side='left')
-                        # block here until the user answers Yes or No
-                        peak_window.grab_set()
-                        window.wait_window(peak_window)
-
-                        if len(ans) > 0 and ans[0] == 'y':
+                        if accepted:
                             for subname in raw_data.columns:
                                 if re.search('temperature', subname, re.IGNORECASE):
                                     temp = subname
@@ -2404,25 +2495,21 @@ def build_qualification_tab(container, root, shared_log=None):
                             ax2.grid()
 
                             selected = None
-                            pick_done = BooleanVar(window, value=False)
-                            # pick_done as a default argument: same reason as
-                            # acceptPeak above (late binding in a loop callback)
-                            def on_pick(event, pick_done=pick_done):
+                            def on_pick(event, fig2=fig2):
+                                # picking a curve decides and closes the window;
+                                # closing without picking keeps the whole dataset
+                                # (fig2 as a default argument: late binding in a
+                                # loop callback)
                                 nonlocal selected
                                 selected = event.artist.get_label()
-                                pick_done.set(True)
-                            def on_close(event, pick_done=pick_done):
-                                pick_done.set(True)
+                                plt.close(fig2)
 
                             line1.set_picker(True)
                             line2.set_picker(True)
                             fig2.canvas.mpl_connect('pick_event', on_pick)
-                            fig2.canvas.mpl_connect('close_event', on_close)
                             fig2.canvas.mpl_connect('motion_notify_event', data.on_motion)
-                            # show non-blocking and wait on the Tk loop. plt.show(block=True)
-                            # inside the running Tk app starts a nested loop and freezes the UI.
-                            fig2.show()
-                            window.wait_variable(pick_done)
+                            theme.style_plot_window(fig2, 'Profile phase selection')
+                            wait_figure_close(fig2)
 
                             if selected is None:
                                 print('Info: No dataset selected, keeping the whole dataset')
@@ -2430,7 +2517,6 @@ def build_qualification_tab(container, root, shared_log=None):
                                 raw_data = desc.copy()
                             elif selected == 'ascending data':
                                 raw_data = asc.copy()
-                            plt.close(fig2)
                             raw_data.index =  np.arange(len(raw_data))
                     except TypeError:
                         print("Could not find turning point")
@@ -2453,12 +2539,12 @@ def build_qualification_tab(container, root, shared_log=None):
         n_samples = len(raw_data)
 
         # Check Variables opens the per-variable panels for the chosen variables;
-        # Depth's whole-row cuts carry over (greyed/locked) so they are not re-cut.
+        # Depth's whole-row cuts carry over (grayed/locked) so they are not re-cut.
         if INPUT['check_variables'] == True:
             candidates = [name for name, _key in MANUAL_CUT_COLUMNS if name in raw_data.columns]
             chosen = choose_variables_to_check(candidates, window)
             if chosen is None:            # Cancel/Esc in the chooser -> abort run
-                raise data.ManualCutCancelled()
+                raise data.ManualCutCanceled()
             for i, name in enumerate(chosen, start=1):
                 rows = data.trim_selected_variable(raw_data, name, tk_root=window,
                                                    locked=manual_dismiss_rows,
@@ -2658,7 +2744,7 @@ def build_qualification_tab(container, root, shared_log=None):
                 for message in clock['warnings']:
                     log_line(message)
                 if clock['suspect_shift_h'] is not None:
-                    messagebox.showwarning(
+                    ui_warn(
                         'Light clock out of phase',
                         'The light peaks at %.1f h and only %.0f%% of its energy falls in '
                         'daylight hours.\n\nThis logger\'s clock looks %+d h out of phase '
@@ -2669,7 +2755,7 @@ def build_qualification_tab(container, root, shared_log=None):
                         % (clock['peak_hour'], 100 * clock['daylight_frac'],
                            clock['suspect_shift_h']))
                 elif clock['collapsed']:
-                    messagebox.showwarning(
+                    ui_warn(
                         'Light clock collapsed onto 12 hours',
                         'No sample in this file falls after 12:59, and about half the '
                         'timestamps are duplicated.\n\nThe export carries a 12-HOUR clock '
@@ -2696,7 +2782,7 @@ def build_qualification_tab(container, root, shared_log=None):
                 # adaptive rule, and the fixed mode must not silence them.
                 for message in lux_result['warnings']:
                     log_line(message)
-                if light_cutoff_mode.get() == 'fixed':
+                if INPUT.get('light_cutoff_mode') == 'fixed':
                     # FIXED window: light is BAD from lux_fixed_days after
                     # deployment, no data-driven decision and no review. The
                     # adaptive analysis above still runs, but only to document
@@ -2800,6 +2886,18 @@ def build_qualification_tab(container, root, shared_log=None):
         # qualification and, in the DatabaseView, the T-S diagram).
         qualified_data['Site'] = INPUT['site']
         qualified_data['QCS version'] = data.QCS_VERSION
+
+        # Remove dismissed data (v12.0): rows dismissed AS A WHOLE (the Depth
+        # review's whole-row cuts) are dropped from the sheet - their values
+        # are already all blank, only the flag-5 row remained. Per-variable
+        # dismissals keep their row: it still carries the other variables'
+        # data. Sample numbers keep their original values, so the dropped
+        # rows stay visible as gaps in the numbering.
+        if OUTPUT.get('remove_dismissed') and manual_dismiss_rows:
+            keep = [i for i in range(len(qualified_data)) if i not in manual_dismiss_rows]
+            qualified_data = qualified_data.iloc[keep].reset_index(drop=True)
+            log_line('Remove dismissed data: %d fully dismissed row(s) dropped from the output.'
+                     % len(manual_dismiss_rows))
 
         # HOBO gets its own output layout (temperature + light only, same metadata
         # block); Seaguard keeps the full TSCP layout. The two are never stackable.

@@ -81,7 +81,7 @@ The decisive check is physical: a submerged sensor must peak near local noon.
 All 41 repaired files land at **11.5–12.9 h with 89–100% of the light energy in
 daylight hours**. Nothing is written until every gate passes — strictly
 increasing times *in the written file*, no duplicates left, ≥95% of steps on the
-sampling interval, a noon-centred light phase, and the strongest one: **only
+sampling interval, a noon-centered light phase, and the strongest one: **only
 clock fields may differ**, checked by blanking every clock field in both texts
 and requiring the remainder to be byte-identical.
 
@@ -221,7 +221,7 @@ of the other, and the re-export was what made the second visible:
 1. collapsed 12-hour export — fixed by the re-export;
 2. clock launched +12 h out of phase — INVISIBLE until now, because phase
    cannot be measured on a collapsed clock. `_fail_on_wrong_clock` blocks its
-   qualification, which is the intended behaviour;
+   qualification, which is the intended behavior;
 3. temperature reading −84.77…156.53 degC — confirmed across three independent
    exports. The sensor failed in the field; nothing recovers it.
 
@@ -472,7 +472,7 @@ the file at its new path — 407/407 md5-identical, 0 missing**; the manifest's
 Cause: **`repair_unset_clock.py` never updated the manifest** (its two sibling
 repair scripts do), and the two hand re-exports were never re-recorded either.
 The record had been silently disagreeing with the archive since the August
-repairs — found only because the reorganisation forced a full re-check. Fixed
+repairs — found only because the reorganization forced a full re-check. Fixed
 by the new `refresh_manifest_md5.py`: the 12 rows now carry the current
 md5/size, status `repaired_in_place`, and a note stating the FILE was never in
 doubt — the row was late. A gotcha note went into `repair_unset_clock.py`.
@@ -495,7 +495,7 @@ now read campaign-first. Proof, strongest available:
 ### The tables tidied
 
 Owner request: the archive as clean as possible. `tidy_archive_tables.py`
-moved the one-off analysis outputs and old reorganisation paperwork
+moved the one-off analysis outputs and old reorganization paperwork
 (`replicate_disagreement_sweep`, `replicate_referee_verdicts`, two
 `a2_manifest`, `reorg_manifest`, `survey_master`) into **`CLAUDE\_registros\`**
 with a LEIA-ME; deleted `manifest.csv.bak` (superseded). **The two

@@ -26,9 +26,11 @@ crash handler), so packaging never moves `QCS_VERSION`.
 ## Build steps (from the repository root)
 
 ```powershell
-# 1. clean build venv (once)
+# 1. clean build venv (once). KEEP THE SHORT PATH: PySide6's qml assets
+#    overflow MAX_PATH in deep folders (pip dies mid-install). Versions are
+#    pinned to the tested stack; pandas 3 breaks save_excel_autofit.
 & "C:\Users\LAMB\anaconda3\python.exe" -m venv "$env:TEMP\qcs_build_env"
-& "$env:TEMP\qcs_build_env\Scripts\python.exe" -m pip install numpy pandas matplotlib scipy openpyxl gsw sv-ttk pyinstaller
+& "$env:TEMP\qcs_build_env\Scripts\python.exe" -m pip install numpy==2.1.3 pandas==2.2.3 matplotlib==3.10.0 scipy==1.15.3 openpyxl gsw==3.6.21 sv-ttk certifi tkinterdnd2 PySide6==6.8.3 pyinstaller
 
 # 2. the onedir bundle -> packaging\dist\QCS\
 #    The PATH line is LOAD-BEARING: the venv is built on Anaconda's Python,

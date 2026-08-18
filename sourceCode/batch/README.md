@@ -45,7 +45,7 @@ untouched — used for light-mode reruns.
   8 of 15 HOBO campaigns have a Seaguard counterpart.
 
 - **Semester naming** `<SITE>_<YEAR>S<n>_<INSTRUMENT>[_<TIPO>][_k]_QLF` — the
-  semester tag unifies the two corpora (the same expedition is labelled
+  semester tag unifies the two corpora (the same expedition is labeled
   "ABRIL 2019" by Seaguard and "MAI 2019" by HOBO). `_k` numbers multiple
   casts chronologically; a semester can span two expeditions.
 - **Timebase** (see the tooltip of "Correct GMT-3" and the Timebase section of

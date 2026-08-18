@@ -222,7 +222,7 @@ class LogConsole:
 
     def _tag_for(self, message):
         # Severity is read from the message's leading label (case-insensitive), so
-        # the whole app shares ONE colour scheme regardless of the caller. Standard
+        # the whole app shares ONE color scheme regardless of the caller. Standard
         # prefixes: 'Info:' (default), 'Warning:' (yellow), 'Error:'/'Critical
         # error:' (red), 'Done:' (green).
         head = message.lstrip().lower()

@@ -148,7 +148,7 @@ def _fit_stacked_yticks(fig, spacing=None, pad=4.0, min_pt=4.0):
                 if boxes:
                     cols.append((min(b.x0 for b in boxes), max(b.x1 for b in boxes)))
             cols.sort()
-            # worst horizontal encroachment between neighbouring columns
+            # worst horizontal encroachment between neighboring columns
             worst = max((a[1] - b[0] for a, b in zip(cols, cols[1:], strict=False)), default=-1e9)
             if worst <= -pad:                      # clear gap everywhere -> done
                 return
@@ -324,6 +324,22 @@ def renameParameters (parameter_names):
             rParam.append(param)
     return rParam
 
+# Operator color overrides, {parameter: '#rrggbb'} (v12.0). Set from the
+# Visualization tab's Scale settings and persisted in the user settings, so a
+# site keeps its house colors across sessions. EVERY plot goes through
+# getParamColors, so an override reaches all of them.
+PARAM_COLOR_OVERRIDES = {}
+
+
+def darker(hex_color, factor=0.62):
+    """The dark tone (trend lines, axes) of a chosen color."""
+    c = str(hex_color).lstrip('#')
+    if len(c) != 6:
+        return hex_color
+    r, g, b = (int(c[i:i + 2], 16) for i in (0, 2, 4))
+    return '#%02x%02x%02x' % (int(r * factor), int(g * factor), int(b * factor))
+
+
 def getParamColors (parameter_names=None):
     # Fixed variable -> color mapping used by EVERY plot in the software, so the
     # same variable always gets the same color in any panel or output figure.
@@ -365,6 +381,12 @@ def getParamColors (parameter_names=None):
                 'Luminosity (lux)': '#a3781f'
                 }
 
+    # operator overrides win, and their dark tone is derived from the choice
+    for param, color in PARAM_COLOR_OVERRIDES.items():
+        if color:
+            cParam[param] = color
+            bcParam[param] = darker(color)
+
     return cParam, bcParam
 
 def getSiteColors (site_names):
@@ -383,7 +405,7 @@ def getSiteColors (site_names):
                 'B05': 'mediumvioletred',
                 'B06': 'teal',
                 'RH18': 'maroon',
-                'RH30': 'darkslategrey'}
+                'RH30': 'darkslategray'}
     
     # contrasting palette for sites without a predefined color; assignment is
     # deterministic (sorted by name), so each site keeps its color between plots
@@ -442,6 +464,21 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
     plt.grid(axis='both', color='k', linestyle='--', linewidth=0.2)
     ax1.set_ylabel(display_name)
     ax1.plot(qualified_data['Datetime'], qualified_data[variable], marker='o', linestyle='none', markersize=2, color=plot_color, label='Approved data')
+
+    # combined-replicates sheet: the between-replicate disagreement, one
+    # vertical bar per sample (bar = max - min, centered on the plotted mean) -
+    # the same visual as the DataView HOBO panel. Single-logger sheets carry
+    # the spread column EMPTY, so nothing is drawn for them.
+    if variable == 'Temperature (degC)' and 'Temperature spread (degC)' in qualified_data.columns:
+        spread = pd.to_numeric(qualified_data['Temperature spread (degC)'], errors='coerce')
+        temp = pd.to_numeric(qualified_data[variable], errors='coerce')
+        valid = spread.notna() & temp.notna() & (spread > 0)
+        if valid.any():
+            ax1.errorbar(qualified_data.loc[valid.values, 'Datetime'], temp[valid],
+                         yerr=spread[valid] / 2, fmt='none',
+                         ecolor=cParam.get(variable, plot_color), elinewidth=1.0,
+                         alpha=0.7, label='Replicate disagreement (bar = max - min)')
+            ax1.legend(loc='best', fontsize=8)
 
     #not_nan = np.asarray(qualified_data.index[~np.isnan(qualified_data[variable])])
     #mirror_var = raw_data.copy()
@@ -687,7 +724,9 @@ def plot_database_panel1 (database, dataViewSettings):
                 # set y label
                 ax1.set_ylabel(rParam[0], color=bcParam[y_list[0].name], fontsize=10 * fscale)
                 # set title
-                ax1.set_title('Parameters for %s over %s during %s'%(site, _SEM_LABEL.get(semester, semester), year))
+                # the year lives on the X axis since v12.0 (owner: the axis
+                # must carry it; the title then drops the redundant year)
+                ax1.set_title('Parameters for %s over %s'%(site, _SEM_LABEL.get(semester, semester)))
                 # set y axis color and position
                 ax1.spines['left'].set_color(bcParam[y_list[0].name])
                 ax1.spines['left'].set_position(('outward', 1))
@@ -753,7 +792,7 @@ def plot_database_panel1 (database, dataViewSettings):
                     ax1.set_xlim(pd.Timestamp(dataViewSettings['xAxisStart']),
                                  pd.Timestamp(dataViewSettings['xAxisEnd']))
                 #defining data format
-                plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m %H:%M'))
+                plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m/%y %H:%M'))
                 # shrink y tick fonts if the widest label would not fit between the
                 # stacked spines, so adjacent axes' numbers never overlap
                 _fit_stacked_yticks(fig, spacing)
@@ -815,7 +854,8 @@ def plot_database_panel2(database, dataViewSettings):
         for parameter in parameter_names:
             display_param = rParam[parameter_names.index(parameter)]
             fig, ax1 = plt.subplots(figsize=(980/100, 500/100))
-            plt.title(f'{display_param} on {_SEM_LABEL.get(semester, semester)} for each site - {year}')
+            # the year lives on the X axis since v12.0 (title drops it)
+            plt.title(f'{display_param} on {_SEM_LABEL.get(semester, semester)} for each site')
             plt.grid(True, linestyle='dotted', linewidth=0.5)
             ax1.set_ylabel(display_param)
             control = 0
@@ -971,7 +1011,9 @@ def plot_database_panel3(database, dataViewSettings):
                 # Configure first axis
                 ax1.set_xlabel('')  # Remove x-axis label but keep ticks
                 ax1.set_ylabel('Depth (m)')
-                ax1.set_title('Parameters for %s over %s during %s'%(site, _SEM_LABEL.get(semester, semester), year))
+                # the year lives on the X axis since v12.0 (owner: the axis
+                # must carry it; the title then drops the redundant year)
+                ax1.set_title('Parameters for %s over %s'%(site, _SEM_LABEL.get(semester, semester)))
                 # optional fixed depth axis (shallow at top, deep at bottom)
                 if dataViewSettings.get('depthAxisMin') is not None and dataViewSettings.get('depthAxisMax') is not None:
                     ax1.set_ylim(dataViewSettings['depthAxisMax'], dataViewSettings['depthAxisMin'])
@@ -1176,7 +1218,7 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
     """HOBO 'Parameters at a site': the selected parameters (temperature and/or
     light) for ONE site in a single figure spanning EVERY selected year (a
     deployment crossing the new year is not split). Temperature: dots +
-    suspect/bad highlights + replicate-spread band + optional tendency line
+    suspect/bad highlights + optional replicate-disagreement bars + tendency line
     (floored at 0). Light: LINEAR scale with the DAILY-PEAK envelope (the same
     visual as the fouling review), optional raw points, and the fouling window
     (Flag_lux == 4) shaded. Returns the number of figures generated (0 or 1)."""
@@ -1203,8 +1245,10 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
         if param == 'Temperature (degC)':
             temp = pd.to_numeric(db['Temperature (degC)'], errors='coerce')
             # combined-replicates file: shade the between-replicate disagreement
-            # (band of total width = spread, centered on the plotted mean)
-            if 'Temperature spread (degC)' in db.columns:
+            # (band of total width = spread, centered on the plotted mean),
+            # unless the operator turned the bars off
+            if ('Temperature spread (degC)' in db.columns
+                    and dataViewSettings.get('showDisagreementBars', True)):
                 spread = pd.to_numeric(db['Temperature spread (degC)'], errors='coerce')
                 valid = spread.notna() & temp.notna() & (spread > 0)
                 if valid.any():
@@ -1262,10 +1306,10 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
         if dataViewSettings.get('fixedScale') and param in dataViewSettings.get('scaleSettings', {}):
             ax.set_ylim(dataViewSettings['scaleSettings'][param]['min'],
                         dataViewSettings['scaleSettings'][param]['max'])
-    years = dataViewSettings.get('filterByYears') or []
-    year_text = ', '.join(str(y) for y in years)
-    ax1.set_title('HOBO parameters for %s%s' % (site, ' (%s)' % year_text if year_text else ''))
-    ax1.xaxis.set_major_formatter(_mdates.DateFormatter('%d/%m %H:%M'))
+    # the year lives on the X axis since v12.0 (owner: day/month alone was
+    # confusing; the title then drops the redundant year list)
+    ax1.set_title('HOBO parameters for %s' % site)
+    ax1.xaxis.set_major_formatter(_mdates.DateFormatter('%d/%m/%y'))
     ax1.legend(handles=handles, fontsize=8)
     plt.savefig('hobo_params_%s.svg' % site, bbox_inches='tight')
     enable_scroll_zoom(fig)
@@ -1317,8 +1361,11 @@ def plot_hobo_params_across_sites (database, dataViewSettings):
             site_origin = db['Datetime'].min().normalize()
             x_hours = (pd.DatetimeIndex(db['Datetime']) - site_origin).total_seconds() / 3600
             if win is not None:
+                # x_hours is an Index, so the comparison already yields a
+                # plain numpy bool array - '.values' on it crashed the panel
+                # whenever a time window was set (latent since the B6 window)
                 keep = (x_hours >= win[0]) & (x_hours <= win[1])
-                db, values, x_hours = db[keep.values], values[keep.values], x_hours[keep]
+                db, values, x_hours = db[keep], values[keep], x_hours[keep]
                 if db.empty:
                     print('\nNo %s data for %s inside the X-axis window.' % (param, site))
                     continue
@@ -1576,13 +1623,13 @@ def plot_replicate_review(replicates, referee, reference=None, label=''):
 def plot_doppler_panels(frame, out_dir, label='', settings=None):
     """Saves the 4 current panels as SVGs into out_dir. Returns file list.
 
-    settings (all optional; None -> the v8.0 behaviour) lets the Visualization
+    settings (all optional; None -> the v8.0 behavior) lets the Visualization
     tab steer the panels:
       xAxisStart / xAxisEnd  keep only this datetime window (also on the X axis)
       depthAxisMin / Max     keep only cells in this depth band (m)
       currentRepDepth        force the stick/progressive-vector depth (m); the
                              default is still the best-covered cell
-      currentSpeedMax        fix the heatmap speed colour scale (cm/s), so
+      currentSpeedMax        fix the heatmap speed color scale (cm/s), so
                              several sites/years compare 1:1; None -> autoscale
     """
     import os

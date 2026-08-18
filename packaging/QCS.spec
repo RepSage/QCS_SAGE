@@ -4,8 +4,12 @@
 # ONEDIR on purpose - never onefile: onefile unpacks the whole bundle (numpy,
 # scipy, matplotlib...) into a temp folder on EVERY launch, with the antivirus
 # scanning along, which is the classic 30-60 s startup. Onedir loads in place
-# and opens in a few seconds. The v2.0-era specs (removed in v2.2.1) targeted
-# the two separate tools; this one targets today's single entry point, QCS_App.
+# and opens in a few seconds.
+#
+# v12.0: the entry point is the Qt shell (QCS_QtApp, PySide6 6.8.3 - newer
+# PySide6 needs an MSVC runtime older field machines may lack). tkinter STILL
+# ships: the pipeline closures are materialized on a hidden tk root (the
+# batch-driver pattern); removing tk entirely is a post-port cleanup.
 #
 # Build from a CLEAN pip venv, not from Anaconda: conda numpy/scipy link MKL,
 # which roughly doubles the bundle for nothing the app needs. The exact build
@@ -54,9 +58,12 @@ hiddenimports += ['openpyxl', 'openpyxl.cell._writer']
 hiddenimports += ['matplotlib.backends.backend_svg',
                   'matplotlib.backends.backend_mixed',
                   'matplotlib.backends.backend_agg']
+# the Qt shell selects the QtAgg backend at startup (matplotlib.use('QtAgg')),
+# another lazy import the static trace cannot see
+hiddenimports += ['matplotlib.backends.backend_qtagg']
 
 a = Analysis(
-    [os.path.join(SRC, 'QCS_App.py')],
+    [os.path.join(SRC, 'QCS_QtApp.py')],
     pathex=[SRC],
     binaries=binaries,
     datas=datas,

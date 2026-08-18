@@ -22,7 +22,10 @@ from tkinter import messagebox
 TOOLTIPS = {
     'database_files': "Qualified file(s) or database(s) to visualize\nSeveral files are combined, validated and deduplicated",
     'join_files': "Sweeps a whole folder tree instead of picking files one by one:\nfinds every 'QCS qualified ... data' subfolder, skips report files\nand combines everything into one database\n(selecting several files above already joins them)",
-    'sort_time': "Sorts the database chronologically",
+    'sort_time': "Order of the site blocks in the database built from several\n"
+                 "files: by each site's first sample instead of alphabetically\n"
+                 "Sites are never interleaved and rows stay chronological\n"
+                 "within each site",
     'instrument': "Instrument family of the qualified files\nSeaguard (TSCP) and HOBO tables are never stackable -\nbuild separate databases",
     'output_name': "Base name of the database file",
     'input_path': "Folder with the input files",
@@ -36,15 +39,19 @@ TOOLTIPS = {
     'panel1': "Panel 1: parameters compared at the same site",
     'panel2': "Panel 2: one parameter compared between sites",
     'panel3': "Panel 3: parameters compared at the same site (vertical profile)",
-    'hobo_params_site': "HOBO only: temperature/light at one site, one figure per site,\nall selected years in a single plot\nLight is drawn as its daily-peak envelope with the fouling window\nshaded; SUSPECT/BAD temperature is highlighted",
-    'hobo_params_across': "HOBO only: one figure per parameter, all sites together,\naligned by time of day (hours since each site's first midnight)\nLight uses the daily-peak envelope; each site's fouling cutoff\nis marked",
-    'ts_diagram': "Temperature-Salinity (T-S) diagram: temperature vs salinity with\ndepth as the colour, to identify water masses",
+    'hobo_params_site': "Temperature/light at one site, one figure per site,\nall selected years in a single plot\nLight is drawn as its daily-peak envelope with the fouling window\nshaded; SUSPECT/BAD temperature is highlighted",
+    'hobo_params_across': "One figure per parameter, all sites together,\naligned by time of day (hours since each site's first midnight)\nLight uses the daily-peak envelope; each site's fouling cutoff\nis marked",
+    'ts_diagram': "Temperature-Salinity (T-S) diagram: temperature vs salinity with\ndepth as the color, to identify water masses",
     'latitude': "Latitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'longitude': "Longitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'ts_params': "Temperature & salinity pair for the T-S diagram:\nConservative T & Absolute S (TEOS-10, uses lat/long) or\nPotential T & Practical S (classic EOS-80)",
     'tendency': "Adds regression lines to the plots",
     'tendency_degree': "Degree of the regression polynomial (1 = straight line)",
     'data_points': "Draws the individual data points on the plots",
+    'disagreement_bars': "HOBO only: one vertical bar per sample on the temperature\n"
+                         "series, showing how far the replicates disagreed\n"
+                         "(bar = max - min, centered on the plotted mean)\n"
+                         "Only combined-replicate databases carry that spread",
     'site_filter': "Sites to include in the plots",
     'param_filter': "Parameters to include in the plots",
     'param_secondary': "Rarely-used variables, always start unchecked\n(check manually when needed)",
@@ -62,6 +69,18 @@ class ErrorLogger(theme.LogConsole):
 
 
 # ----- user preferences: shared with QCS_Main (same json file) -----
+# ----- UI facade (v12.0 Qt port): the WORKFLOW functions talk to the user
+# only through these hooks; the Qt shell assigns its own implementations.
+# GUI-side callbacks (browse, help) keep calling messagebox directly.
+def ui_info(title, message):
+    messagebox.showinfo(title, message)
+
+def ui_warn(title, message):
+    messagebox.showwarning(title, message)
+
+def ui_error(title, message):
+    messagebox.showerror(title, message)
+
 def settings_store_path():
     # must resolve IDENTICALLY to QCS_Main.settings_store_path - both tabs
     # write the same json - so both delegate to theme.writable_app_dir (v11.2:
@@ -86,6 +105,31 @@ def save_user_prefs():
         print('Warning: could not save user preferences: %s' % e)
 
 load_user_prefs()
+# operator plot colors, saved per parameter (v12.0): every plot reads them
+# through view.getParamColors
+view.PARAM_COLOR_OVERRIDES.update(USER_PREFS.get('dbv_param_colors', {}))
+
+def set_param_color(param, color):
+    """Sets (or clears, with color=None) a parameter's plot color and
+    persists it. Toolkit-free: both shells call this."""
+    if color:
+        view.PARAM_COLOR_OVERRIDES[param] = color
+    else:
+        view.PARAM_COLOR_OVERRIDES.pop(param, None)
+    USER_PREFS['dbv_param_colors'] = dict(view.PARAM_COLOR_OVERRIDES)
+    save_user_prefs()
+
+def reset_param_colors():
+    """Drops EVERY operator color override, so all parameters go back to the
+    program defaults. Toolkit-free: both shells call this."""
+    view.PARAM_COLOR_OVERRIDES.clear()
+    USER_PREFS['dbv_param_colors'] = {}
+    save_user_prefs()
+
+def param_color(param):
+    """The color a parameter is currently plotted with (override or default)."""
+    cParam, _bc = view.getParamColors()
+    return view.PARAM_COLOR_OVERRIDES.get(param) or cParam.get(param, '#1f77b4')
 
 def restore_entry(entry, value):
     # fills a field even if it is currently disabled
@@ -174,10 +218,24 @@ def toggle_input_mode():
             fileNames_entry.insert(0, _input_mode_cache['files'])
         set_disabled_style(inputPath_entry)
         set_disabled_style(browse_input_btn)
-        # single-file mode does not use an output name: leave it blank + disabled
-        outputName_entry.config(state='normal')
-        outputName_entry.delete(0, END)
-        set_disabled_style(outputName_entry)
+        n_files = len([p for p in fileNames_entry.get().split(';') if p.strip()])
+        if n_files > 1:
+            # several qualified files build a NEW unified database (v12.0):
+            # the user names it (and picks where it is saved)
+            set_enabled_style(outputName_entry)
+        else:
+            # a single file needs no output name: blank + disabled
+            outputName_entry.config(state='normal')
+            outputName_entry.delete(0, END)
+            set_disabled_style(outputName_entry)
+        # the site-block order only means something in a database built from
+        # SEVERAL files (v12.0)
+        if sort_cb is not None:
+            if n_files > 1:
+                set_enabled_style(sort_cb)
+            else:
+                sort.set(False)
+                set_disabled_style(sort_cb)
     # the Preview button applies to FOLDER mode only (it scans/builds a folder)
     if preview_btn is not None:
         if join.get():
@@ -194,6 +252,10 @@ def toggle_panel_dependent_controls():
         set_enabled_style(tendency_cb)
         if tendency.get():
             set_enabled_style(tendency_entry)
+        else:
+            # unchecking Tendency lines must gray the degree again (the old
+            # code only ever enabled it)
+            set_disabled_style(tendency_entry)
         set_enabled_style(points_cb)
         set_enabled_style(fixed_scale_cb)
     else:
@@ -238,7 +300,7 @@ def toggle_scale_controls():
     """Per-parameter scale controls: the Min/Max of a parameter are editable only
     when Fixed scale is on, a panel is selected, that parameter is checked AND
     the current Site/Year selection actually carries data for it (no data means
-    there is nothing to scale - the row stays grey to reflect that).
+    there is nothing to scale - the row stays gray to reflect that).
     Enabling pre-fills the data's own min/max (once, if empty); disabling clears
     the fields. Scale values are per-imported-sheet and are not persisted."""
     active = fixedScale.get() and (panel1.get() or panel2.get() or panel3.get())
@@ -273,7 +335,7 @@ def _refresh_scale_defaults():
     """Re-fill the still-auto scale fields from the current Site/Year selection
     (called when those filters change); user-edited fields are left untouched.
     Also re-evaluates which rows are available: a parameter without data in the
-    new selection goes grey (see toggle_scale_controls)."""
+    new selection goes gray (see toggle_scale_controls)."""
     toggle_scale_controls()
     for param in list(_auto_scale):
         if param in parameter_vars and parameter_vars[param].get():
@@ -316,7 +378,12 @@ def _param_data_extreme(param, kind):
         # discarded/clamped at qualification), so the breathing room must not
         # push the default below zero (e.g. PAR spanning 0..4500 gave -900)
         value = 0.0
-    return '%.4g' % value
+    # plain numbers, never scientific notation (owner: '3.803e+04' reads
+    # badly): large values round to whole numbers, small ones keep up to
+    # three decimals
+    if abs(value) >= 100:
+        return '%d' % round(value)
+    return ('%.3f' % value).rstrip('0').rstrip('.')
 
 def toggle_data_type():
     data_type = dType_combobox.get()
@@ -329,7 +396,7 @@ def toggle_data_type():
 
     def _stash_disable(entry, key):
         # a field that does not apply in this mode: remember its value, blank it
-        # and grey it out (so it is not selectable)
+        # and gray it out (so it is not selectable)
         val = entry.get().strip()
         if val:
             _field_cache[key] = val
@@ -377,7 +444,7 @@ def toggle_data_type():
     single_site = len(site_names) < 2 if site_names else True
 
     # Specific logic for each data type. A control that does not apply is
-    # UNCHECKED/blanked and greyed out; one that applies again is re-enabled and
+    # UNCHECKED/blanked and grayed out; one that applies again is re-enabled and
     # its previous value restored.
     if is_hobo_input():
         # HOBO: two panels only (at a site / across sites); T-S, profile panel
@@ -426,7 +493,7 @@ def toggle_data_type():
         # heatmaps, stick plot, U/V components, progressive vector), so the
         # panel/parameter/tendency choices do not apply - but the TIME WINDOW
         # and the DEPTH BAND both crop the current data, and 'fixed scale' fixes
-        # the heatmap speed colour scale so sites/years compare 1:1.
+        # the heatmap speed color scale so sites/years compare 1:1.
         panel1.set(False)
         panel2.set(False)
         panel3.set(False)
@@ -475,17 +542,23 @@ def apply_selected_files(filenames):
     join.set(False)
     toggle_input_mode()
     USER_PREFS['dbv_last_db_dir'] = os.path.dirname(filenames[0])
-    # auto-fill Output Path with the qualification output root of the file
-    out_root = _default_output_root(filenames[0])
-    outputPath_entry.delete(0, END)
-    outputPath_entry.insert(0, out_root)
-    # remember an output name (used only if the user later switches to
-    # 'Build database from a folder'); the field itself stays blank/disabled
-    # in single-file mode
-    out_name = os.path.splitext(os.path.basename(filenames[0]))[0]
-    USER_PREFS['dbv_output_path'] = out_root
-    USER_PREFS['dbv_output_name'] = out_name
-    USER_PREFS['dbv_last_output_dir'] = out_root
+    if len(filenames) > 1:
+        # several files build a NEW unified database (v12.0): the output
+        # fields start EMPTY on purpose - the user picks where it is saved
+        # and names it (the Qt shell shows instructive placeholders there)
+        outputPath_entry.delete(0, END)
+        outputName_entry.config(state='normal')
+        outputName_entry.delete(0, END)
+    else:
+        # auto-fill Output Path with the qualification output root of the
+        # file: the DataView generated HERE lands beside the qualification's
+        # own plots ('DatabaseView' vs 'QCS DataView ...' subfolders)
+        out_root = _default_output_root(filenames[0])
+        outputPath_entry.delete(0, END)
+        outputPath_entry.insert(0, out_root)
+        USER_PREFS['dbv_output_path'] = out_root
+        USER_PREFS['dbv_last_output_dir'] = out_root
+        USER_PREFS['dbv_output_name'] = os.path.splitext(os.path.basename(filenames[0]))[0]
     save_user_prefs()
     autodetect_instrument(filenames[0])
 
@@ -537,26 +610,31 @@ def selectInputFolder():
 def saveInputSettings():
     # validation with clear warnings before closing the window
     if instrument_combobox.get() not in ('Seaguard', 'HOBO'):
-        messagebox.showwarning("Warning", "Select the instrument that produced the files\n('Instrument' field).")
+        ui_warn("Warning", "Select the instrument that produced the files\n('Instrument' field).")
         return
     if join.get():
         if not inputPath_entry.get().strip() or not os.path.isdir(inputPath_entry.get().strip()):
-            messagebox.showwarning("Warning", "To build the database from a folder, select a valid\ninput folder ('Input Path' field).")
+            ui_warn("Warning", "To build the database from a folder, select a valid\ninput folder ('Input Path' field).")
             return
         if not outputName_entry.get().strip():
-            messagebox.showwarning("Warning", "Define a name for the generated database\n('Output Name' field).")
+            ui_warn("Warning", "Define a name for the generated database\n('Output Name' field).")
             return
     else:
         db_file = fileNames_entry.get().strip()
         if not db_file:
-            messagebox.showwarning("Warning", "Select the database file (.xlsx) or check\n'Build database from a folder' to create a new one.")
+            ui_warn("Warning", "Select the database file (.xlsx) or check\n'Build database from a folder' to create a new one.")
             return
         first_file = db_file.split(';')[0]
         if not os.path.isfile(first_file):
-            messagebox.showerror("Error", "File not found:\n%s" % first_file)
+            ui_error("Error", "File not found:\n%s" % first_file)
+            return
+        if (len([p for p in db_file.split(';') if p.strip()]) > 1
+                and not outputName_entry.get().strip()):
+            ui_warn("Warning", "Several files build a NEW unified database -\n"
+                    "name it ('Output name' field).")
             return
     if not outputPath_entry.get().strip() or not os.path.isdir(outputPath_entry.get().strip()):
-        messagebox.showwarning("Warning", "Select a valid output folder\n('Output Path' field).")
+        ui_warn("Warning", "Select a valid output folder\n('Output Path' field).")
         return
 
     inputSettings['databaseFileName'] = fileNames_entry.get()
@@ -603,7 +681,7 @@ def saveDataViewSettings():
                 dataViewSettings['longitude'] = lon_ts
                 dataViewSettings['tsParam'] = tsParam_combobox.get()
             except ValueError:
-                messagebox.showwarning("Warning",
+                ui_warn("Warning",
                                        "The T-S Diagram needs a valid Latitude and Longitude.\n\n"
                                        "Fill both (decimal degrees, e.g. -17.5 and -40.0) or uncheck\n"
                                        "'T-S Diagram'. The diagram will be skipped this run.")
@@ -616,6 +694,7 @@ def saveDataViewSettings():
         else:
             dataViewSettings['linearRegressionDegree'] = None
         dataViewSettings['viewDataPoints'] = dataPoints.get()
+        dataViewSettings['showDisagreementBars'] = disagreement.get()
 
         # optional fixed time window for the X axis of mooring plots
         dataViewSettings['xAxisStart'] = None
@@ -631,7 +710,7 @@ def saveDataViewSettings():
                 dataViewSettings['xAxisStart'] = x_start
                 dataViewSettings['xAxisEnd'] = x_end
             except Exception:
-                messagebox.showwarning("Warning",
+                ui_warn("Warning",
                                        "Invalid X-axis time window.\n\n"
                                        "Fill BOTH fields using DD/MM/YYYY HH:MM\n"
                                        "(end after start), e.g. 15/04/2019 09:00,\n"
@@ -652,7 +731,7 @@ def saveDataViewSettings():
                 dataViewSettings['depthAxisMin'] = d_min
                 dataViewSettings['depthAxisMax'] = d_max
             except Exception:
-                messagebox.showwarning("Warning",
+                ui_warn("Warning",
                                        "Invalid depth-axis range.\n\n"
                                        "Fill BOTH fields with numbers (max > min), e.g. 0 and 50,\n"
                                        "or leave both empty to fit the data automatically.")
@@ -704,6 +783,7 @@ def saveDataViewSettings():
             'dbv_ts_diagram': tsDiagram.get(),
             'dbv_tendency': tendency.get(),
             'dbv_data_points': dataPoints.get(),
+            'dbv_disagreement': disagreement.get(),
             'dbv_fixed_scale': fixedScale.get(),
             'dbv_selected_sites': selectedSites,
             # NOTE: parameter selection and scale values are per-imported-sheet
@@ -736,7 +816,7 @@ def generatePanels():
     years_str = ', '.join(str(y) for y in available_years)
     selected_years = [y for y in dataViewSettings.get('filterByYears', []) if y in available_years]
     if not selected_years:
-        messagebox.showwarning("No year selected",
+        ui_warn("No year selected",
                                "Check at least one year in 'Filter by year' and click "
                                "'Generate panels' again.\n\n"
                                "Years available in this database:\n%s" % years_str)
@@ -788,7 +868,7 @@ def generatePanels():
                 sub = database[database['Datetime'].dt.year.isin(selected_years)]
                 out_dir = os.path.join(inputSettings.get('outputPath', ''), 'DatabaseView')
                 # the current panels honour the time window and the depth band.
-                # 'Fixed scale' ON = every heatmap shares one speed colour scale
+                # 'Fixed scale' ON = every heatmap shares one speed color scale
                 # (the max GOOD speed over the whole selection) so different
                 # sites/years compare 1:1; OFF = each panel autoscales.
                 speed_max = None
@@ -930,7 +1010,7 @@ def build_step1(parent):
     the unified app's Visualization tab. The root window, header and dark-mode
     switch are owned by the QCS_App shell."""
     global fileNames_entry, inputPath_entry, browse_file_btn, browse_input_btn
-    global join, sort, instrument_combobox, outputName_entry, outputPath_entry
+    global join, sort, sort_cb, instrument_combobox, outputName_entry, outputPath_entry
 
     # Main container
     main_frame = ttk.Frame(parent, padding="16")
@@ -1087,7 +1167,7 @@ def load_database():
         else:
             file_paths = [p.strip() for p in inputSettings.get('databaseFileName', '').split(';') if p.strip()]
             if not file_paths:
-                messagebox.showerror("Error", "Select a database file or provide a valid input folder.")
+                ui_error("Error", "Select a database file or provide a valid input folder.")
                 return None
             # the FILE is the truth: if the selected instrument does not match
             # the first file's layout, auto-correct it instead of refusing
@@ -1111,30 +1191,43 @@ def load_database():
             except Exception:
                 pass          # unreadable head: let build_database report it
             database, db_build_messages = data.build_database(instrument, file_list=file_paths)
+            # several files = a NEW unified database: SAVE it, like the
+            # folder-scan mode always did (v12.0 - before, the combination
+            # existed only in memory)
+            inputSettings['writeUnified'] = len(file_paths) > 1
     except ValueError as e:
         # the engine messages are already self-labeled ('build_database: ...')
-        messagebox.showerror("Error", str(e))
+        ui_error("Error", str(e))
         return None
     except Exception as e:
-        messagebox.showerror("Error", "Could not build the database:\n%s" % e)
+        ui_error("Error", "Could not build the database:\n%s" % e)
         return None
     # db_build_messages are shown in the Execution log by build_step2 (below),
     # so they are not printed here (that would duplicate them via the log redirect)
 
+    # Sites are NEVER interleaved (v12.0): the option only decides the order of
+    # the site BLOCKS - alphabetical (build_database's own Site+Datetime order)
+    # or by each site's first sample. Rows stay chronological within a site.
     if inputSettings.get('sortByTime', False) == True:
-        # purely chronological order (the engine sorts by Site+Datetime)
-        database = database.sort_values('Datetime', kind='stable')
+        first_sample = database.groupby('Site')['Datetime'].min().sort_values()
+        rank = {site: i for i, site in enumerate(first_sample.index)}
+        database = database.assign(_site_rank=database['Site'].map(rank))
+        database = database.sort_values(['_site_rank', 'Datetime'], kind='stable')
+        database = database.drop(columns='_site_rank')
         database.index = range(len(database))
+        print('Info: site blocks ordered by first sample: %s'
+              % ', '.join(str(s) for s in first_sample.index))
 
     try:
         databaseViewPath = os.path.join(inputSettings['outputPath'], 'DatabaseView')
         os.makedirs(databaseViewPath, exist_ok=True)
         os.chdir(databaseViewPath)
     except Exception as e:
-        messagebox.showerror("Error", "Could not create the output folder:\n%s\n\nDetails: %s" % (inputSettings.get('outputPath', ''), e))
+        ui_error("Error", "Could not create the output folder:\n%s\n\nDetails: %s" % (inputSettings.get('outputPath', ''), e))
         return None
 
-    if inputSettings.get('joinFiles', False) == True:
+    if (inputSettings.get('joinFiles', False) == True
+            or inputSettings.get('writeUnified', False)):
         try:
             data.save_excel_autofit(database, inputSettings['outputFileName'] + '.xlsx')
             print('Info: unified database saved to %s.xlsx'
@@ -1169,6 +1262,7 @@ def build_step2(parent):
     global dType_combobox, panel1, panel2, panel3, panel1_cb, panel2_cb, panel3_cb
     global tsDiagram, ts_cb, latitude_entry, longitude_entry, tsParam_combobox
     global tendency, tendency_cb, tendency_entry, dataPoints, points_cb, fixedScale, fixed_scale_cb
+    global disagreement
     global year_vars, year_widgets, time_start_entry, time_end_entry, depth_min_entry, depth_max_entry
     global site_names, site_vars, site_widgets, parameter_names, parameter_vars, parameter_widgets
     global min_scale_entries, max_scale_entries, error_logger
@@ -1339,7 +1433,7 @@ def build_step2(parent):
 
     if is_hobo_input():
         # a temp/light logger has no salinity: the whole T-S section (checkbox,
-        # coordinates and parameter choice) is removed, not just greyed out
+        # coordinates and parameter choice) is removed, not just grayed out
         for w in (ts_cb, lat_lbl, latitude_entry, long_lbl, longitude_entry,
                   tsp_lbl, tsParam_combobox):
             w.grid_remove()
@@ -1363,6 +1457,11 @@ def build_step2(parent):
     points_cb = ttk.Checkbutton(vis_frame, text="Show data points", variable=dataPoints)
     points_cb.grid(row=4, column=1, sticky='w', pady=5)
     ToolTip(points_cb, TOOLTIPS['data_points'])
+
+    # HOBO replicate-disagreement bars. v12.0 option, so it has a VARIABLE
+    # here (the authoritative state both shells read) but no tk widget: the
+    # tk Step 2 is the hidden pipeline host, not an interface any more.
+    disagreement = BooleanVar(value=True)
 
     fixedScale = BooleanVar(value=False)
     fixed_scale_cb = ttk.Checkbutton(vis_frame, text="Fixed scale", variable=fixedScale, command=toggle_scale_controls)
@@ -1417,7 +1516,7 @@ def build_step2(parent):
     depth_avail_lbl = ttk.Label(vis_frame, text=depth_text, style='Small.TLabel')
     depth_avail_lbl.grid(row=15, column=1, sticky='w', pady=(2,5))
     if is_hobo_input():
-        # HOBO has no depth at all: remove the whole depth block, not just grey it
+        # HOBO has no depth at all: remove the whole depth block, not just gray it
         for w in (dmin_lbl, depth_min_entry, dmax_lbl, depth_max_entry, depth_avail_lbl):
             w.grid_remove()
 
@@ -1656,6 +1755,7 @@ def build_step2(parent):
                   else USER_PREFS.get('dbv_ts_diagram', False))
     tendency.set(USER_PREFS.get('dbv_tendency', False))
     dataPoints.set(USER_PREFS.get('dbv_data_points', False))
+    disagreement.set(USER_PREFS.get('dbv_disagreement', True))
     fixedScale.set(USER_PREFS.get('dbv_fixed_scale', False))
     # Year/Site: ALL checked by default on every import (like the parameters,
     # these are per-imported-sheet and NOT restored from preferences): with
@@ -1765,6 +1865,7 @@ _shared_log = None        # app-wide Execution log (owned by the QCS_App shell)
 _db_msgs_logged = False   # True once db_build_messages went to the log (no dupes)
 _recent_combobox = None   # Step 1 'Recent' picker (created in build_step1)
 preview_btn = None        # Step 1 'Preview' button (folder mode only)
+sort_cb = None            # Step 1 site-order checkbox (created in build_step1)
 _preview_var = None       # Step 1 preview summary text (created in build_step1)
 _input_mode_cache = {}    # stashes Database File(s) while folder-scan mode is on
 _auto_scale = set()       # params whose Min/Max still hold auto-computed defaults
@@ -1907,7 +2008,7 @@ def _go_step2():
     global database, _db_msgs_logged
     inputSettings.clear()
     if not saveInputSettings():
-        return  # validation failed (a warning was already shown)
+        return False  # validation failed (a warning was already shown)
     if (_preview_cache['database'] is not None
             and _preview_cache['key'] == _settings_key()):
         database = _preview_cache['database']  # already built by Preview
@@ -1915,7 +2016,7 @@ def _go_step2():
         _db_msgs_logged = False
         database = load_database()
     if database is None:
-        return  # error already shown; stay on Step 1
+        return False  # error already shown; stay on Step 1
     _update_recents()
     dataViewSettings.clear()
     for child in _step2_frame.winfo_children():
@@ -1923,6 +2024,7 @@ def _go_step2():
     build_step2(_step2_frame)
     _step1_frame.pack_forget()
     _step2_frame.pack(fill='both', expand=True)
+    return True   # the Qt shell mirrors Step 2 from the module state on True
 
 def _go_step1():
     """Back: return to Step 1 to pick another database."""

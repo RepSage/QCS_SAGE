@@ -1,13 +1,17 @@
 # QCS (Quality Control System - SAGE) dependencies
 # Install with: pip install -r requirements.txt
+# pandas < 3: pandas 3.0's astype(str) keeps NaN as float, which breaks
+# save_excel_autofit (measured 2026-08-17); the pandas-3 migration is a
+# separate future task.
 numpy
-pandas
+pandas<3
 matplotlib
 scipy
 openpyxl   # reading/writing .xlsx files
 gsw        # T-S diagram (QCS_DataView.plot_TS_diagram)
-sv-ttk     # modern interface theme (QCS_Theme); optional, has a fallback
+PySide6==6.8.3  # the v12.0 Qt shell (QCS_QtApp); 6.8.3 pinned - newer PySide6
+                # needs an MSVC runtime older field machines may lack
+sv-ttk     # tk theme; optional (the hidden tk pipeline root never shows)
 certifi    # CA bundle for the update check (QCS_Update); optional, falls back
            # to the machine's certificate store
-tkinterdnd2  # drag-and-drop of data files onto the window (QCS_App);
-             # optional, the app runs without it
+tkinterdnd2  # drag-and-drop in the retired tk shell; optional

@@ -2,6 +2,364 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-18 - v12.0 CLOSED, PR open
+
+Everything of rounds 9-13 is in `5310556`, and the whole cycle is PR #30
+(`port-v12.0` -> `master`, 35 commits, 26 files, +3628/-330):
+https://github.com/RepSage/QCS_SAGE/pull/30
+
+The manual carries the new options (Show disagreement bars, plot color per
+parameter with its two resets) and the changelog entry is complete.
+Suite 52/52, ruff clean, the shell boots and renders both tabs.
+
+**Still to do after the merge:** tag `v12.0` on `master`, write the GitHub
+Release from `changelog/v12.0.md`, then delete `port-v12.0` local and
+remote and return to an updated `master`.
+
+**Open, deliberately:** the worker thread with a Cancel button (deferred to
+v12.1 on 2026-08-17 - the pipeline still runs on the interface thread).
+
+## 2026-08-18 (v12.0 round 13) - step 2 loses its own scroll area
+
+'< Back' and 'Generate panels' rode UP with the Execution log: step 2 kept
+a scroll area of its own around the settings grid, so the grid absorbed
+every pixel the log took and the action row stayed glued to the bottom of
+the shrinking page. Since round 11 the whole page already lives inside the
+tab's scroll area, so the inner one was removed and the grid goes straight
+into the page layout (`outer.addLayout(grid, 1)`).
+
+Measured with the log dragged from its natural height to 520 px in a 760 px
+window: 'Generate panels' stays at y=513 (was following the log) and the
+page's scrollbar range goes 90 -> 364; 'Run qualification' stays at y=575
+with its range going 120 -> 460. The two tabs now answer the same way.
+Screenshots at 1500x950 sample the same pixels as round 9. Suite 52/52;
+ruff clean.
+
+## 2026-08-18 (v12.0 round 12) - the picker's extras lined up
+
+`_line_up_picker()` in `QCS_QtViz`: the reset pair spans exactly the
+'Add to Custom Colors' button above it (each button = (anchor width -
+button-box spacing) / 2) and the HTML field reaches the right edge of the
+Red/Green/Blue column. Measured on the real picker: anchor [11, 235],
+resets [11, 235]; HTML [359, 527] with the spin boxes ending at 527.
+
+Two things this cost, both worth remembering: the anchor is found by
+GEOMETRY (the only QPushButtons parented to the dialog itself, bottom-most
+one), never by its label - Qt translates 'Add to Custom Colors'. And the
+alignment has to run AFTER the picker is on screen (QTimer.singleShot(0)):
+called before exec(), the columns are still at their size-hint positions
+and the HTML field was stretched to 459 instead of 527.
+
+## 2026-08-18 (v12.0 round 11) - resets keep the picker open, log opens freely
+
+- **Reset this color / Reset all colors** now APPLY and leave the picker
+  open, and the picker is set to the default it just restored. The custom
+  result codes are gone; OK is compared with the LIVE color
+  (`dbv.param_color`), not with the one the dialog opened with, so OK
+  right after a reset writes no override. Measured on the real dialog:
+  click reset -> visible=True, picker #ff4d4d, override dropped; OK after
+  that -> overrides still {}.
+- **The Execution log had a hard ceiling of ~124 px.** A QMainWindow never
+  lets a dock pass the CENTRAL widget's minimum, and the Qualification
+  page alone demanded 608 px (central minimum 643). Both tab pages are now
+  wrapped by `qtheme.scrollable()` (QScrollArea, widget resizable, no
+  frame, background left to the tab pane): central minimum 643 -> 103 px,
+  and asking for a 4000 px log gives 598 px in a 760 px window instead of
+  124. The boxes above get a scrollbar, which is what the owner asked for.
+  `QtShell._viz_page` is the scroll area holding the Visualization tab -
+  the two `currentWidget() is viz_tab` tests now compare against it.
+
+Screenshots at 1500x950 sample the same pixels as round 9 (page #fbfbfb,
+box interiors #f8f8f8): wrapping the pages changed nothing at normal size.
+Suite 52/52; ruff clean.
+
+## 2026-08-18 (v12.0 round 10) - color resets, American spelling, display order
+
+- **Color picker**: `_pick_color` now builds a `QColorDialog` (with
+  `DontUseNativeDialog`) and adds **Reset this color** / **Reset all
+  colors** to its button box with `ResetRole`, which puts them at the
+  bottom LEFT. They close the dialog with custom result codes (2 and 3),
+  so the accept path is untouched. New toolkit-free helper
+  `dbv.reset_param_colors()` drops every override at once.
+- **Spelling**: every `colour` in the code, in the manual and in this file
+  became `color` (37 occurrences in 5 modules). Released changelog entries
+  were NOT rewritten - they are the record of what shipped.
+- **Display options** in Visualization settings, in the owner's order:
+  Fixed scale, Show data points, Show disagreement bars (HOBO), Tendency
+  lines, Regression degree. The T-S rows stay above with the panel
+  checkboxes: they pick a FIGURE, not a way of drawing one.
+- **Show disagreement bars** is a real new setting, HOBO only:
+  `disagreement` BooleanVar in `QCS_DatabaseView.build_step2` (VARIABLE
+  only, no tk widget - the tk Step 2 is the hidden pipeline host),
+  persisted as `dbv_disagreement`, carried as
+  `dataViewSettings['showDisagreementBars']` and read by
+  `plot_hobo_params_at_site`. Default ON = the old behavior.
+
+Proven on the real shell with the PLES combined-replicate database:
+generating the panel with the box ON gives 1 errorbar container (bars and
+their legend row on screen), OFF gives 0; the tk var and the setting
+follow the checkbox. Seaguard/BURACAS step 2 builds with the same order
+and no disagreement row. Suite 52/52; ruff clean.
+
+**Note for the next session:** the operator's `qcs_user_settings.json` was
+written by the RUNNING app at 10:06 while this work was going on. An
+earlier restore of a backup (09:21) overwrote a color the operator had
+just set. Rule learned: patch `save_user_prefs` to a no-op in throwaway
+drivers instead of backing up and restoring that file.
+
+## 2026-08-18 (v12.0 round 9) — the two tabs now look alike
+
+Three edits, all in `QCS_QtViz.py`, all proven on screenshots of the REAL
+shell (a throwaway driver booted `QCS_QtApp` as `main()` does, loaded the
+PLES HOBO database and grabbed both tabs; light and dark):
+
+- the plot-color swatches in Scale settings get a POINTING HAND cursor;
+- the Visualization tab's own layout no longer adds 9 px of its own —
+  each page already sets 9 px, and the two stacked put this tab's boxes
+  18 px from the window edge while Qualification sat at 9;
+- **the gray slab is gone.** `QScrollArea.setWidget()` switches the inner
+  widget's `autoFillBackground` ON, so it painted flat `palette(Window)`
+  (#efefef) over the tab pane's lighter Fusion gradient (#f8f8f8-#fbfbfb)
+  — that rectangle was what read as "the boxes are inside a gray box".
+  Both the inner widget and the viewport now leave the background alone.
+  Measured before/after at the same pixels: page #efefef -> #fbfbfb, box
+  interior #ececec -> #f8f8f8, i.e. the Qualification tab's values.
+
+Suite 52/52; ruff clean. The scroll area of step 2 never actually scrolls
+at the window's minimum size (scrollbar range 0..0 at 700x380), so it is
+a safety net, not a surface the operator sees moving.
+
+## 2026-08-17 (v12.0 round 8) — update check, File menu, criteria visibility, flow
+
+Owner approved a batch of suggestions; all applied except the worker
+thread (deferred, see below).
+
+- **Check for updates** in Help + the silent startup check: the network
+  parts are reused from `QCS_Update`; only the dialog and the download
+  progress are Qt (`QProgressDialog`, cancellable).
+- **File menu** now carries the tab's file-level actions (select files
+  `Ctrl+O`, CO₂, select/open output folder, settings, exit `Ctrl+Q`);
+  View gained the Batch status toggle.
+- **Criteria visibility**: status-bar `criteria: defaults|CUSTOM`;
+  Settings bolds every non-default field, each row has a ↺ per-field
+  reset, and a Find box filters the rows (99 rows registered).
+- **Flow**: batch status table (running/ok/FAILED per file), post-run
+  "Open output folder" / "Go to visualization", `.hobo` header peek in
+  the Selection summary (model, serial(s), launch, interval - reads 1 KB
+  via the new `data.peek_hobo_header`), Recent in the qualification tab.
+- **Two bugs found while building this** (both mine, both fixed):
+  `_menus()` referenced `batch_dock` before it existed, and the **tk**
+  crash handler inherited from the `QCS_DatabaseView` import swallowed
+  the traceback into an invisible tk dialog — the app just hung.
+  `QCS_QtApp` now claims the crash hook for Qt at import.
+
+**Refused for now (owner, 2026-08-17), kept as an idea:** writing
+`QCS_criteria_used.json` beside each run's outputs, so a qualification
+archives the exact criteria it ran with. Reconsider if corpus work ever
+needs to prove which thresholds produced a given product.
+
+**Deferred to v12.1 (owner):** run the pipeline in a WORKER THREAD with a
+Cancel button — today it runs on the interface thread (the window freezes
+in the heavy stages and a wrong batch cannot be aborted). Needs the
+interactive reviews marshalled back to the main thread; pairs naturally
+with extracting `run_full_qualification` out of the tk closure and
+dropping the hidden-tk bootstrap.
+
+## 2026-08-17 (v12.0 field test, round 6) — summary persists; plain scale numbers
+
+`1c3f4cd`: Selection summary refills on prefs restore; Recent gets
+placeholder+tooltip; Next bold; HOBO panel tooltips drop the 'HOBO only:'
+prefix (context makes it noise); **shared-toggle bug fixed** — unchecking
+Tendency lines never re-grayed the degree entry (latent in tk too);
+scale defaults are plain numbers (>=100 rounds to integers — '51254',
+not '5.125e+04'; the light plot itself is linear, only the text was
+scientific). E2E-proven; suite 52/52; ruff clean.
+
+## 2026-08-17 (v12.0 field test, round 5) — plots carry the year; step 2 polish
+
+`7d328ee`: panel X axes carry the year (mooring panel1 `%d/%m/%y %H:%M`,
+HOBO at-site `%d/%m/%y`) and titles drop the redundant year; years moved
+into Filter settings under Sites (2 columns); scale parameter names bold;
+**T-S rows only exist for TSCP Profile** (hidden + auto-unchecked
+otherwise); panel checkboxes + Generate got their missing tooltips;
+Generate panels centered and styled like Run qualification. E2E-proven
+on the PLES pair; suite 52/52; ruff clean.
+
+## 2026-08-17 (v12.0 field test, round 4) — 7 findings applied; viz Step 1 redesigned
+
+`521ddf1` (+ styling rounds `4fd3880`/`8ba79c1`: bold field labels,
+two-column viz Step 1, tabs bold with grayscale active/inactive — pastel
+tried and dropped). Round 4: continuous progress ((k-1)*5+s of n*5),
+busy cursor on the main window only (the app-wide override span over the
+review windows read as a hang), Recent combo restored, Output folder
+above name, **'Build database from a folder' removed from the Qt shell**
+(several dropped files build the database; tk folder-scan logic kept for
+batch), single file auto-fills its _QLF root (DataView lands beside the
+qualification plots), and — behavior change — **a multi-file build now
+WRITES the unified database** (before, only folder mode saved it): empty
+output fields with instructive placeholders + name required. All proven
+E2E on the PLES pair (progress 10/10; database written; panel made).
+
+## 2026-08-17 (v12.0 PORT COMPLETE — phases 3+4) — awaiting owner field test + merge
+
+Phase 3 (`4b2df34`): `QCS_QtViz.py` — the Data visualization tab as a
+remote control over the real DatabaseView wizard (hidden tk = authoritative
+state, zero duplicated logic); DatabaseView gained the ui facade and
+`_go_step2` returns success; DnD routes to the active tab; the
+qualification→visualization prefill handoff works. E2E-proven: database
+built from a folder join through the Qt tab, panels generated.
+
+Phase 4: entry point swapped to `QCS_QtApp` (spec + `QCS.bat` →
+`packaging/v12_env`), `requirements.txt` gains `PySide6==6.8.3` and
+`pandas<3`, build venv recipe updated (SHORT PATH — PySide6 qml assets
+overflow MAX_PATH in deep folders; that killed the first install).
+`QCS_VERSION = 'v12.0'`, `.iss` 12.0, `changelog/v12.0.md`, manual
+updated (Qt interface, Instrument, corrected Remove bad/suspect wording,
+Remove dismissed row, spread bars). Test build: bundle verified (PySide6,
+backend_qtagg, backend_svg, QCS_QtViz/QtSettings, HoboCal, tkinter+tcl),
+frozen app alive 15 s, no crash log. Suite 52/52; ruff clean.
+
+**NOT yet done:** owner field test of the full Qt app (esp. Depth review,
+adaptive light review, replicate review, the viz tab and the frozen exe
+running a REAL qualification — the launch smoke can't prove lazy imports;
+the release ritual after merge rebuilds and re-verifies). PR link handed
+to the owner. After merge: v12.0 ritual (tag on merge commit, rebuild,
+ISCC, Desktop copy, release text). Post-release cleanup candidates: strip
+the hidden-tk bootstrap (extract run_full_qualification to module level),
+retire the tk shells, pandas-3 migration.
+
+## 2026-08-17 (v12.0 phase 2 COMPLETE) — every interactive review runs under Qt
+
+`fdd9b08`: replicate review (pure mpl + facade wait/help, keep-all stub
+removed), profile phase picking (tk Peak Toplevel → `ui_ask_yes_no`;
+curve pick closes-on-pick + `wait_figure_close`), Check variables
+(`ChooseVariablesDialog` in Qt via facade; same None/[]/list contract).
+Both checkboxes enabled in the Qt shell, profile gated to TSCP Profile.
+Proven headless on the BURACAS cast through both refactored paths; suite
+52/52, ruff clean. The Desktop shortcut was recreated (owner deleted it).
+**The Qt shell now covers the whole qualification workflow.** Remaining:
+phase 3 = Data visualization tab (`QCS_DatabaseView` port — the big one),
+phase 4 = packaging swap. Interactive owner pass still pending for:
+replicate review window (needs a reference series), Depth review,
+adaptive light review under Qt.
+
+## 2026-08-17 (v12.0 round 3 + Settings window) — phase 2 opened
+
+Round 3 applied (`6613d1c`): 'Remove dismissed data' unchecked+grayed for
+HOBO in both shells (no Depth column → no whole-row dismissals; re-enables
+for Seaguard), and the Qt progress bar now follows the pipeline's own
+'Stage k/5' lines, prefixed with the batch/replicate scope ('Replicate
+2/2 - Stage 3/5'); a single Seaguard run shows plain stages.
+
+**Phase 2 opened with the Settings window** (`6ab675d`):
+`QCS_QtSettings.py`, three tabs mirroring tk, same CONFIG. Validation and
+persistence extracted to toolkit-free cores in `QCS_Main`
+(`apply_settings_values` / `persist_quality_criteria`; `TEST_CATEGORIES`
+now module-level) — the tk window goes through them too. E2E-proven:
+sensor_max_temp=10 typed in the dialog flags 397/625 rows of the BURACAS
+cast BAD in a real run; invalid entries rejected; Reset restores
+defaults. The first driver run HUNG at the Depth review — the real Qt
+figure wait engaging, which is the desired interactive behavior.
+
+Phase 2 remaining: profile phase picking + Check variables (tk Toplevels),
+replicate-review window. Then phase 3 (Visualization tab), phase 4
+(packaging swap: PySide6 6.8.3 pinned).
+
+## 2026-08-17 (v12.0 field test, round 2) — Instrument empty state; Remove dismissed
+
+Round 2 applied (`35f62d7` + `591b2b3`): the combo is now **Instrument**
+with a 'Select instrument' placeholder — clearing Data file(s) resets it,
+hides the Replicates row and clears the summary. New **Remove dismissed
+data** in Data filtering (both shells, persisted): dismissed VALUES were
+already blanked at the manual cut, so the option (semantics decided with
+the owner) drops the rows where EVERY variable was dismissed — the Depth
+review's whole-row cuts — leaving a gap in the original Sample numbers;
+always selectable, like the other two filters. Proven on a real BURACAS
+cast: 625 → 622 rows, sheet starts at Sample number 4. Also fixed a
+v11.6.1 tooltip erratum found on the way: remove_bad/suspect said "Drops
+rows" but the implementation BLANKS values and keeps every row (both
+tooltip copies corrected). **The tk shell on master still says "Drops
+rows" in its shipped v11.6.1 build** — carried by the next release.
+
+## 2026-08-17 (v12.0 field test, round 1) — owner tested; 4 findings applied
+
+Owner field-tested the phase-1 shell: the adaptive light review works under
+Qt. Findings, all applied (`acb8b2c`): Input type locks on auto-detect
+(unlocks when the selection is cleared), app icon on the matplotlib windows
+(Qt `style_plot_window` in the facade) and on the new Desktop shortcut
+("QCS v12 dev" .lnk, replacing the .bat), status-bar progress bar
+(indeterminate + File/Replicate k/n fractions from the pipeline markers),
+and `plot_variable` now draws the replicate-disagreement bars on the
+combined `Temperature series.svg` (same visual as the DataView HOBO panel;
+this one also improves the tk app). Suite 52/52, ruff clean, SVG verified
+with bars + legend. Note: on the PLES test pair the bars are LARGE — the
+replicates run at different intervals (1 h vs 2 h), so nearest-match
+pairing shows the diurnal swing as disagreement; expected, not a bug.
+
+## 2026-08-17 (v12.0 port, phase 1 done) — the Qt shell runs the real pipeline
+
+`sourceCode/QCS_QtApp.py` + `QCS_QtTheme.py` on `port-v12.0` (`c549778`):
+the approved design wired to the real pipeline via the phase-0 facade, tk
+closures materialized on a hidden root (batch-driver pattern), matplotlib
+on QtAgg, figure waits via `canvas.start_event_loop`. Launcher:
+`QCS_v12_dev.bat` on the Desktop (`packaging/v12_env`).
+
+- **Proof:** PLES 2-replicate `.hobo`, fixed mode, driven through the Qt
+  widgets vs the tk widgets — combined sheets identical cell by cell
+  (1902×11). Suite 52/52; ruff clean.
+- **Gotcha (cost a debug round):** pip-latest pandas 3.0.5 breaks
+  `save_excel_autofit` (`astype(str)` keeps NaN as float → `len()` dies).
+  `v12_env` is now PINNED to the shipping stack (pandas 2.2.3, numpy
+  2.1.3, matplotlib 3.10.0, scipy 1.15.3, gsw 3.6.21). The pandas-3
+  migration is a separate future task, not part of the port.
+- **Owner has NOT field-tested this build yet.** The interactive pieces
+  (adaptive light review window, Depth review, dialogs) run under Qt by
+  design but were not exercised interactively — automated proof covers
+  the fixed-mode path only.
+- Phase 2 next: Settings window (QDialog, 3 tabs), profile phase picking
+  and Check variables (tk Toplevels at ~2470/2530 in `QCS_Main.py`),
+  replicate-review window (the Qt stub keeps all replicates, logged),
+  then phase 3 = Visualization tab, phase 4 = packaging swap.
+
+## 2026-08-14 (v12.0 port, phase 0 done) — pipeline is toolkit-neutral
+
+Branch **`port-v12.0`** (long-lived; master stays the working tk app until
+the port completes). Phase 0 landed (`0bb8d91`): the qualification pipeline
+no longer touches tk directly.
+
+- `collect_input_settings` = `read_input_widgets()` (tk) +
+  `apply_input_settings(vals)` (toolkit-free). The Qt shell fills the same
+  `vals` dict from its own widgets.
+- Facade: `ui_info/ui_warn/ui_error` (defaults call `messagebox.*` so the
+  batch drivers' monkeypatches still intercept), `ui_busy`, `ui_pump`.
+  Already-replaceable hooks stay: `log_line`, `review_light_window`,
+  `review_replicates`, `data._show_and_wait`.
+- `light_cutoff_mode` now travels in `INPUT` (was read from a widget
+  mid-run at the fixed-window branch).
+- Proof: suite 52/52, ruff clean, and a real 2-replicate `.hobo`
+  qualification (the Desktop PLES pair) driven batch-style on this branch
+  vs. master — combined sheets **identical cell by cell** (1902 rows;
+  fixed cutoff exactly 60 days after start). Driver script pattern:
+  scratchpad `drive_real_run.py` (mimics `qualify_site.py`).
+
+**Phase plan** (each phase = working increment, committed on the branch):
+1. `QCS_QtTheme.py` (Fusion light/dark from `packaging/v12_preview.py`,
+   log dock, Qt crash dialog) + `QCS_QtApp.py` shell with the qualification
+   tab wired: prefs, browse/sniff, DnD (Qt native), regions, RUN →
+   `apply_input_settings` + `start_qualification` with a Qt facade;
+   matplotlib backend QtAgg (the `plt.show()` review windows work as-is —
+   there is NO FigureCanvasTkAgg anywhere).
+2. Settings dialog + the tk-Toplevel review windows (variable check,
+   peak review ~line 2400, replicate review, `QCS_Update` dialog).
+3. Data Visualization tab (`QCS_DatabaseView`).
+4. Packaging swap: spec/bat/requirements gain PySide6 **6.8.3 pinned**
+   (6.11 does not load on this machine's MSVC runtime), retire sv-ttk.
+
+Known non-issue found while proving: in the combine branch,
+`OUTPUT['last_qualified_df']` keeps the LAST replicate's df (the combined
+sheet on disk is the truth; `last_qualified_file` points at it correctly).
+Pre-existing, only worth fixing if something starts consuming it.
+
 ## 2026-08-14 (v11.6.1 released) — ritual done; NEXT: the real v12.0 port
 
 PR #29 merged, tagged `v11.6.1` on `106632c`, branch deleted, `.iss` bumped
@@ -707,7 +1065,7 @@ The four app changes, each born from a measured incident of this week:
   fires on clean ±12 h. Now structured, in the log and in batch provenance
   (`ANOMALOUS PHASE`). Warning only: no shift, no flags.
 - **Settings-reset dialog** in `QCS_App` on first launch after a version
-  change (the reset is old v3.2 behaviour; only the announcement is new).
+  change (the reset is old v3.2 behavior; only the announcement is new).
   Lives in the shell, so headless/batch can never block on it — verified.
 - **Once-per-run warning dedup** (`QC.reset_run_warnings()` at RUN start): the
   window-span warning used to repeat up to 9× per file.
@@ -739,7 +1097,7 @@ will add the two derived columns and re-stamp.
 
 The repository was already correct. It holds exactly **two** version STAMPS —
 `QCS_VERSION` and the manual's header — and both already read v11.0. Every other
-mention is a HISTORICAL reference ("added in v8.0", "the pre-v9.0 behaviour",
+mention is a HISTORICAL reference ("added in v8.0", "the pre-v9.0 behavior",
 "Per-variable Flag_ columns (v4.0)"), which is a fact about the past: rewriting
 those to v11.0 would make them false. 38 of the manual's 39 mentions are of this
 kind. **What was stale was the DATA**, and that is now fixed.

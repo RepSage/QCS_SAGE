@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """Batch-qualify one SITE for one SEMESTER (HOBO first, then SEAGUARD sensors,
-   then DOPPLER), organising the results under CLAUDE\\<inst>\\qualified with a
+   then DOPPLER), organizing the results under CLAUDE\\<inst>\\qualified with a
    uniform semester-based name and every applicable DataView panel.
 
-   The semester tag unifies the two corpora: the same expedition is labelled
+   The semester tag unifies the two corpora: the same expedition is labeled
    'ABRIL 2019' by Seaguard and 'MAI 2019' by HOBO, but both are 2019S1.
 
    Layout:  qualified\\<YEAR>S<n>\\<SITE>\\<NAME>.csv
@@ -338,7 +338,7 @@ def plan(site, sem):
     semester (a semester can hold two expeditions)."""
     items = []
     # HOBO - campaign-first (like SG_RAW below) since the 2026-08-13
-    # reorganisation: HOBO\raw\<RRDM campaign>\<site>\planilha
+    # reorganization: HOBO\raw\<RRDM campaign>\<site>\planilha
     for camp in sorted(os.listdir(H_RAW)):
         cdir = os.path.join(H_RAW, camp, site)
         if os.path.isdir(cdir) and sem_tag(camp) == sem:
@@ -681,7 +681,7 @@ def plan_buckets(sem):
     """Products of the HOBO-only buckets for this semester."""
     items = []
     # _PISCINAS: <campaign>\<bucket>\planilha (campaign-first since the
-    # 2026-08-13 reorganisation) - the bucket IS the site, and the sheets in
+    # 2026-08-13 reorganization) - the bucket IS the site, and the sheets in
     # one campaign are replicates of that one pool deployment
     base = os.path.join(H_RAW, '_PISCINAS')
     if os.path.isdir(base):

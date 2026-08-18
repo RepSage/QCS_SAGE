@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v11.6.1'
+QCS_VERSION = 'v12.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -912,7 +912,7 @@ _HOBO_PT_CLOCK = r'(?i)(\d{1,2})h(\d{1,2})min(\d{1,2})s'
 
 
 # Physically possible water temperature for a moored HOBO. Deliberately wide -
-# this is only used to recognise a LOST DECIMAL SEPARATOR, not to judge data.
+# this is only used to recognize a LOST DECIMAL SEPARATOR, not to judge data.
 _HOBO_T_MIN, _HOBO_T_MAX = -5.0, 60.0
 
 
@@ -1000,6 +1000,45 @@ def _hobo_datetimes(series, say):
             'day-first was assumed. Check the dates - if the deployment is '
             'month-first, every timestamp is in the wrong month.')
     return pd.to_datetime(txt, errors='coerce', dayfirst=dayfirst)
+
+
+def peek_hobo_header(file_path):
+    """Header-only peek at a raw .hobo file: model, serial, launch time,
+    logging interval and the logger's UTC offset - without decoding the
+    sample stream (v12.0, for the interface's Selection summary). Returns
+    None when the file is not a readable .hobo; NEVER raises."""
+    try:
+        with open(file_path, 'rb') as f:
+            blob = f.read(0x400)
+        if not blob.startswith(b'HOBO'):
+            return None
+        tags, i = {}, 0
+        while i < len(blob) - 2:
+            if blob[i] == 0x88:
+                t, ln = blob[i + 1], blob[i + 2]
+                if t not in tags and 0 < ln < 64:
+                    tags[t] = blob[i + 3:i + 3 + ln]
+                i += 3 + ln if 0 < ln < 64 else 1
+            else:
+                i += 1
+        out = {'model': tags.get(0x05, b'').decode('ascii', 'replace'),
+               'serial': tags.get(0x06, b'').decode('ascii', 'replace'),
+               'launch': None, 'interval_s': None, 'utc_offset_s': None}
+        p = tags.get(0x07)
+        if p is not None and len(p) >= 7:
+            try:
+                out['launch'] = pd.Timestamp(2000 + p[1], p[2], p[3], p[4], p[5], p[6])
+            except ValueError:
+                pass
+        p = tags.get(0x08)
+        if p is not None and len(p) == 4:
+            out['interval_s'] = int.from_bytes(p, 'big')
+        p = tags.get(0x12)
+        if p is not None and len(p) == 4:
+            out['utc_offset_s'] = int.from_bytes(p, 'big', signed=True)
+        return out
+    except Exception:
+        return None
 
 
 def _read_hobo_binary(file_path, say):
@@ -2053,7 +2092,7 @@ def _show_and_wait(fig, tk_root):
     tk_root.wait_variable(done)
 
 
-class ManualCutCancelled(Exception):
+class ManualCutCanceled(Exception):
     """Raised when the operator presses Cancel/Esc in a manual point-cut panel
     (or the variable chooser): the caller aborts the whole qualification run and
     returns to the input form instead of proceeding."""
@@ -2066,14 +2105,14 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     dismiss (empty if none), or None if the user pressed Skip. Never modifies data.
 
     locked:   indices already dismissed upstream (e.g. the Depth whole-row cut) -
-              shown greyed and not selectable, and excluded from the returned set.
+              shown grayed and not selectable, and excluded from the returned set.
     progress: (i, total) shown in the title, e.g. '[2 of 5]'."""
     x = np.asarray(x)
     y = np.asarray(y, dtype=float)
     locked = set() if locked is None else set(int(i) for i in locked)
     dismissed = set()
     history = []          # stack of per-box selections, for Undo
-    state = {'skipped': False, 'drawn': False, 'cancelled': False}
+    state = {'skipped': False, 'drawn': False, 'canceled': False}
 
     fig, ax = plt.subplots(figsize=(10, 6.5))
     plt.subplots_adjust(bottom=0.20, top=0.88)
@@ -2128,7 +2167,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
         fig.canvas.draw_idle()
 
     def on_scroll(event):
-        # mouse-wheel zoom centred on the cursor (no need for the toolbar lens)
+        # mouse-wheel zoom centered on the cursor (no need for the toolbar lens)
         if event.inaxes is not ax:
             return
         scale = 1 / 1.2 if event.button == 'up' else 1.2   # wheel up = zoom in
@@ -2190,7 +2229,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     def do_cancel(_=None):
         # abort the WHOLE qualification and go back to the form (not just this
         # series); raised after the window closes
-        state['cancelled'] = True
+        state['canceled'] = True
         plt.close(fig)
 
     def do_help(_=None):
@@ -2205,7 +2244,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
                 'Mouse wheel zooms around the cursor; middle-button drag pans.\n\n'
                 'The points are NOT deleted: they stay in the sheet with flag 5 and\n'
                 'their value blanked, so the manual cut stays traceable. Points already\n'
-                'cut in the Depth review appear greyed and are kept dismissed.\n\n'
+                'cut in the Depth review appear grayed and are kept dismissed.\n\n'
                 'Undo   - undo the last box\n'
                 'Reset  - clear the dismissals made here and reset the zoom\n'
                 'Skip   - leave this series untouched (continue)\n'
@@ -2243,8 +2282,8 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     redraw()
     _theme.style_plot_window(fig, 'Manual point cut - %s' % label)  # app icon + title
     _show_and_wait(fig, tk_root)
-    if state['cancelled']:
-        raise ManualCutCancelled()
+    if state['canceled']:
+        raise ManualCutCanceled()
     return None if state['skipped'] else dismissed
 
 
