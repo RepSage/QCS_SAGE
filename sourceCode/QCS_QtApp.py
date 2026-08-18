@@ -523,6 +523,7 @@ class QtShell(QMainWindow):
             lab.setWordWrap(key == 'co2')
             self.sum_labels[key] = lab
             fsum.addRow(label, lab)
+        self._fsum = fsum          # the CO2 row is hidden for HOBO/Doppler
         fout.addRow(gsum)
 
         self.run_btn = QPushButton('Run qualification')
@@ -907,8 +908,19 @@ class QtShell(QMainWindow):
             QMessageBox.warning(self, 'Output folder',
                                 'The output folder no longer exists:\n%s' % root)
 
+    def _co2_applies(self):
+        """CO2 is an addition to a SEAGUARD scalar run: no CO2 logger goes with
+        a HOBO pendant or a current profiler, so the row does not belong in
+        their summary at all (owner, v12.2)."""
+        return (self.input_type.currentText() == 'Seaguard'
+                and self.data_type.currentText() != 'TSCP Doppler')
+
+    def _sync_co2_row(self):
+        self._fsum.setRowVisible(self.sum_labels['co2'], self._co2_applies())
+
     def _update_summary(self, names):
         itype = self.input_type.currentText()
+        self._sync_co2_row()
         for lab in self.sum_labels.values():
             lab.setText('-')
         self.sum_labels['instrument'].setText(itype or '-')
@@ -997,6 +1009,7 @@ class QtShell(QMainWindow):
         self.co2_btn.setEnabled(allowed)
         self.co2_label.setText(os.path.basename(self._co2_file) if self._co2_file else '')
         self.co2_clear.setVisible(bool(self._co2_file))
+        self._sync_co2_row()
         if allowed and self.file_edit.text().strip():
             self._summarize_co2()   # the summary must follow the CO2 choice
 

@@ -2,6 +2,26 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-18 - v12.2 OPEN (branch `improvements-v12.2`)
+
+- **Drag-and-drop broke again on the INSTALLED app - not a regression.**
+  The source was untouched (the filter is still there); the app was
+  running ELEVATED, because it had been started from the elevated
+  installer's finish page, and Windows UIPI forbids a normal-integrity
+  Explorer from posting drag messages to a higher-integrity window. The
+  signature that found it: a non-elevated shell could not read the running
+  QCS process's path. Confirmed by the owner - reopening the app from its
+  shortcut restored the drag. Fixed at the source: both `[Run]` entries of
+  `QCS_installer.iss` carry `runasoriginaluser`, so the app never inherits
+  the installer's token. **The same root cause is the likely explanation
+  for the queued 'does not reopen after an update' item** - same entries,
+  same wrong privilege.
+  Needs a real upgrade install to confirm both.
+- **CO2 row in the Selection summary is now conditional**: shown only for
+  a Seaguard scalar run, hidden for HOBO and for TSCP Doppler. Measured on
+  the running shell: HOBO False, Seaguard/TSCP Profile True, Seaguard
+  switched to TSCP Doppler False.
+
 ## 2026-08-18 - v12.1 PUBLISHED; one item queued for the next round
 
 Owner published the release and cleared the Desktop copies.
