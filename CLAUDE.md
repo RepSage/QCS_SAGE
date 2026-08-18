@@ -94,6 +94,14 @@ archive and diff the counts against the previous `qualified_index.csv`.
 - **User settings** live in `sourceCode/qcs_user_settings.json` (auto-generated,
   gitignored, version-gated: a version bump may intentionally reset QC criteria
   to new defaults while preserving file paths).
+- **One preferences dict per shell.** `QCS_Main.USER_PREFS` and
+  `QCS_DatabaseView.USER_PREFS` are separate module globals, and each
+  `save_user_prefs()` rewrites the WHOLE settings file from its own copy. A
+  shell MUST alias them (`qm.USER_PREFS = dbv.USER_PREFS`, as `QCS_App` and
+  `QCS_QtApp` do) or the module that saves LAST silently reverts everything the
+  other wrote that session - which is how the Qt port shipped with 'nothing
+  persists between sessions' (v12.2). The window state is saved by the shell's
+  own close handler; a shell without one loses it entirely.
 - **Version**: `QCS_VERSION` in `QCS_DataHandler.py` is the single source of
   truth for the app version.
 

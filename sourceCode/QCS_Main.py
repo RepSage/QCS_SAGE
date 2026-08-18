@@ -359,6 +359,12 @@ def push_qual_recent(files_raw, input_type):
     USER_PREFS['qual_recent'] = recents[:QUAL_RECENT_MAX]
     save_user_prefs()
 
+def remember_data_dir(first_file):
+    """The folder the file dialog opens next time. Both shells call this
+    instead of writing the key themselves (v12.2)."""
+    USER_PREFS['last_data_dir'] = os.path.dirname(first_file)
+    save_user_prefs()
+
 def qual_recent_display(entry):
     names = ', '.join(os.path.basename(f) for f in entry['files'].split(';') if f)
     if len(names) > 70:
@@ -435,8 +441,7 @@ def apply_selected_files(names):
     first = names[0]
     fileNames_entry.delete(0, END)
     fileNames_entry.insert(0, ';'.join(names))
-    USER_PREFS['last_data_dir'] = os.path.dirname(first)
-    save_user_prefs()
+    remember_data_dir(first)
     # Input type auto-detected from the file's header (Seaguard device block /
     # AADI binary magic vs HOBOware export); the combobox stays editable, an
     # unrecognized header just keeps the current choice.
@@ -708,6 +713,36 @@ def collect_input_settings():
         replicate_var.set(str(n_rep))   # display-only, kept in sync
     return apply_input_settings(vals)
 
+def store_form_prefs(vals):
+    """Writes the interface's current choices to the settings store, from the
+    same `vals` dict both shells build. Called by apply_input_settings once the
+    values are validated AND by the Qt shell on close: a session that never
+    pressed RUN used to lose the whole form (v12.2)."""
+    files = [p.strip() for p in vals['files_raw'].split(';') if p.strip()]
+    USER_PREFS.update({
+        'data_file': files[0] if files else '',
+        'input_type': vals['input_type'],
+        'data_type': vals['data_type'],
+        'correct_gmt3h': vals['correct_gmt3h'],
+        'select_profile_data': vals['select_profile_data'],
+        'check_variables': vals['check_variables'],
+        'output_folder': vals['out_dir'].strip(),
+        'output_name': vals['out_name'],
+        'output_format': vals['out_format'],
+        'remove_bad': vals['remove_bad'],
+        'remove_suspect': vals['remove_suspect'],
+        'remove_dismissed': vals.get('remove_dismissed', False),
+        'site_code': vals['site'].strip().upper(),
+        'light_cutoff_mode': vals['light_cutoff_mode'],
+        'macroregion': vals['macroregion'],
+        'region': vals['region'],
+        'qcs_version': data.QCS_VERSION,
+        'tsQualityTests': dict(CONFIG['tsQualityTests']),
+        'tsSettings': dict(CONFIG['tsSettings']),
+        'tsFactors': {k: dict(v) for k, v in CONFIG['tsFactors'].items()},
+    })
+    save_user_prefs()
+
 def apply_input_settings(vals):
     """Toolkit-free core of collect_input_settings: validates `vals` (the
     read_input_widgets dict) and fills INPUT/OUTPUT/USER_PREFS. Returns True
@@ -812,29 +847,7 @@ def apply_input_settings(vals):
         INPUT['profile'] = False
 
     # stores the user's last choices for the next session
-    USER_PREFS.update({
-        'data_file': data_path,
-        'input_type': INPUT['input_type'],
-        'data_type': INPUT['data_type'],
-        'correct_gmt3h': INPUT['correct_gmt3h'],
-        'select_profile_data': INPUT['select_profile_data'],
-        'check_variables': INPUT['check_variables'],
-        'output_folder': out_dir,
-        'output_name': vals['out_name'],
-        'output_format': OUTPUT['output_data_format'],
-        'remove_bad': OUTPUT['remove_bad'],
-        'remove_suspect': OUTPUT['remove_suspect'],
-        'remove_dismissed': OUTPUT['remove_dismissed'],
-        'site_code': INPUT['site'],
-        'light_cutoff_mode': vals['light_cutoff_mode'],
-        'macroregion': INPUT['macroregion'],
-        'region': INPUT['region'],
-        'qcs_version': data.QCS_VERSION,
-        'tsQualityTests': dict(CONFIG['tsQualityTests']),
-        'tsSettings': dict(CONFIG['tsSettings']),
-        'tsFactors': {k: dict(v) for k, v in CONFIG['tsFactors'].items()},
-    })
-    save_user_prefs()
+    store_form_prefs(vals)
     return True
 
 # permanent documentation of the replicate-combination method, written into the

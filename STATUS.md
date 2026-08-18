@@ -4,37 +4,61 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
 ## 2026-08-18 - v12.2 OPEN (branch `improvements-v12.2`)
 
-- **Nothing persists between sessions (owner, 2026-08-18) - DIAGNOSED, NOT
-  FIXED. This is the next task.** Two halves, both lost in the v12.0 port:
+- **Nothing persists between sessions (owner, 2026-08-18) - FIXED on the
+  branch, not yet seen in an installed build.** The diagnosis of the morning
+  found two real gaps but MISSED the root cause, found by grep before writing
+  anything:
 
-  1. `QtShell` has **no `closeEvent` at all**. The tk shell saved on exit
-     (`QCS_App.remember_window_state`): `win_state`, `win_geometry`, and it
-     also persisted `log_hidden` and `ui_theme` on their own changes. The Qt
-     shell only calls `qm.save_user_prefs()` in three places - the Settings
-     dialog, the dark-mode toggle and the output-folder browse - so the
-     window opens at the default size every time.
-  2. The FORM fields were never saved on close in the tk shell either: they
-     were persisted DURING use, by the qualification path
-     (`qual_recent`, `last_data_dir` in `QCS_Main`, `last_output_dir`). The
-     Qt `apply_selected_files` is a re-implementation ('port of
-     QCS_Main.apply_selected_files') and appears NOT to reach those save
-     points - to be confirmed with a grep before writing anything.
+  0. **The Qt shell never shared the preferences dict.** `QCS_App.py:29` does
+     `qual.USER_PREFS = viz.USER_PREFS`; the port has no such line, so
+     `QCS_Main.USER_PREFS` and `QCS_DatabaseView.USER_PREFS` were two dicts,
+     each loaded from the same file at import and each `save_user_prefs()`
+     rewriting the WHOLE file from its own copy - so whichever module saved
+     LAST silently reverted everything the other had written that session.
+     Proven on a scratch copy of the settings file before the fix:
+     `site_code` set to 'PROVE' by `qm` and saved, then a `dbv` save put
+     'PLES' back. Fixed by aliasing the dicts in `QCS_QtApp` and distilled
+     into `CLAUDE.md`.
+  1. `QtShell` had **no `closeEvent`**. It now has one:
+     `remember_window_state()` stores `qt_win_geometry` and `qt_win_layout`
+     (base64 of `saveGeometry`/`saveState` - the Qt blobs already carry the
+     maximized flag, so no `win_state` twin; the tk `win_geometry`/`win_state`
+     keys are a different format and are left alone) plus `log_hidden`.
+     `restore_window_state()` runs at the end of `restore_prefs`, before
+     `show()`, and force-hides the batch dock - the batch table is filled by
+     the pipeline's markers and must never come back empty from a restored
+     layout. Both docks got `objectName`s, without which `saveState` skips
+     them.
+  2. The FORM was written only by a successful RUN, inside
+     `apply_input_settings` - anything selected and not run was lost. That
+     block is now `QCS_Main.store_form_prefs(vals)`, called from the same
+     place AND from the Qt close path (`_form_vals()` was split out of
+     `collect_from_qt` so the close path can read the form without
+     validating it). Same key set as before, checked key by key.
+  3. Duplicated save points reconnected: `last_data_dir` now goes through
+     `QCS_Main.remember_data_dir()` in both shells, and the Qt viz
+     'Select output folder' saves `dbv_last_output_dir` and opens where the
+     last one did, like the tk `selectOutputFolder`.
 
-  Evidence: the installed app's `%APPDATA%\QCS\qcs_user_settings.json` is
-  **1,558 bytes** against **8,808 bytes** for the development copy in
-  `sourceCode/` - almost nothing is being written.
+  Verified by opening the Qt shell TWICE in one driver, with the settings
+  store repointed to a scratch copy (the operator's app was closed and its
+  file untouched - both `sourceCode\qcs_user_settings.json` and
+  `%APPDATA%\QCS\...` kept their mtimes): resized to 1234x812 at (140, 96)
+  with the log hidden and 'PROBE'/'probe_QLF' typed and never run -> second
+  session reopened at exactly 1234x812 (140, 96), log hidden, batch dock
+  hidden, both fields back. Maximized round-trips too. Cross-module save no
+  longer clobbers ('CROSS' and 'CROSS_PANEL' both on disk).
+  `apply_input_settings` re-checked end to end on a real `.hobo`: returns
+  True, stores the 20 keys, and a refused form (non-existent output folder)
+  still writes nothing. Suite 52/52, ruff clean.
 
-  Next actions, in order: (a) grep which `USER_PREFS` keys the Qt
-  qualification path still writes; (b) add `QtShell.closeEvent` saving
-  window geometry/state and log visibility, mirroring
-  `QCS_App.remember_window_state`; (c) reconnect the Qt file selection to
-  the `qual_recent` / `last_data_dir` save points instead of duplicating
-  them; (d) verify by launching the shell twice in one driver and diffing
-  the JSON - and remember the standing rule: a throwaway driver must no-op
-  `save_user_prefs` unless the whole point is to test saving, and the
-  operator's app must be CLOSED while it runs (it was closed for this
-  diagnosis at the owner's confirmation).
+  **Left to confirm:** the same round trip in the INSTALLED build (the
+  `%APPDATA%` store), after the next installer.
 
+  Also noticed, not changed: the `QCS_QtApp` module docstring still calls
+  itself 'phase 1 of the interface port (DEV build)' and says 'Master still
+  ships the tk app'. Not interface text, so nothing ships wrong - but it is
+  stale.
 
 - **Drag-and-drop broke again on the INSTALLED app - not a regression.**
   The source was untouched (the filter is still there); the app was

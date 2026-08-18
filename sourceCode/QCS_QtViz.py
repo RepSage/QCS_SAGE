@@ -8,6 +8,8 @@ Qt widgets are refreshed from the tk states. No visualization logic is
 duplicated here; Preview/Next/Generate call the same functions the tk app
 uses, with the dialogs routed to Qt through the QCS_DatabaseView facade.
 """
+import os
+
 from PySide6.QtCore import QPoint, QSignalBlocker, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QAbstractSpinBox, QCheckBox, QColorDialog,
@@ -265,10 +267,19 @@ class VisualizationTab(QWidget):
         self.refresh_step1()
 
     def _browse_output_folder(self):
-        path = QFileDialog.getExistingDirectory(
-            self, 'Select output folder', self.out_path.text())
+        # same start folder and same save point as the tk selectOutputFolder:
+        # the picker opens where the last one did instead of scanning the
+        # drive root, and the choice survives the session (v12.2)
+        start = (self.out_path.text().strip()
+                 or dbv.USER_PREFS.get('dbv_last_output_dir')
+                 or dbv.USER_PREFS.get('dbv_last_db_dir', ''))
+        if not os.path.isdir(start):
+            start = ''
+        path = QFileDialog.getExistingDirectory(self, 'Select output folder', start)
         if path:
             _tk_set_entry(dbv.outputPath_entry, path)
+            dbv.USER_PREFS['dbv_last_output_dir'] = path
+            dbv.save_user_prefs()
             self.refresh_step1()
 
     def _next(self):
