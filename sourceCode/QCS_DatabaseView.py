@@ -41,13 +41,17 @@ TOOLTIPS = {
     'panel3': "Panel 3: parameters compared at the same site (vertical profile)",
     'hobo_params_site': "Temperature/light at one site, one figure per site,\nall selected years in a single plot\nLight is drawn as its daily-peak envelope with the fouling window\nshaded; SUSPECT/BAD temperature is highlighted",
     'hobo_params_across': "One figure per parameter, all sites together,\naligned by time of day (hours since each site's first midnight)\nLight uses the daily-peak envelope; each site's fouling cutoff\nis marked",
-    'ts_diagram': "Temperature-Salinity (T-S) diagram: temperature vs salinity with\ndepth as the colour, to identify water masses",
+    'ts_diagram': "Temperature-Salinity (T-S) diagram: temperature vs salinity with\ndepth as the color, to identify water masses",
     'latitude': "Latitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'longitude': "Longitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'ts_params': "Temperature & salinity pair for the T-S diagram:\nConservative T & Absolute S (TEOS-10, uses lat/long) or\nPotential T & Practical S (classic EOS-80)",
     'tendency': "Adds regression lines to the plots",
     'tendency_degree': "Degree of the regression polynomial (1 = straight line)",
     'data_points': "Draws the individual data points on the plots",
+    'disagreement_bars': "HOBO only: one vertical bar per sample on the temperature\n"
+                         "series, showing how far the replicates disagreed\n"
+                         "(bar = max - min, centered on the plotted mean)\n"
+                         "Only combined-replicate databases carry that spread",
     'site_filter': "Sites to include in the plots",
     'param_filter': "Parameters to include in the plots",
     'param_secondary': "Rarely-used variables, always start unchecked\n(check manually when needed)",
@@ -101,22 +105,29 @@ def save_user_prefs():
         print('Warning: could not save user preferences: %s' % e)
 
 load_user_prefs()
-# operator plot colours, saved per parameter (v12.0): every plot reads them
+# operator plot colors, saved per parameter (v12.0): every plot reads them
 # through view.getParamColors
 view.PARAM_COLOR_OVERRIDES.update(USER_PREFS.get('dbv_param_colors', {}))
 
-def set_param_color(param, colour):
-    """Sets (or clears, with colour=None) a parameter's plot colour and
+def set_param_color(param, color):
+    """Sets (or clears, with color=None) a parameter's plot color and
     persists it. Toolkit-free: both shells call this."""
-    if colour:
-        view.PARAM_COLOR_OVERRIDES[param] = colour
+    if color:
+        view.PARAM_COLOR_OVERRIDES[param] = color
     else:
         view.PARAM_COLOR_OVERRIDES.pop(param, None)
     USER_PREFS['dbv_param_colors'] = dict(view.PARAM_COLOR_OVERRIDES)
     save_user_prefs()
 
+def reset_param_colors():
+    """Drops EVERY operator color override, so all parameters go back to the
+    program defaults. Toolkit-free: both shells call this."""
+    view.PARAM_COLOR_OVERRIDES.clear()
+    USER_PREFS['dbv_param_colors'] = {}
+    save_user_prefs()
+
 def param_color(param):
-    """The colour a parameter is currently plotted with (override or default)."""
+    """The color a parameter is currently plotted with (override or default)."""
     cParam, _bc = view.getParamColors()
     return view.PARAM_COLOR_OVERRIDES.get(param) or cParam.get(param, '#1f77b4')
 
@@ -242,7 +253,7 @@ def toggle_panel_dependent_controls():
         if tendency.get():
             set_enabled_style(tendency_entry)
         else:
-            # unchecking Tendency lines must grey the degree again (the old
+            # unchecking Tendency lines must gray the degree again (the old
             # code only ever enabled it)
             set_disabled_style(tendency_entry)
         set_enabled_style(points_cb)
@@ -289,7 +300,7 @@ def toggle_scale_controls():
     """Per-parameter scale controls: the Min/Max of a parameter are editable only
     when Fixed scale is on, a panel is selected, that parameter is checked AND
     the current Site/Year selection actually carries data for it (no data means
-    there is nothing to scale - the row stays grey to reflect that).
+    there is nothing to scale - the row stays gray to reflect that).
     Enabling pre-fills the data's own min/max (once, if empty); disabling clears
     the fields. Scale values are per-imported-sheet and are not persisted."""
     active = fixedScale.get() and (panel1.get() or panel2.get() or panel3.get())
@@ -324,7 +335,7 @@ def _refresh_scale_defaults():
     """Re-fill the still-auto scale fields from the current Site/Year selection
     (called when those filters change); user-edited fields are left untouched.
     Also re-evaluates which rows are available: a parameter without data in the
-    new selection goes grey (see toggle_scale_controls)."""
+    new selection goes gray (see toggle_scale_controls)."""
     toggle_scale_controls()
     for param in list(_auto_scale):
         if param in parameter_vars and parameter_vars[param].get():
@@ -385,7 +396,7 @@ def toggle_data_type():
 
     def _stash_disable(entry, key):
         # a field that does not apply in this mode: remember its value, blank it
-        # and grey it out (so it is not selectable)
+        # and gray it out (so it is not selectable)
         val = entry.get().strip()
         if val:
             _field_cache[key] = val
@@ -433,7 +444,7 @@ def toggle_data_type():
     single_site = len(site_names) < 2 if site_names else True
 
     # Specific logic for each data type. A control that does not apply is
-    # UNCHECKED/blanked and greyed out; one that applies again is re-enabled and
+    # UNCHECKED/blanked and grayed out; one that applies again is re-enabled and
     # its previous value restored.
     if is_hobo_input():
         # HOBO: two panels only (at a site / across sites); T-S, profile panel
@@ -482,7 +493,7 @@ def toggle_data_type():
         # heatmaps, stick plot, U/V components, progressive vector), so the
         # panel/parameter/tendency choices do not apply - but the TIME WINDOW
         # and the DEPTH BAND both crop the current data, and 'fixed scale' fixes
-        # the heatmap speed colour scale so sites/years compare 1:1.
+        # the heatmap speed color scale so sites/years compare 1:1.
         panel1.set(False)
         panel2.set(False)
         panel3.set(False)
@@ -683,6 +694,7 @@ def saveDataViewSettings():
         else:
             dataViewSettings['linearRegressionDegree'] = None
         dataViewSettings['viewDataPoints'] = dataPoints.get()
+        dataViewSettings['showDisagreementBars'] = disagreement.get()
 
         # optional fixed time window for the X axis of mooring plots
         dataViewSettings['xAxisStart'] = None
@@ -771,6 +783,7 @@ def saveDataViewSettings():
             'dbv_ts_diagram': tsDiagram.get(),
             'dbv_tendency': tendency.get(),
             'dbv_data_points': dataPoints.get(),
+            'dbv_disagreement': disagreement.get(),
             'dbv_fixed_scale': fixedScale.get(),
             'dbv_selected_sites': selectedSites,
             # NOTE: parameter selection and scale values are per-imported-sheet
@@ -855,7 +868,7 @@ def generatePanels():
                 sub = database[database['Datetime'].dt.year.isin(selected_years)]
                 out_dir = os.path.join(inputSettings.get('outputPath', ''), 'DatabaseView')
                 # the current panels honour the time window and the depth band.
-                # 'Fixed scale' ON = every heatmap shares one speed colour scale
+                # 'Fixed scale' ON = every heatmap shares one speed color scale
                 # (the max GOOD speed over the whole selection) so different
                 # sites/years compare 1:1; OFF = each panel autoscales.
                 speed_max = None
@@ -1249,6 +1262,7 @@ def build_step2(parent):
     global dType_combobox, panel1, panel2, panel3, panel1_cb, panel2_cb, panel3_cb
     global tsDiagram, ts_cb, latitude_entry, longitude_entry, tsParam_combobox
     global tendency, tendency_cb, tendency_entry, dataPoints, points_cb, fixedScale, fixed_scale_cb
+    global disagreement
     global year_vars, year_widgets, time_start_entry, time_end_entry, depth_min_entry, depth_max_entry
     global site_names, site_vars, site_widgets, parameter_names, parameter_vars, parameter_widgets
     global min_scale_entries, max_scale_entries, error_logger
@@ -1419,7 +1433,7 @@ def build_step2(parent):
 
     if is_hobo_input():
         # a temp/light logger has no salinity: the whole T-S section (checkbox,
-        # coordinates and parameter choice) is removed, not just greyed out
+        # coordinates and parameter choice) is removed, not just grayed out
         for w in (ts_cb, lat_lbl, latitude_entry, long_lbl, longitude_entry,
                   tsp_lbl, tsParam_combobox):
             w.grid_remove()
@@ -1443,6 +1457,11 @@ def build_step2(parent):
     points_cb = ttk.Checkbutton(vis_frame, text="Show data points", variable=dataPoints)
     points_cb.grid(row=4, column=1, sticky='w', pady=5)
     ToolTip(points_cb, TOOLTIPS['data_points'])
+
+    # HOBO replicate-disagreement bars. v12.0 option, so it has a VARIABLE
+    # here (the authoritative state both shells read) but no tk widget: the
+    # tk Step 2 is the hidden pipeline host, not an interface any more.
+    disagreement = BooleanVar(value=True)
 
     fixedScale = BooleanVar(value=False)
     fixed_scale_cb = ttk.Checkbutton(vis_frame, text="Fixed scale", variable=fixedScale, command=toggle_scale_controls)
@@ -1497,7 +1516,7 @@ def build_step2(parent):
     depth_avail_lbl = ttk.Label(vis_frame, text=depth_text, style='Small.TLabel')
     depth_avail_lbl.grid(row=15, column=1, sticky='w', pady=(2,5))
     if is_hobo_input():
-        # HOBO has no depth at all: remove the whole depth block, not just grey it
+        # HOBO has no depth at all: remove the whole depth block, not just gray it
         for w in (dmin_lbl, depth_min_entry, dmax_lbl, depth_max_entry, depth_avail_lbl):
             w.grid_remove()
 
@@ -1736,6 +1755,7 @@ def build_step2(parent):
                   else USER_PREFS.get('dbv_ts_diagram', False))
     tendency.set(USER_PREFS.get('dbv_tendency', False))
     dataPoints.set(USER_PREFS.get('dbv_data_points', False))
+    disagreement.set(USER_PREFS.get('dbv_disagreement', True))
     fixedScale.set(USER_PREFS.get('dbv_fixed_scale', False))
     # Year/Site: ALL checked by default on every import (like the parameters,
     # these are per-imported-sheet and NOT restored from preferences): with

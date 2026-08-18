@@ -9,11 +9,11 @@ WHAT STAYS, and why it must:
     repair_collapsed_clock.py and repair_unset_clock.py WRITE to them. Not
     regenerable: delete them and the record of what was done to the raw archive
     is gone. They are never moved by this script.
-  - qualified_index.csv - the corpus catalogue, read by build_index,
+  - qualified_index.csv - the corpus catalog, read by build_index,
     build_data_package, drop_stale_products and sweep_value_integrity. It IS
     regenerable, but four scripts expect it at the root.
 
-WHAT MOVES: analysis outputs and the paperwork of past reorganisations. Nothing
+WHAT MOVES: analysis outputs and the paperwork of past reorganizations. Nothing
 reads them; they are kept for the record, not for the pipeline.
 
 WHAT IS DELETED: manifest.csv.bak only - a July snapshot superseded by the live
@@ -44,10 +44,10 @@ MOVE = {
         'partial manifest of an early staging pass (2026-07), superseded by '
         'manifest.csv',
     os.path.join('SEAGUARD', 'raw', 'reorg_manifest.csv'):
-        'record of the Seaguard raw reorganisation (2026-07): which file went '
+        'record of the Seaguard raw reorganization (2026-07): which file went '
         'where when the campaign/site layout was adopted',
     os.path.join('SEAGUARD', 'raw', 'survey_master (pre-reorg paths).csv'):
-        'survey of the Seaguard archive BEFORE that reorganisation - the only '
+        'survey of the Seaguard archive BEFORE that reorganization - the only '
         'record of the original paths',
 }
 DELETE = {

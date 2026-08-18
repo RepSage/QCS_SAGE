@@ -148,7 +148,7 @@ def _fit_stacked_yticks(fig, spacing=None, pad=4.0, min_pt=4.0):
                 if boxes:
                     cols.append((min(b.x0 for b in boxes), max(b.x1 for b in boxes)))
             cols.sort()
-            # worst horizontal encroachment between neighbouring columns
+            # worst horizontal encroachment between neighboring columns
             worst = max((a[1] - b[0] for a, b in zip(cols, cols[1:], strict=False)), default=-1e9)
             if worst <= -pad:                      # clear gap everywhere -> done
                 return
@@ -324,15 +324,15 @@ def renameParameters (parameter_names):
             rParam.append(param)
     return rParam
 
-# Operator colour overrides, {parameter: '#rrggbb'} (v12.0). Set from the
+# Operator color overrides, {parameter: '#rrggbb'} (v12.0). Set from the
 # Visualization tab's Scale settings and persisted in the user settings, so a
-# site keeps its house colours across sessions. EVERY plot goes through
+# site keeps its house colors across sessions. EVERY plot goes through
 # getParamColors, so an override reaches all of them.
 PARAM_COLOR_OVERRIDES = {}
 
 
 def darker(hex_color, factor=0.62):
-    """The dark tone (trend lines, axes) of a chosen colour."""
+    """The dark tone (trend lines, axes) of a chosen color."""
     c = str(hex_color).lstrip('#')
     if len(c) != 6:
         return hex_color
@@ -382,10 +382,10 @@ def getParamColors (parameter_names=None):
                 }
 
     # operator overrides win, and their dark tone is derived from the choice
-    for param, colour in PARAM_COLOR_OVERRIDES.items():
-        if colour:
-            cParam[param] = colour
-            bcParam[param] = darker(colour)
+    for param, color in PARAM_COLOR_OVERRIDES.items():
+        if color:
+            cParam[param] = color
+            bcParam[param] = darker(color)
 
     return cParam, bcParam
 
@@ -405,7 +405,7 @@ def getSiteColors (site_names):
                 'B05': 'mediumvioletred',
                 'B06': 'teal',
                 'RH18': 'maroon',
-                'RH30': 'darkslategrey'}
+                'RH30': 'darkslategray'}
     
     # contrasting palette for sites without a predefined color; assignment is
     # deterministic (sorted by name), so each site keeps its color between plots
@@ -1218,7 +1218,7 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
     """HOBO 'Parameters at a site': the selected parameters (temperature and/or
     light) for ONE site in a single figure spanning EVERY selected year (a
     deployment crossing the new year is not split). Temperature: dots +
-    suspect/bad highlights + replicate-spread band + optional tendency line
+    suspect/bad highlights + optional replicate-disagreement bars + tendency line
     (floored at 0). Light: LINEAR scale with the DAILY-PEAK envelope (the same
     visual as the fouling review), optional raw points, and the fouling window
     (Flag_lux == 4) shaded. Returns the number of figures generated (0 or 1)."""
@@ -1245,8 +1245,10 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
         if param == 'Temperature (degC)':
             temp = pd.to_numeric(db['Temperature (degC)'], errors='coerce')
             # combined-replicates file: shade the between-replicate disagreement
-            # (band of total width = spread, centered on the plotted mean)
-            if 'Temperature spread (degC)' in db.columns:
+            # (band of total width = spread, centered on the plotted mean),
+            # unless the operator turned the bars off
+            if ('Temperature spread (degC)' in db.columns
+                    and dataViewSettings.get('showDisagreementBars', True)):
                 spread = pd.to_numeric(db['Temperature spread (degC)'], errors='coerce')
                 valid = spread.notna() & temp.notna() & (spread > 0)
                 if valid.any():
@@ -1621,13 +1623,13 @@ def plot_replicate_review(replicates, referee, reference=None, label=''):
 def plot_doppler_panels(frame, out_dir, label='', settings=None):
     """Saves the 4 current panels as SVGs into out_dir. Returns file list.
 
-    settings (all optional; None -> the v8.0 behaviour) lets the Visualization
+    settings (all optional; None -> the v8.0 behavior) lets the Visualization
     tab steer the panels:
       xAxisStart / xAxisEnd  keep only this datetime window (also on the X axis)
       depthAxisMin / Max     keep only cells in this depth band (m)
       currentRepDepth        force the stick/progressive-vector depth (m); the
                              default is still the best-covered cell
-      currentSpeedMax        fix the heatmap speed colour scale (cm/s), so
+      currentSpeedMax        fix the heatmap speed color scale (cm/s), so
                              several sites/years compare 1:1; None -> autoscale
     """
     import os

@@ -8,14 +8,16 @@ Qt widgets are refreshed from the tk states. No visualization logic is
 duplicated here; Preview/Next/Generate call the same functions the tk app
 uses, with the dialogs routed to Qt through the QCS_DatabaseView facade.
 """
-from PySide6.QtCore import QSignalBlocker, Qt
+from PySide6.QtCore import QPoint, QSignalBlocker, Qt, QTimer
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QFileDialog,
+from PySide6.QtWidgets import (QAbstractSpinBox, QCheckBox, QColorDialog,
+                               QComboBox,
+                               QDialogButtonBox, QFileDialog,
                                QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
-                               QLineEdit, QPushButton, QScrollArea,
-                               QSizePolicy, QStackedWidget, QVBoxLayout,
-                               QWidget)
+                               QLineEdit, QPushButton,
+                               QSizePolicy, QSpinBox, QStackedWidget,
+                               QVBoxLayout, QWidget)
 
 import pandas as pd
 
@@ -61,6 +63,36 @@ def _tk_set_entry(entry, text):
     entry.config(state=state)
 
 
+def _line_up_picker(dialog, box, first, second):
+    """Qt's color picker knows nothing about the two buttons added to it, so
+    the tidying is done by hand once its layout is built (owner, 2026-08-18):
+
+    - the reset pair spans exactly the 'Add to Custom Colors' button above it;
+    - the HTML field reaches the right edge of the Blue/Green/Red column.
+
+    Every number is MEASURED. Qt's metrics move with theme, font and DPI, and
+    the picker's own button texts are translated, so the anchor is found by
+    geometry (the two full-width buttons are the only ones parented to the
+    dialog itself) and never by its label.
+    """
+    dialog.layout().activate()
+    anchor = max((b for b in dialog.findChildren(QPushButton)
+                  if b.parent() is dialog), key=lambda b: b.y())
+    spacing = box.layout().spacing()
+    width = (anchor.width() - spacing) // 2
+    first.setFixedWidth(width)
+    second.setFixedWidth(anchor.width() - spacing - width)
+
+    # the spin boxes of a hidden channel (alpha) do not count for the edge
+    spins = [sp for sp in dialog.findChildren(QSpinBox) if not sp.isHidden()]
+    html = [e for e in dialog.findChildren(QLineEdit)
+            if not isinstance(e.parent(), QAbstractSpinBox)][0]
+    right = max(sp.mapTo(dialog, QPoint(0, 0)).x() + sp.width() for sp in spins)
+    html.setFixedWidth(right - html.mapTo(dialog, QPoint(0, 0)).x())
+    box.layout().activate()
+    dialog.layout().activate()
+
+
 class VisualizationTab(QWidget):
     def __init__(self, shell):
         super().__init__()
@@ -70,6 +102,10 @@ class VisualizationTab(QWidget):
         dbv.join.set(False)
         dbv.toggle_input_mode()
         v = QVBoxLayout(self)
+        # no margin of its own: each page sets the same 9 px the Qualification
+        # tab uses, and stacking the two pushed this tab's boxes 18 px from the
+        # window edge (owner, 2026-08-18)
+        v.setContentsMargins(0, 0, 0, 0)
         self.stack = QStackedWidget()
         self.stack.addWidget(self._build_step1())
         self._step2_page = QWidget()          # replaced on every Next
@@ -336,6 +372,27 @@ class VisualizationTab(QWidget):
         # (visibility handled in refresh_step2)
         self._ts_rows = [self.ts_check, self.latitude, self.longitude,
                          self.ts_param]
+        # order asked by the owner (2026-08-18): what the axes do, then what
+        # is drawn over the data, and the trend line with its degree last.
+        # The T-S rows stay above, with the panel checkboxes: they choose a
+        # FIGURE, not a way of drawing one.
+        self.fixed_scale = QCheckBox('Fixed scale')
+        self.fixed_scale.setToolTip(TOOLTIPS['fixed_scale'])
+        self._check_pair(self.fixed_scale, dbv.fixedScale, dbv.fixed_scale_cb,
+                         after=(dbv.toggle_scale_controls,))
+        fv.addRow(self.fixed_scale)
+        self.points = QCheckBox('Show data points')
+        self.points.setToolTip(TOOLTIPS['data_points'])
+        self._check_pair(self.points, dbv.dataPoints, dbv.points_cb)
+        fv.addRow(self.points)
+        # the replicate-disagreement bars only exist on a HOBO temperature
+        # series, so the row is not even built for the other instruments
+        self.disagreement = None
+        if dbv.is_hobo_input():
+            self.disagreement = QCheckBox('Show disagreement bars')
+            self.disagreement.setToolTip(TOOLTIPS['disagreement_bars'])
+            self._check_pair(self.disagreement, dbv.disagreement, None)
+            fv.addRow(self.disagreement)
         self.tendency = QCheckBox('Tendency lines')
         self.tendency.setToolTip(TOOLTIPS['tendency'])
         self._check_pair(self.tendency, dbv.tendency, dbv.tendency_cb,
@@ -346,15 +403,6 @@ class VisualizationTab(QWidget):
         self.degree.setToolTip(TOOLTIPS['tendency_degree'])
         self._entry_pair(self.degree, dbv.tendency_entry)
         fv.addRow('Regression degree:', self.degree)
-        self.points = QCheckBox('Show data points')
-        self.points.setToolTip(TOOLTIPS['data_points'])
-        self._check_pair(self.points, dbv.dataPoints, dbv.points_cb)
-        fv.addRow(self.points)
-        self.fixed_scale = QCheckBox('Fixed scale')
-        self.fixed_scale.setToolTip(TOOLTIPS['fixed_scale'])
-        self._check_pair(self.fixed_scale, dbv.fixedScale, dbv.fixed_scale_cb,
-                         after=(dbv.toggle_scale_controls,))
-        fv.addRow(self.fixed_scale)
         self.time_start = QLineEdit()
         self.time_start.setToolTip(TOOLTIPS['time_start'])
         self._entry_pair(self.time_start, dbv.time_start_entry)
@@ -441,17 +489,18 @@ class VisualizationTab(QWidget):
             hdr.setFont(f)         # bold headers, like the other sections
             gs.addWidget(hdr, 0, col)
         self.scale_edits = {}
-        self.colour_buttons = {}
+        self.color_buttons = {}
         for r, param in enumerate(dbv.parameter_names, start=1):
-            # the plot colour, clickable: opens the colour wheel (which has a
+            # the plot color, clickable: opens the color wheel (which has a
             # hex field, so a house palette can be typed in) - v12.0
             swatch = QPushButton()
             swatch.setFixedSize(18, 18)
-            swatch.setToolTip('Colour of %s in the plots\nClick to change it '
+            swatch.setToolTip('Color of %s in the plots\nClick to change it '
                               '(the picker takes hex codes too)' % param)
-            swatch.clicked.connect(lambda _c=False, p=param: self._pick_colour(p))
+            swatch.setCursor(Qt.CursorShape.PointingHandCursor)   # it is clickable
+            swatch.clicked.connect(lambda _c=False, p=param: self._pick_color(p))
             gs.addWidget(swatch, r, 0)
-            self.colour_buttons[param] = swatch
+            self.color_buttons[param] = swatch
             plab = QLabel(str(param))   # plain, like the other value rows
             gs.addWidget(plab, r, 1)
             mn = QLineEdit()
@@ -465,7 +514,7 @@ class VisualizationTab(QWidget):
             gs.addWidget(mn, r, 2)
             gs.addWidget(mx, r, 3)
             self.scale_edits[param] = (mn, mx)
-        self._refresh_colour_buttons()
+        self._refresh_color_buttons()
         # the swatch and name columns keep their width; only the value boxes
         # stretch when the window grows (their text stays left-justified)
         gs.setColumnStretch(0, 0)
@@ -488,17 +537,15 @@ class VisualizationTab(QWidget):
 
         qtheme.bold_form_labels(fd)
         qtheme.bold_form_labels(fv)
-        inner = QWidget()
-        inner.setLayout(grid)
         grid.setContentsMargins(0, 0, 0, 0)
-        area = QScrollArea()
-        area.setWidgetResizable(True)
-        # no frame: the scroll area's border drew a box around the whole page
-        # (which also pushed 'Generate panels' further down than 'Run
-        # qualification' sits on the other tab) - owner
-        area.setFrameShape(QScrollArea.Shape.NoFrame)
-        area.setWidget(inner)
-        outer.addWidget(area)
+        # the boxes take the slack and the action row hugs the bottom of the
+        # PAGE, exactly like the Qualification tab. This page had a scroll
+        # area of its own until v12.0 round 13, and it made '< Back' and
+        # 'Generate panels' ride up with the Execution log while the settings
+        # shrank; the whole page is inside the tab's scroll area since round
+        # 11, so the buttons now scroll with the content instead of following
+        # the log (owner, 2026-08-18).
+        outer.addLayout(grid, 1)
 
         # Back on the left, Generate truly CENTERED and styled like the
         # Run qualification button (owner, 2026-08-17)
@@ -548,21 +595,58 @@ class VisualizationTab(QWidget):
             self.ts_param.setCurrentText(dbv.tsParam_combobox.get())
             self.ts_param.setEnabled(_tk_enabled(dbv.tsParam_combobox))
 
-    # ---------- plot colours ----------
-    def _refresh_colour_buttons(self):
-        for param, btn in self.colour_buttons.items():
-            colour = dbv.param_color(param)
+    # ---------- plot colors ----------
+    def _refresh_color_buttons(self):
+        for param, btn in self.color_buttons.items():
+            color = dbv.param_color(param)
             btn.setStyleSheet('QPushButton { background: %s; border: 1px solid '
-                              'palette(mid); border-radius: 2px; }' % colour)
+                              'palette(mid); border-radius: 2px; }' % color)
 
-    def _pick_colour(self, param):
-        current = QColor(dbv.param_color(param))
-        chosen = QColorDialog.getColor(
-            current, self, 'Plot colour - %s' % param)
-        if not chosen.isValid() or chosen == current:
+    def _pick_color(self, param):
+        dialog = QColorDialog(QColor(dbv.param_color(param)), self)
+        dialog.setWindowTitle('Plot color - %s' % param)
+        # Qt's own picker, not the platform one: the reset buttons are added to
+        # its button box (and it is the picker that takes a hex code)
+        dialog.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog)
+        buttons = dialog.findChild(QDialogButtonBox)
+        one = buttons.addButton('Reset this color',
+                                QDialogButtonBox.ButtonRole.ResetRole)
+        one.setToolTip('Puts %s back to the program default' % param)
+        every = buttons.addButton('Reset all colors',
+                                  QDialogButtonBox.ButtonRole.ResetRole)
+        every.setToolTip('Puts EVERY parameter back to the program default')
+
+        def reset(all_params):
+            """Applied at once, with the picker STAYING OPEN (owner,
+            2026-08-18) and showing the default it has just restored."""
+            if all_params:
+                dbv.reset_param_colors()
+                self.shell.log_line('Info: every parameter back to its default '
+                                    'plot color (saved).')
+            else:
+                dbv.set_param_color(param, None)
+                self.shell.log_line('Info: %s back to its default color %s '
+                                    '(saved).' % (param, dbv.param_color(param)))
+            self._refresh_color_buttons()
+            dialog.setCurrentColor(QColor(dbv.param_color(param)))
+
+        one.clicked.connect(lambda: reset(False))
+        every.clicked.connect(lambda: reset(True))
+        # only once the picker is on screen: before that its columns are
+        # still at their size-hint positions and the HTML field would be
+        # stretched to the wrong edge (measured)
+        QTimer.singleShot(0, lambda: _line_up_picker(dialog, buttons,
+                                                     one, every))
+
+        if dialog.exec() != QColorDialog.DialogCode.Accepted:
+            return
+        chosen = dialog.selectedColor()
+        # compared with the LIVE color, not the one the picker opened with: OK
+        # right after a reset must not write the default back as an override
+        if not chosen.isValid() or chosen.name() == dbv.param_color(param):
             return
         dbv.set_param_color(param, chosen.name())
-        self._refresh_colour_buttons()
+        self._refresh_color_buttons()
         self.shell.log_line('Info: %s will be plotted in %s (saved).'
                             % (param, chosen.name()))
 

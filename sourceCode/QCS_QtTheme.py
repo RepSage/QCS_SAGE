@@ -15,8 +15,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDockWidget,
                                QHBoxLayout, QMessageBox, QProxyStyle,
-                               QPushButton, QStyle, QTextEdit, QVBoxLayout,
-                               QWidget)
+                               QPushButton, QScrollArea, QStyle, QTextEdit,
+                               QVBoxLayout, QWidget)
 
 import QCS_Theme as theme   # writable_app_dir + crash-log path (toolkit-free)
 
@@ -40,8 +40,8 @@ ACCENT_DARK = '#4a90d9'      # lighter, for the dark scheme
 
 
 class AccentStyle(QProxyStyle):
-    """Draws the check/radio indicators with the accent colour instead of the
-    plain text colour, keeping Fusion's own shape: the base style paints the
+    """Draws the check/radio indicators with the accent color instead of the
+    plain text color, keeping Fusion's own shape: the base style paints the
     mark with palette.text(), so swapping that ONE role for the primitive is
     enough - no bitmap assets, and it survives freezing."""
 
@@ -58,10 +58,10 @@ class AccentStyle(QProxyStyle):
             opt = type(option)(option)
             # a DISABLED checked box keeps a (muted) accent instead of fading
             # into the background - it still carries information
-            colour = (self._accent if option.state & QStyle.StateFlag.State_Enabled
-                      else self._muted)
-            opt.palette.setColor(QPalette.ColorRole.Text, colour)
-            opt.palette.setColor(QPalette.ColorRole.WindowText, colour)
+            color = (self._accent if option.state & QStyle.StateFlag.State_Enabled
+                     else self._muted)
+            opt.palette.setColor(QPalette.ColorRole.Text, color)
+            opt.palette.setColor(QPalette.ColorRole.WindowText, color)
             super().drawPrimitive(element, opt, painter, widget)
             return
         super().drawPrimitive(element, option, painter, widget)
@@ -85,7 +85,7 @@ def dark_palette():
     p.setColor(QPalette.Mid, QColor(170, 170, 172))
     p.setColor(QPalette.PlaceholderText, QColor(150, 150, 152))
     # Disabled controls must stay READABLE, just clearly inactive: the derived
-    # dark-on-dark grey made unavailable checkboxes almost invisible.
+    # dark-on-dark gray made unavailable checkboxes almost invisible.
     for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText):
         p.setColor(QPalette.Disabled, role, QColor(140, 140, 142))
     return p
@@ -128,7 +128,7 @@ def apply_style(dark):
     # panel it removed (owner, 2026-08-17: "você está destruindo as
     # visualizações") - so the native look stays, slab included.
     # the primary action of each tab (Run qualification / Generate panels /
-    # Next) in the accent colour, like the tk app's Accent.TButton
+    # Next) in the accent color, like the tk app's Accent.TButton
     app.setStyleSheet(
         'QToolTip { background: %s; color: %s; border: 1px solid %s;'
         ' padding: 4px; }\n'
@@ -160,10 +160,32 @@ def muted(widget):
 
     Uses the PALETTE, never a stylesheet: setting a stylesheet on a child
     makes Qt re-render its ancestors through the stylesheet engine, which
-    painted a grey slab behind the enclosing QGroupBox (that was the
+    painted a gray slab behind the enclosing QGroupBox (that was the
     unexplained box around 'Data settings' and 'Selection summary')."""
     widget.setForegroundRole(QPalette.Mid)
     return widget
+
+
+def scrollable(page):
+    """Wraps a TAB PAGE so it can shrink to nothing.
+
+    A QMainWindow never lets a dock grow past the central widget's minimum,
+    and the Qualification page alone asked for 608 px - so the Execution log
+    stopped at ~124 px however hard it was dragged. Inside a scroll area the
+    page's minimum is the scroll area's own (tiny): the log takes whatever
+    height the operator drags it to and the boxes above get a scrollbar
+    (owner, 2026-08-18).
+
+    The background is left to the tab pane, exactly as in the Visualization
+    settings area: setWidget() would otherwise fill it with a flat gray slab.
+    """
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setFrameShape(QScrollArea.Shape.NoFrame)
+    area.setWidget(page)
+    page.setAutoFillBackground(False)
+    area.viewport().setAutoFillBackground(False)
+    return area
 
 
 def dock_tooltips(dock, float_tip, close_tip):

@@ -982,7 +982,7 @@ def start_qualification():
                 # must not cancel the files queued after it.
                 try:
                     run_full_qualification()
-                except data.ManualCutCancelled:
+                except data.ManualCutCanceled:
                     raise
                 except Exception as exc:
                     batch_failures.append((INPUT['file_name'], str(exc)))
@@ -1099,10 +1099,10 @@ def start_qualification():
             ui_info("Done",
                     "Qualification completed.\n\nResults saved to:\n%s"
                     % OUTPUT.get('last_output_root', ''))
-    except data.ManualCutCancelled:
+    except data.ManualCutCanceled:
         # Cancel/Esc during a manual-cut panel or the variable chooser: abort
         # cleanly and return to the form (no error dialog, nothing written)
-        log_line('Qualification cancelled by the user (manual point cut).')
+        log_line('Qualification canceled by the user (manual point cut).')
         plt.close('all')
         os.chdir(rootPath)
     except Exception as e:
@@ -1574,8 +1574,8 @@ def choose_variables_to_check(candidates, root):
     ttk.Button(btns, text="None",
                command=lambda: [v.set(False) for v in vars_map.values()]).pack(side='left', padx=6)
 
-    # 'chosen' None means the user cancelled -> abort the whole run (the caller
-    # raises ManualCutCancelled); an empty list means "review nothing, proceed".
+    # 'chosen' None means the user canceled -> abort the whole run (the caller
+    # raises ManualCutCanceled); an empty list means "review nothing, proceed".
     result = {'chosen': None}
     def confirm():
         result['chosen'] = [n for n, v in vars_map.items() if v.get()]
@@ -1907,7 +1907,7 @@ def build_qualification_tab(container, root, shared_log=None):
                 _last_seaguard['data_type'] = dType_combobox.get()
             dType_combobox.set('')            # HOBO is neither TSCP profile nor mooring
             dType_combobox.config(state='disabled')
-            # GMT-3 does not apply: greyed out AND unchecked (the last Seaguard
+            # GMT-3 does not apply: grayed out AND unchecked (the last Seaguard
             # choice is remembered and restored when switching back)
             _last_seaguard['gmt'] = correct_gmt3h.get()
             correct_gmt3h.set(False)
@@ -2102,7 +2102,7 @@ def build_qualification_tab(container, root, shared_log=None):
         ax.set_title(ax.get_title() +
                      '\nClick = move cutoff  |  buttons below (keys: S / R / Enter = Done / Esc = Cancel)')
         fig.subplots_adjust(bottom=0.30)  # room for the button row above the rule text
-        state = {'cutoff': lux_info['proposed_cutoff'], 'artists': [], 'cancelled': False}
+        state = {'cutoff': lux_info['proposed_cutoff'], 'artists': [], 'canceled': False}
 
         def redraw():
             for artist in state['artists']:
@@ -2167,7 +2167,7 @@ def build_qualification_tab(container, root, shared_log=None):
 
         def cancel(*_event):
             # same behavior as the manual-cut panels: abort the qualification
-            state['cancelled'] = True
+            state['canceled'] = True
             plt.close(fig)
 
         def on_key(event):
@@ -2209,8 +2209,8 @@ def build_qualification_tab(container, root, shared_log=None):
             pass
         theme.style_plot_window(fig, 'Light window review - %s' % site)  # app icon + title
         wait_figure_close(fig)
-        if state['cancelled']:
-            raise data.ManualCutCancelled('Light window review cancelled.')
+        if state['canceled']:
+            raise data.ManualCutCanceled('Light window review canceled.')
         return state['cutoff']
 
     # The whole qualification pipeline runs inside this function so the main
@@ -2539,12 +2539,12 @@ def build_qualification_tab(container, root, shared_log=None):
         n_samples = len(raw_data)
 
         # Check Variables opens the per-variable panels for the chosen variables;
-        # Depth's whole-row cuts carry over (greyed/locked) so they are not re-cut.
+        # Depth's whole-row cuts carry over (grayed/locked) so they are not re-cut.
         if INPUT['check_variables'] == True:
             candidates = [name for name, _key in MANUAL_CUT_COLUMNS if name in raw_data.columns]
             chosen = choose_variables_to_check(candidates, window)
             if chosen is None:            # Cancel/Esc in the chooser -> abort run
-                raise data.ManualCutCancelled()
+                raise data.ManualCutCanceled()
             for i, name in enumerate(chosen, start=1):
                 rows = data.trim_selected_variable(raw_data, name, tk_root=window,
                                                    locked=manual_dismiss_rows,

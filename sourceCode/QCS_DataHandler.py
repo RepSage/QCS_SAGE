@@ -912,7 +912,7 @@ _HOBO_PT_CLOCK = r'(?i)(\d{1,2})h(\d{1,2})min(\d{1,2})s'
 
 
 # Physically possible water temperature for a moored HOBO. Deliberately wide -
-# this is only used to recognise a LOST DECIMAL SEPARATOR, not to judge data.
+# this is only used to recognize a LOST DECIMAL SEPARATOR, not to judge data.
 _HOBO_T_MIN, _HOBO_T_MAX = -5.0, 60.0
 
 
@@ -2092,7 +2092,7 @@ def _show_and_wait(fig, tk_root):
     tk_root.wait_variable(done)
 
 
-class ManualCutCancelled(Exception):
+class ManualCutCanceled(Exception):
     """Raised when the operator presses Cancel/Esc in a manual point-cut panel
     (or the variable chooser): the caller aborts the whole qualification run and
     returns to the input form instead of proceeding."""
@@ -2105,14 +2105,14 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     dismiss (empty if none), or None if the user pressed Skip. Never modifies data.
 
     locked:   indices already dismissed upstream (e.g. the Depth whole-row cut) -
-              shown greyed and not selectable, and excluded from the returned set.
+              shown grayed and not selectable, and excluded from the returned set.
     progress: (i, total) shown in the title, e.g. '[2 of 5]'."""
     x = np.asarray(x)
     y = np.asarray(y, dtype=float)
     locked = set() if locked is None else set(int(i) for i in locked)
     dismissed = set()
     history = []          # stack of per-box selections, for Undo
-    state = {'skipped': False, 'drawn': False, 'cancelled': False}
+    state = {'skipped': False, 'drawn': False, 'canceled': False}
 
     fig, ax = plt.subplots(figsize=(10, 6.5))
     plt.subplots_adjust(bottom=0.20, top=0.88)
@@ -2167,7 +2167,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
         fig.canvas.draw_idle()
 
     def on_scroll(event):
-        # mouse-wheel zoom centred on the cursor (no need for the toolbar lens)
+        # mouse-wheel zoom centered on the cursor (no need for the toolbar lens)
         if event.inaxes is not ax:
             return
         scale = 1 / 1.2 if event.button == 'up' else 1.2   # wheel up = zoom in
@@ -2229,7 +2229,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     def do_cancel(_=None):
         # abort the WHOLE qualification and go back to the form (not just this
         # series); raised after the window closes
-        state['cancelled'] = True
+        state['canceled'] = True
         plt.close(fig)
 
     def do_help(_=None):
@@ -2244,7 +2244,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
                 'Mouse wheel zooms around the cursor; middle-button drag pans.\n\n'
                 'The points are NOT deleted: they stay in the sheet with flag 5 and\n'
                 'their value blanked, so the manual cut stays traceable. Points already\n'
-                'cut in the Depth review appear greyed and are kept dismissed.\n\n'
+                'cut in the Depth review appear grayed and are kept dismissed.\n\n'
                 'Undo   - undo the last box\n'
                 'Reset  - clear the dismissals made here and reset the zoom\n'
                 'Skip   - leave this series untouched (continue)\n'
@@ -2282,8 +2282,8 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None):
     redraw()
     _theme.style_plot_window(fig, 'Manual point cut - %s' % label)  # app icon + title
     _show_and_wait(fig, tk_root)
-    if state['cancelled']:
-        raise ManualCutCancelled()
+    if state['canceled']:
+        raise ManualCutCanceled()
     return None if state['skipped'] else dismissed
 
 

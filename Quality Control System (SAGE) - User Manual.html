@@ -271,7 +271,7 @@
             (current)</code> per selected site. The current panels honour the
             <strong>time window</strong> and the <strong>depth range</strong> (which also sets
             the stick/vector reference depth to the band's centre); <strong>Fixed scale</strong>
-            gives every heatmap one shared speed colour scale so sites/years compare 1:1; and
+            gives every heatmap one shared speed color scale so sites/years compare 1:1; and
             selecting two or more sites adds a cross-site <em>"Current mean speed across
             sites"</em> panel. The four current QC thresholds (max speed, min signal strength,
             max speed stdev, tilt) are editable under Settings &rarr; Parameters &rarr;
@@ -349,7 +349,7 @@
                 <strong>flag 5</strong> and their value is blanked, so the manual cut stays
                 traceable. The mooring <strong>Depth</strong> review runs automatically
                 (independent of this option) to trim spurious depths from equipment handling;
-                its whole-row cuts carry over (greyed) into the per-variable panels so the same
+                its whole-row cuts carry over (grayed) into the per-variable panels so the same
                 points are never cut twice.</td>
         </tr>
         <tr>
@@ -564,21 +564,29 @@
             <td>Dropdown to select the type of T-S parameters.</td>
         </tr>
         <tr>
-            <td>Trend Lines</td>
-            <td>Checkbox to add trend lines.</td>
-        </tr>
-        <tr>
-            <td>Degree</td>
-            <td>Field for the degree of the trend polynomial.</td>
+            <td>Fixed Scale</td>
+            <td>Checkbox to use fixed scales (defined in SCALE SETTINGS), allowing direct
+            comparison between plots.</td>
         </tr>
         <tr>
             <td>Show Data Points</td>
             <td>Checkbox to show individual data points on the plots.</td>
         </tr>
         <tr>
-            <td>Fixed Scale</td>
-            <td>Checkbox to use fixed scales (defined in SCALE SETTINGS), allowing direct
-            comparison between plots.</td>
+            <td>Show disagreement bars</td>
+            <td>(v12.0, HOBO only) Draws one vertical bar per sample on the temperature
+            series showing how far the redundant replicates disagreed at that instant
+            (bar = max &minus; min, centered on the plotted mean). Only a database built from
+            COMBINED replicates carries that spread; it starts checked, which is what the
+            program did before the option existed.</td>
+        </tr>
+        <tr>
+            <td>Trend Lines</td>
+            <td>Checkbox to add trend lines.</td>
+        </tr>
+        <tr>
+            <td>Degree</td>
+            <td>Field for the degree of the trend polynomial.</td>
         </tr>
         <tr>
             <td>X-Axis Start / X-Axis End (mooring)</td>
@@ -1289,6 +1297,14 @@
 
     <h3>Scale Configuration</h3>
     <p>Advanced control over the plot scales through the "SCALE SETTINGS" panel.</p>
+
+    <h4>Plot color of a parameter (v12.0)</h4>
+    <p>The colored square beside each parameter name is the color that parameter is drawn
+    with in EVERY plot. Clicking it opens the color picker (which accepts a hex code, so a
+    house palette can be typed in) and the choice is saved between sessions. The picker
+    carries <strong>Reset this color</strong> and <strong>Reset all colors</strong>, which
+    put the parameter &mdash; or every parameter &mdash; back to the program default without
+    closing the picker.</p>
 
     <h4>Fixed vs. Automatic Scales</h4>
     <table>

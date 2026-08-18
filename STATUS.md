@@ -2,6 +2,116 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-18 (v12.0 round 13) - step 2 loses its own scroll area
+
+'< Back' and 'Generate panels' rode UP with the Execution log: step 2 kept
+a scroll area of its own around the settings grid, so the grid absorbed
+every pixel the log took and the action row stayed glued to the bottom of
+the shrinking page. Since round 11 the whole page already lives inside the
+tab's scroll area, so the inner one was removed and the grid goes straight
+into the page layout (`outer.addLayout(grid, 1)`).
+
+Measured with the log dragged from its natural height to 520 px in a 760 px
+window: 'Generate panels' stays at y=513 (was following the log) and the
+page's scrollbar range goes 90 -> 364; 'Run qualification' stays at y=575
+with its range going 120 -> 460. The two tabs now answer the same way.
+Screenshots at 1500x950 sample the same pixels as round 9. Suite 52/52;
+ruff clean.
+
+## 2026-08-18 (v12.0 round 12) - the picker's extras lined up
+
+`_line_up_picker()` in `QCS_QtViz`: the reset pair spans exactly the
+'Add to Custom Colors' button above it (each button = (anchor width -
+button-box spacing) / 2) and the HTML field reaches the right edge of the
+Red/Green/Blue column. Measured on the real picker: anchor [11, 235],
+resets [11, 235]; HTML [359, 527] with the spin boxes ending at 527.
+
+Two things this cost, both worth remembering: the anchor is found by
+GEOMETRY (the only QPushButtons parented to the dialog itself, bottom-most
+one), never by its label - Qt translates 'Add to Custom Colors'. And the
+alignment has to run AFTER the picker is on screen (QTimer.singleShot(0)):
+called before exec(), the columns are still at their size-hint positions
+and the HTML field was stretched to 459 instead of 527.
+
+## 2026-08-18 (v12.0 round 11) - resets keep the picker open, log opens freely
+
+- **Reset this color / Reset all colors** now APPLY and leave the picker
+  open, and the picker is set to the default it just restored. The custom
+  result codes are gone; OK is compared with the LIVE color
+  (`dbv.param_color`), not with the one the dialog opened with, so OK
+  right after a reset writes no override. Measured on the real dialog:
+  click reset -> visible=True, picker #ff4d4d, override dropped; OK after
+  that -> overrides still {}.
+- **The Execution log had a hard ceiling of ~124 px.** A QMainWindow never
+  lets a dock pass the CENTRAL widget's minimum, and the Qualification
+  page alone demanded 608 px (central minimum 643). Both tab pages are now
+  wrapped by `qtheme.scrollable()` (QScrollArea, widget resizable, no
+  frame, background left to the tab pane): central minimum 643 -> 103 px,
+  and asking for a 4000 px log gives 598 px in a 760 px window instead of
+  124. The boxes above get a scrollbar, which is what the owner asked for.
+  `QtShell._viz_page` is the scroll area holding the Visualization tab -
+  the two `currentWidget() is viz_tab` tests now compare against it.
+
+Screenshots at 1500x950 sample the same pixels as round 9 (page #fbfbfb,
+box interiors #f8f8f8): wrapping the pages changed nothing at normal size.
+Suite 52/52; ruff clean.
+
+## 2026-08-18 (v12.0 round 10) - color resets, American spelling, display order
+
+- **Color picker**: `_pick_color` now builds a `QColorDialog` (with
+  `DontUseNativeDialog`) and adds **Reset this color** / **Reset all
+  colors** to its button box with `ResetRole`, which puts them at the
+  bottom LEFT. They close the dialog with custom result codes (2 and 3),
+  so the accept path is untouched. New toolkit-free helper
+  `dbv.reset_param_colors()` drops every override at once.
+- **Spelling**: every `colour` in the code, in the manual and in this file
+  became `color` (37 occurrences in 5 modules). Released changelog entries
+  were NOT rewritten - they are the record of what shipped.
+- **Display options** in Visualization settings, in the owner's order:
+  Fixed scale, Show data points, Show disagreement bars (HOBO), Tendency
+  lines, Regression degree. The T-S rows stay above with the panel
+  checkboxes: they pick a FIGURE, not a way of drawing one.
+- **Show disagreement bars** is a real new setting, HOBO only:
+  `disagreement` BooleanVar in `QCS_DatabaseView.build_step2` (VARIABLE
+  only, no tk widget - the tk Step 2 is the hidden pipeline host),
+  persisted as `dbv_disagreement`, carried as
+  `dataViewSettings['showDisagreementBars']` and read by
+  `plot_hobo_params_at_site`. Default ON = the old behavior.
+
+Proven on the real shell with the PLES combined-replicate database:
+generating the panel with the box ON gives 1 errorbar container (bars and
+their legend row on screen), OFF gives 0; the tk var and the setting
+follow the checkbox. Seaguard/BURACAS step 2 builds with the same order
+and no disagreement row. Suite 52/52; ruff clean.
+
+**Note for the next session:** the operator's `qcs_user_settings.json` was
+written by the RUNNING app at 10:06 while this work was going on. An
+earlier restore of a backup (09:21) overwrote a color the operator had
+just set. Rule learned: patch `save_user_prefs` to a no-op in throwaway
+drivers instead of backing up and restoring that file.
+
+## 2026-08-18 (v12.0 round 9) — the two tabs now look alike
+
+Three edits, all in `QCS_QtViz.py`, all proven on screenshots of the REAL
+shell (a throwaway driver booted `QCS_QtApp` as `main()` does, loaded the
+PLES HOBO database and grabbed both tabs; light and dark):
+
+- the plot-color swatches in Scale settings get a POINTING HAND cursor;
+- the Visualization tab's own layout no longer adds 9 px of its own —
+  each page already sets 9 px, and the two stacked put this tab's boxes
+  18 px from the window edge while Qualification sat at 9;
+- **the gray slab is gone.** `QScrollArea.setWidget()` switches the inner
+  widget's `autoFillBackground` ON, so it painted flat `palette(Window)`
+  (#efefef) over the tab pane's lighter Fusion gradient (#f8f8f8-#fbfbfb)
+  — that rectangle was what read as "the boxes are inside a gray box".
+  Both the inner widget and the viewport now leave the background alone.
+  Measured before/after at the same pixels: page #efefef -> #fbfbfb, box
+  interior #ececec -> #f8f8f8, i.e. the Qualification tab's values.
+
+Suite 52/52; ruff clean. The scroll area of step 2 never actually scrolls
+at the window's minimum size (scrollbar range 0..0 at 700x380), so it is
+a safety net, not a surface the operator sees moving.
+
 ## 2026-08-17 (v12.0 round 8) — update check, File menu, criteria visibility, flow
 
 Owner approved a batch of suggestions; all applied except the worker
@@ -43,7 +153,7 @@ dropping the hidden-tk bootstrap.
 `1c3f4cd`: Selection summary refills on prefs restore; Recent gets
 placeholder+tooltip; Next bold; HOBO panel tooltips drop the 'HOBO only:'
 prefix (context makes it noise); **shared-toggle bug fixed** — unchecking
-Tendency lines never re-greyed the degree entry (latent in tk too);
+Tendency lines never re-grayed the degree entry (latent in tk too);
 scale defaults are plain numbers (>=100 rounds to integers — '51254',
 not '5.125e+04'; the light plot itself is linear, only the text was
 scientific). E2E-proven; suite 52/52; ruff clean.
@@ -61,7 +171,7 @@ on the PLES pair; suite 52/52; ruff clean.
 ## 2026-08-17 (v12.0 field test, round 4) — 7 findings applied; viz Step 1 redesigned
 
 `521ddf1` (+ styling rounds `4fd3880`/`8ba79c1`: bold field labels,
-two-column viz Step 1, tabs bold with greyscale active/inactive — pastel
+two-column viz Step 1, tabs bold with grayscale active/inactive — pastel
 tried and dropped). Round 4: continuous progress ((k-1)*5+s of n*5),
 busy cursor on the main window only (the app-wide override span over the
 review windows read as a hang), Recent combo restored, Output folder
@@ -118,7 +228,7 @@ adaptive light review under Qt.
 
 ## 2026-08-17 (v12.0 round 3 + Settings window) — phase 2 opened
 
-Round 3 applied (`6613d1c`): 'Remove dismissed data' unchecked+greyed for
+Round 3 applied (`6613d1c`): 'Remove dismissed data' unchecked+grayed for
 HOBO in both shells (no Depth column → no whole-row dismissals; re-enables
 for Seaguard), and the Qt progress bar now follows the pipeline's own
 'Stage k/5' lines, prefixed with the batch/replicate scope ('Replicate
@@ -938,7 +1048,7 @@ The four app changes, each born from a measured incident of this week:
   fires on clean ±12 h. Now structured, in the log and in batch provenance
   (`ANOMALOUS PHASE`). Warning only: no shift, no flags.
 - **Settings-reset dialog** in `QCS_App` on first launch after a version
-  change (the reset is old v3.2 behaviour; only the announcement is new).
+  change (the reset is old v3.2 behavior; only the announcement is new).
   Lives in the shell, so headless/batch can never block on it — verified.
 - **Once-per-run warning dedup** (`QC.reset_run_warnings()` at RUN start): the
   window-span warning used to repeat up to 9× per file.
@@ -970,7 +1080,7 @@ will add the two derived columns and re-stamp.
 
 The repository was already correct. It holds exactly **two** version STAMPS —
 `QCS_VERSION` and the manual's header — and both already read v11.0. Every other
-mention is a HISTORICAL reference ("added in v8.0", "the pre-v9.0 behaviour",
+mention is a HISTORICAL reference ("added in v8.0", "the pre-v9.0 behavior",
 "Per-variable Flag_ columns (v4.0)"), which is a fact about the past: rewriting
 those to v11.0 would make them false. 38 of the manual's 39 mentions are of this
 kind. **What was stale was the DATA**, and that is now fixed.

@@ -6,9 +6,9 @@ md5 does not match its row reads as CORRUPTION. Two of the three in-place
 repair scripts update the manifest when they rewrite a raw file
 (correct_clock.py, repair_collapsed_clock.py); repair_unset_clock.py never did,
 and files re-exported by hand were never re-recorded either. The result was 12
-rows still labelled 'copied_verified' with the pre-repair md5 AND the
+rows still labeled 'copied_verified' with the pre-repair md5 AND the
 pre-repair size - the record silently disagreeing with the archive since
-August 2026, found only when the reorganisation forced a full re-check.
+August 2026, found only when the reorganization forced a full re-check.
 
 This script does not repair data. It reconciles the RECORD with an archive
 already known-good, and says so in the row: the note states that the content

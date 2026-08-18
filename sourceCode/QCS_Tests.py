@@ -96,7 +96,7 @@ def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interva
     # QARTOD 3-point spike test: spike = |V2 - (V1 + V3)/2|, compared to a
     # relative threshold (factor x robust local sigma of the values, 1.4826xMAD,
     # so the spikes themselves do not inflate the reference). Single pass.
-    # Endpoints and neighbours of gaps have no valid pair of neighbours and are
+    # Endpoints and neighbors of gaps have no valid pair of neighbors and are
     # flagged UNKNOWN (not evaluated), never GOOD.
     pop = dataframe[parameter].copy()
     n = len(pop)
@@ -113,7 +113,7 @@ def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interva
     spike_vals = spike.to_numpy()
 
     missing = np.where(dataframe[parameter].isna())[0]
-    # spike/threshold NaN => no valid neighbours or indeterminate sigma: not evaluable
+    # spike/threshold NaN => no valid neighbors or indeterminate sigma: not evaluable
     unevaluated = np.where(np.isnan(spike_vals) | np.isnan(upperLimit))[0]
     unevaluated = [i for i in unevaluated if i not in missing]
     reproved = list(np.where(spike_vals > upperLimit)[0])
@@ -269,7 +269,7 @@ def vertical_gradient_test(values, depth, flags, grad_fail, grad_susp, min_dz=0.
     # compared to relative thresholds (factor x robust sigma of the profile's
     # gradients). Uses the real depth (dV/dz), not the time sequence.
     # - NaN value -> MISSING
-    # - first point, neighbour of a NaN or |dz| < min_dz (stopped at the same
+    # - first point, neighbor of a NaN or |dz| < min_dz (stopped at the same
     #   depth) -> UNKNOWN (indeterminate gradient)
     v = np.asarray(values, dtype=float)
     z = np.asarray(depth, dtype=float)
@@ -286,7 +286,7 @@ def vertical_gradient_test(values, depth, flags, grad_fail, grad_susp, min_dz=0.
 
     # the deviation is measured relative to the profile's TYPICAL gradient (median):
     # a stratified profile has a nonzero background gradient, and the test looks
-    # for anomalous deviations from that behaviour, not the gradient itself
+    # for anomalous deviations from that behavior, not the gradient itself
     valid_grads = grad[computable]
     if len(valid_grads) >= 4:
         med = np.nanmedian(valid_grads)

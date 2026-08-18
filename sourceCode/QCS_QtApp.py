@@ -179,8 +179,12 @@ class QtShell(QMainWindow):
         self._run_scope = None      # 'File k/n' / 'Replicate k/n' progress prefix
 
         tabs = QTabWidget()
-        tabs.addTab(self._qualification_tab(), 'Data qualification')
+        # every page is wrapped: a page that cannot shrink caps how far the
+        # Execution log can be dragged open (see qtheme.scrollable)
+        tabs.addTab(qtheme.scrollable(self._qualification_tab()),
+                    'Data qualification')
         self.viz_tab = None               # attached by main() after the bootstrap
+        self._viz_page = None             # the scroll area that holds viz_tab
         self._viz_placeholder = QWidget()
         tabs.addTab(self._viz_placeholder, 'Data visualization')
         tabs.currentChanged.connect(self._tab_changed)
@@ -534,7 +538,7 @@ class QtShell(QMainWindow):
         actions = QGridLayout()
         for col in range(3):
             actions.setColumnStretch(col, 1)
-        # ordinary button height, but vertically centred on the RUN button -
+        # ordinary button height, but vertically centered on the RUN button -
         # not on the run box, which also holds the hint and the post-run
         # shortcuts below it (owner)
         settings_box = QWidget()
@@ -583,14 +587,16 @@ class QtShell(QMainWindow):
         """Called by main() once the hidden tk pipeline (which the tab remote-
         controls) exists."""
         self.viz_tab = VisualizationTab(self)
+        self._viz_page = qtheme.scrollable(self.viz_tab)
         idx = self.tabs.indexOf(self._viz_placeholder)
         self.tabs.removeTab(idx)
-        self.tabs.insertTab(idx, self.viz_tab, 'Data visualization')
+        self.tabs.insertTab(idx, self._viz_page, 'Data visualization')
 
     def _tab_changed(self, _index):
         # hand a just-qualified file to the Visualization tab, exactly like
         # the tk shell does on its tab switch
-        if (self.viz_tab is not None and self.tabs.currentWidget() is self.viz_tab
+        if (self.viz_tab is not None
+                and self.tabs.currentWidget() is self._viz_page
                 and qm.PENDING_VIZ_PREFILL):
             dbv.apply_pending_prefill(qm.PENDING_VIZ_PREFILL)
             qm.PENDING_VIZ_PREFILL = None
@@ -711,7 +717,7 @@ class QtShell(QMainWindow):
                 got = 0
                 while True:
                     if dlg.wasCanceled():
-                        self.log_line('Info: update download cancelled.')
+                        self.log_line('Info: update download canceled.')
                         return False
                     chunk = resp.read(1 << 16)
                     if not chunk:
@@ -765,7 +771,7 @@ class QtShell(QMainWindow):
         if not paths:
             return
         # drops land in the ACTIVE tab's file field, like the tk shell
-        if self.viz_tab is not None and self.tabs.currentWidget() is self.viz_tab:
+        if self.viz_tab is not None and self.tabs.currentWidget() is self._viz_page:
             self.viz_tab.apply_selected_files(paths)
         else:
             self.apply_selected_files(paths)
@@ -1142,7 +1148,7 @@ class QtShell(QMainWindow):
             self.light_adaptive.setChecked(True)
         self.remove_bad.setChecked(bool(p.get('remove_bad', False)))
         self.remove_suspect.setChecked(bool(p.get('remove_suspect', False)))
-        if self.remove_dismissed.isEnabled():   # HOBO keeps it off and greyed
+        if self.remove_dismissed.isEnabled():   # HOBO keeps it off and grayed
             self.remove_dismissed.setChecked(bool(p.get('remove_dismissed', False)))
         if p.get('macroregion') in qm.REGIONS:
             self.macroregion.setCurrentText(p['macroregion'])
