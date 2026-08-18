@@ -152,33 +152,26 @@
 </head>
 <body>
     <h1>User Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v12.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v12.2</em></p>
 
-    <h3>What v12.1 added</h3>
+    <h3>What v12.2 added</h3>
     <ul>
-      <li><strong>Manual point cut, mooring data:</strong> the panel shades the
-      stretches where the DEPTH says the instrument was being lowered or hauled
-      up, with a dashed marker at the water entry and at the start of the
-      recovery. The tide is never marked: the test is the net vertical
-      displacement over two minutes, which a tidal cycle (centimetres per
-      minute) cannot reach and a wave cancels out.</li>
-      <li><strong>Selection summary, Seaguard:</strong> serial, logging start,
-      sampling interval and how many sensor groups the cast merges, read from
-      the session folders before anything is decoded; plus a
-      <em>CO&#8322; data</em> line with the file, its readings and its own
-      period.</li>
-      <li><strong>Plot windows:</strong> the <em>Reset view</em> button works
-      again (it was built for the retired tk toolbar and never appeared in the
-      Qt one).</li>
-      <li><strong>Visualization settings:</strong> the regression degree starts
-      at 5 for every data type, and the rarely-used variables carry their
-      <em>Rarely used</em> heading again.</li>
-      <li><strong>Installer:</strong> the finish page offers to open this
-      manual as well as to start the program.</li>
-      <li><strong>Fixed:</strong> dragging a file onto a field (instead of onto
-      bare background) did nothing - the field swallowed the drop;
-      <em>Go to visualization</em> landed on step 2 of an older database
-      instead of the file just qualified.</li>
+      <li><strong>Your choices are kept between sessions again.</strong> The
+      window reopens at the size, position and maximized state it was closed
+      with, the Execution log reopens hidden if you hid it, and the form (files,
+      output folder and name, site, region, options) comes back even if you
+      never pressed RUN. Since the move to the new interface, saving from one
+      tab could silently undo what the other tab had saved - that is fixed, so
+      the qualification and visualization choices no longer overwrite each
+      other.</li>
+      <li><strong>Installation:</strong> the program is now always started as
+      YOU, never as the administrator the installer ran as. An app started with
+      administrator privileges refuses file drag-and-drop from Windows Explorer,
+      which made the program look broken right after installing; it also affects
+      reopening the program after a one-click update.</li>
+      <li><strong>Selection summary:</strong> the CO&#8322; line only appears
+      where CO&#8322; data can be added - a Seaguard scalar run - and is hidden
+      for HOBO files and for current profiler (Doppler) sessions.</li>
     </ul>
 
     <div class="indice">

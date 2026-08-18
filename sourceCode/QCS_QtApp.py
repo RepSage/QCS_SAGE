@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
-"""QCS v12.0 Qt shell - phase 1 of the interface port (DEV build).
+"""QCS Qt shell - the released interface since v12.0.
 
-The REAL qualification pipeline behind the approved Qt design: this window
-fills the same `vals` dict as the tk interface (QCS_Main.apply_input_settings)
+The REAL qualification pipeline behind the Qt design: this window fills the
+same `vals` dict as the retired tk interface (QCS_Main.apply_input_settings)
 and runs the same start_qualification, with the UI facade pointed at Qt.
 The tk pipeline closures are materialized once on a hidden tk root (the same
 pattern the batch drivers use); no tk window is ever shown and no tk event
 loop runs - every in-run interaction goes through the Qt overrides below.
 
-Working in this build: the whole program - the qualification workflow
-(Seaguard single/batch/Doppler/Profile with phase picking, CO2 merge, HOBO
-single and replicates in both light modes with the replicate review, Depth
-review, 'Check variables' manual cut), the Settings window, and the Data
-visualization tab (QCS_QtViz remote-controls the real DatabaseView wizard).
-The review windows are pure matplotlib and open as Qt windows.
+It hosts the whole program: the qualification workflow (Seaguard
+single/batch/Doppler/Profile with phase picking, CO2 merge, HOBO single and
+replicates in both light modes with the replicate review, Depth review,
+'Check variables' manual cut), the Settings window, and the Data visualization
+tab (QCS_QtViz remote-controls the real DatabaseView wizard). The review
+windows are pure matplotlib and open as Qt windows.
 
-Run with:  QCS_v12_dev.bat  (Desktop; packaging/v12_env venv, PySide6 6.8.3).
-Master still ships the tk app - this shell is the port in progress.
+Run with:  QCS.bat  (packaging/v12_env venv, PySide6 6.8.3).
 """
 import os
 import re
@@ -59,7 +58,7 @@ qm.USER_PREFS = dbv.USER_PREFS
 # tk dialog that never shows in a Qt app, and a crash then looks like a hang).
 # Claim the hook for Qt as soon as this module is imported - main() is too
 # late for anything that runs the shell without it (drivers, tests).
-qtheme.install_crash_handler('QCS (v12.0)')
+qtheme.install_crash_handler('QCS %s' % data.QCS_VERSION)
 
 
 class _UpdateBridge(QObject):
