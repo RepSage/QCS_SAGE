@@ -515,9 +515,12 @@ class QtShell(QMainWindow):
         for key, label in (('instrument', 'Instrument:'), ('files', 'Files:'),
                            ('mode', 'Mode:'), ('period', 'Period:'),
                            ('interval', 'Interval:'), ('serials', 'Serial(s):'),
-                           ('timebase', 'Timebase:')):
+                           ('co2', 'CO₂ data:'), ('timebase', 'Timebase:')):
             lab = QLabel('-')
             qtheme.muted(lab)
+            # the CO2 line is the long one (file, readings, period): it wraps
+            # instead of widening the whole Output column
+            lab.setWordWrap(key == 'co2')
             self.sum_labels[key] = lab
             fsum.addRow(label, lab)
         fout.addRow(gsum)
@@ -906,6 +909,8 @@ class QtShell(QMainWindow):
 
     def _update_summary(self, names):
         itype = self.input_type.currentText()
+        for lab in self.sum_labels.values():
+            lab.setText('-')
         self.sum_labels['instrument'].setText(itype or '-')
         self.sum_labels['files'].setText(
             '%d  (%s%s)' % (len(names), os.path.basename(names[0]),
@@ -933,6 +938,17 @@ class QtShell(QMainWindow):
             if launches:
                 self.sum_labels['period'].setText(
                     'launched %s' % min(launches).strftime('%d/%m/%Y %H:%M'))
+        # Seaguard says as much about itself in its FOLDER NAMES as the .hobo
+        # header does: serial, deployment start, how many sensor groups the
+        # cast has and how many binary parts the group was split into. All of
+        # it is a listdir - decoding the session to preview it would freeze
+        # the window (v12.1)
+        peek = (data.peek_seaguard_session(names[0])
+                if itype in ('Seaguard', 'Doppler') else {})
+        if peek:
+            self.sum_labels['serials'].setText(peek['serial'])
+            self.sum_labels['period'].setText(
+                'logging started %s' % peek['start'].strftime('%d/%m/%Y %H:%M'))
         if itype == 'HOBO':
             mode = ('%d replicates of one deployment, combined' % len(names)
                     if len(names) > 1 else 'single logger')
@@ -943,7 +959,12 @@ class QtShell(QMainWindow):
                     ('current profiler (DCPS)'
                      if self.data_type.currentText() == 'TSCP Doppler'
                      else 'single deployment'))
+            if peek and peek.get('groups', 1) > 1 and len(names) == 1:
+                mode += ', %d sensor groups merged' % peek['groups']
+            if peek and peek.get('parts', 1) > 1 and len(names) == 1:
+                mode += ' (%d binary parts)' % peek['parts']
             tb = 'GMT (Seaguard) -> corrected to local (GMT-3)'
+            self._summarize_co2()
         self.sum_labels['mode'].setText(mode)
         self.sum_labels['timebase'].setText(tb)
 
@@ -970,6 +991,26 @@ class QtShell(QMainWindow):
         self.co2_btn.setEnabled(allowed)
         self.co2_label.setText(os.path.basename(self._co2_file) if self._co2_file else '')
         self.co2_clear.setVisible(bool(self._co2_file))
+        if allowed and self.file_edit.text().strip():
+            self._summarize_co2()   # the summary must follow the CO2 choice
+
+    def _summarize_co2(self):
+        """The CO2 addition in the Selection summary: what file, what period it
+        covers and the reminder that its clock is LOCAL - the one timebase the
+        GMT-3 correction must not touch (v12.1)."""
+        if not self._co2_file:
+            self.sum_labels['co2'].setText('none')
+            return
+        base = os.path.basename(self._co2_file)
+        try:
+            frame, _msgs = data.read_co2_file(self._co2_file)
+            span = '%s to %s' % (frame['Datetime'].min().strftime('%d/%m/%Y %H:%M'),
+                                 frame['Datetime'].max().strftime('%d/%m/%Y %H:%M'))
+            self.sum_labels['co2'].setText(
+                '%s  (%d readings, %s - local clock, interpolated onto the '
+                'Seaguard times)' % (base, len(frame), span))
+        except Exception as exc:
+            self.sum_labels['co2'].setText('%s  (unreadable: %s)' % (base, exc))
 
     def _select_co2(self):
         path, _f = QFileDialog.getOpenFileName(

@@ -203,39 +203,46 @@ def _merge_sensor_groups(groups):
     return master
 
 
-def read_seaguard_deployment(file_path):
-    """Reads a whole Seaguard deployment: the selected sensor-group folder plus
-    any sibling sensor-group folders of the SAME cast (same instrument serial and
-    start time, within a small tolerance), merged onto one time axis by
-    _merge_sensor_groups. Doppler/DCPS groups are skipped. Falls back to the
-    single-folder read when the folder is not a '<serial>-<group>-<timestamp>'
-    session folder (e.g. a lone Data000.bin)."""
+SESSION_FOLDER_RE = re.compile(
+    r'(\d+-\d+)-(\d+)-(\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d)')
+
+
+def seaguard_cast_folders(file_path):
+    """The sensor-group folders that belong to the SAME cast as `file_path`.
+
+    A Seaguard session folder is named '<serial>-<group>-<start>Z'. The groups
+    of one cast start close together (seconds to a couple of minutes apart -
+    each group's logging begins at a slightly different instant, and the
+    Doppler group can start a few minutes off), while different casts in the
+    same folder are far apart, so a start-time gap larger than CAST_GAP opens a
+    new cast. Anchoring on the SELECTED group's own start (the old 90 s window)
+    missed groups when the selected one was the time outlier - picking the
+    Doppler group made its sensor siblings invisible and the whole cast was
+    lost.
+
+    Returns (serial, [(start, folder_name), ...]) for the cast holding the
+    selection, or (None, None) when the selection is not a session folder (a
+    lone Data000.bin, an export). The deployment READER and the Selection
+    summary both read the cast through this one function - the clustering rule
+    lives here and nowhere else.
+    """
     import datetime as _dt
     group_folder = os.path.dirname(file_path)
     parent = os.path.dirname(group_folder)
-    pat = re.compile(r'(\d+-\d+)-(\d+)-(\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d)')
-    m = pat.match(os.path.basename(group_folder))
-    if not m:
-        return read_seaguard_bin(file_path)
-    serial = m.group(1)
     sel_name = os.path.basename(group_folder)
-    # every same-serial session folder in the parent, with its start time
+    m = SESSION_FOLDER_RE.match(sel_name)
+    if not m:
+        return None, None
+    serial = m.group(1)
     sessions = []
     for name in os.listdir(parent):
-        mm = pat.match(name)
+        mm = SESSION_FOLDER_RE.match(name)
         if not mm or mm.group(1) != serial:
             continue
         if os.path.exists(os.path.join(parent, name, 'Data000.bin')):
-            sessions.append((_dt.datetime.strptime(mm.group(3), '%Y-%m-%dT%H-%M-%S'), name))
+            sessions.append((_dt.datetime.strptime(mm.group(3),
+                                                   '%Y-%m-%dT%H-%M-%S'), name))
     sessions.sort()
-    # Cluster into CASTS. The sensor groups of one cast start close together
-    # (seconds to a couple of minutes apart - each group's logging begins at a
-    # slightly different instant, and the Doppler group can start a few minutes
-    # off), while different casts in the same folder are far apart. A start-time
-    # gap larger than CAST_GAP opens a new cast. Anchoring on the SELECTED group's
-    # own start (the old 90 s window) missed groups when the selected one was the
-    # time outlier - e.g. picking the Doppler group made its sensor siblings
-    # invisible and the whole cast was lost.
     CAST_GAP = 15 * 60
     clusters, cur = [], []
     for st, name in sessions:
@@ -246,7 +253,47 @@ def read_seaguard_deployment(file_path):
     if cur:
         clusters.append(cur)
     cast = next((c for c in clusters if any(n == sel_name for _, n in c)), None)
-    siblings = [(name, os.path.join(parent, name, 'Data000.bin')) for _, name in (cast or [])]
+    if cast is None or len(cast) <= 1:
+        return serial, None
+    return serial, cast
+
+
+def peek_seaguard_session(file_path):
+    """What a Seaguard selection says about itself WITHOUT decoding anything.
+
+    The folder names carry the serial and the deployment start, and a directory
+    listing says how many sensor groups the cast has and how many DataNNN.bin
+    parts the selected group was split into - enough for the Selection summary,
+    for the price of a listdir (decoding a long mooring just to preview it
+    would freeze the window). Returns {} for anything that is not a session
+    folder (v12.1).
+    """
+    group_folder = os.path.dirname(file_path)
+    m = SESSION_FOLDER_RE.match(os.path.basename(group_folder))
+    if not m:
+        return {}
+    import datetime as _dt
+    serial, cast = seaguard_cast_folders(file_path)
+    parts = [f for f in os.listdir(group_folder)
+             if re.fullmatch(r'Data\d+\.bin', f, re.IGNORECASE)]
+    return {'serial': m.group(1),
+            'start': _dt.datetime.strptime(m.group(3), '%Y-%m-%dT%H-%M-%S'),
+            'groups': len(cast) if cast else 1,
+            'parts': len(parts) or 1}
+
+
+def read_seaguard_deployment(file_path):
+    """Reads a whole Seaguard deployment: the selected sensor-group folder plus
+    any sibling sensor-group folders of the SAME cast (same instrument serial and
+    start time, within a small tolerance), merged onto one time axis by
+    _merge_sensor_groups. Doppler/DCPS groups are skipped. Falls back to the
+    single-folder read when the folder is not a '<serial>-<group>-<timestamp>'
+    session folder (e.g. a lone Data000.bin)."""
+    parent = os.path.dirname(os.path.dirname(file_path))
+    _serial, cast = seaguard_cast_folders(file_path)
+    if cast is None:
+        return read_seaguard_bin(file_path)
+    siblings = [(name, os.path.join(parent, name, 'Data000.bin')) for _, name in cast]
     if len(siblings) <= 1:
         return read_seaguard_bin(file_path)
     groups, skipped = [], []

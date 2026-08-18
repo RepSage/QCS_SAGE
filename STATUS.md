@@ -36,14 +36,23 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
    (`tb.mode` toggles, the view stack walks); Save opens a file dialog and
    was not exercised headlessly.
 7. Selection summary is thin for Seaguard, especially with a CO2 file -
-   NOT STARTED. `QtShell._update_summary` fills Period / Interval /
-   Serial(s) ONLY from `data.peek_hobo_header`; for Seaguard it sets just
-   Instrument, Files, Mode and Timebase, and the CO2 file is not named
-   anywhere in the box. What it needs: a cheap Seaguard peek (the BXML
-   header in `read_seaguard_bin` carries serial and interval - a full
-   decode of a long mooring is too slow for a selection preview) and a CO2
-   line (file name, its own period, and the overlap with the Seaguard
-   record, which is what `merge_co2_data` will actually use).
+   **DONE**. A Seaguard session says as much in its FOLDER NAMES as a
+   `.hobo` says in its header: new `data.peek_seaguard_session()` returns
+   serial, logging start, how many sensor groups the cast has and how many
+   `DataNNN.bin` parts the group holds - all from a listdir, because
+   decoding a mooring just to preview it would freeze the window. The cast
+   clustering that the deployment READER already did was extracted to
+   `data.seaguard_cast_folders()` and both now share it (the 15-min
+   CAST_GAP rule lives in one place). New **CO2 data** row: file name,
+   number of readings, its own period and the reminder that its clock is
+   LOCAL. Proven on CALIFORNIA/FUNDEIO 2019: serial 5650-2097, start
+   23/04/2019 13:15, '2 sensor groups merged', CO2 715 readings
+   23/04 09:12 -> 24/04 09:24. The refactor was checked against a real
+   deployment read before and after: 625 x 25, same time span, same
+   columns, still 2 groups merged.
+   **Still '-' for Seaguard: Interval** - it is not in the folder names and
+   getting it means decoding records (the .hobo header hands it over, the
+   BXML does not).
 
 9. (new, owner 2026-08-18) the parameters that start unchecked carry a
    heading again - **DONE**. The tk Step 2 had a 'Rarely used:' separator;
