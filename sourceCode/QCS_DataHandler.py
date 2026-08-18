@@ -2165,8 +2165,18 @@ def on_motion(event):
 # it is 60x above any tidal rate on this coast, so the natural cycle is never
 # marked.
 TRANSIT_RATE_M_PER_MIN = 0.5
-TRANSIT_MIN_DROP_M = 1.0       # a window has to cover a real depth change
 TRANSIT_JOIN_MIN = 2.0         # windows closer than this are one manoeuvre
+# Nothing about HANDLING is thrown away - handling can be the error the
+# operator is hunting - so the amplitude test only has to clear the depth
+# sensor's own noise. Measured on the PLES 2019S1 mooring (17,690 samples,
+# 5 s): with no test at all, noise crossing 0.5 m/min gives 194 windows and
+# shades 34% of the record; the real events are 16.0, 10.9 and 1.15 m and the
+# noise cluster stops at 0.25 m. Any value from 0.3 to 1.0 keeps exactly those
+# three, so the low end of that plateau is the one that discards least.
+TRANSIT_MIN_AMPLITUDE_M = 0.3
+# an in/out MARKER is a stronger claim than shading: it needs a real vertical
+# excursion, not a step
+TRANSIT_MARK_NET_M = 1.0
 
 
 def depth_transit_windows(depth, times):
@@ -2203,11 +2213,11 @@ def depth_transit_windows(depth, times):
             windows.append((i0, i1))
     # the test is on the depth RANGE inside the window, not on its endpoints:
     # a lift-and-lower (the instrument pulled up and put back, sample ~3600 of
-    # the PLES 2019 mooring) nets to zero and was being discarded
+    # the PLES 2019 mooring) nets to zero and would be discarded
     kept = []
     for i0, i1 in windows:
         segment = depth[i0:i1 + 1]
-        if np.nanmax(segment) - np.nanmin(segment) >= TRANSIT_MIN_DROP_M:
+        if np.nanmax(segment) - np.nanmin(segment) >= TRANSIT_MIN_AMPLITUDE_M:
             kept.append((i0, i1))
     return kept
 
@@ -2240,8 +2250,8 @@ def draw_depth_context(ax, x, depth, times):
         # first window's end 'at working depth' marked the moment the
         # instrument LEFT the water (caught on the 2019S1 moorings)
         net = depth_values[i1] - depth_values[i0]
-        if abs(net) < TRANSIT_MIN_DROP_M:
-            continue          # lifted and put back: shaded, but neither in nor out
+        if abs(net) < TRANSIT_MARK_NET_M:
+            continue          # handled in place: shaded, but neither in nor out
         if net > 0:
             ax.axvline(x[i1], color='#b30000', linestyle='--', linewidth=1,
                        zorder=1, label=once('At working depth'))

@@ -30,11 +30,10 @@ AppPublisher=SAGE (COPPE/UFRJ)
 DefaultDirName={autopf}\QCS
 DefaultGroupName=QCS
 DisableProgramGroupPage=yes
-; The folder page is always shown (v12.1, owner request). Inno's default is
-; 'auto', which HIDES it whenever a previous install is found - so every
-; upgrade silently reused the old folder and the operator never got the
-; choice.
-DisableDirPage=no
+; The folder page stays on Inno's default 'auto': shown on a FRESH install,
+; hidden when a previous install is found, so an upgrade keeps its folder
+; without asking (owner, v12.1 - the v12.1 first draft forced it always on
+; and the owner asked for the old rule back).
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 OutputBaseFilename=QCS_Setup_v{#AppVersion}
