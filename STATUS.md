@@ -2,6 +2,44 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-18 - v12.0 RELEASED (tag + installer); publication pending
+
+PR #30 merged (`51eb277`). Ritual run to the end except the publication:
+
+- **`v12.0` tagged on `7cb6d62`** (annotated, "v12.0: the interface moves
+  to Qt"). The tag first pointed at the merge commit and was MOVED, with
+  the owner's decision, after the smoke test found the shell still calling
+  itself a development build: the window title carried '(v12.0 shell)' and
+  the status bar 'v12.0 development shell - the tk app on master remains
+  the released interface'. Both gone in `7cb6d62`; the title is now
+  'QCS - Quality Control System (SAGE)  -  v12.0', the same shape the tk
+  shell used. Moving a pushed tag was acceptable ONLY because nothing
+  consumed it yet (no Release, no installer out). Lesson: check the
+  interface's self-description BEFORE tagging - it is the one string a
+  branch banner hides in.
+- Branch `port-v12.0` deleted local and remote; `master` is the only line.
+- **Installer built and smoke-tested**: PyInstaller from
+  `%TEMP%\qcs_build_env` (the pinned stack was still there), manual copied
+  beside the exe, bundle verified through the PYZ toc (PySide6,
+  backend_qtagg, backend_svg, QCS_Qt* modules, HoboCal, gsw, openpyxl,
+  tkinter; QCS_QtApp is the entry script, so it lives in the PKG, not the
+  PYZ). Frozen app alive 20 s, right title, closed cleanly, no crash log.
+  ISCC -> `QCS_Setup_v12.0.exe`, **81.5 MB** (v11.6.1 was 57 MB - PySide6
+  is the difference), copied to the Desktop, md5 checked against
+  `packaging\Output`.
+- Release text ready in `Desktop\RELEASE_v12.0.md` (English name; the old
+  convention was `RELEASE_..._para_colar.md`).
+
+**Still to do:** the GitHub Release for `v12.0` (notes + the installer as
+the asset) is NOT published, and the **owner field test of the frozen exe
+running a REAL qualification** is still open (Depth review, adaptive light
+review, replicate review, the viz tab). The launch smoke cannot prove lazy
+imports - a review window that only imports on demand can still fail in
+the frozen build. Field-test before publishing.
+
+**Open, deliberately:** the worker thread with a Cancel button (deferred to
+v12.1 on 2026-08-17 - the pipeline still runs on the interface thread).
+
 ## 2026-08-18 - v12.0 CLOSED, PR open
 
 Everything of rounds 9-13 is in `5310556`, and the whole cycle is PR #30
