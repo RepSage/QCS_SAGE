@@ -2,6 +2,23 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-18 - v12.0 CLOSED, PR open
+
+Everything of rounds 9-13 is in `5310556`, and the whole cycle is PR #30
+(`port-v12.0` -> `master`, 35 commits, 26 files, +3628/-330):
+https://github.com/RepSage/QCS_SAGE/pull/30
+
+The manual carries the new options (Show disagreement bars, plot color per
+parameter with its two resets) and the changelog entry is complete.
+Suite 52/52, ruff clean, the shell boots and renders both tabs.
+
+**Still to do after the merge:** tag `v12.0` on `master`, write the GitHub
+Release from `changelog/v12.0.md`, then delete `port-v12.0` local and
+remote and return to an updated `master`.
+
+**Open, deliberately:** the worker thread with a Cancel button (deferred to
+v12.1 on 2026-08-17 - the pipeline still runs on the interface thread).
+
 ## 2026-08-18 (v12.0 round 13) - step 2 loses its own scroll area
 
 '< Back' and 'Generate panels' rode UP with the Execution log: step 2 kept
