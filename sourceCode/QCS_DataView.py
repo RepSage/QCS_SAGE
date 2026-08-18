@@ -253,21 +253,34 @@ def enable_scroll_zoom(fig):
     # the several parameter axes, which makes the Tk window jitter/resize on its
     # own - overriding set_message stops it. (Best-effort, backend-dependent;
     # the mouse interactions above work regardless.)
+    # The toolbar belongs to whichever backend is showing the figure, and the
+    # two shells do not share one: the Qt shell runs backend_qtagg (QToolBar,
+    # QAction) and the legacy tk shell runs backend_tkagg (packed buttons).
+    # v12.0 shipped only the tk branch, so under Qt the whole block raised and
+    # was swallowed - no 'Reset view' button at all (owner, v12.1).
+    _DROP = ('Zoom', 'Home', 'Subplots', 'Customize')
     try:
-        from tkinter import ttk as _ttk
         tb = fig.canvas.manager.toolbar
         tb.set_message = lambda *a, **k: None   # no live coord text -> no resize
-        # drop the Zoom lens (wheel zoom replaces it), the Home button (our
-        # 'Reset view' replaces it) and Configure subplots (its wspace/hspace do
-        # nothing on these single-subplot figures)
-        for _name in ('Zoom', 'Home', 'Subplots'):
-            btn = getattr(tb, '_buttons', {}).get(_name)
-            if btn is not None:
-                btn.pack_forget()
-        if not getattr(tb, '_qcs_reset_added', False):
-            _ttk.Button(tb, text='Reset view', command=reset_view,
-                        width=10).pack(side='left', padx=4)
-            tb._qcs_reset_added = True
+        if hasattr(tb, 'addAction'):            # Qt
+            for act in tb.actions():
+                if (act.text() or '') in _DROP:
+                    act.setVisible(False)
+            if not getattr(tb, '_qcs_reset_added', False):
+                reset_act = tb.addAction('Reset view')
+                reset_act.setToolTip('Back to the view the panel opened with')
+                reset_act.triggered.connect(reset_view)
+                tb._qcs_reset_added = True
+        else:                                   # tk
+            from tkinter import ttk as _ttk
+            for _name in _DROP:
+                btn = getattr(tb, '_buttons', {}).get(_name)
+                if btn is not None:
+                    btn.pack_forget()
+            if not getattr(tb, '_qcs_reset_added', False):
+                _ttk.Button(tb, text='Reset view', command=reset_view,
+                            width=10).pack(side='left', padx=4)
+                tb._qcs_reset_added = True
     except Exception:
         pass
 

@@ -1265,6 +1265,7 @@ def build_step2(parent):
     global disagreement
     global year_vars, year_widgets, time_start_entry, time_end_entry, depth_min_entry, depth_max_entry
     global site_names, site_vars, site_widgets, parameter_names, parameter_vars, parameter_widgets
+    global secondary_params   # the 'Rarely used' tail, read by both shells
     global min_scale_entries, max_scale_entries, error_logger
 
     # Create main container with scrollbar

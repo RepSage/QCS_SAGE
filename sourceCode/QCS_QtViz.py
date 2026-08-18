@@ -478,9 +478,20 @@ class VisualizationTab(QWidget):
         params_lab.setFont(f)      # same bold section font as 'Sites:'
         ff.addWidget(params_lab)
         self.param_checks = {}
+        # the rarely-used tail carries its own heading, as the tk Step 2 had:
+        # these variables always start unchecked and the operator has to know
+        # THAT is why they are off (owner, v12.1)
+        rare = list(getattr(dbv, 'secondary_params', []) or [])
         for param in dbv.parameter_names:
+            if rare and param == rare[0]:
+                rare_lab = QLabel('Rarely used:')
+                rare_lab.setFont(f)
+                rare_lab.setToolTip(TOOLTIPS['param_secondary'])
+                qtheme.muted(rare_lab)
+                ff.addWidget(rare_lab)
             cb = QCheckBox(str(param))
-            cb.setToolTip(TOOLTIPS['param_filter'])
+            cb.setToolTip(TOOLTIPS['param_secondary'] if param in rare
+                          else TOOLTIPS['param_filter'])
             self._check_pair(cb, dbv.parameter_vars[param],
                              dbv.parameter_widgets.get(param),
                              after=(dbv.toggle_scale_controls,))

@@ -25,19 +25,41 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 5. 'Go to visualization' landed on Step 2 of an OLD database - **FIXED**:
    `VisualizationTab.apply_prefill()` pushes the stack back to Step 1 with
    the just-qualified file (the tk side already did its half).
-6. 'Reset view' does nothing in the plot windows - **DIAGNOSED, not
-   fixed**: `enable_scroll_zoom` in `QCS_DataView` builds a **tk** toolbar
-   button (`_ttk.Button`), and under the Qt shell matplotlib runs
-   backend_qtagg, so that branch cannot apply. Needs a Qt path (and the
-   other toolbar buttons checked while there).
+6. 'Reset view' did nothing in the plot windows - **FIXED**.
+   `enable_scroll_zoom` customised the toolbar through the **tk** API only
+   (`_ttk.Button`, `_buttons`, `pack_forget`), inside a bare
+   `except Exception: pass` - under the Qt shell (backend_qtagg) the whole
+   block raised and was swallowed, so the button never existed. There are
+   now two branches, chosen by `hasattr(tb, 'addAction')`. Measured on a Qt
+   figure: Reset view restores the exact opening limits; Home/Zoom/
+   Subplots/Customize hidden as intended; Back, Forward and Pan work
+   (`tb.mode` toggles, the view stack walks); Save opens a file dialog and
+   was not exercised headlessly.
 7. Selection summary is thin for Seaguard, especially with a CO2 file -
-   NOT STARTED. Today period/interval/serial(s) are filled from `.hobo`
-   headers only.
+   NOT STARTED. `QtShell._update_summary` fills Period / Interval /
+   Serial(s) ONLY from `data.peek_hobo_header`; for Seaguard it sets just
+   Instrument, Files, Mode and Timebase, and the CO2 file is not named
+   anywhere in the box. What it needs: a cheap Seaguard peek (the BXML
+   header in `read_seaguard_bin` carries serial and interval - a full
+   decode of a long mooring is too slow for a selection preview) and a CO2
+   line (file name, its own period, and the overlap with the Seaguard
+   record, which is what `merge_co2_data` will actually use).
+
+9. (new, owner 2026-08-18) the parameters that start unchecked carry a
+   heading again - **DONE**. The tk Step 2 had a 'Rarely used:' separator;
+   the Qt port listed everything flat. `secondary_params` is now a module
+   global of `QCS_DatabaseView` and the Qt filter list prints the heading
+   before the first of them, with the existing `param_secondary` tooltip.
+   Measured: the heading sits between 'Dissolved organic matter (ppb)' and
+   'Conductivity (mS/cm)'.
 8. post-run shortcuts sit closer to RUN - **DONE**: the action column lost
    its slack (spacing 4) and the hint label is hidden while empty instead
    of holding a whole line.
 
-Commit `<this one>` carries 2, 4, 5, 8. Suite 52/52, ruff clean.
+`4c14c49` carries 2, 4, 5, 8; the next commit carries 6 and 9.
+Suite 52/52, ruff clean. Left: 1 (installer), 3 (depth inflections,
+design agreed: shaded transit windows + entry/exit markers, split
+from the tide by rate of change), 7 (Selection summary).
 
 ## 2026-08-18 - v12.0 RELEASED and PUBLISHED
 
