@@ -233,6 +233,14 @@ class VisualizationTab(QWidget):
             self.recent.setCurrentIndex(-1)
         self.recent.setEnabled(not self.files.text().strip())
 
+    def apply_prefill(self, info):
+        """A qualification just finished: Step 1 shows ITS file, and the tab
+        goes back to Step 1 - landing on the Step 2 of an older database was
+        the v12.0 bug (owner, v12.1)."""
+        dbv.apply_pending_prefill(info)
+        self.stack.setCurrentIndex(0)
+        self.refresh_step1()
+
     def _files_edited(self, text):
         _tk_set_entry(dbv.fileNames_entry, text)
         self.recent.setEnabled(not text.strip())

@@ -2,6 +2,43 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-18 - v12.1 OPEN (branch `v12.1`), 8 items from the owner
+
+1. installer: let the operator choose the folder, the desktop icon, and
+   offer 'open the manual' / 'run the program' at the end - NOT STARTED
+   (`packaging/QCS_installer.iss`).
+2. file drag-and-drop stopped working - **FIXED, needs a real drag to
+   confirm**. Diagnosis: the fields and buttons cover most of the window
+   and a QLineEdit/QTextEdit handles drops ITSELF (it would paste the path
+   as text), so only drops on bare background reached the shell - the same
+   class of bug v11.5 fixed in tk. `QtShell` now filters drops at the
+   APPLICATION level and routes any file drag to the active tab. Note for
+   whoever tests this: a synthesized QDropEvent proves nothing here - Qt
+   never delivers it to an event filter, and calling the filter by hand
+   SEGFAULTS outside a real drag. Only the routing is testable headless
+   (it is: both tabs take the file).
+3. manual point cut: show depth inflections so the water entry/exit are
+   visible, allowing for the tide - NOT STARTED, needs a design decision
+   (see the question put to the owner).
+4. regression degree pre-filled with 5 for every data type - **DONE**
+   (`dbv_degree` empty now means 'never chosen', not 'no regression').
+5. 'Go to visualization' landed on Step 2 of an OLD database - **FIXED**:
+   `VisualizationTab.apply_prefill()` pushes the stack back to Step 1 with
+   the just-qualified file (the tk side already did its half).
+6. 'Reset view' does nothing in the plot windows - **DIAGNOSED, not
+   fixed**: `enable_scroll_zoom` in `QCS_DataView` builds a **tk** toolbar
+   button (`_ttk.Button`), and under the Qt shell matplotlib runs
+   backend_qtagg, so that branch cannot apply. Needs a Qt path (and the
+   other toolbar buttons checked while there).
+7. Selection summary is thin for Seaguard, especially with a CO2 file -
+   NOT STARTED. Today period/interval/serial(s) are filled from `.hobo`
+   headers only.
+8. post-run shortcuts sit closer to RUN - **DONE**: the action column lost
+   its slack (spacing 4) and the hint label is hidden while empty instead
+   of holding a whole line.
+
+Commit `<this one>` carries 2, 4, 5, 8. Suite 52/52, ruff clean.
+
 ## 2026-08-18 - v12.0 RELEASED and PUBLISHED
 
 PR #30 merged (`51eb277`). Ritual run to the end except the publication:

@@ -1777,7 +1777,9 @@ def build_step2(parent):
     restore_entry(depth_max_entry, USER_PREFS.get('dbv_depth_max', ''))
     restore_entry(latitude_entry, USER_PREFS.get('dbv_latitude', ''))
     restore_entry(longitude_entry, USER_PREFS.get('dbv_longitude', ''))
-    restore_entry(tendency_entry, USER_PREFS.get('dbv_degree', ''))
+    # 5 is the default for EVERY data type (owner, v12.1); an empty
+    # saved value means 'never chosen', not 'no regression'
+    restore_entry(tendency_entry, USER_PREFS.get('dbv_degree') or '5')
     if USER_PREFS.get('dbv_ts_param'):
         tsParam_combobox.set(USER_PREFS['dbv_ts_param'])
     # Data type: if a qualification handed it over, use it and LOCK the field

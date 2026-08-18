@@ -25,7 +25,7 @@ import sys
 import matplotlib
 matplotlib.use('QtAgg')            # before any QCS import binds pyplot
 
-from PySide6.QtCore import QObject, QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QDockWidget, QFileDialog, QFormLayout,
@@ -174,6 +174,12 @@ class QtShell(QMainWindow):
         self.setWindowIcon(_app_icon())
         self.resize(1180, 760)
         self.setAcceptDrops(True)   # Qt-native drag-and-drop, whole window
+        # ...but the fields and buttons cover most of the window, and a
+        # QLineEdit/QTextEdit/QComboBox handles drops ITSELF (it would paste
+        # the path as text instead of loading the file). An application-wide
+        # filter takes file drops before they get there - the Qt answer to
+        # the v11.5 'register every widget' fix (v12.1)
+        QApplication.instance().installEventFilter(self)
         self._last_seaguard = {}    # Data type/GMT stored while HOBO is selected
         self._co2_file = ''
         self._run_scope = None      # 'File k/n' / 'Replicate k/n' progress prefix
@@ -565,6 +571,7 @@ class QtShell(QMainWindow):
 
         run_box = QVBoxLayout()
         run_box.setContentsMargins(0, 0, 0, 0)
+        run_box.setSpacing(4)   # the shortcuts hug RUN (owner, v12.1)
         run_box.addWidget(self.run_btn, alignment=Qt.AlignHCenter)
         run_box.addWidget(self.run_hint, alignment=Qt.AlignHCenter)
         run_box.addWidget(self.postrun_bar, alignment=Qt.AlignHCenter)
@@ -597,9 +604,8 @@ class QtShell(QMainWindow):
         if (self.viz_tab is not None
                 and self.tabs.currentWidget() is self._viz_page
                 and qm.PENDING_VIZ_PREFILL):
-            dbv.apply_pending_prefill(qm.PENDING_VIZ_PREFILL)
+            self.viz_tab.apply_prefill(qm.PENDING_VIZ_PREFILL)
             qm.PENDING_VIZ_PREFILL = None
-            self.viz_tab.refresh_step1()
 
     def _menus(self):
         # File carries the file-level actions of the active workflow, so the
@@ -760,13 +766,23 @@ class QtShell(QMainWindow):
         self.update_criteria_indicator()   # the edit may have left the defaults
 
     # ----- drag-and-drop (Qt-native: one handler pair for the whole window) -----
+    @staticmethod
+    def _dropped_files(event):
+        """Local file paths of a drag, or [] when it carries something else
+        (dragged text, a URL from a browser)."""
+        if not event.mimeData().hasUrls():
+            return []
+        return [u.toLocalFile() for u in event.mimeData().urls()
+                if u.isLocalFile()]
+
     def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
+        if self._dropped_files(event):
             event.acceptProposedAction()
 
     def dropEvent(self, event):
-        paths = [u.toLocalFile() for u in event.mimeData().urls()
-                 if u.isLocalFile()]
+        self._take_dropped_files(self._dropped_files(event))
+
+    def _take_dropped_files(self, paths):
         if not paths:
             return
         # drops land in the ACTIVE tab's file field, like the tk shell
@@ -774,6 +790,21 @@ class QtShell(QMainWindow):
             self.viz_tab.apply_selected_files(paths)
         else:
             self.apply_selected_files(paths)
+
+    def eventFilter(self, obj, event):
+        """File drops belong to the shell wherever they land: over a field,
+        a button or the log, a widget that handles drops itself would swallow
+        them (v12.1). Only drags carrying FILES are taken - dragging text
+        inside a field still behaves normally."""
+        kind = event.type()
+        if kind in (QEvent.Type.DragEnter, QEvent.Type.DragMove,
+                    QEvent.Type.Drop) and isinstance(obj, QWidget):
+            if obj.window() is self and self._dropped_files(event):
+                event.acceptProposedAction()
+                if kind == QEvent.Type.Drop:
+                    self._take_dropped_files(self._dropped_files(event))
+                return True
+        return super().eventFilter(obj, event)
 
     # ----- file selection (port of QCS_Main.apply_selected_files) -----
     def _browse(self):
@@ -1043,6 +1074,9 @@ class QtShell(QMainWindow):
                         if not widget.text().strip()), None)
         self.run_btn.setEnabled(missing is None)
         self.run_hint.setText(missing or '')
+        # an empty hint keeps a whole line of height, which pushed the
+        # post-run shortcuts away from RUN (owner, v12.1)
+        self.run_hint.setVisible(bool(missing))
 
     def collect_from_qt(self):
         """Qt replacement for QCS_Main.collect_input_settings: same vals dict,
