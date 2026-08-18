@@ -140,6 +140,12 @@ archive and diff the counts against the previous `qualified_index.csv`.
   title carrying '(v12.0 shell)' and the status bar announcing a
   'development shell', and the tag had to be moved. Window title, status
   bar and About are release text, not scaffolding.
+- **Never name a branch after the version it will be tagged with.** With a
+  branch and a tag both called `v12.1`, `git push origin v12.1` is ambiguous:
+  git refuses with "src refspec matches more than one" and the tag silently
+  does NOT go up (it took `refs/tags/v12.1` and `refs/heads/v12.1` spelled out
+  to finish the v12.1 release). Name it for the work, as `port-v12.0` and
+  `fix-v11.4.2` were.
 - After a PR merges, delete the feature branch (local and remote) and return to
   an updated `master` before branching again.
 
