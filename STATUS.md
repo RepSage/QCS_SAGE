@@ -2,6 +2,33 @@
 
 Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
+## 2026-08-18 - v12.1 PUBLISHED; one item queued for the next round
+
+Owner published the release and cleared the Desktop copies.
+
+**Queued for the next improvement round (owner, 2026-08-18):** *updating*
+the app does not reopen it when the installation finishes - it should.
+Where to look, both paths in `packaging/QCS_installer.iss` `[Run]`:
+
+- **in-app one-click update** (`QCS_Update` runs the installer with
+  `/SILENT`): the reopen is the entry gated on `Check: WizardSilent`. It
+  is NOT a `postinstall` entry, so it runs with the installer's own
+  privileges - over a Program Files install that means elevated, and
+  Windows may refuse or start the app in the wrong user context. Compare
+  with `runasoriginaluser`.
+- **interactive upgrade** (double-clicking the setup over an existing
+  install): the reopen is the Finish-page checkbox
+  (`Description: {cm:LaunchProgram,QCS}`, flags `nowait postinstall
+  skipifsilent`). It should be checked by default - `unchecked` is only on
+  the manual entry - so if it does not appear, suspect the
+  CloseApplications/RestartApplications path (`CloseApplications=yes`,
+  `RestartApplications=no`) or a Finish page skipped after a restart
+  prompt.
+
+Reproduce on a real upgrade (install v12.1 over v12.0 both ways) before
+changing anything: the two paths fail differently and the .iss cannot be
+tested from the sources alone.
+
 ## 2026-08-18 - v12.1 RELEASED (tag + installer); publication pending
 
 PR #31 merged (`08bc2c7`), **tagged `v12.1` there**, branch deleted both
