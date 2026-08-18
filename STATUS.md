@@ -4,9 +4,16 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
 ## 2026-08-18 - v12.1 OPEN (branch `v12.1`), 8 items from the owner
 
-1. installer: let the operator choose the folder, the desktop icon, and
-   offer 'open the manual' / 'run the program' at the end - NOT STARTED
-   (`packaging/QCS_installer.iss`).
+1. installer pages - **DONE in the recipe, not yet seen on screen**.
+   `DisableDirPage=no` (Inno's default is 'auto', which HIDES the folder
+   page whenever a previous install is found - that is why an upgrade
+   never asked); the desktop-icon task already existed and its page shows
+   because `[Tasks]` is not empty; the Finish page now offers TWO
+   checkboxes, 'Open the user manual' (shellexec, unchecked by default)
+   and the existing 'Launch QCS'. The script compiles clean (ISCC, checked
+   against a dummy payload, output discarded). The wizard itself can only
+   be confirmed by running an installer - it will be built at the v12.1
+   release.
 2. file drag-and-drop stopped working - **FIXED, needs a real drag to
    confirm**. Diagnosis: the fields and buttons cover most of the window
    and a QLineEdit/QTextEdit handles drops ITSELF (it would paste the path

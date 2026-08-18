@@ -30,6 +30,11 @@ AppPublisher=SAGE (COPPE/UFRJ)
 DefaultDirName={autopf}\QCS
 DefaultGroupName=QCS
 DisableProgramGroupPage=yes
+; The folder page is always shown (v12.1, owner request). Inno's default is
+; 'auto', which HIDES it whenever a previous install is found - so every
+; upgrade silently reused the old folder and the operator never got the
+; choice.
+DisableDirPage=no
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 OutputBaseFilename=QCS_Setup_v{#AppVersion}
@@ -59,6 +64,10 @@ Name: "{group}\QCS User Manual"; Filename: "{app}\Quality Control System (SAGE) 
 Name: "{autodesktop}\QCS"; Filename: "{app}\QCS.exe"; Tasks: desktopicon
 
 [Run]
+; the two Finish-page checkboxes (v12.1, owner request): open the manual and
+; start the program. 'postinstall' is what makes them checkboxes; the manual
+; needs shellexec because it is an .html, not an executable.
+Filename: "{app}\Quality Control System (SAGE) - User Manual.html"; Description: "Open the user manual"; Flags: postinstall shellexec skipifsilent nowait unchecked
 Filename: "{app}\QCS.exe"; Description: "{cm:LaunchProgram,QCS}"; Flags: nowait postinstall skipifsilent
 ; a SILENT run is the self-update path (QCS_Update passes /SILENT): the app
 ; closed itself to let the installer work, so reopen it updated
