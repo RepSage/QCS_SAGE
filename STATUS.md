@@ -51,6 +51,23 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
    0.3 to 1.0 keeps exactly those three. `TRANSIT_MIN_AMPLITUDE_M = 0.3`
    (low end of the plateau = least discarded); the in/out MARKER keeps a
    separate, stronger test, `TRANSIT_MARK_NET_M = 1.0`.
+   **Owner asked whether it holds at the 10-min cadence they actually use
+   (2026-08-18): it does, and the scan found the real failure at the other
+   end.** The movement is now measured as NET displacement over a 2-minute
+   window instead of between consecutive samples (`TRANSIT_WINDOW_MIN`):
+   a shallow mooring rides the waves, and at 5-10 s that beat any
+   instantaneous rate - TIM2 2019S1 came out **84% shaded**. Over two
+   minutes a wave returns to where it started and sums to nothing, while a
+   descent accumulates metres. Where the cadence is coarser than the
+   window (the 10-min moorings) it collapses to one step and the test is
+   the plain rate it always was. The shaded band also has a floor of 0.6%
+   of the axis: a 10-min manoeuvre is ONE step, two samples, a hairline.
+   Re-measured over the WHOLE mooring corpus, 35 qualified files: TIM2
+   2019S1 84% -> 3.45%, PLES 2019S1 3.22% -> 3.05%, every 10-min file
+   0-4.2% except a 19-sample record at 10.5%, 1-min PISCINA files
+   0.26-0.89%, 30-min PONTO19 1.5%. Seven files show no window at all -
+   expected, their out-of-water rows were already cut by the Depth review
+   before the product was written.
    Measured on 2019S1: CALIFORNIA 1 window (29.0 -> 0.1 m, recovery),
    PAB3 1 window, PLES SEAGUARD 3 windows (lift-and-lower, a small
    0.5 m step, and the recovery 16.1 -> 0.1 m), PLES DOPPLER none (its

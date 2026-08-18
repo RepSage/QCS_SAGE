@@ -2166,6 +2166,15 @@ def on_motion(event):
 # marked.
 TRANSIT_RATE_M_PER_MIN = 0.5
 TRANSIT_JOIN_MIN = 2.0         # windows closer than this are one manoeuvre
+# The movement is measured as NET displacement over this many minutes, not
+# between consecutive samples: a shallow mooring rides the waves, and at a
+# 5-10 s cadence that beats any instantaneous rate test (the TIM2 2019S1
+# mooring came out 84% shaded). Over two minutes a wave returns to where it
+# started and sums to nothing, while a descent or a recovery accumulates
+# metres. Where the cadence is coarser than the window - the 10-min moorings
+# that are the routine here - the window collapses to one step and the test is
+# the plain rate it always was.
+TRANSIT_WINDOW_MIN = 2.0
 # Nothing about HANDLING is thrown away - handling can be the error the
 # operator is hunting - so the amplitude test only has to clear the depth
 # sensor's own noise. Measured on the PLES 2019S1 mooring (17,690 samples,
@@ -2192,11 +2201,16 @@ def depth_transit_windows(depth, times):
     if len(depth) < 3 or t.isna().all():
         return []
     minutes = (t - t.iloc[0]).dt.total_seconds().to_numpy() / 60.0
-    dt = np.diff(minutes)
-    dd = np.diff(depth)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        rate = np.abs(np.where(dt > 0, dd / dt, np.nan))
-    fast = np.nan_to_num(rate, nan=0.0) > TRANSIT_RATE_M_PER_MIN
+    # partner sample: the last one still inside the window, never the sample
+    # itself (a coarse cadence then compares neighbours, as before)
+    partner = np.searchsorted(minutes, minutes + TRANSIT_WINDOW_MIN, side='right') - 1
+    partner = np.minimum(np.maximum(partner, np.arange(len(minutes)) + 1),
+                         len(minutes) - 1)
+    elapsed = minutes[partner] - minutes
+    net = np.abs(depth[partner] - depth)
+    with np.errstate(invalid='ignore'):
+        moved = np.nan_to_num(net, nan=0.0) >= TRANSIT_RATE_M_PER_MIN * elapsed
+    fast = (moved & (elapsed > 0))[:-1]
     if not fast.any():
         return []
     # runs of fast samples -> windows, then join the ones a pause apart (a
@@ -2206,7 +2220,10 @@ def depth_transit_windows(depth, times):
     runs = [(edges[i], edges[i + 1]) for i in range(0, len(edges), 2)]
     windows = []
     for start, stop in runs:                       # stop is exclusive on diffs
-        i0, i1 = int(start), int(min(stop, len(depth) - 1))
+        # the window reaches the PARTNER of its last fast sample: that is where
+        # the movement measured at that sample actually ends
+        i0 = int(start)
+        i1 = int(min(max(stop, partner[min(stop, len(depth) - 1)]), len(depth) - 1))
         if windows and minutes[i0] - minutes[windows[-1][1]] <= TRANSIT_JOIN_MIN:
             windows[-1] = (windows[-1][0], i1)
         else:
@@ -2241,8 +2258,17 @@ def draw_depth_context(ax, x, depth, times):
         seen.add(text)
         return text
 
+    # a manoeuvre at a 10-min cadence is ONE step: two samples out of a few
+    # hundred, a hairline nobody sees. Every band gets at least this share of
+    # the axis (owner, v12.1)
+    span_lo, span_hi = float(np.min(x)), float(np.max(x))
+    floor_w = 0.006 * (span_hi - span_lo)
     for i0, i1 in windows:
-        ax.axvspan(x[i0], x[i1], color='#b30000', alpha=0.10, zorder=0,
+        left, right = float(x[i0]), float(x[i1])
+        if right - left < floor_w:
+            mid = 0.5 * (left + right)
+            left, right = mid - floor_w / 2, mid + floor_w / 2
+        ax.axvspan(left, right, color='#b30000', alpha=0.10, zorder=0,
                    label=once('Being lowered / hauled up'))
         # WHICH manoeuvre it is comes from the direction, never from the
         # position in the record: most deployments here start logging already
