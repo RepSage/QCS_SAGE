@@ -152,7 +152,34 @@
 </head>
 <body>
     <h1>User Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v12.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v12.1</em></p>
+
+    <h3>What v12.1 added</h3>
+    <ul>
+      <li><strong>Manual point cut, mooring data:</strong> the panel shades the
+      stretches where the DEPTH says the instrument was being lowered or hauled
+      up, with a dashed marker at the water entry and at the start of the
+      recovery. The tide is never marked: the test is the net vertical
+      displacement over two minutes, which a tidal cycle (centimetres per
+      minute) cannot reach and a wave cancels out.</li>
+      <li><strong>Selection summary, Seaguard:</strong> serial, logging start,
+      sampling interval and how many sensor groups the cast merges, read from
+      the session folders before anything is decoded; plus a
+      <em>CO&#8322; data</em> line with the file, its readings and its own
+      period.</li>
+      <li><strong>Plot windows:</strong> the <em>Reset view</em> button works
+      again (it was built for the retired tk toolbar and never appeared in the
+      Qt one).</li>
+      <li><strong>Visualization settings:</strong> the regression degree starts
+      at 5 for every data type, and the rarely-used variables carry their
+      <em>Rarely used</em> heading again.</li>
+      <li><strong>Installer:</strong> the finish page offers to open this
+      manual as well as to start the program.</li>
+      <li><strong>Fixed:</strong> dragging a file onto a field (instead of onto
+      bare background) did nothing - the field swallowed the drop;
+      <em>Go to visualization</em> landed on step 2 of an older database
+      instead of the file just qualified.</li>
+    </ul>
 
     <div class="indice">
         <h2>Contents</h2>
