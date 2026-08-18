@@ -50,9 +50,18 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
    23/04 09:12 -> 24/04 09:24. The refactor was checked against a real
    deployment read before and after: 625 x 25, same time span, same
    columns, still 2 groups merged.
-   **Still '-' for Seaguard: Interval** - it is not in the folder names and
-   getting it means decoding records (the .hobo header hands it over, the
-   BXML does not).
+   **Interval added too** (owner asked for it if cheap, and it is):
+   `_decode_aadi_bin` takes an optional `max_records`, and when it is given
+   it reads only the header + template + dictionary + 512 KB of records
+   instead of the whole file - the preview cost stops growing with the
+   deployment (10 MB Doppler session: 0.99 s -> 0.22 s over the share).
+   The interval reported is the FINEST sensor group's, because that is the
+   axis the deployment reader merges everything onto: for the BURACAS cast
+   the selected group alone says 10 s while the qualified sheet carries
+   5 s rows, and the peek now says 5 s - checked against the real merged
+   deployment (625 x 25, median step 5.0 s). Measured peeks: cast 0.06 s,
+   2.4 MB mooring 0.20 s, 10 MB Doppler 0.22 s (interval None - the DCPS
+   layout raises, and a preview must never be the thing that fails).
 
 9. (new, owner 2026-08-18) the parameters that start unchecked carry a
    heading again - **DONE**. The tk Step 2 had a 'Rarely used:' separator;

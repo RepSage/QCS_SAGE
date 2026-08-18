@@ -949,6 +949,12 @@ class QtShell(QMainWindow):
             self.sum_labels['serials'].setText(peek['serial'])
             self.sum_labels['period'].setText(
                 'logging started %s' % peek['start'].strftime('%d/%m/%Y %H:%M'))
+            if peek.get('interval_s'):
+                # the FINEST sensor group's interval: that is the axis the
+                # deployment is merged onto, so it is the one the qualified
+                # sheet will carry
+                self.sum_labels['interval'].setText(
+                    _interval_text(peek['interval_s']))
         if itype == 'HOBO':
             mode = ('%d replicates of one deployment, combined' % len(names)
                     if len(names) > 1 else 'single logger')

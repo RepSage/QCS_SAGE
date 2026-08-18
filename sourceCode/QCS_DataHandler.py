@@ -36,15 +36,35 @@ _AADI_SYNC = b'\x11\x22\x33\x44\x55\x66\x77\x88'
 _AADI_TICK0 = pd.Timestamp('0001-01-01').to_pydatetime()
 
 
-def _decode_aadi_bin(file_path):
+def _decode_aadi_bin(file_path, max_records=None):
     """Decodes ONE DataNNN.bin file into a DataFrame with the same column
     names as the instrument's CSV export ('Record Time', 'Record Number',
     'Pressure[kPa]', ...), so the standard column mapping applies unchanged.
-    Times are GMT, as in the export (the GMT-3 correction stays an option)."""
+    Times are GMT, as in the export (the GMT-3 correction stays an option).
+
+    max_records stops after that many records - the Selection summary asks for
+    a handful just to read the sampling interval (v12.1) and must not pay for
+    a whole mooring."""
     import struct
     import datetime as _dt
     with open(file_path, 'rb') as f:
-        blob = f.read()
+        if max_records is None:
+            blob = f.read()
+        else:
+            # A peek reads the header, the template and the dictionary (their
+            # offsets live in the first 0x40 bytes) plus half a megabyte of
+            # records - thousands of them, far more than a peek asks for.
+            # Reading the whole file would make the PREVIEW cost grow with the
+            # deployment: measured 1 s for a 10 MB session over the share.
+            head = f.read(0x40)
+            if head.startswith(_AADI_MAGIC) and len(head) >= 0x38:
+                t_off, _a, _b, _c, t_len, d_off, d_len = struct.unpack_from(
+                    '<7I', head, 0x1c)
+                need = max(t_off + t_len, d_off + d_len) + 512 * 1024
+            else:
+                need = 1 << 20
+            f.seek(0)
+            blob = f.read(need)
     if not blob.startswith(_AADI_MAGIC):
         raise ValueError("'%s' is not an AADI binary session file (missing "
                          "AADIBXML header)." % os.path.basename(file_path))
@@ -125,6 +145,8 @@ def _decode_aadi_bin(file_path):
             raise ValueError('AADI reader (%s): corrupted record at byte %d (%s).'
                              % (os.path.basename(file_path), pos, e)) from e
         rows.append(row)
+        if max_records is not None and len(rows) >= max_records:
+            break
         pos = blob.find(_AADI_SYNC, pos + 1)
     if not rows:
         raise ValueError('AADI reader (%s): no data records found.'
@@ -276,10 +298,35 @@ def peek_seaguard_session(file_path):
     serial, cast = seaguard_cast_folders(file_path)
     parts = [f for f in os.listdir(group_folder)
              if re.fullmatch(r'Data\d+\.bin', f, re.IGNORECASE)]
-    return {'serial': m.group(1),
-            'start': _dt.datetime.strptime(m.group(3), '%Y-%m-%dT%H-%M-%S'),
-            'groups': len(cast) if cast else 1,
-            'parts': len(parts) or 1}
+    out = {'serial': m.group(1),
+           'start': _dt.datetime.strptime(m.group(3), '%Y-%m-%dT%H-%M-%S'),
+           'groups': len(cast) if cast else 1,
+           'parts': len(parts) or 1,
+           'interval_s': None}
+    # The sampling interval is NOT in the folder names: it takes decoding,
+    # but only of the first records of each sensor group. The FINEST group is
+    # the one to report, because that is the axis the deployment reader merges
+    # everything onto - reporting the selected group's own 10 s while the
+    # qualified sheet carries 5 s rows would be a lie. A DCPS group raises
+    # here (its own layout): skipped, never fatal - a preview must not be the
+    # thing that fails.
+    steps = []
+    folders = [os.path.join(os.path.dirname(os.path.dirname(file_path)), name)
+               for _st, name in (cast or [])] or [group_folder]
+    for folder in folders:
+        try:
+            head = _decode_aadi_bin(os.path.join(folder, 'Data000.bin'),
+                                    max_records=60)
+            times = pd.to_datetime(head['Record Time']).dropna()
+            if len(times) >= 3:
+                step = times.diff().dropna().median().total_seconds()
+                if step > 0:
+                    steps.append(step)
+        except Exception:
+            continue
+    if steps:
+        out['interval_s'] = min(steps)
+    return out
 
 
 def read_seaguard_deployment(file_path):
