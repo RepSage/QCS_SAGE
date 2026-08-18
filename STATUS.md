@@ -41,6 +41,16 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
    lifted and put back around sample 3600 (15 m -> 4 m -> 15 m), which
    nets to zero and was being discarded; it is now shaded (handled here)
    but carries no in/out marker.
+   **Owner, 2026-08-18: nothing about HANDLING may be discarded** - it can
+   be the error being hunted; the shading only has to make the manual cut
+   easy to see. So the amplitude test just has to clear the depth sensor's
+   noise, and it was MEASURED on the PLES mooring (17,690 samples, 5 s):
+   with no test at all, 194 windows and 34% of the record shaded (noise
+   crosses 0.5 m/min at that cadence); the real events are 16.0, 10.9 and
+   1.15 m and the noise cluster stops at 0.25 m, so every threshold from
+   0.3 to 1.0 keeps exactly those three. `TRANSIT_MIN_AMPLITUDE_M = 0.3`
+   (low end of the plateau = least discarded); the in/out MARKER keeps a
+   separate, stronger test, `TRANSIT_MARK_NET_M = 1.0`.
    Measured on 2019S1: CALIFORNIA 1 window (29.0 -> 0.1 m, recovery),
    PAB3 1 window, PLES SEAGUARD 3 windows (lift-and-lower, a small
    0.5 m step, and the recovery 16.1 -> 0.1 m), PLES DOPPLER none (its
