@@ -169,7 +169,7 @@ def qt_choose_variables(candidates, root=None):
 class QtShell(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('QCS - Quality Control System %s  (v12.0 shell)'
+        self.setWindowTitle('QCS - Quality Control System (SAGE)  -  %s'
                             % data.QCS_VERSION)
         self.setWindowIcon(_app_icon())
         self.resize(1180, 760)
@@ -225,7 +225,6 @@ class QtShell(QMainWindow):
             'Hides the batch status; View > Batch status brings it back')
         self._batch_rows = {}
         self._menus()
-        self.statusBar().showMessage('v12.0 development shell - the tk app on master remains the released interface')
         # no size grip: it reserved a ~24 px strip that pushed the criteria
         # indicator out of line with the log's Clear button (the window edges
         # and corners still resize normally)
