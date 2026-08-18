@@ -4,6 +4,38 @@ Volatile state. Every entry dated. Durable rules live in `CLAUDE.md`.
 
 ## 2026-08-18 - v12.2 OPEN (branch `improvements-v12.2`)
 
+- **Nothing persists between sessions (owner, 2026-08-18) - DIAGNOSED, NOT
+  FIXED. This is the next task.** Two halves, both lost in the v12.0 port:
+
+  1. `QtShell` has **no `closeEvent` at all**. The tk shell saved on exit
+     (`QCS_App.remember_window_state`): `win_state`, `win_geometry`, and it
+     also persisted `log_hidden` and `ui_theme` on their own changes. The Qt
+     shell only calls `qm.save_user_prefs()` in three places - the Settings
+     dialog, the dark-mode toggle and the output-folder browse - so the
+     window opens at the default size every time.
+  2. The FORM fields were never saved on close in the tk shell either: they
+     were persisted DURING use, by the qualification path
+     (`qual_recent`, `last_data_dir` in `QCS_Main`, `last_output_dir`). The
+     Qt `apply_selected_files` is a re-implementation ('port of
+     QCS_Main.apply_selected_files') and appears NOT to reach those save
+     points - to be confirmed with a grep before writing anything.
+
+  Evidence: the installed app's `%APPDATA%\QCS\qcs_user_settings.json` is
+  **1,558 bytes** against **8,808 bytes** for the development copy in
+  `sourceCode/` - almost nothing is being written.
+
+  Next actions, in order: (a) grep which `USER_PREFS` keys the Qt
+  qualification path still writes; (b) add `QtShell.closeEvent` saving
+  window geometry/state and log visibility, mirroring
+  `QCS_App.remember_window_state`; (c) reconnect the Qt file selection to
+  the `qual_recent` / `last_data_dir` save points instead of duplicating
+  them; (d) verify by launching the shell twice in one driver and diffing
+  the JSON - and remember the standing rule: a throwaway driver must no-op
+  `save_user_prefs` unless the whole point is to test saving, and the
+  operator's app must be CLOSED while it runs (it was closed for this
+  diagnosis at the owner's confirmation).
+
+
 - **Drag-and-drop broke again on the INSTALLED app - not a regression.**
   The source was untouched (the filter is still there); the app was
   running ELEVATED, because it had been started from the elevated
