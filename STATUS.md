@@ -17,7 +17,32 @@ git log -p -- STATUS.md             # how it got there
 Everything that was still OPEN in those entries was carried into the second
 section below, each line dated with when it was last touched - not with today.
 
-## 2026-08-19 - v12.2.1 OPEN (branch `fix-update-relaunch`)
+## 2026-08-19 - v12.2.1 RELEASED; publication pending
+
+PR #33 merged (`f23af26`), **tagged `v12.2.1` there**, branch
+`fix-update-relaunch` deleted both sides. Installer rebuilt and smoke-tested:
+frozen app alive 20 s, title 'QCS - Quality Control System (SAGE)  -  v12.2.1',
+closed cleanly, no crash log; the payload folder no longer carries a settings
+file. ISCC -> `QCS_Setup_v12.2.1.exe`, **77.8 MB**, on the Desktop beside
+`RELEASE_v12.2.1.md`, md5 checked against `packaging\Output`
+(AE94AF62817F8C643093320CFD416C6D).
+
+**A DRAFT release is waiting** - id 373122767, name 'v12.2.1 - the update ends
+on a checkbox', `QCS_Setup_v12.2.1.exe` uploaded (state=uploaded, 81,560,544
+bytes). **Left to the owner: press Publish.**
+
+**Then the real test of this release**: update from v12.2 through the app. The
+wizard must now appear and end on 'Launch QCS after installation', ticked. If
+the app still does not come back, `%TEMP%\QCS_update_install.log` now says why.
+
+The reset arrow is the owner's pick from the candidate sheet (two opposed arcs,
+head centred on the curve - tip AND base on the circle; the first draft built
+it along the tangent, which puts the base outside the ring). Geometry in named
+fractions of the icon size in `QCS_QtTheme` (`_RESET_*`), drawn at 20 px in the
+buttons: measured at 16/18/20/24 px, a pair of arcs puts each head at about
+three pixels at 16 and it stops reading as an arrow.
+
+## 2026-08-19 - v12.2.1 (the round itself)
 
 v12.2 is PUBLISHED (latest release, asset downloaded once - the owner updated
 through the app and the installed version reads 12.2).
