@@ -154,54 +154,6 @@
     <h1>User Manual of the QCS System (Quality Control System)</h1>
     <p style="text-align:center; opacity:0.7;"><em>For version v12.2.2</em></p>
 
-    <h3>Fixed in v12.2.2</h3>
-    <ul>
-      <li><strong>Every switch opens at the top of the page</strong> - changing
-      tab, or stepping forward and back in the visualization tab, no longer
-      lands wherever that page had been scrolled to.</li>
-      <li><strong>Data visualization:</strong> <em>Recent</em> says what makes
-      it usable again while it is greyed out, and <em>Scale settings</em>
-      carries the same <em>Rarely used</em> heading as the parameter filter, so
-      the two columns break at the same variable.</li>
-    </ul>
-
-    <h3>Fixed in v12.2.1</h3>
-    <ul>
-      <li><strong>Updating:</strong> the update now opens the installer's
-      wizard, whose last page offers <em>Launch QCS after installation</em>,
-      ticked by default - the silent install had no such page, and the
-      automatic reopening it relied on did not happen.</li>
-      <li><strong>Selection summary, Seaguard:</strong> serial, logging start
-      and sampling interval also appear for a <code>Data000.bin</code> copied
-      out of the archive (they used to be read only from the session folder
-      names). A current profiler session now reports its interval too.</li>
-      <li><strong>Quality control settings:</strong> the window, the button and
-      the File menu entry now share one name; the reset arrows are drawn
-      sharply at any screen scale; the tooltips of the tests open without an
-      empty strip on their left; and the <em>criteria: CUSTOM</em> indicator in
-      the status bar is no longer clipped.</li>
-    </ul>
-
-    <h3>What v12.2 added</h3>
-    <ul>
-      <li><strong>Your choices are kept between sessions again.</strong> The
-      window reopens at the size, position and maximized state it was closed
-      with, the Execution log reopens hidden if you hid it, and the form (files,
-      output folder and name, site, region, options) comes back even if you
-      never pressed RUN. Since the move to the new interface, saving from one
-      tab could silently undo what the other tab had saved - that is fixed, so
-      the qualification and visualization choices no longer overwrite each
-      other.</li>
-      <li><strong>Installation:</strong> the program is now always started as
-      YOU, never as the administrator the installer ran as. An app started with
-      administrator privileges refuses file drag-and-drop from Windows Explorer,
-      which made the program look broken right after installing; it also affects
-      reopening the program after a one-click update.</li>
-      <li><strong>Selection summary:</strong> the CO&#8322; line only appears
-      where CO&#8322; data can be added - a Seaguard scalar run - and is hidden
-      for HOBO files and for current profiler (Doppler) sessions.</li>
-    </ul>
-
     <div class="indice">
         <h2>Contents</h2>
         <ul>
@@ -256,12 +208,12 @@
     </div>
 
     <h3>The interface at a glance</h3>
-    <p>Both tools live in a <strong>single window</strong> (since v12.0 built on Qt, with the
-    Fusion style): a menu bar plus two tabs,
+    <p>Both tools live in a <strong>single window</strong> (Qt, Fusion style): a menu bar
+    plus two tabs,
     <strong>Data Qualification</strong> and <strong>Data Visualization</strong>.
     <strong>File</strong> carries the file-level actions of the tab (select data file(s),
-    <code>Ctrl+O</code>; add CO&#8322; data; select or open the output folder; parameter
-    settings; exit, <code>Ctrl+Q</code>), <strong>View</strong> the dark mode and the
+    <code>Ctrl+O</code>; add CO&#8322; data; select or open the output folder; quality
+    control settings; exit, <code>Ctrl+Q</code>), <strong>View</strong> the dark mode and the
     Execution log / Batch status panels, and <strong>Help</strong> the user manual,
     <strong>Check for updates</strong> and About. The interface
     offers a <strong>dark mode</strong> (View menu, remembered across sessions) and crisp text
@@ -280,10 +232,11 @@
     button: <strong>Open output folder</strong> and <strong>Go to visualization</strong>.</p>
     <p>The status bar states which quality criteria are in force:
     <strong>criteria: defaults</strong> or <strong>criteria: CUSTOM</strong>. In the
-    Settings window every field that differs from the software default is shown in
-    <strong>bold</strong>, each row has a <strong>&#8634;</strong> button that restores just
-    that parameter, and a <em>Find</em> box filters the rows by name — so it is always
-    visible whether a qualification ran with the canonical criteria or with edited ones.
+    <strong>Quality control settings</strong> window every field that differs from the
+    software default is shown in <strong>bold</strong>, each row carries a circular-arrow
+    button that restores just that parameter, and a <em>Find</em> box filters the rows by
+    name — so it is always visible whether a qualification ran with the canonical criteria
+    or with edited ones.
     If a fatal error happens before the window can
     open, a message box appears and a <code>QCS_crash.log</code> file is written with the
     details — next to <code>QCS.exe</code> on an installed copy (in <code>%APPDATA%\QCS</code>
@@ -332,7 +285,7 @@
         <tr>
             <td>Browse...</td>
             <td>Opens the file explorer for selection (multi-select allowed). Files can also be
-            <strong>dragged and dropped anywhere on the window</strong> (since v11.5): they land
+            <strong>dragged and dropped anywhere on the window</strong>: they land
             in this field &mdash; or in <em>Database file(s)</em> on the Visualization tab &mdash;
             and run the same auto-detection as Browse.</td>
         </tr>
@@ -376,8 +329,20 @@
             refused with a clear message &mdash; qualify those from their exported sheets.</td>
         </tr>
         <tr>
+            <td>Recent</td>
+            <td>Reopens one of the last file selections, so a deployment qualified yesterday
+            is one click away. It is usable <strong>only while no data file is selected</strong>
+            &mdash; either pick files or reopen a recent selection, never both at once &mdash;
+            and while it is greyed out it says so: <em>"Clear data file(s) to select a recent
+            file"</em>.</td>
+        </tr>
+        <tr>
             <td>Data type</td>
-            <td>Dropdown to select the data type (TSCP Profile or TSCP Mooring).</td>
+            <td>Dropdown with the collection type: <strong>TSCP Profile</strong>,
+            <strong>TSCP Mooring</strong> or <strong>TSCP Doppler</strong> (the last one is
+            set automatically when a current-profiler session is selected). It does not apply
+            to HOBO &mdash; a pendant logger is always a time series &mdash; and the field
+            says that itself while it is greyed out.</td>
         </tr>
         <tr>
             <td>Correct GMT-3</td>
@@ -420,6 +385,51 @@
         base name + <code>_QLF</code>); you can edit them freely.</p>
     </div>
 
+    <h3>Selection summary</h3>
+    <p>Under the output settings, the <strong>Selection summary</strong> describes what is
+    about to be qualified &mdash; read from the files themselves, before anything is
+    processed, so a wrong selection is caught before a run rather than after it:</p>
+    <table>
+        <tr>
+            <th>Line</th>
+            <th>What it says</th>
+        </tr>
+        <tr>
+            <td>Instrument / Files</td>
+            <td>The family and, for HOBO, the logger model from the file header; how many
+            files were selected and the first one's name.</td>
+        </tr>
+        <tr>
+            <td>Mode</td>
+            <td>Single deployment, a batch of files qualified in sequence, replicates of one
+            deployment combined, or a current profiler (DCPS) session. For a Seaguard cast it
+            also says how many sensor groups are merged and how many binary parts the session
+            was split into.</td>
+        </tr>
+        <tr>
+            <td>Period / Interval / Serial(s)</td>
+            <td>For HOBO, the launch time, the sampling interval and the logger serials taken
+            from the export header. For Seaguard, the instrument serial, when logging started
+            and the sampling interval &mdash; read from the session folder names when the file
+            still sits in its own session folder, and from the file's own header when it does
+            not (a <code>Data000.bin</code> copied out of the archive is described just the
+            same). Only the head of the file is read &mdash; never the whole deployment &mdash;
+            so the summary appears at once even for a long mooring.</td>
+        </tr>
+        <tr>
+            <td>CO&#8322; data</td>
+            <td>Only shown where CO&#8322; data can be added &mdash; a Seaguard scalar run.
+            Names the file, how many readings it holds, the period it covers and the reminder
+            that its clock is local. Hidden for HOBO and for current-profiler sessions.</td>
+        </tr>
+        <tr>
+            <td>Timebase</td>
+            <td>What will happen to the times: GMT corrected to local for a Seaguard run,
+            local and untouched for HOBO. It follows the <em>Correct GMT-3</em> box as you
+            tick it &mdash; unticked, it says the output stays on GMT.</td>
+        </tr>
+    </table>
+
     <h3>OUTPUT SETTINGS Section</h3>
     <table>
         <tr>
@@ -456,7 +466,7 @@
         </tr>
         <tr>
             <td>Remove dismissed data</td>
-            <td>(v12.0, Seaguard only) Drops the rows where <strong>every</strong> variable was
+            <td>(Seaguard only) Drops the rows where <strong>every</strong> variable was
             dismissed &mdash; the Depth review's whole-row cuts &mdash; leaving a gap in the
             original Sample numbers. Dismissed values are always blanked; this also removes the
             empty rows they leave behind. Single-variable dismissals keep their row (it still
@@ -622,7 +632,7 @@
         </tr>
         <tr>
             <td>Show disagreement bars</td>
-            <td>(v12.0, HOBO only) Draws one vertical bar per sample on the temperature
+            <td>(HOBO only) Draws one vertical bar per sample on the temperature
             series showing how far the redundant replicates disagreed at that instant
             (bar = max &minus; min, centered on the plotted mean). Only a database built from
             COMBINED replicates carries that spread; it starts checked, which is what the
@@ -657,7 +667,9 @@
             <td>Select parameters</td>
             <td>List of checkboxes to select the parameters to include, in two groups: the main
             group starts checked whenever the imported sheet carries data for it, and a
-            "Rarely used" group (Conductivity, Density, Soundspeed, Pressure) always starts
+            "Rarely used" group (Conductivity, Density, Soundspeed, Pressure) &mdash; which
+            heads that block in the parameter list AND in the Scale settings column, so the two
+            break at the same variable &mdash; always starts
             unchecked (still selectable manually).</td>
         </tr>
         <tr>
@@ -762,9 +774,25 @@
     the fixed 60-day rule, so the phase drives no QC decision).</p>
 
     <h2 id="settings_management">6. Settings Management</h2>
-    <p>All quality criteria (tests on/off, parameters and per-variable factors) are adjusted in the
-    <strong>Settings</strong> window, opened by the Settings button in the main window. The choices
-    are saved automatically across sessions.</p>
+    <p>All quality criteria (tests on/off, parameters and per-variable factors) are adjusted in
+    the <strong>Quality control settings</strong> window, opened by the button of that name or
+    from <em>File &rarr; Quality control settings…</em>. The choices are saved automatically
+    across sessions.</p>
+    <h3>What the program remembers</h3>
+    <p>Closing the program stores, and the next launch restores:</p>
+    <ul>
+      <li>the <strong>window</strong> as it was left &mdash; size, position and maximized
+      state &mdash; the height the Execution log was dragged to, and whether it was
+      hidden;</li>
+      <li>the <strong>qualification form</strong>: files, output folder, name and format, site
+      code, macroregion and region, and the option checkboxes. They are kept even if the run
+      was never started;</li>
+      <li>the <strong>visualization choices</strong>: the database and output fields, the
+      instrument, the panels and the plot colors set per parameter;</li>
+      <li>the <strong>recent selections</strong> of both tabs, the dark mode, and the folders
+      each Browse dialog should open at.</li>
+    </ul>
+    <p>The quality criteria are the one exception, by design: see the note below.</p>
     <div class="note">
         <p>The first launch after a program update shows a dialog when your saved QC criteria were
         reset to the new version's defaults. The reset is deliberate — a version may change
@@ -776,10 +804,15 @@
     <h3>Updates</h3>
     <p>When the program starts it quietly checks GitHub for a newer release; with no internet
     connection nothing happens — the check never blocks or interrupts work. When a newer version
-    exists, a dialog offers to <strong>download and install it in one click</strong>: the program
-    closes, the installer upgrades it in place and reopens it, with all settings kept. The same
-    check can be run by hand in <strong>Help → Check for updates…</strong>, which also answers
-    explicitly when you are already up to date or offline.</p>
+    exists, a dialog offers to <strong>download and install it</strong>: the program downloads
+    the installer, closes itself and hands over to the installer's wizard. Its last page offers
+    <strong>Launch QCS after installation</strong>, ticked by default — leave it ticked and the
+    program comes back updated, with all settings kept. The same check can be run by hand in
+    <strong>Help → Check for updates…</strong>, which also answers explicitly when you are
+    already up to date or offline.</p>
+    <p>An update that goes wrong leaves evidence: the installer writes its own log to
+    <code>%TEMP%\QCS_update_install.log</code>, which says what was installed and what was
+    started afterwards.</p>
     <p>The installer itself offers two modes: <em>install for all users</em> (goes to Program
     Files, asks for an administrator account) or <em>install for me only</em> (user area, no
     administrator needed — the right choice for a field notebook). In a Program Files install the
@@ -1098,7 +1131,7 @@
     <code>QCS_combine_method.txt</code> in the combined folder, each replicate's
     <code>QCS_light_window_&lt;replicate&gt;.svg</code> is copied there, and a
     <code>Temperature series.svg</code> plot shows the combined temperature at a glance
-    (since v11.6; since v12.0 it also draws the replicate-disagreement bars &mdash;
+    (it also draws the replicate-disagreement bars &mdash;
     bar = max &minus; min, centered on the mean &mdash; the same visual as the Data
     visualization HOBO panel). The combined sheet's <code>Flag</code> column is intentionally
     <strong>empty</strong>: each replicate ran its own tests, so a combined series has no
@@ -1115,7 +1148,7 @@
         <code>Temperature spread (degC)</code> column; when it exceeds 0.5 °C the combined
         <code>Flag_T</code> is set to <strong>SUSPECT (3)</strong> — the replicates disagree, which is
         itself a QC signal. A row covered by a <strong>single</strong> replicate carries an
-        <strong>empty</strong> spread (since v11.5): there was nothing to compare, and 0 would
+        <strong>empty</strong> spread: there was nothing to compare, and 0 would
         read as perfect agreement.</li>
         <li><strong>Light:</strong> the per-timestamp <strong>maximum of the non-fouled</strong>
         readings (<code>Flag_lux &ne; 4</code>). Fouling only attenuates light, so the brightest
@@ -1346,7 +1379,7 @@
     <h3>Scale Configuration</h3>
     <p>Advanced control over the plot scales through the "SCALE SETTINGS" panel.</p>
 
-    <h4>Plot color of a parameter (v12.0)</h4>
+    <h4>Plot color of a parameter</h4>
     <p>The colored square beside each parameter name is the color that parameter is drawn
     with in EVERY plot. Clicking it opens the color picker (which accepts a hex code, so a
     house palette can be typed in) and the choice is saved between sessions. The picker
