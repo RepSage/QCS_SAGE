@@ -109,6 +109,39 @@ load_user_prefs()
 # through view.getParamColors
 view.PARAM_COLOR_OVERRIDES.update(USER_PREFS.get('dbv_param_colors', {}))
 
+# How a parameter is SHOWN. The data column keeps its own name - it is a
+# dictionary key here and a column header in the qualified sheet, and both are
+# compared in logic - so nothing below may be applied to the stored name.
+# The units are written the way they are written on paper (owner, 2026-08-19);
+# the table is explicit rather than a rule over the string, so a new column can
+# only ever come out unchanged, never mangled.
+PARAM_UNIT_DISPLAY = {
+    'degC': '°C',              # °C
+    'deg': '°',                # bearing, the Doppler direction
+    'uM': 'µM',                # µM
+    'ug/L': 'µg/L',
+    'umol/m2/s': 'µmol/m²/s',
+    'kg/m3': 'kg/m³',
+}
+PARAM_NAME_DISPLAY = {
+    'CO2': 'CO₂',              # CO₂, as the Selection summary writes it
+    'O2': 'O₂',
+}
+
+
+def param_display(param):
+    """The label for a parameter: no 'level' filler, real unit characters and
+    subscripts in the formulas. Display only - never write this back."""
+    name = re.sub(r'(?i)\s+level', '', param)
+    m = re.match(r'^(.*?)\s*\(([^()]*)\)\s*$', name)
+    if m:
+        head, unit = m.group(1), m.group(2)
+        name = '%s (%s)' % (head, PARAM_UNIT_DISPLAY.get(unit, unit))
+    for raw, shown in PARAM_NAME_DISPLAY.items():
+        name = re.sub(r'\b%s\b' % raw, shown, name)
+    return name
+
+
 def set_param_color(param, color):
     """Sets (or clears, with color=None) a parameter's plot color and
     persists it. Toolkit-free: both shells call this."""
@@ -1266,6 +1299,7 @@ def build_step2(parent):
     global year_vars, year_widgets, time_start_entry, time_end_entry, depth_min_entry, depth_max_entry
     global site_names, site_vars, site_widgets, parameter_names, parameter_vars, parameter_widgets
     global secondary_params   # the 'Rarely used' tail, read by both shells
+    global params_with_data   # what this sheet actually carries, read by both
     global min_scale_entries, max_scale_entries, error_logger
 
     # Create main container with scrollbar
@@ -1598,8 +1632,7 @@ def build_step2(parent):
     parameter_widgets = {}  # Stores the Checkbutton widgets
 
     def _param_display(param):
-        # GUI label only - the data column keeps its original name
-        return re.sub(r'(?i)\s+level', '', param)
+        return param_display(param)
 
     # parameters this database actually carries data for (a column present with at
     # least one non-null value) - used as the default selection and for defaults
