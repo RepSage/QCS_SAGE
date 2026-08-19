@@ -1646,6 +1646,16 @@ MANUAL_CUT_COLUMNS = [
     ('Turbidity (FTU)', 'tur'), ('Dissolved organic matter (ppb)', 'org'),
 ]
 
+# The DCPS has none of the columns above (owner's list, 2026-08-19): its
+# Check-variables chooser offers the per-CELL series of a current profile.
+# TILT is deliberately absent - it is a RECORD-level series and its review
+# always runs first, exactly as the Depth review does for a scalar mooring
+# (see run_doppler_qualification).
+DOPPLER_CUT_COLUMNS = [
+    'Horizontal speed (cm/s)', 'Direction (deg)', 'Vertical speed (cm/s)',
+    'Speed stdev (cm/s)', 'Signal strength (dB)',
+]
+
 def choose_variables_to_check(candidates, root):
     """Modal list to pick WHICH variables to review in the manual point-cut
     panels (instead of stepping through all of them). Returns the chosen column
@@ -2318,11 +2328,11 @@ def build_qualification_tab(container, root, shared_log=None):
     # window stays open and the user can qualify several files in sequence.
     def run_doppler_qualification(bin_path):
         """DCPS / Doppler current-profiler pipeline (v8.0): reads the raw
-        session, runs the 4 current QC tests, writes the qualified sheet and
-        the 4 current panels. Selected automatically when the chosen .bin
-        belongs to a DCPS sensor group."""
+        session, opens the manual review (v13.0), runs the 4 current QC tests,
+        writes the qualified sheet and the 4 current panels. Selected
+        automatically when the chosen .bin belongs to a DCPS sensor group."""
         log_line('DCPS session detected: running the CURRENT-PROFILER qualification.')
-        log_line('Stage 1/4: reading the raw Doppler session...')
+        log_line('Stage 1/5: reading the raw Doppler session...')
         frame = data.read_seaguard_doppler(bin_path)
         if INPUT['correct_gmt3h']:
             frame['Datetime'] = frame['Datetime'] - timedelta(hours=3)
@@ -2331,18 +2341,89 @@ def build_qualification_tab(container, root, shared_log=None):
             log_line("Warning: 'Correct GMT-3' is OFF - the DCPS clock is GMT like "
                      "every Seaguard, so the current timestamps will stay 3 h ahead "
                      "of local time.")
-        log_line('Stage 2/4: running current quality tests (%d cell samples)...' % len(frame))
-        flags, rollup = QC.doppler_qc(frame, doppler_settings())
+        # Stage 2 - the interactive review (v13.0). A current session had no
+        # manual stop at all until now: the pipeline returned before the scalar
+        # one's panels, and none of ITS candidate variables exists in a current
+        # table. Two reviews, in the order the cuts depend on:
+        #   1. TILT, always, one point per RECORD - the DCPS's Depth review. A
+        #      cut there dismisses every cell of that instant, which is how
+        #      deployment and recovery leave a mooring record.
+        #   2. the per-cell series, when 'Check variables' is on; the tilt cuts
+        #      carry over as locked points so they are not offered again.
+        log_line('Stage 2/5: manual review of the current session...')
+        record_dismissed = data.trim_doppler_records(frame, tk_root=window)
+        cell_dismissed = set()
+        if INPUT['check_variables'] == True:
+            candidates = [name for name in DOPPLER_CUT_COLUMNS if name in frame.columns]
+            chosen = choose_variables_to_check(candidates, window)
+            if chosen is None:            # Cancel/Esc in the chooser -> abort run
+                raise data.ManualCutCanceled()
+            for i, name in enumerate(chosen, start=1):
+                rows = data.trim_doppler_variable(frame, name, tk_root=window,
+                                                  locked=record_dismissed | cell_dismissed,
+                                                  progress=(i, len(chosen)))
+                cell_dismissed |= rows
+        cell_dismissed -= record_dismissed        # a cut record wins over its cells
+        manual_dismissed = record_dismissed | cell_dismissed
+        n_records = (int(frame.iloc[sorted(record_dismissed)]['Datetime'].nunique())
+                     if record_dismissed else 0)
+
+        log_line('Stage 3/5: running current quality tests (%d cell samples)...' % len(frame))
+        # The cur_manual position must never CLAIM a review that did not
+        # happen: the batch drivers replace _show_and_wait with a no-op, so the
+        # panel above is built and answers 'nothing cut' without a human ever
+        # seeing it. The pipeline cannot know whether a window was on screen -
+        # what it does know is that the operator asked for the per-variable
+        # review, or that a cut came back. Anything else stays 'not evaluated'.
+        manual_reviewed = bool(manual_dismissed) or INPUT['check_variables'] == True
+        flags, rollup = QC.doppler_qc(frame, doppler_settings(),
+                                      manual_reviewed=manual_reviewed)
+
+        # The dismissals collected above, written into the flag string and the
+        # values. A DCPS dismissal condemns the whole CELL SAMPLE - speed,
+        # direction and the U/V/W components are one velocity solution per ping
+        # ensemble, with the stdev and the strength as its diagnostics - so
+        # every flag position of the row becomes 5 and every measurement is
+        # blanked. The row itself stays, with its identity columns (Datetime,
+        # Site, Column, Cell, Depth), so the cut is traceable instead of a
+        # silent hole. A cut RECORD also loses its attitude context
+        # (heading/pitch/roll/tilt/pings); a cut CELL keeps it, because the
+        # record it belongs to is still sound for its other cells.
+        if manual_dismissed:
+            cell_cols = [c for c in data.DCPS_CELL_COLUMNS if c in frame.columns]
+            rec_cols = [c for c in data.DCPS_RECORD_COLUMNS if c in frame.columns]
+            for row in manual_dismissed:
+                flags[row] = '%d' % QC.QC_flags.DISMISSED * len(flags[row])
+                rollup[row] = QC.QC_flags.DISMISSED
+            frame.iloc[sorted(manual_dismissed),
+                       [frame.columns.get_loc(c) for c in cell_cols]] = np.nan
+            if record_dismissed:
+                frame.iloc[sorted(record_dismissed),
+                           [frame.columns.get_loc(c) for c in rec_cols]] = np.nan
+            log_line('Manual cut: %d record(s) (%d cell rows) and %d individual '
+                     'cell sample(s) dismissed (flag 5).'
+                     % (n_records, len(record_dismissed), len(cell_dismissed)))
+        else:
+            log_line('Manual review: nothing dismissed.')
+
         # Site right after Datetime: build_database requires Datetime+Site, so
         # the qualified current table is stackable/searchable like the others
         frame.insert(1, 'Site', INPUT.get('site') or _output_base_for(bin_path))
         frame['Flag'] = flags
         frame['Flag_cur'] = rollup
         frame['QCS version'] = data.QCS_VERSION
+        # 'Remove dismissed data' applies here as it does to the Depth review's
+        # whole-row cuts: in a current table EVERY dismissal is a whole-row one
+        if OUTPUT.get('remove_dismissed') and manual_dismissed:
+            keep = [i for i in range(len(frame)) if i not in manual_dismissed]
+            frame = frame.iloc[keep].reset_index(drop=True)
+            log_line("Removed %d dismissed row(s) from the output ('Remove "
+                     "dismissed data')." % len(manual_dismissed))
         counts = frame['Flag_cur'].value_counts().to_dict()
-        log_line('Current QC: good %d, suspect %d, bad %d, missing %d.'
-                 % (counts.get(1, 0), counts.get(3, 0), counts.get(4, 0), counts.get(9, 0)))
-        log_line('Stage 3/4: writing the qualified current table...')
+        log_line('Current QC: good %d, suspect %d, bad %d, dismissed %d, missing %d.'
+                 % (counts.get(1, 0), counts.get(3, 0), counts.get(4, 0),
+                    counts.get(5, 0), counts.get(9, 0)))
+        log_line('Stage 4/5: writing the qualified current table...')
         base = _output_base_for(bin_path)
         root_out = os.path.join(OUTPUT['output_file_path'], base + '_DOPPLER_QLF')
         _claim_output_root(root_out)
@@ -2362,9 +2443,19 @@ def build_qualification_tab(container, root, shared_log=None):
             f.write('QCS Doppler current qualification - flag string positions\n')
             for pos, (key, label) in enumerate(QC.DOPPLER_TEST_SEQUENCE, start=1):
                 f.write('%d. %s (%s)\n' % (pos, label, key))
-            f.write('\nFlag codes: 1 good, 2 not evaluated, 3 suspect, 4 bad, 9 missing.\n')
+            f.write('\nFlag codes: 1 good, 2 not evaluated, 3 suspect, 4 bad, '
+                    '5 dismissed, 9 missing.\n')
             f.write('Flag_cur = worst flag of the row (4 > 3 > 9 > 1).\n')
-        log_line('Stage 4/4: rendering the current panels...')
+            # v13.0: position 5 is the operator's review, and a dismissal is
+            # never partial - the legend has to say so, or a reader meets a
+            # blank row of measurements with no explanation in the sheet
+            f.write('\nA manual dismissal (flag 5) sets EVERY position of the row '
+                    'and blanks its\nmeasurements: the cell values of a current '
+                    'record are ONE velocity solution,\nso a point the operator '
+                    'cannot trust condemns the whole cell sample. The row\n'
+                    'is kept, with its Datetime, Site, Column, Cell and Depth, '
+                    "unless\n'Remove dismissed data' was ticked.\n")
+        log_line('Stage 5/5: rendering the current panels...')
         panel_dir = os.path.join(root_out, 'QCS DataView (current)')
         site = INPUT.get('site') or base
         files = view.plot_doppler_panels(frame, panel_dir, label=site)

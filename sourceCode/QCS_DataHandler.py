@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v12.3'
+QCS_VERSION = 'v13.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -2464,7 +2464,7 @@ class ManualCutCanceled(Exception):
 
 
 def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
-                     depth=None, times=None):
+                     depth=None, times=None, xlabel='Sample number'):
     """Interactive panel to manually DISMISS points of a series. Drag a rectangle
     over points to mark them dismissed; mouse wheel zooms; Undo/Reset/Skip/Done/
     Help buttons and a live counter. Returns a SET of positional indices to
@@ -2475,7 +2475,10 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
     progress: (i, total) shown in the title, e.g. '[2 of 5]'.
     depth/times: the deployment's depth series and timestamps - the panel then
               shades the moments the instrument was being lowered or hauled up
-              (see draw_depth_context), which is where a cut usually belongs."""
+              (see draw_depth_context), which is where a cut usually belongs.
+    xlabel:   what the x axis counts. The default 'Sample number' is the scalar
+              series' row order; the DCPS reviews count records or cell samples
+              (v13.0), and a panel that mislabels its own axis is a trap."""
     x = np.asarray(x)
     y = np.asarray(y, dtype=float)
     locked = set() if locked is None else set(int(i) for i in locked)
@@ -2525,7 +2528,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
         if depth is not None and times is not None:
             draw_depth_context(ax, x, depth, times)
         ax.set_ylabel(label)
-        ax.set_xlabel('Sample number')
+        ax.set_xlabel(xlabel)
         if restore:
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
@@ -2679,6 +2682,71 @@ def trim_selected_variable(data, name, tk_root=None, locked=None, progress=None)
                            locked=locked, progress=progress,
                            depth=data.get('Depth (m)'), times=data.get('Datetime'))
     return set() if got is None else set(got)
+
+
+# --- DCPS / Doppler manual review (v13.0) ----------------------------------
+# The current frame is TIDY - one row per record x depth cell - so a manual cut
+# means one of two things, never a mix:
+#
+#   * TILT is a RECORD-level series (one value per instant, repeated on every
+#     cell of that instant). Cutting it dismisses the WHOLE record, every cell
+#     of that moment: this is the DCPS's Depth review, and it is where
+#     deployment and recovery show up in a mooring.
+#   * the per-CELL series dismiss the CELL SAMPLE they were spotted in. Speed,
+#     direction and the U/V/W components are ONE velocity solution per ping
+#     ensemble, with the stdev and the signal strength as its own diagnostics:
+#     a value that cannot be trusted condemns the solution, not one column of
+#     it. That is why a per-cell dismissal blanks every measurement of the row
+#     and not just the reviewed column.
+#
+# Neither review may pass `depth` to manual_cut_panel: 'Depth (m)' is the CELL
+# depth here (a handful of fixed values repeated on every record), so the
+# lowering/hauling shading would be nonsense.
+
+# the record-level context repeated on every cell row, and the per-cell
+# measurements - the two lists a dismissal blanks (public names for the
+# pipeline; the reader builds the frame from the private _DCPS_* tables)
+DCPS_RECORD_COLUMNS = [out for _descr, out in _DCPS_RECORD_PARAMS]
+DCPS_CELL_COLUMNS = [out for _descr, out in _DCPS_CELL_PARAMS]
+
+
+def trim_doppler_records(frame, tk_root=None, progress=None):
+    """Manual review of a DCPS session on TILT, one point per RECORD. Returns
+    the SET of row positions to dismiss - every cell of every record the
+    operator cut - or an empty set when the review is skipped. Does not modify
+    `frame`."""
+    rec = frame.drop_duplicates(subset='Datetime')      # already sorted in time
+    got = manual_cut_panel(np.arange(len(rec)),
+                           rec['Tilt (deg)'].to_numpy(dtype=float),
+                           'Tilt (deg)', tk_root, progress=progress,
+                           xlabel='Record number (one point per instant)')
+    if not got:
+        return set()
+    cut_times = set(rec['Datetime'].to_numpy()[sorted(got)])
+    mask = frame['Datetime'].isin(cut_times).to_numpy()
+    return set(int(i) for i in np.nonzero(mask)[0])
+
+
+def trim_doppler_variable(frame, name, tk_root=None, locked=None, progress=None):
+    """Manual review of one per-cell DCPS series. The points are shown ordered
+    by (Column, Cell, Datetime) - one contiguous time series per depth cell,
+    the cells one after another - because the tidy row order is record-major
+    and would draw a comb across the depth range instead of a series. Returns
+    the SET of row POSITIONS in `frame` the operator dismissed."""
+    order = (frame.assign(_pos=np.arange(len(frame)))
+             .sort_values(['Column', 'Cell', 'Datetime'], kind='stable')['_pos']
+             .to_numpy())
+    y = pd.to_numeric(frame[name], errors='coerce').to_numpy(dtype=float)[order]
+    locked = set() if locked is None else set(int(i) for i in locked)
+    panel_locked = set(int(j) for j, pos in enumerate(order) if pos in locked)
+    n_cells = frame[['Column', 'Cell']].drop_duplicates().shape[0]
+    got = manual_cut_panel(np.arange(len(order)), y, name, tk_root,
+                           locked=panel_locked, progress=progress,
+                           xlabel='Cell sample (%d depth cells in sequence, '
+                                  'each one in time)' % n_cells)
+    if not got:
+        return set()
+    return set(int(order[j]) for j in got)
 
 
 # QCS output subfolders where each instrument's qualified spreadsheets live

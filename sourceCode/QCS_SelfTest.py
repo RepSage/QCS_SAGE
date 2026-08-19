@@ -684,7 +684,10 @@ with _tempfile.TemporaryDirectory() as tmp:
     assert abs(dep['AMT pH#1[pH]'].iloc[3] - 7.3) < 1e-5                                 # interp at +30 s
 ok.append('read_seaguard_deployment (sibling sensor groups merged onto finest axis by time interpolation)')
 
-# 20) Doppler current QC (v8.0): the 4-test flag string and the Flag_cur rollup.
+# 20) Doppler current QC (v8.0): the flag string and the Flag_cur rollup. The
+# string carries FIVE positions since v13.0 - the fifth is the operator's
+# manual review, 2 when no review ran and 1 when it did (a dismissal writes 5
+# there and everywhere else, and is applied by the pipeline).
 # Rows: good | over-speed BAD | dead cell (state!=0) BAD | noisy SUSPECT |
 # tilted SUSPECT | missing.
 import QCS_Tests as _QCT
@@ -696,16 +699,23 @@ dop = pd.DataFrame({
     'Tilt (deg)':              [5.0, 5.0, 5.0, 5.0, 20.0, 5.0],
 })
 dflags, droll = _QCT.doppler_qc(dop)
-assert dflags[0] == '1111' and droll[0] == 1, (dflags[0], droll[0])
+assert dflags[0] == '11112' and droll[0] == 1, (dflags[0], droll[0])
 assert dflags[1][0] == '4' and droll[1] == 4, dflags[1]          # over max_speed
 assert dflags[2][1] == '4' and droll[2] == 4, dflags[2]          # dead cell state
 assert dflags[3][2] == '3' and droll[3] == 3, dflags[3]          # noisy stdev
 assert dflags[4][3] == '3' and droll[4] == 3, dflags[4]          # tilt suspect
-assert dflags[5] == '9999' and droll[5] == 9, dflags[5]          # missing
+assert dflags[5] == '99999' and droll[5] == 9, dflags[5]         # missing
 # tilt BAD threshold
 dflags2, droll2 = _QCT.doppler_qc(dop.assign(**{'Tilt (deg)': [40.0] * 6}))
 assert dflags2[0][3] == '4' and droll2[0] == 4
-ok.append('doppler_qc (speed range / signal quality / stdev / tilt; Flag_cur rollup)')
+# the manual position tells a reviewed session from an unreviewed one, and
+# says nothing else: it must never change what the four tests decided
+dflags4, droll4 = _QCT.doppler_qc(dop, manual_reviewed=True)
+assert dflags4[0] == '11111' and droll4[0] == 1, dflags4[0]
+assert [f[:4] for f in dflags4] == [f[:4] for f in dflags], 'manual position changed a test'
+assert len(_QCT.DOPPLER_TEST_SEQUENCE) == 5 and \
+    _QCT.DOPPLER_TEST_SEQUENCE[-1][0] == 'cur_manual', _QCT.DOPPLER_TEST_SEQUENCE
+ok.append('doppler_qc (speed range / signal quality / stdev / tilt / manual position; Flag_cur rollup)')
 
 # 21) is_seaguard_doppler: detects the DCPS template, rejects the scalar one.
 with _tempfile.TemporaryDirectory() as tmp:
@@ -1204,6 +1214,48 @@ with _tempfile2.TemporaryDirectory() as tmp:
     except ValueError as e:
         assert 'does not fit the deciphered layout' in str(e), e
 ok.append('read_hobo (.hobo binary: spec round-trip, timebase launch+1s, light lag, refusal)')
+
+# ------------------------------------------- 34. DCPS manual review (v13.0)
+# The current pipeline gained an interactive stop, and its two cuts reach the
+# tidy frame in different ways: a TILT cut takes the whole RECORD (every cell
+# of that instant) while a per-cell cut takes exactly the cell samples the
+# operator boxed - and those are shown in a different ORDER from the frame's
+# (by depth cell, then time), which is where a silent corruption would hide.
+# The panel is stubbed out: what is under test is the mapping, not matplotlib.
+_dop_frame = pd.DataFrame({
+    'Datetime': pd.to_datetime(['2025-01-01 00:00', '2025-01-01 00:00',
+                                '2025-01-01 00:10', '2025-01-01 00:10',
+                                '2025-01-01 00:20', '2025-01-01 00:20']),
+    'Column': ['A', 'A', 'A', 'A', 'A', 'A'],
+    'Cell': [1, 2, 1, 2, 1, 2],
+    'Depth (m)': [5.0, 10.0, 5.0, 10.0, 5.0, 10.0],
+    'Tilt (deg)': [3.0, 3.0, 40.0, 40.0, 5.0, 5.0],
+    'Horizontal speed (cm/s)': [10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
+})
+_seen = {}
+_real_panel = data.manual_cut_panel
+try:
+    data.manual_cut_panel = lambda x, y, label, *a, **k: (
+        _seen.update({'label': label, 'y': list(y), 'xlabel': k.get('xlabel'),
+                      'locked': k.get('locked')}) or {1})
+    # tilt: ONE point per record (3, not 6), and cutting the second record
+    # dismisses both of its cells
+    _cut = data.trim_doppler_records(_dop_frame)
+    assert _seen['y'] == [3.0, 40.0, 5.0], _seen['y']
+    assert 'Record' in _seen['xlabel'], _seen['xlabel']
+    assert _cut == {2, 3}, _cut
+    # per cell: the panel shows rows 0,2,4 then 1,3,5 (cell 1 in time, then
+    # cell 2), so panel point 1 is frame row 2 - and the locked rows travel
+    # into panel positions the same way
+    _cut2 = data.trim_doppler_variable(_dop_frame, 'Horizontal speed (cm/s)',
+                                       locked={2, 3})
+    assert _seen['y'] == [10.0, 12.0, 14.0, 11.0, 13.0, 15.0], _seen['y']
+    assert _seen['locked'] == {1, 4}, _seen['locked']
+    assert _cut2 == {2}, _cut2
+finally:
+    data.manual_cut_panel = _real_panel
+ok.append('DCPS manual review (tilt cuts whole records; per-cell cuts map back '
+          'through the cell ordering)')
 
 # --- the manual cut's rectangle keeps following the mouse outside the plot ---
 # This guards a patch over PRIVATE matplotlib API: if an upgrade renames

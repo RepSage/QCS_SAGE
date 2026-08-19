@@ -683,6 +683,10 @@ DOPPLER_TEST_SEQUENCE = [
     ('cur_signal', 'Signal quality (strength + cell state)'),
     ('cur_stdev', 'Speed standard deviation'),
     ('cur_tilt', 'Instrument tilt'),
+    # v13.0: the operator's manual review is a POSITION of the flag string, not
+    # an overwrite of the automatic ones. 2 = no review ran, 1 = reviewed and
+    # kept, 5 = dismissed by the operator (written by the pipeline, never here).
+    ('cur_manual', 'Manual review (operator point cut)'),
 ]
 
 DOPPLER_DEFAULTS = {
@@ -694,10 +698,16 @@ DOPPLER_DEFAULTS = {
 }
 
 
-def doppler_qc(frame, settings=None):
+def doppler_qc(frame, settings=None, manual_reviewed=False):
     """Qualifies a Doppler current frame. Returns (flags, Flag_cur):
-    flags = list of 4-char strings (one per row, DOPPLER_TEST_SEQUENCE order);
-    Flag_cur = per-row rollup with the scalar priority (4 > 3 > 9 > 1)."""
+    flags = list of 5-char strings (one per row, DOPPLER_TEST_SEQUENCE order);
+    Flag_cur = per-row rollup with the scalar priority (4 > 3 > 9 > 1).
+
+    manual_reviewed says whether the operator's manual point-cut review ran in
+    this qualification: it only decides the RESTING value of the cur_manual
+    position - 1 (reviewed and kept) or 2 (not evaluated). The dismissals
+    themselves are written by the pipeline afterwards (flag 5), because they
+    are collected before the tests and applied to the whole row."""
     s = dict(DOPPLER_DEFAULTS)
     if settings:
         s.update({k: v for k, v in settings.items() if k in DOPPLER_DEFAULTS})
@@ -711,9 +721,10 @@ def doppler_qc(frame, settings=None):
     n = len(frame)
     flags = []
     rollup = np.ones(n, dtype=int)
+    manual_rest = '%d' % (QC_flags.GOOD_DATA if manual_reviewed else QC_flags.UNKNOWN)
     for i in range(n):
         if missing[i]:
-            flags.append('%d' % QC_flags.MISSING * 4)
+            flags.append('%d' % QC_flags.MISSING * len(DOPPLER_TEST_SEQUENCE))
             rollup[i] = QC_flags.MISSING
             continue
         f = ''
@@ -739,6 +750,9 @@ def doppler_qc(frame, settings=None):
             f += '%d' % QC_flags.SUSPECT
         else:
             f += '%d' % QC_flags.GOOD_DATA
+        # 5) manual review: nothing is dismissed here (the operator's cuts are
+        #    applied by the pipeline); this only records whether a review ran
+        f += manual_rest
         flags.append(f)
         chars = [int(c) for c in f]
         if QC_flags.BAD_DATA in chars:
