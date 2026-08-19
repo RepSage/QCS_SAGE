@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v12.2.2</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v12.2.3</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -665,12 +665,19 @@
         </tr>
         <tr>
             <td>Select parameters</td>
-            <td>List of checkboxes to select the parameters to include, in two groups: the main
-            group starts checked whenever the imported sheet carries data for it, and a
+            <td>List of checkboxes to select the parameters to include. <strong>Only the
+            variables this database actually carries are listed</strong> &mdash; a column that
+            is present but empty, such as CO&#8322; when no CO&#8322; logger file was merged
+            into the qualification, does not take a row it could never be plotted from. What
+            is left comes in two groups: the main group starts checked, and a
             "Rarely used" group (Conductivity, Density, Soundspeed, Pressure) &mdash; which
             heads that block in the parameter list AND in the Scale settings column, so the two
             break at the same variable &mdash; always starts
-            unchecked (still selectable manually).</td>
+            unchecked (still selectable manually).<br><br>Both lists write the units the way
+            they are written on paper (<em>°C</em>, <em>µM</em>, <em>µmol/m²/s</em>,
+            <em>µg/L</em>, <em>kg/m³</em>) and the formulas with subscripts (<em>CO₂</em>,
+            <em>O₂</em>). That is the label only: the column keeps its own name in the
+            qualified sheet, which is what the plots and the flag columns are built from.</td>
         </tr>
         <tr>
             <td>&lt; Back</td>

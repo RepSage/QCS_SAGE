@@ -212,7 +212,11 @@ class VisualizationTab(QWidget):
         grid.addWidget(gin, 0, 0)
         grid.addWidget(gout, 0, 1)
         grid.addWidget(ah, 1, 0, 1, 2)
-        grid.setRowStretch(0, 1)
+        # the boxes take the height of their CONTENT and 'Next >' sits right
+        # under them: the stretch used to be on the boxes' own row, which blew
+        # them up to the full page and pushed the button to the bottom edge
+        # (owner, 2026-08-19)
+        grid.setRowStretch(2, 1)
         qtheme.bold_form_labels(fin)
         qtheme.bold_form_labels(fout)
         return page
@@ -251,6 +255,19 @@ class VisualizationTab(QWidget):
         self.stack.setCurrentIndex(0)
         self.refresh_step1()
         qtheme.scroll_to_top(self)
+
+    def _shown_params(self):
+        """The parameters this database actually carries data for.
+
+        A column that is present but EMPTY - CO2 when no CO2 logger file was
+        merged, an optical group the cast did not have - used to take a row in
+        the filter and another in Scale settings, offering a variable that
+        cannot be plotted (owner, 2026-08-19). QCS_DatabaseView computes the
+        list while it builds step 2; if it somehow has none, show them all
+        rather than an empty panel."""
+        with_data = list(getattr(dbv, 'params_with_data', []) or [])
+        return ([p for p in dbv.parameter_names if p in with_data]
+                or list(dbv.parameter_names))
 
     def _sync_recent_state(self):
         """Recent is usable only while nothing is selected above - and while it
@@ -510,15 +527,16 @@ class VisualizationTab(QWidget):
         # the rarely-used tail carries its own heading, as the tk Step 2 had:
         # these variables always start unchecked and the operator has to know
         # THAT is why they are off (owner, v12.1)
-        rare = list(getattr(dbv, 'secondary_params', []) or [])
-        for param in dbv.parameter_names:
+        shown = self._shown_params()
+        rare = [p for p in getattr(dbv, 'secondary_params', []) or [] if p in shown]
+        for param in shown:
             if rare and param == rare[0]:
                 rare_lab = QLabel('Rarely used:')
                 rare_lab.setFont(f)
                 rare_lab.setToolTip(TOOLTIPS['param_secondary'])
                 qtheme.muted(rare_lab)
                 ff.addWidget(rare_lab)
-            cb = QCheckBox(str(param))
+            cb = QCheckBox(dbv.param_display(param))
             cb.setToolTip(TOOLTIPS['param_secondary'] if param in rare
                           else TOOLTIPS['param_filter'])
             self._check_pair(cb, dbv.parameter_vars[param],
@@ -541,9 +559,11 @@ class VisualizationTab(QWidget):
         # the same 'Rarely used:' heading the parameter filter carries, so the
         # two columns break at the same place - the tk Step 2 headed both and
         # the port kept it only on the filter (owner, 2026-08-19)
-        rare_scale = list(getattr(dbv, 'secondary_params', []) or [])
+        shown = self._shown_params()
+        rare_scale = [p for p in getattr(dbv, 'secondary_params', []) or []
+                      if p in shown]
         r = 0
-        for param in dbv.parameter_names:
+        for param in shown:
             r += 1
             if rare_scale and param == rare_scale[0]:
                 head = QLabel('Rarely used:')
@@ -557,12 +577,13 @@ class VisualizationTab(QWidget):
             swatch = QPushButton()
             swatch.setFixedSize(18, 18)
             swatch.setToolTip('Color of %s in the plots\nClick to change it '
-                              '(the picker takes hex codes too)' % param)
+                              '(the picker takes hex codes too)'
+                              % dbv.param_display(param))
             swatch.setCursor(Qt.CursorShape.PointingHandCursor)   # it is clickable
             swatch.clicked.connect(lambda _c=False, p=param: self._pick_color(p))
             gs.addWidget(swatch, r, 0)
             self.color_buttons[param] = swatch
-            plab = QLabel(str(param))   # plain, like the other value rows
+            plab = QLabel(dbv.param_display(param))   # plain, like the values
             gs.addWidget(plab, r, 1)
             mn = QLineEdit()
             mn.setMinimumWidth(80)
