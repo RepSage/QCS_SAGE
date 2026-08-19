@@ -17,7 +17,35 @@ git log -p -- STATUS.md             # how it got there
 Everything that was still OPEN in those entries was carried into the second
 section below, each line dated with when it was last touched - not with today.
 
-## 2026-08-19 - v12.2.1 RELEASED; publication pending
+## 2026-08-19 - v12.2.2 RELEASED; publication pending
+
+PR #34 merged (`a150772`), **tagged `v12.2.2` there**, branch
+`viz-scroll-and-hints` deleted both sides. Three interface items, all measured
+on a real Seaguard database (BURACAS 2019S1, 13 parameters):
+
+- Recent in the Visualization tab says what makes it usable again while it is
+  greyed out, the wording the Qualification tab already had.
+- Scale settings carries the 'Rarely used:' heading in front of the same
+  variables the parameter filter heads - the tk step 2 headed BOTH columns and
+  the port kept it only on the filter. Step 2 now shows exactly two such
+  headings, one per column, before Conductivity/Density/Soundspeed/Pressure.
+- Every switch opens at the top (`qtheme.scroll_to_top`). With both pages
+  scrolled to their end: tab change arrives at 0 in both directions, Next goes
+  24 -> 0, Back returns to 0. The reset is queued with a zero timer as well as
+  applied inline, because Qt scrolls the page itself, after the switch, to keep
+  the focused widget visible.
+
+Installer rebuilt and smoke-tested: frozen app alive 20 s, title 'QCS - Quality
+Control System (SAGE)  -  v12.2.2', closed cleanly, no crash log. ISCC ->
+`QCS_Setup_v12.2.2.exe`, **77.8 MB**, on the Desktop beside
+`RELEASE_v12.2.2.md`, md5 4AC1B418F9ADEF149021DE5A73ACD604 checked against
+`packaging\Output`.
+
+**A DRAFT release is waiting** - id 373138117, name 'v12.2.2 - the page opens
+where you left off, at the top', asset uploaded (81,562,086 bytes).
+**Left to the owner: press Publish.**
+
+## 2026-08-19 - v12.2.1 RELEASED and PUBLISHED
 
 PR #33 merged (`f23af26`), **tagged `v12.2.1` there**, branch
 `fix-update-relaunch` deleted both sides. Installer rebuilt and smoke-tested:
