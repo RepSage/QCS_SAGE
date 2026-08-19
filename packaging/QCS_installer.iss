@@ -22,7 +22,7 @@
 ; operator can see. Compile with ISCC.exe after the PyInstaller build; steps
 ; in README.md.
 
-#define AppVersion "12.3"
+#define AppVersion "13.0"
 
 [Setup]
 AppId={{7B1C9D2E-4A31-4F5B-9C1E-QCSSAGE00001}

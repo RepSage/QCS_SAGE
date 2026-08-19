@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v12.3</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v13.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -260,21 +260,29 @@
             variable is qualified together. Selecting a <strong>Doppler current-profiler
             (DCPS)</strong> group's <code>Data000.bin</code> auto-sets the Data type to
             <strong>TSCP Doppler</strong> and runs the CURRENT pipeline instead:
-            one row per record &times; depth cell, four current quality tests (speed range;
+            one row per record &times; depth cell, a manual review (see
+            <em>Check variables</em> below), four current quality tests (speed range;
             signal quality &mdash; cell state, return strength, 'no ping' placeholders; speed
-            standard deviation; instrument tilt), output in
+            standard deviation; instrument tilt) and a fifth flag position recording the
+            manual review, output in
             <code>&lt;session&gt;_DOPPLER_QLF</code> (qualified current table with a Site
             column + flag legend + the 4 current panels in <code>QCS DataView (current)</code>:
             time&times;depth heatmaps, stick plot, U/V components, progressive vector). In the
             Visualization tab, the same qualified table is auto-detected as Instrument
             <strong>Doppler</strong> / Data type <strong>TSCP Doppler</strong>, and 'Generate
             panels' renders the current panels into <code>DatabaseView\&lt;site&gt;
-            (current)</code> per selected site. The current panels honour the
-            <strong>time window</strong> and the <strong>depth range</strong> (which also sets
-            the stick/vector reference depth to the band's centre); <strong>Fixed scale</strong>
-            gives every heatmap one shared speed color scale so sites/years compare 1:1; and
-            selecting two or more sites adds a cross-site <em>"Current mean speed across
-            sites"</em> panel. The four current QC thresholds (max speed, min signal strength,
+            (current)</code> per selected site &mdash; all of them in ONE window, walked
+            through with <em>&lt; Previous</em> and <em>Next &gt;</em>. The current panels
+            honour the <strong>time window</strong> and the <strong>depth range</strong>
+            (which also sets the stick/vector reference depth to the band's centre);
+            <strong>Fixed scale (one speed colour scale)</strong> gives every heatmap one
+            shared speed color scale so sites/years compare 1:1 &mdash; nothing is typed for
+            it, unlike the scalar Min/Max; and selecting two or more sites adds a cross-site
+            <em>"Current mean speed across sites"</em> panel. The direction heatmap carries a
+            <strong>compass wheel</strong> instead of a colour bar, so the colour reads as a
+            bearing (N/E/S/W). A Doppler database does not show the three panel checkboxes,
+            the parameter filter or the Scale settings column: the four current panels have
+            fixed content, so none of them applies. The four current QC thresholds (max speed, min signal strength,
             max speed stdev, tilt) are editable under Settings &rarr; Parameters &rarr;
             <em>Current profiler (Doppler)</em>. Selecting SEVERAL Seaguard files creates a
             <strong>batch</strong>: each file
@@ -365,7 +373,21 @@
                 traceable. The mooring <strong>Depth</strong> review runs automatically
                 (independent of this option) to trim spurious depths from equipment handling;
                 its whole-row cuts carry over (grayed) into the per-variable panels so the same
-                points are never cut twice.</td>
+                points are never cut twice.
+                <br><br>
+                <strong>Current profiler (DCPS).</strong> A current session has its own review.
+                The <strong>tilt</strong> panel always runs, one point per record &mdash; it is
+                the DCPS's equivalent of the Depth review, and cutting a point dismisses the
+                whole record, every depth cell of that instant (the cut cannot be made on
+                depth: in a current table <em>Depth (m)</em> is the CELL depth). With
+                <em>Check variables</em> ticked, the chooser then offers the variables a
+                current table actually carries: horizontal speed, direction, vertical speed,
+                speed stdev and signal strength, each shown one depth cell at a time, in
+                sequence. A dismissal there condemns the whole <strong>cell sample</strong>
+                &mdash; speed, direction and the U/V/W components of a cell are one velocity
+                solution &mdash; so every flag position of the row becomes 5 and every
+                measurement is blanked, the row keeping its Datetime, Site, Column, Cell and
+                Depth.</td>
         </tr>
         <tr>
             <td>Macroregion / Region</td>
@@ -751,6 +773,12 @@
         <li>Flags are cumulative - a data point can have multiple codes</li>
         <li>The exact position → test → variable mapping is written to the
             <code>QCS_flag_legend.xlsx</code> file, generated with each qualification</li>
+        <li>A <strong>current profiler (DCPS)</strong> sheet has its own five-position string,
+            listed in <code>QCS_current_flag_legend.txt</code> beside the qualified table:
+            speed range, signal quality, speed stdev, instrument tilt and the operator's
+            <strong>manual review</strong> (2 = no review ran, 1 = reviewed and kept,
+            5 = dismissed). A current table qualified before v13.0 carries four positions and
+            has to be requalified to gain the fifth</li>
     </ul>
 
     <h4>Example</h4>

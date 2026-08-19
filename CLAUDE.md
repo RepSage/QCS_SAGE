@@ -91,6 +91,31 @@ archive and diff the counts against the previous `qualified_index.csv`.
 - **HOBO vs. Seaguard**: HOBO files run only the temperature tests plus the light
   fouling-window test (`light_cutoff_window`), and have their own output column
   layout. Layout detection: `detect_qualified_layout()` in `QCS_DataHandler.py`.
+- **A DCPS (current profiler) product is TIDY: one row per record x depth
+  CELL**, and three of its columns are traps. `Depth (m)` is the CELL depth - a
+  handful of fixed values repeated on every record - so nothing may treat it as
+  a profile axis or as a deployment depth series; `Site+Datetime` repeats once
+  per cell BY CONSTRUCTION (`build_database` keys its overlap warning on
+  `Site+Datetime+Column+Cell` for this layout); and `Heading/Pitch/Roll/Tilt/
+  Ping count` are RECORD-level (`_DCPS_RECORD_PARAMS`), identical across the
+  cells of one instant. Its flag string has its OWN sequence,
+  `DOPPLER_TEST_SEQUENCE` (`QCS_Tests.py`), five positions since v13.0, with
+  its own legend file - `FLAG_BUCKET_MAP` and the scalar sequence do not apply
+  to it.
+- **A DCPS manual dismissal is never partial** (v13.0): the cell values of one
+  record are a single velocity solution, so a cut writes 5 over EVERY flag
+  position of the row and blanks every measurement; a TILT cut takes the whole
+  record (all its cells) and also blanks the record-level attitude, a per-cell
+  cut takes one row and keeps it. The tilt review always runs (it is the
+  DCPS's Depth review); the per-cell candidates are `DOPPLER_CUT_COLUMNS`
+  (`QCS_Main.py`), NOT `MANUAL_CUT_COLUMNS`, whose nine scalar variables exist
+  in no current table.
+- **The `cur_manual` flag position must never claim a review that did not
+  happen.** The batch drivers no-op `_show_and_wait`, so a review panel is
+  built and answers 'nothing cut' with no window on screen: the pipeline
+  decides the resting value from what it can actually know (a cut came back,
+  or the operator ticked 'Check variables'), never from the fact that it
+  called the panel.
 - **A new input file format has FOUR wiring points**, and the readers are only
   one of them: the extension gate in `collect_input_settings` (`QCS_Main.py`),
   the Browse dialog `filetypes`, `sniff_input_type`, and the reader itself.
