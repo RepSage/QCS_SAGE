@@ -88,9 +88,17 @@ archive and diff the counts against the previous `qualified_index.csv`.
   unreachable from the GUI ("Unsupported file format") — corpus validation runs
   at the data layer and cannot catch a GUI-gate miss (v11.4.1).
 - **Theming/DPI** is centralized in `QCS_Theme.py` (sv-ttk, dark mode, DPI
-  awareness). Plot colors are centralized in `getParamColors()` /
-  `getSiteColors()` in `QCS_DataView.py`. Never hardcode colors or fonts in
-  windows or plots.
+  awareness) and `QCS_QtTheme.py` for the Qt shell. Plot colors are centralized
+  in `getParamColors()` / `getSiteColors()` in `QCS_DataView.py`. Never
+  hardcode colors or fonts in windows or plots.
+- **Never set an UNQUALIFIED Qt stylesheet on a widget.** A rule without a
+  selector (`widget.setStyleSheet('margin-left: 18px')`) is inherited by that
+  widget's own TOOLTIP, which then opens with an empty strip on the side -
+  measured 18 px wider than the same tooltip on an unstyled box (v12.2.1).
+  Indent with the layout, or qualify the selector (`QCheckBox { ... }`).
+  `qtheme.muted()` carries the same warning for a different reason: a
+  stylesheet on a child makes Qt re-render its ancestors through the
+  stylesheet engine, which painted a gray slab behind a QGroupBox.
 - **User settings** live in `sourceCode/qcs_user_settings.json` (auto-generated,
   gitignored, version-gated: a version bump may intentionally reset QC criteria
   to new defaults while preserving file paths).
