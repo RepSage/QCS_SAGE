@@ -460,18 +460,23 @@ def apply_selected_files(names):
         print('Info: %d files selected - each will be qualified independently, '
               'in sequence (one _QLF output per file).' % len(names))
     # Data type follows the selected binary: a DCPS current-profiler session
-    # sets 'TSCP Doppler'; a scalar session picked while the type still says
-    # Doppler falls back to Mooring (the combobox stays editable either way)
+    # sets 'TSCP Doppler' and LOCKS the field (the file decides it, and any
+    # other value would only produce errors - owner, v12.2.4); a scalar session
+    # picked while the type still says Doppler falls back to Mooring and the
+    # Profile/Mooring choice is given back
     if inputType_combobox.get() == 'Seaguard' and first.lower().endswith('.bin'):
         if data.is_seaguard_doppler(first):
             if dType_combobox.get() != 'TSCP Doppler':
                 dType_combobox.set('TSCP Doppler')
                 dType_combobox.event_generate('<<ComboboxSelected>>')
                 print("Info: DCPS current profiler detected - Data type set to 'TSCP Doppler'.")
-        elif dType_combobox.get() == 'TSCP Doppler':
-            dType_combobox.set('TSCP Mooring')
-            dType_combobox.event_generate('<<ComboboxSelected>>')
-            print("Info: scalar Seaguard session selected - Data type reset to 'TSCP Mooring'.")
+            dType_combobox.config(state='disabled')
+        else:
+            if dType_combobox.get() == 'TSCP Doppler':
+                dType_combobox.set('TSCP Mooring')
+                dType_combobox.event_generate('<<ComboboxSelected>>')
+                print("Info: scalar Seaguard session selected - Data type reset to 'TSCP Mooring'.")
+            dType_combobox.config(state='readonly')
     # auto-fill the output folder from the first file; the name follows the
     # selection (single / combined replicates / batch)
     outputPath_entry.delete(0, END)

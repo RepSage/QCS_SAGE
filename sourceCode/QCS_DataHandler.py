@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v12.2.3'
+QCS_VERSION = 'v12.2.4'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -2770,13 +2770,21 @@ def build_database(instrument, file_list=None, input_path=None):
         messages.append('Warning: %d exact duplicate row(s) (same Site+Datetime+values) '
                         'discarded - kept the first occurrence.' % n_exact)
 
-    # overlaps with DIFFERENT values: kept, but the operator needs to know
-    overlap_mask = database.duplicated(subset=['Site', 'Datetime'], keep=False)
+    # overlaps with DIFFERENT values: kept, but the operator needs to know.
+    # What identifies a row is not the same in every layout: a Doppler table is
+    # tidy (one row per record x depth CELL), so Site+Datetime repeats once per
+    # cell BY CONSTRUCTION and keying on it alone reported every single row as
+    # an overlap (measured: 12 of 12 on a 4-record x 3-cell session, v12.2.4).
+    overlap_keys = ['Site', 'Datetime']
+    if expected_layout == 'doppler':
+        overlap_keys += [c for c in ('Column', 'Cell') if c in database.columns]
+    overlap_mask = database.duplicated(subset=overlap_keys, keep=False)
     if overlap_mask.any():
         offenders = sorted(database.loc[overlap_mask, 'Source file'].unique())
-        messages.append('Warning: %d row(s) share the same Site+Datetime with DIFFERENT values '
+        messages.append('Warning: %d row(s) share the same %s with DIFFERENT values '
                         '(overlapping qualifications?) - ALL kept; check the files: %s'
-                        % (int(overlap_mask.sum()), ', '.join(offenders)))
+                        % (int(overlap_mask.sum()), '+'.join(overlap_keys),
+                           ', '.join(offenders)))
 
     database.index = np.arange(len(database))
     for site, group in database.groupby('Site'):

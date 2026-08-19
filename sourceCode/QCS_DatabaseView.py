@@ -294,6 +294,20 @@ def toggle_panel_dependent_controls():
     # HOBO included (its panels honor them like the Seaguard ones)
     any_panel_selected = panel1.get() or panel2.get() or panel3.get()
 
+    if is_doppler_input():
+        # The current panels are IMPLICIT - no panel checkbox applies - so the
+        # gate below (which keys on a panel being selected) grayed out the one
+        # option that does apply: 'Fixed scale' is what makes the heatmap speed
+        # color scale shared, so sites and years compare 1:1. toggle_data_type
+        # enabled it and this function disabled it again two calls later, which
+        # left the whole Visualization settings box dead (owner, v12.2.4).
+        set_disabled_style(tendency_cb)
+        set_disabled_style(tendency_entry)
+        set_disabled_style(points_cb)
+        set_enabled_style(fixed_scale_cb)
+        toggle_scale_controls()
+        return
+
     if any_panel_selected:
         set_enabled_style(tendency_cb)
         if tendency.get():
@@ -655,7 +669,10 @@ def selectInputFolder():
 
 def saveInputSettings():
     # validation with clear warnings before closing the window
-    if instrument_combobox.get() not in ('Seaguard', 'HOBO'):
+    # Doppler belongs here too: every other piece of the tab already handles it
+    # (autodetect, is_doppler_input, the 4 current panels), and only this gate
+    # refused - a qualified DCPS database could not leave Step 1 (owner, v12.2.4)
+    if instrument_combobox.get() not in ('Seaguard', 'HOBO', 'Doppler'):
         ui_warn("Warning", "Select the instrument that produced the files\n('Instrument' field).")
         return
     if join.get():
@@ -938,7 +955,7 @@ def generatePanels():
                     try:
                         files = view.plot_doppler_panels(
                             site_df, os.path.join(out_dir, '%s (current)' % site),
-                            label=site, settings=dop_settings)
+                            label=site, settings=dop_settings, show=True)
                         if files:
                             error_logger.log("Info: %d current panel(s) generated for %s." % (len(files), site))
                             n_ok += len(files)
@@ -950,7 +967,8 @@ def generatePanels():
                 if len(selected_sites) > 1:
                     try:
                         xfiles = view.plot_doppler_across_sites(
-                            sub, out_dir, selected_sites, settings=dop_settings)
+                            sub, out_dir, selected_sites, settings=dop_settings,
+                            show=True)
                         if xfiles:
                             error_logger.log("Info: cross-site current comparison generated "
                                              "(%d site(s))." % len(selected_sites))

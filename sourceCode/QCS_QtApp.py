@@ -210,6 +210,8 @@ class QtShell(QMainWindow):
         self._last_seaguard = {}    # Data type/GMT stored while HOBO is selected
         self._co2_file = ''
         self._run_scope = None      # 'File k/n' / 'Replicate k/n' progress prefix
+        self._doppler_file = False  # the selected .bin is a DCPS session
+        self._stage_total = 5       # stages the running pipeline logs (Doppler has 4)
 
         tabs = QTabWidget()
         # every page is wrapped: a page that cannot shrink caps how far the
@@ -411,17 +413,20 @@ class QtShell(QMainWindow):
     # ----- logging -----
     def log_line(self, message):
         # the pipeline's own markers drive the progress bar: every run logs
-        # 'Stage k/5', and batches/replicates scope it with '=== File k/n ==='
+        # 'Stage k/N', and batches/replicates scope it with '=== File k/n ==='
         # / '=== Replicate k/n ==='. Progress is CONTINUOUS across the whole
-        # run: file k of n at stage s sits at (k-1)*5 + s out of n*5, so
+        # run: file k of n at stage s sits at (k-1)*N + s out of n*N, so
         # finishing the first of two replicates reads 50%, not a reset.
+        # N comes from the marker itself: the scalar pipeline logs 5 stages and
+        # the Doppler one 4, and a hardcoded '/5' matched neither - it left the
+        # DCPS run with a blank, indeterminate bar (owner, v12.2.4).
         msg = message.strip()
         m = re.match(r'=== (File|Replicate) (\d+)/(\d+): (.+?) ===', msg)
         if m:
             kind, k, n = m.group(1), int(m.group(2)), int(m.group(3))
             self._run_scope = (kind, k, n)
-            self.progress.setRange(0, n * 5)
-            self.progress.setValue((k - 1) * 5)
+            self.progress.setRange(0, n * self._stage_total)
+            self.progress.setValue((k - 1) * self._stage_total)
             self.progress.setFormat('%s %d/%d' % (kind, k, n))
             if kind == 'File':
                 self._batch_mark(m.group(4), k, n)
@@ -430,19 +435,20 @@ class QtShell(QMainWindow):
             row = self._batch_rows[fail.group(1)]
             self.batch_table.setItem(row, 1, QTableWidgetItem('FAILED (see log)'))
         else:
-            s = re.match(r'Stage (\d)/5', msg)
+            s = re.match(r'Stage (\d+)/(\d+)', msg)
             if s:
-                stage = int(s.group(1))
+                stage, total = int(s.group(1)), int(s.group(2))
+                self._stage_total = total
                 if self._run_scope:
                     kind, k, n = self._run_scope
-                    self.progress.setRange(0, n * 5)
-                    self.progress.setValue((k - 1) * 5 + stage)
-                    self.progress.setFormat('%s %d/%d - Stage %d/5'
-                                            % (kind, k, n, stage))
+                    self.progress.setRange(0, n * total)
+                    self.progress.setValue((k - 1) * total + stage)
+                    self.progress.setFormat('%s %d/%d - Stage %d/%d'
+                                            % (kind, k, n, stage, total))
                 else:
-                    self.progress.setRange(0, 5)
+                    self.progress.setRange(0, total)
                     self.progress.setValue(stage)
-                    self.progress.setFormat('Stage %d/5' % stage)
+                    self.progress.setFormat('Stage %d/%d' % (stage, total))
         self.log_dock.log(message)
         QApplication.processEvents()   # progress shows while the pipeline runs
 
@@ -964,12 +970,15 @@ class QtShell(QMainWindow):
                   'in sequence (one _QLF output per file).' % len(names))
         if self.input_type.currentText() == 'Seaguard' and first.lower().endswith('.bin'):
             if data.is_seaguard_doppler(first):
+                self._doppler_file = True
                 if self.data_type.currentText() != 'TSCP Doppler':
-                    self.data_type.setCurrentText('TSCP Doppler')
                     print("Info: DCPS current profiler detected - Data type set to 'TSCP Doppler'.")
-            elif self.data_type.currentText() == 'TSCP Doppler':
-                self.data_type.setCurrentText('TSCP Mooring')
-                print("Info: scalar Seaguard session selected - Data type reset to 'TSCP Mooring'.")
+            else:
+                self._doppler_file = False
+                if self.data_type.currentText() == 'TSCP Doppler':
+                    self.data_type.setCurrentText('TSCP Mooring')
+                    print("Info: scalar Seaguard session selected - Data type reset to 'TSCP Mooring'.")
+            self._apply_doppler_lock()
         self.out_folder.setText(os.path.dirname(first))
         self._apply_output_name()
         self._update_co2_controls()
@@ -1224,6 +1233,7 @@ class QtShell(QMainWindow):
             self.remove_dismissed.setEnabled(True)
             self.remove_dismissed.setChecked(
                 self._last_seaguard.get('remove_dismissed', True))
+            self._apply_doppler_lock()   # a DCPS file re-locks the Data type
         else:
             # no instrument selected ('Select instrument' placeholder): the
             # dependent fields wait for a selection
@@ -1246,6 +1256,20 @@ class QtShell(QMainWindow):
         self._apply_output_name()
         self._update_co2_controls()
 
+    def _apply_doppler_lock(self):
+        """A DCPS session is not a choice: the Data type SHOWS 'TSCP Doppler'
+        and stops being selectable, since the file itself decides it and any
+        other value would only produce errors (owner, v12.2.4). A scalar
+        Seaguard keeps its Profile/Mooring choice."""
+        if self._doppler_file and self.input_type.currentText() == 'Seaguard':
+            self.data_type.setCurrentText('TSCP Doppler')
+            self.data_type.setEnabled(False)
+            self.data_type.setToolTip(
+                'Decided by the file: this .bin is a DCPS current-profiler '
+                'session, so the collection type is not a choice')
+        else:
+            self.data_type.setToolTip(TOOLTIPS['data_type'])
+
     def _update_profile_state(self):
         # 'Select profile data' applies to profiles only (port of
         # update_profile_checkbox_state)
@@ -1259,6 +1283,7 @@ class QtShell(QMainWindow):
         if not text.strip():
             # selection cleared: back to 'Select instrument', editable, and
             # the Replicates line and summary go away with it
+            self._doppler_file = False
             self.input_type.setEnabled(True)
             self.input_type.setCurrentIndex(-1)
             for lab in self.sum_labels.values():
@@ -1338,6 +1363,7 @@ class QtShell(QMainWindow):
         self.progress.setVisible(busy)
         if busy:
             self._run_scope = None
+            self._stage_total = 5   # re-learned from the first Stage marker
             self.batch_dock.hide()          # reappears on the first File marker
             self.batch_table.setRowCount(0)
             self._batch_rows = {}
