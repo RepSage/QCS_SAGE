@@ -9,35 +9,17 @@ leave this file, and only what is still open moves down to the open items,
 dated with when it was last touched. The full text before the 2026-08-18
 pruning is in git (`git show a0994bf:STATUS.md`).
 
-## 2026-08-19 - v12.3 RELEASED; draft waiting for Publish
+## 2026-08-19 - v12.3 PUBLISHED
 
-PR #36 merged by the owner; `master` is at `084c164`, **tagged `v12.3` there**
-and pushed. What the version carries is in `changelog/v12.3.md`; v12.2.4 and
-everything before it is published.
+`master` is at `c148787`, **tagged `v12.3`** at the merge commit `084c164`, and
+the release is published with `QCS_Setup_v12.3.exe` (81,573,401 bytes, md5
+0CAE1B0EE547A5B190CB59A6B261AFAF). What it carries is in `changelog/v12.3.md`.
+Its release text was written by copying v12.2.4's, which is the v11.6 format -
+the chain the `CLAUDE.md` rule describes now has three links, and the next
+release copies v12.3's.
 
-The GitHub release is a **DRAFT waiting for the owner to press Publish** -
-release id **373358963**, name 'v12.3 - the window stays alive while it
-qualifies', asset `QCS_Setup_v12.3.exe` uploaded (81,573,401 bytes, md5
-0CAE1B0EE547A5B190CB59A6B261AFAF; body also on the Desktop as
-`RELEASE_v12.3.md`). Written in the v12.2.4 format, which is the v11.6 one -
-the rule in `CLAUDE.md` is now a chain, and the next release copies THIS one.
-
-Built and gated before the tag: suite 54/54, ruff clean, version reading v12.3
-in all three places (`QCS_VERSION`, the installer's `AppVersion`, the manual),
-no development banner in the interface, no AI attribution, bundle rebuilt with
-`--clean`, and the frozen exe launch-smoked - window title read 'QCS - Quality
-Control System (SAGE) - v12.3', closed cleanly, no crash log.
-
-**What v12.3 still owes a real run** (none of it blocks the release; all of it
-is in the app, not in the code):
-
-- the manual point cut and the replicate review through the worker thread;
-- a batch canceled in the middle - the finished files must keep their outputs
-  while the interrupted one is removed (the per-file commit implements it, it
-  was never executed);
-- 'Go to visualization' landing on step 2, single file and batch;
-- a Seaguard panel under the new fixed-scale rule (it changes every family,
-  and only HOBO and Doppler were looked at).
+Nothing is unreleased. The open items below are what v12.3 shipped without a
+run in the real app, plus what was already open.
 
 ## PARKED: the Doppler revamp (a later MAJOR - owner, 2026-08-19)
 
@@ -98,6 +80,31 @@ still true, none of it started:
 ## Open items
 
 **Program and release**
+
+- **v12.3 shipped four paths that were never run in the app** (2026-08-19).
+  None of them blocks anything; each is one run away from being closed:
+  the manual point cut and the replicate review through the worker thread; a
+  BATCH canceled in the middle (the finished files must keep their outputs
+  while the interrupted one is removed - the per-file commit implements it and
+  it was never executed); 'Go to visualization' landing on step 2, single file
+  and batch; and a Seaguard panel under the new fixed-scale rule, which changed
+  for every family while only HOBO and Doppler were looked at.
+- **The plotting stack was reviewed on 2026-08-19 and stays as it is.**
+  matplotlib 3.10.0 ships exactly two Qt backends, `qtagg` and `qtcairo`
+  (`backend_registry.list_builtin()`); there is no newer or GPU one, and
+  `qt5agg` is the legacy alias, not a newer option. Measured on this machine,
+  one redraw of a QCS-sized review plot on a QtAgg canvas costs 29.5 ms at
+  1,550 points, 31.6 ms at 13,408 and 65.9 ms at 100,000 - i.e. a ~29 ms fixed
+  cost (axes, ticks, text) dominates at every size this program plots, so the
+  rasterizer is not the bottleneck and swapping it would buy nothing. A real
+  step change would need a different LIBRARY (pyqtgraph, vispy), which means a
+  second plotting stack in the app and the installer and no publication-quality
+  SVG - not worth it for series of this size. If a review ever feels slow, the
+  levers are blitting and decimation, not the backend. Upstream is at
+  matplotlib 3.11.1 while the build pins 3.10.0; the pin is deliberate
+  (`packaging/README.md`) and 3.11 removes APIs this code touches
+  (`rcsetup.all_backends` is already deprecated for 3.11), so any bump needs
+  its own round.
 
 - **The installer's FRESH-INSTALL pages have not been watched on screen**
   (2026-08-19): the Finish page is confirmed (the owner saw 'Launch QCS after
