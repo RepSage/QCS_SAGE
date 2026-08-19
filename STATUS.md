@@ -21,61 +21,118 @@ release copies v12.3's.
 Nothing is unreleased. The open items below are what v12.3 shipped without a
 run in the real app, plus what was already open.
 
-## PARKED: the Doppler revamp (a later MAJOR - owner, 2026-08-19)
+## NEXT UP: the Doppler revamp (a MAJOR - owner, 2026-08-19)
 
-Not next. The owner chose to finish the open work first; this section is
-the whole DCPS backlog, kept because a cold session cannot re-derive it.
+Parked during v12.2.4/v12.3 to finish the open work; the owner is opening a
+session for it now. This section is the whole DCPS backlog, written so a cold
+session can start without re-deriving anything.
 
-The same DCPS test showed two ABSENCES, not bugs: `run_doppler_qualification`
-(`QCS_Main.py`) returns before everything the scalar pipeline does, so a
-current session gets no Depth review and no Check variables panels. Both are
-v13.0, together with the worker thread, because they add a manual dismissal to
-the Doppler flag string - that is a QC-result change, hence MAJOR.
+### What a DCPS product IS (read this first)
 
-What a session picking this up must know:
+A current-profiler session is TIDY: **one row per record x depth CELL**. The
+qualified sheet carries, in order: `Datetime, Site, Column, Cell, Depth (m),
+Heading (deg), Pitch (deg), Roll (deg), Tilt (deg), Ping count, Horizontal
+speed (cm/s), Direction (deg), North speed (cm/s), East speed (cm/s), Vertical
+speed (cm/s), Speed stdev (cm/s), Signal strength (dB), Cell state, Flag,
+Flag_cur, QCS version`. The first five columns identify the row; `Heading`
+through `Ping count` are RECORD-level (`_DCPS_RECORD_PARAMS` in
+`QCS_DataHandler`) and repeat across the cells of one instant; the rest are
+per-cell. Two consequences that have already bitten:
 
-- **The cut cannot be by depth.** The Doppler frame's `Depth (m)` is the CELL
-  depth: N fixed values repeated on every record, so `trim_by_depth` would plot
-  a comb, not a deployment profile. And the DCPS logs no pressure - its
-  record-level parameters are heading, pitch, roll, tilt and ping count
-  (`_DCPS_RECORD_PARAMS`, `QCS_DataHandler.py`).
-- **The owner chose TILT as the series** for the time-based review (2026-08-19):
-  the panel plots tilt against time and cuts whole RECORDS - every cell of the
-  cut instant - which is how deployment and recovery show up in a mooring.
-- **Check variables gets its own candidate list** for the Doppler (owner,
-  2026-08-19): horizontal speed, direction, vertical speed, speed stdev, signal
-  strength, tilt. `MANUAL_CUT_COLUMNS` (`QCS_Main.py:1556`) holds scalar
-  variables only, none of which exist in a current table - which is why the
-  chooser came up empty even with the option ticked.
+- `Site+Datetime` repeats once per cell BY CONSTRUCTION (`build_database` keys
+  its overlap warning on `Site+Datetime+Column+Cell` for this layout since
+  v12.2.4);
+- `Depth (m)` is the CELL depth - a handful of fixed values repeated on every
+  record - so anything that treats it as a profile axis draws a comb.
 
-The owner parked the whole Doppler revamp on 2026-08-19 ("deixar pra MAJOR
-posterior") to finish what is already open. What the DCPS test found, all
-still true, none of it started:
+The pipeline is `run_doppler_qualification` (a closure in
+`build_qualification_tab`, `QCS_Main.py`), 4 stages, and it writes
+`<base>_DOPPLER_QLF/` with `QCS qualified current data/` (table +
+`QCS_current_flag_legend.txt`) and `QCS DataView (current)/` (4 panels).
 
-- **Dead surface on a Doppler database.** The three panel checkboxes carry the
-  SEAGUARD labels ('Parameters at a site' / 'Parameter across sites' /
-  'Vertical profile at a site', the `else` branch of the label block in
-  `build_step2`) and are all disabled: the four current panels are implicit, so
-  no panel is a choice. Same for 'Filter by parameter' (two dead checkboxes,
-  horizontal speed and direction) and the whole Scale settings column. Hiding
-  the three boxes for the Doppler is layout only, no QC effect.
-- **'Fixed scale' means something else here** and the interface does not say
-  so: for the scalar families it is a Min/Max the operator types per parameter;
-  for the Doppler it makes every heatmap share ONE speed color scale, computed
-  from the data (`max GOOD speed x 1.05` in `generatePanels`). Nothing is ever
-  typed, which is why Scale settings stays empty with it ticked -
-  `toggle_scale_controls` also gates on a panel being selected, and a Doppler
-  has none. Label and tooltip should say which of the two it is.
-- **The panels open as separate matplotlib windows with no app icon** (owner
-  noticed once they became visible, 2026-08-19). That is matplotlib's own
-  window, not a QCS one - it affects every panel family, not just the Doppler.
-- **The Direction (deg) color bar should be a compass wheel** (owner's idea,
-  2026-08-19): a circular scale where the color says north/south/east/west at a
-  glance, instead of a linear 0-360 bar.
-- **The flag string grows**: `DOPPLER_TEST_SEQUENCE` (`QCS_Tests.py`) has four
-  entries and `doppler_qc` builds a 4-character flag per row. A dismissal
-  position means touching both, plus the legend writer (it already iterates the
-  sequence) and `Flag_cur`.
+### Already fixed - do NOT re-open these
+
+v12.2.4 and v12.3 cleared the whole first round of DCPS complaints: the
+progress bar reads the stage denominator from the log (the pipeline logs
+`Stage k/4`); the Data type is shown and LOCKED once the `.bin` is a DCPS; the
+visualization Step 1 gate accepts `Doppler`; `build_database` no longer calls
+every cell an overlap; the four panels are SHOWN, in the program's own window
+with the app icon and the standard toolbar; `Fixed scale` is usable on a
+Doppler database and its speed colour scale now spans the cells the panels
+DRAW (everything except BAD), like the scalar scales.
+
+### The work, with the owner's decisions
+
+1. **A manual cut for the DCPS, on TILT** (owner chose the series, 2026-08-19).
+   `run_doppler_qualification` returns before the scalar pipeline's interactive
+   stops, so a current session gets no review at all. The cut CANNOT be by
+   depth (see above: `Depth (m)` is the cell depth) and the instrument logs no
+   pressure. Tilt is a RECORD-level series, so the panel plots tilt against
+   time and cuts whole RECORDS - every cell of the cut instant - which is how
+   deployment and recovery show up in a mooring.
+2. **Check variables needs its own candidate list.** `MANUAL_CUT_COLUMNS`
+   (`QCS_Main.py`) holds nine SCALAR variables (Temperature, Salinity,
+   Conductivity, Pressure, O2, pH, Chlorophyll, Turbidity, DOM) and the chooser
+   is filled by intersecting it with the frame's columns - none of them exist
+   in a current table, which is why the panel came up empty with the option
+   ticked. The owner's list for the DCPS: horizontal speed, direction, vertical
+   speed, speed stdev, signal strength, tilt.
+3. **The flag string grows, and that is what makes this a MAJOR.**
+   `DOPPLER_TEST_SEQUENCE` (`QCS_Tests.py`) has exactly four entries -
+   `cur_range, cur_signal, cur_stdev, cur_tilt` - and `doppler_qc` builds a
+   4-character flag per row plus the `Flag_cur` rollup (priority 4 > 3 > 9 > 1).
+   A dismissal position means touching both, plus the legend writer
+   (`QCS_Main.py`, `QCS_current_flag_legend.txt`) which iterates the sequence.
+   Any change here alters qualified values: MAJOR bump, and the corpus has to
+   be requalified.
+4. **Dead surface in the visualization** (layout only, no QC effect). On a
+   Doppler database the three panel checkboxes are disabled but still carry the
+   SEAGUARD labels ('Parameters at a site' / 'Parameter across sites' /
+   'Vertical profile at a site'), 'Filter by parameter' shows two dead
+   checkboxes (horizontal speed, direction) and the Scale settings column is
+   empty - the four panels have FIXED content, so none of it applies. Hiding
+   the three boxes for this instrument was proposed and not decided.
+5. **'Fixed scale' means something different here and the interface does not
+   say so.** For the scalar families it is a Min/Max the operator types per
+   parameter; for the DCPS it makes every heatmap share ONE speed colour scale
+   computed from the data. Nothing is ever typed. Label and tooltip should say
+   which of the two the operator is looking at.
+6. **The Direction (deg) colour bar should be a compass wheel** (owner's idea,
+   2026-08-19): a circular scale where the colour says north/south/east/west at
+   a glance, instead of a linear 0-360 bar.
+7. **The four panels open as four separate windows.** Fine for a first look,
+   noisy for a comparison; one window holding them (tabs, or a 2x2 sheet) was
+   raised and not decided.
+
+### Constraints a new interactive stop MUST respect (v12.3)
+
+The qualification runs on a WORKER THREAD in the Qt shell. A review that builds
+a window straight from the pipeline builds it on the worker, which Qt forbids
+for widgets. Route it through a facade hook, exactly as the scalar reviews do:
+the figure is built under Agg (safe anywhere) and shown by
+`QCS_Main.wait_figure_close` / `QCS_DataHandler._show_and_wait`, which the Qt
+shell wraps so the window is created on the interface thread while the worker
+blocks. Never call `plt.show()`. The whole rule set is in `CLAUDE.md`
+("The qualification runs on a WORKER THREAD").
+
+### How to drive it without the GUI
+
+`C:/Users/LAMB/Desktop/Data001.bin` is a real DCPS session (13,408 cell
+samples, 4,646 good / 126 suspect / 8,636 bad) and
+`C:/Users/LAMB/Desktop/Data000.bin` is a scalar one in the SAME folder - which
+is why v12.3 had to teach `read_seaguard_bin` to skip a binary whose instrument
+differs from the selected one. A qualified product of that session is at
+`C:/Users/LAMB/Desktop/Desktop_DOPPLER_QLF/`.
+
+The probes of the v12.3 round lived in the session scratchpad and are GONE.
+The method that worked, if one is needed again: run the Qt shell with
+`QT_QPA_PLATFORM=offscreen`, no-op `save_user_prefs` in BOTH `QCS_Main` and
+`QCS_DatabaseView` before anything else, replace `QCS_QtApp.QMessageBox` with a
+stub (the version gate pops a modal during the bootstrap and waits forever
+offscreen), point the output at a scratch folder, then drive `shell._run()` /
+`shell._cancel_run()` and pump the event loop. Interface responsiveness is
+measured with a `QTimer` on the interface thread: count its ticks during the
+run.
 
 ## Open items
 
