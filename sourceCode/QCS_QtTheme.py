@@ -8,6 +8,7 @@ as a dockable panel with the same severity colors as the tk LogConsole, and
 the crash handler. File-path helpers (writable_app_dir) stay in QCS_Theme -
 they are toolkit-free and both shells share them.
 """
+import math
 import sys
 import traceback
 
@@ -153,6 +154,84 @@ def _shift(hex_color, delta):
     return QColor(min(255, max(0, c.red() + delta)),
                   min(255, max(0, c.green() + delta)),
                   min(255, max(0, c.blue() + delta))).name()
+
+
+# Geometry of the reset arrow, as chosen by the owner on 2026-08-19 from the
+# candidate sheet (variant C1a). Everything is a fraction of the icon size, so
+# the shape is identical at 16 px and at 64 px. Two opposed arcs, each ending
+# in a head whose TIP and BASE both sit on the circle - a head built along the
+# tangent instead has its base outside the ring and leans off the stroke.
+_RESET_RADIUS = 8.0 / 24        # circle radius
+_RESET_STROKE = 1.5 / 24        # arc weight
+_RESET_HEAD_LEN = 5.0 / 24      # head, tip to base
+_RESET_HEAD_HALF = 2.2 / 24     # head, half of the base
+_RESET_TIPS = (155.0, 335.0)    # where each arc ends, degrees, 0 at 3 o'clock
+_RESET_SWEEP = 130.0            # how far each arc runs back from its tip
+_RESET_JOIN = 0.75              # of the head the stroke runs into, for no seam
+
+
+def reset_icon(size=16, color=None):
+    """The 'restore the default' arrow, PAINTED rather than typed.
+
+    The reset buttons of the Settings window used the text glyph U+21BA, which
+    is drawn by whatever font happens to carry it: it came out coarse and
+    off-weight beside the rest of the interface (owner, 2026-08-19). Painting
+    at the screen's device pixel ratio keeps it sharp on a HiDPI display, and
+    the palette colour keeps it right in both themes.
+    """
+    from PySide6.QtCore import QPointF, QRectF
+    from PySide6.QtGui import QIcon, QPainter, QPainterPath, QPen, QPixmap
+    app = QApplication.instance()
+    ratio = app.devicePixelRatio() if app else 1.0
+    if color is None:
+        color = (app.palette().color(QPalette.WindowText) if app
+                 else QColor('#000000'))
+    px = QPixmap(int(size * ratio), int(size * ratio))
+    px.setDevicePixelRatio(ratio)
+    px.fill(Qt.transparent)
+    p = QPainter(px)
+    p.setRenderHint(QPainter.Antialiasing, True)
+
+    r = size * _RESET_RADIUS
+    cx = cy = size / 2.0
+    head_len = size * _RESET_HEAD_LEN
+    half = size * _RESET_HEAD_HALF
+    head_span = math.degrees(head_len / r)      # what the head covers, in degrees
+    ring = QRectF(cx - r, cy - r, 2 * r, 2 * r)
+
+    def on_circle(angle_deg):
+        rad = math.radians(angle_deg)
+        return QPointF(cx + r * math.cos(rad), cy - r * math.sin(rad))
+
+    # the floor matters at the size the buttons actually use: the proportional
+    # weight is 1.0 px at 16 px, which antialiasing then spreads into a grey
+    # smudge - 1.35 keeps the two arcs reading as strokes
+    pen = QPen(color, max(1.35, size * _RESET_STROKE))
+    pen.setCapStyle(Qt.FlatCap)                 # the head finishes the stroke
+    for tip_angle in _RESET_TIPS:
+        # Qt angles are anticlockwise from 3 o'clock, in 1/16 degree. The arc
+        # stops inside the head (_RESET_JOIN of it) so the two never show a
+        # seam between them.
+        start = tip_angle - _RESET_SWEEP
+        stop = tip_angle - head_span * _RESET_JOIN
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawArc(ring, int(round(start * 16)), int(round((stop - start) * 16)))
+
+        tip = on_circle(tip_angle)
+        base = on_circle(tip_angle - head_span)
+        ax, ay = tip.x() - base.x(), tip.y() - base.y()
+        norm = math.hypot(ax, ay) or 1.0
+        nx, ny = -ay / norm, ax / norm          # unit normal to the head's axis
+        path = QPainterPath(tip)
+        path.lineTo(base.x() + nx * half, base.y() + ny * half)
+        path.lineTo(base.x() - nx * half, base.y() - ny * half)
+        path.closeSubpath()
+        p.setPen(Qt.NoPen)
+        p.setBrush(color)
+        p.drawPath(path)
+    p.end()
+    return QIcon(px)
 
 
 def muted(widget):

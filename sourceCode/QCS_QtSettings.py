@@ -7,12 +7,14 @@ dictionaries through the toolkit-free core in QCS_Main
 (apply_settings_values / persist_quality_criteria / DEFAULT_QUALITY_CONFIG),
 so the two shells can never validate or persist differently.
 """
+from PySide6.QtCore import QSize
 from PySide6.QtWidgets import (QCheckBox, QDialog, QGridLayout, QHBoxLayout,
                                QLabel, QLineEdit, QMessageBox, QPushButton,
                                QScrollArea, QTabWidget, QToolButton,
                                QVBoxLayout, QWidget)
 
 import QCS_Main as qm
+import QCS_QtTheme as qtheme
 
 
 def _bold(text):
@@ -81,17 +83,30 @@ class SettingsDialog(QDialog):
                 cb = QCheckBox(test)
                 cb.setChecked(qm.CONFIG['tsQualityTests'][test] == 'ON')
                 cb.setToolTip(qm.TS_QUALITY_TESTS_TOOLTIPS[test])
-                cb.setStyleSheet('margin-left: 18px;')
                 cb.toggled.connect(lambda _on: self._mark_non_defaults())
-                v.addWidget(cb)
+                # Indented by its own LAYOUT, never by a stylesheet: an
+                # unqualified rule ('margin-left: 18px') is inherited by the
+                # widget's TOOLTIP, which then opened with an empty strip on
+                # its left - measured, 18 px wider than the same tip on an
+                # unstyled box (owner, 2026-08-19).
+                holder = QWidget()
+                indent = QHBoxLayout(holder)
+                indent.setContentsMargins(18, 0, 0, 0)
+                indent.addWidget(cb)
+                v.addWidget(holder)
                 self.test_boxes[test] = cb
-                self._add_row([cb], test)
+                self._add_row([holder], test)
         v.addStretch()
         return _scrolled(w)
 
     def _reset_button(self, tip, on_click):
         btn = QToolButton()
-        btn.setText('↺')
+        # painted icon, not the U+21BA glyph: the font's version was coarse
+        # beside the rest of the interface (owner, 2026-08-19). Drawn at 20 px
+        # rather than 16: the shape is a PAIR of arcs, and at 16 px each head
+        # is about three pixels and stops reading as an arrow.
+        btn.setIcon(qtheme.reset_icon(20))
+        btn.setIconSize(QSize(20, 20))
         btn.setToolTip(tip)
         btn.setAutoRaise(True)
         btn.clicked.connect(on_click)

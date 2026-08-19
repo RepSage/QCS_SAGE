@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v12.2'
+QCS_VERSION = 'v12.2.1'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -280,6 +280,92 @@ def seaguard_cast_folders(file_path):
     return serial, cast
 
 
+# The BXML template at the head of every DataNNN.bin describes the session:
+# <Device ID="5650-2104" ... SerialNo="2104">, the group's own
+# <Data SessionID="5650-2104-0-2026-03-16T18-01-00.043Z" GroupDescr="FUNDEIO">
+# and <SpecifiedInterval>60</SpecifiedInterval>. The session FOLDER name is
+# built from the same values, which is why the folder route and this one agree.
+_BXML_DEVICE_RE = re.compile(r'<Device[^>]*\bID="([^"]+)"')
+_BXML_SESSION_RE = re.compile(
+    r'<Data\b[^>]*\bSessionID="[^"]*?(\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d)')
+_BXML_INTERVAL_RE = re.compile(
+    r'<SpecifiedInterval>\s*(\d+(?:\.\d+)?)\s*</SpecifiedInterval>')
+
+
+def _read_aadi_template(file_path):
+    """The BXML template at the head of a DataNNN.bin - the instrument's own
+    description of the session. Two reads and no record decoding at all, so it
+    costs the same for a 300 KB cast and for a 10 MB mooring."""
+    import struct
+    try:
+        with open(file_path, 'rb') as f:
+            head = f.read(0x40)
+            if not head.startswith(_AADI_MAGIC) or len(head) < 0x38:
+                return ''
+            tpl_off, _a, _b, _c, tpl_len, _d, _e = struct.unpack_from('<7I', head, 0x1c)
+            f.seek(tpl_off)
+            return f.read(tpl_len).decode('utf-8', errors='replace')
+    except Exception:
+        return ''
+
+
+def _specified_interval(template):
+    """The sampling interval the instrument declares in its own template."""
+    m = _BXML_INTERVAL_RE.search(template)
+    if not m:
+        return None
+    value = float(m.group(1))
+    return value if value > 0 else None
+
+
+def _measure_bin_interval(file_path):
+    """Median step of the first records of one DataNNN.bin, or None when the
+    file cannot be decoded (a DCPS group raises - its layout is different).
+    A preview must never be the thing that fails."""
+    try:
+        head = _decode_aadi_bin(file_path, max_records=60)
+        times = pd.to_datetime(head['Record Time']).dropna()
+    except Exception:
+        return None
+    if len(times) < 3:
+        return None
+    step = times.diff().dropna().median().total_seconds()
+    return step if step > 0 else None
+
+
+def _count_bin_parts(folder):
+    try:
+        return len([f for f in os.listdir(folder)
+                    if re.fullmatch(r'Data\d+\.bin', f, re.IGNORECASE)]) or 1
+    except OSError:
+        return 1
+
+
+def _peek_seaguard_header(file_path):
+    """Selection summary for a Data000.bin that is NOT inside a
+    '<serial>-<group>-<start>' session folder - a file copied out of the
+    archive, which the reader accepts (read_seaguard_deployment falls back to
+    the single file) but which the summary used to describe with three dashes
+    (owner, 2026-08-19). Everything comes from the file's own BXML template, so
+    it also answers for a DCPS session, whose records this module cannot
+    decode."""
+    import datetime as _dt
+    template = _read_aadi_template(file_path)
+    if not template:
+        return {}
+    device = _BXML_DEVICE_RE.search(template)
+    session = _BXML_SESSION_RE.search(template)
+    if not (device and session):
+        return {}
+    out = {'serial': device.group(1),
+           'start': _dt.datetime.strptime(session.group(1), '%Y-%m-%dT%H-%M-%S'),
+           'groups': 1,          # a lone file knows nothing about its siblings
+           'parts': _count_bin_parts(os.path.dirname(file_path)),
+           'interval_s': (_measure_bin_interval(file_path)
+                          or _specified_interval(template))}
+    return out
+
+
 def peek_seaguard_session(file_path):
     """What a Seaguard selection says about itself WITHOUT decoding anything.
 
@@ -287,13 +373,14 @@ def peek_seaguard_session(file_path):
     listing says how many sensor groups the cast has and how many DataNNN.bin
     parts the selected group was split into - enough for the Selection summary,
     for the price of a listdir (decoding a long mooring just to preview it
-    would freeze the window). Returns {} for anything that is not a session
-    folder (v12.1).
+    would freeze the window). A file that is NOT inside a session folder falls
+    back to its own BXML header, which carries the same facts (v12.1, header
+    fallback 2026-08-19).
     """
     group_folder = os.path.dirname(file_path)
     m = SESSION_FOLDER_RE.match(os.path.basename(group_folder))
     if not m:
-        return {}
+        return _peek_seaguard_header(file_path)
     import datetime as _dt
     serial, cast = seaguard_cast_folders(file_path)
     parts = [f for f in os.listdir(group_folder)
@@ -314,18 +401,13 @@ def peek_seaguard_session(file_path):
     folders = [os.path.join(os.path.dirname(os.path.dirname(file_path)), name)
                for _st, name in (cast or [])] or [group_folder]
     for folder in folders:
-        try:
-            head = _decode_aadi_bin(os.path.join(folder, 'Data000.bin'),
-                                    max_records=60)
-            times = pd.to_datetime(head['Record Time']).dropna()
-            if len(times) >= 3:
-                step = times.diff().dropna().median().total_seconds()
-                if step > 0:
-                    steps.append(step)
-        except Exception:
-            continue
-    if steps:
-        out['interval_s'] = min(steps)
+        step = _measure_bin_interval(os.path.join(folder, 'Data000.bin'))
+        if step:
+            steps.append(step)
+    # nothing decodable (a DCPS-only selection): the instrument declares its
+    # own interval in the template, and reading that costs no decoding at all
+    out['interval_s'] = (min(steps) if steps
+                         else _specified_interval(_read_aadi_template(file_path)))
     return out
 
 

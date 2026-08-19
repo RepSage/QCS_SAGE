@@ -61,6 +61,25 @@ qm.USER_PREFS = dbv.USER_PREFS
 qtheme.install_crash_handler('QCS %s' % data.QCS_VERSION)
 
 
+# The status bar's criteria indicator, in both wordings: the widget is sized
+# for the wider of the two so it never changes width when it toggles.
+CRITERIA_TEXTS = ('criteria: defaults', 'criteria: CUSTOM')
+
+# What the greyed-out 'Data type' field says about itself. A disabled empty box
+# reads as a fault; these say which instrument the field belongs to.
+DATA_TYPE_HINTS = {
+    'none': 'Select the instrument first',
+    'HOBO': 'Not used for HOBO - a pendant logger is always a time series',
+}
+
+# Placeholder of the 'Recent' box, which is usable only while no file is
+# selected (a selection would be silently replaced by the recent one).
+RECENT_HINTS = {
+    True: 'Select a recent file to open',
+    False: 'Clear data file(s) to select a recent file',
+}
+
+
 class _UpdateBridge(QObject):
     """Marshals the background update check's result onto the Qt main thread
     (the tk shell used root.after for the same purpose)."""
@@ -263,27 +282,55 @@ class QtShell(QMainWindow):
         # the two line up on one axis (see _align_clear_button)
         self.statusBar().addPermanentWidget(self.criteria_label)
 
+    def _criteria_width(self):
+        """How wide the indicator must be to hold its text.
+
+        Measured from the TEXT, and from the WIDER of the two wordings: a
+        QLabel's sizeHint stops growing once setFixedWidth has been applied, so
+        sizing from the hint left 'criteria: CUSTOM' clipped at both ends
+        (owner, 2026-08-19), and measuring only the current text made the
+        widget jump sideways whenever the indicator changed."""
+        fm = self.criteria_label.fontMetrics()
+        return max(fm.horizontalAdvance(t) for t in CRITERIA_TEXTS) + 18
+
     def _align_clear_button(self):
         """Puts 'Clear log' on the same vertical axis as the status bar's
         criteria indicator right below it (owner)."""
         if self.log_dock.isFloating() or not self.log_dock.isVisible():
+            # nothing to line up with, but the indicator must still fit: this
+            # early return used to leave it at whatever width it had
+            needed = self._criteria_width()
+            if self.criteria_label.width() != needed:
+                self.criteria_label.setFixedWidth(needed)
+                self.criteria_label.setAlignment(Qt.AlignCenter)
             return
         # Both sit flush against the right edge, so equal WIDTHS put them on
         # the same axis - deterministic, unlike nudging margins (the widths
         # differ by theme, text and DPI, so they are measured, not hardcoded).
         btn = self.log_dock.clear_button
         label = self.criteria_label
-        width = max(btn.sizeHint().width(), label.sizeHint().width())
+        width = max(btn.sizeHint().width(), self._criteria_width())
         if btn.width() != width or label.width() != width:
             btn.setFixedWidth(width)
             label.setFixedWidth(width)
             label.setAlignment(Qt.AlignCenter)
-        # the same inset on both keeps them aligned and off the window edge
+        # Equal widths are not enough on their own: the two live in different
+        # containers (a dock and the status bar), and the dock does not always
+        # span the whole window - the batch dock takes the right side during a
+        # batch. So the button gets a fixed inset and the status bar's right
+        # margin is then MEASURED against it, which lands the two right edges
+        # on the same pixel whatever the dock is doing (owner, 2026-08-19).
         inset = 12
         if self.log_dock.button_row.contentsMargins().right() != inset:
             self.log_dock.button_row.setContentsMargins(0, 0, inset, 0)
-        if self.statusBar().contentsMargins().right() != inset:
-            self.statusBar().setContentsMargins(6, 0, inset, 0)
+        bar = self.statusBar()
+        margins = bar.contentsMargins()
+        delta = (label.mapTo(self, label.rect().topRight()).x()
+                 - btn.mapTo(self, btn.rect().topRight()).x())
+        if delta:
+            right = min(400, max(0, margins.right() + delta))
+            if right != margins.right():
+                bar.setContentsMargins(6, 0, right, margins.bottom())
 
     def _align_batch_top(self):
         """Top margin that puts the batch table's top on the tab page's top
@@ -353,12 +400,13 @@ class QtShell(QMainWindow):
                    and qm.CONFIG['tsSettings'] == d['tsSettings']
                    and {k: dict(v) for k, v in qm.CONFIG['tsFactors'].items()}
                    == d['tsFactors'])
-        self.criteria_label.setText('criteria: defaults' if default
-                                    else 'criteria: CUSTOM')
+        self.criteria_label.setText(CRITERIA_TEXTS[0] if default
+                                    else CRITERIA_TEXTS[1])
+        self._align_clear_button()      # 'CUSTOM' is the wider of the two
         self.criteria_label.setToolTip(
             'The quality criteria are the software defaults' if default else
             'At least one quality criterion differs from the defaults\n'
-            '(the edited fields show in bold in Parameter settings)')
+            '(the edited fields show in bold in Quality control settings)')
 
     # ----- logging -----
     def log_line(self, message):
@@ -427,7 +475,7 @@ class QtShell(QMainWindow):
         # Recent selections, right under the files row and usable only while
         # NO file is selected - the same rule as the Visualization tab
         self.recent = QComboBox()
-        self.recent.setPlaceholderText('Select a recent file to open')
+        self.recent.setPlaceholderText(RECENT_HINTS[True])
         self.recent.setToolTip('Reopens one of the most recent file selections\n'
                                '(available while no file is selected above)')
         self.recent.activated.connect(self._apply_recent)
@@ -444,6 +492,10 @@ class QtShell(QMainWindow):
         self.data_type = QComboBox()
         self.data_type.addItems(['TSCP Profile', 'TSCP Mooring', 'TSCP Doppler'])
         self.data_type.setToolTip(TOOLTIPS['data_type'])
+        # the field is greyed out for HOBO and while no instrument is chosen:
+        # the placeholder says WHY, instead of leaving an empty grey box
+        # (owner, 2026-08-19). Qt shows it whenever currentIndex is -1.
+        self.data_type.setPlaceholderText(DATA_TYPE_HINTS['none'])
         self.data_type.currentTextChanged.connect(lambda _t: self._update_profile_state())
         fin.addRow('Data type:', self.data_type)
 
@@ -510,6 +562,7 @@ class QtShell(QMainWindow):
         vo = QVBoxLayout(gopt)
         self.gmt_check = QCheckBox('Correct GMT-3', checked=True)
         self.gmt_check.setToolTip(TOOLTIPS['gmt_correction'])
+        self.gmt_check.toggled.connect(lambda _on: self._sync_timebase_row())
         vo.addWidget(self.gmt_check)
         self.profile_check = QCheckBox('Select profile data')
         self.profile_check.setToolTip(TOOLTIPS['profile_selection'])
@@ -587,7 +640,7 @@ class QtShell(QMainWindow):
         self.run_btn.clicked.connect(self._run)
         self.run_hint = QLabel('')
         qtheme.muted(self.run_hint)
-        settings = QPushButton('Parameter settings')
+        settings = QPushButton('Quality control settings')
         settings.setToolTip(TOOLTIPS['settings_button'])
         settings.clicked.connect(self._open_settings)
 
@@ -680,7 +733,7 @@ class QtShell(QMainWindow):
         act_showout = QAction('Open output folder', self)
         act_showout.triggered.connect(self._open_output_folder)
         filem.addAction(act_showout)
-        act_settings = QAction('Parameter settings...', self)
+        act_settings = QAction('Quality control settings...', self)
         act_settings.triggered.connect(self._open_settings)
         filem.addAction(act_settings)
         filem.addSeparator()
@@ -741,8 +794,10 @@ class QtShell(QMainWindow):
         answer = QMessageBox.question(
             self, 'Update available',
             'QCS %s is available - you are running %s.\n\n'
-            'Download and install it now%s? The program will close and reopen '
-            'updated; your settings and preferences are kept.'
+            'Download and install it now%s? The program closes and the '
+            'installer opens; keep "Launch QCS after installation" ticked on '
+            'its last page to come back updated. Your settings and '
+            'preferences are kept.'
             % (latest['tag'], data.QCS_VERSION, size))
         if answer != QMessageBox.StandardButton.Yes:
             return
@@ -796,8 +851,12 @@ class QtShell(QMainWindow):
             webbrowser.open(upd.RELEASES_PAGE)
             return False
         dlg.close()
-        # /SILENT: the .iss closes a running QCS and relaunches it updated
-        subprocess.Popen([dest, '/SILENT', '/NORESTART'])
+        # the wizard runs VISIBLY so its finish page can offer 'Launch QCS
+        # after installation' - see QCS_Update.download_and_run for why the
+        # silent path was abandoned
+        log_path = upd.install_log_path()
+        self.log_line('Info: installing the update; the installer log goes to %s' % log_path)
+        subprocess.Popen([dest, '/NORESTART', '/LOG=%s' % log_path])
         return True
 
     def _toggle_dark(self, on):
@@ -930,7 +989,10 @@ class QtShell(QMainWindow):
             self.recent.addItems([qm.qual_recent_display(r)
                                   for r in qm.USER_PREFS.get('qual_recent', [])])
             self.recent.setCurrentIndex(-1)
-        self.recent.setEnabled(not self.file_edit.text().strip())
+        usable = not self.file_edit.text().strip()
+        self.recent.setEnabled(usable)
+        # greyed out, the box has to say what makes it usable again (owner)
+        self.recent.setPlaceholderText(RECENT_HINTS[usable])
 
     def _apply_recent(self, index):
         recents = qm.USER_PREFS.get('qual_recent', [])
@@ -1018,7 +1080,6 @@ class QtShell(QMainWindow):
         if itype == 'HOBO':
             mode = ('%d replicates of one deployment, combined' % len(names)
                     if len(names) > 1 else 'single logger')
-            tb = 'local (HOBO) - GMT-3 correction not applied'
         else:
             mode = ('batch: %d files qualified in sequence' % len(names)
                     if len(names) > 1 else
@@ -1029,10 +1090,24 @@ class QtShell(QMainWindow):
                 mode += ', %d sensor groups merged' % peek['groups']
             if peek and peek.get('parts', 1) > 1 and len(names) == 1:
                 mode += ' (%d binary parts)' % peek['parts']
-            tb = 'GMT (Seaguard) -> corrected to local (GMT-3)'
             self._summarize_co2()
         self.sum_labels['mode'].setText(mode)
-        self.sum_labels['timebase'].setText(tb)
+        self._sync_timebase_row()
+
+    def _sync_timebase_row(self):
+        """The Timebase line follows the 'Correct GMT-3' box, which the owner
+        can untick after the summary was built (2026-08-19). A Seaguard run
+        with the correction OFF keeps GMT, and the summary must say so - it is
+        the one setting that silently shifts a whole deployment."""
+        if not hasattr(self, 'sum_labels'):
+            return          # the box is built before the summary rows exist
+        if self.input_type.currentText() == 'HOBO':
+            text = 'local (HOBO) - GMT-3 correction not applied'
+        elif self.gmt_check.isChecked():
+            text = 'GMT (Seaguard) -> corrected to local (GMT-3)'
+        else:
+            text = 'GMT (Seaguard) - NOT corrected: the output stays on GMT'
+        self.sum_labels['timebase'].setText(text)
 
     # ----- output folder / CO2 -----
     def _browse_output(self):
@@ -1110,6 +1185,7 @@ class QtShell(QMainWindow):
             if self.data_type.currentText():
                 self._last_seaguard['data_type'] = self.data_type.currentText()
             self.data_type.setCurrentIndex(-1)   # HOBO is neither profile nor mooring
+            self.data_type.setPlaceholderText(DATA_TYPE_HINTS['HOBO'])
             self.data_type.setEnabled(False)
             self._last_seaguard['gmt'] = self.gmt_check.isChecked()
             self.gmt_check.setChecked(False)     # HOBO exports are already local
@@ -1139,6 +1215,7 @@ class QtShell(QMainWindow):
             if self.data_type.currentText():
                 self._last_seaguard['data_type'] = self.data_type.currentText()
             self.data_type.setCurrentIndex(-1)
+            self.data_type.setPlaceholderText(DATA_TYPE_HINTS['none'])
             self.data_type.setEnabled(False)
             self.gmt_check.setChecked(False)
             self.gmt_check.setEnabled(False)
