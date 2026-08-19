@@ -9,21 +9,38 @@ leave this file, and only what is still open moves down to the second section,
 dated with when it was last touched. The full text before the 2026-08-18
 pruning is in git (`git show a0994bf:STATUS.md`).
 
-## 2026-08-19 - v12.2.2 PUBLISHED; nothing open on the branch
+## 2026-08-19 - v12.2.3 RELEASED; publication pending
+
+PR #35 merged (`fd50cbe`), **tagged `v12.2.3`** there, branch
+`viz-params-and-units` deleted both sides. Three visualization items, measured
+on BURACAS 2019S1 (a cast with no CO2 file): `parameter_names` 13,
+`params_with_data` 12, `CO2 Level (ppm)` dropped from BOTH the filter and the
+Scale settings; the other twelve labelled °C / µM / µmol/m²/s / µg/L / kg/m³
+through the new `QCS_DatabaseView.param_display`, which is display ONLY (the
+stored column name is a dict key here and a header in the qualified sheet);
+and on step 1 the Input box is exactly its sizeHint (170 px) with 'Next >' at
+40% of the page height instead of its bottom edge.
+
+Installer rebuilt and smoke-tested: frozen app alive 20 s, title '... v12.2.3',
+closed cleanly, no crash log. **This is the first installer whose bundled
+manual carries the revision** - checked in the payload: no 'What vX added'
+heading left. ISCC -> `QCS_Setup_v12.2.3.exe`, **77.8 MB**, on the Desktop
+beside `RELEASE_v12.2.3.md`, md5 6F3D4A1170E0B2303BFEAB11C1B4E334.
+
+**A DRAFT release is waiting** - id 373234603, asset uploaded (81,556,075
+bytes). **Left to the owner: press Publish.**
+
+## 2026-08-19 - v12.2.2 PUBLISHED
 
 `master` is the only branch. Three versions went out today, each tagged on its
 merge commit, each with a `changelog/` entry, each published by the owner with
 its installer attached: **v12.2.1** (`f23af26`) and **v12.2.2** (`a150772`),
 after v12.2 the day before. `QCS_VERSION = 'v12.2.2'`.
 
-**The manual was revised AFTER the v12.2.2 installer was built** (`24f0129`):
-it had grown three 'What vX added' lists, which belong in `changelog/`, and
-they are gone along with the inline version stamps. What only those lists
-documented moved into the body - a Selection summary section, a Recent row, a
-'What the program remembers' subsection, and the update flow rewritten to the
-wizard and its checkbox. **The published `QCS_Setup_v12.2.2.exe` therefore
-ships the OLD manual**; the revised one goes out with the next installer. Do
-not swap the asset of a published release to fix this.
+The manual was revised after this installer was built (`24f0129`), so the
+published `QCS_Setup_v12.2.2.exe` ships the OLD manual, with the release-history
+lists still in it. Nothing to do: v12.2.3 carries the revised one. Do not swap
+the asset of a published release.
 
 **The update path is CONFIRMED WORKING** (owner, 2026-08-19): updating in the
 app from v12.2.1 to v12.2.2 ran the wizard, ended on 'Launch QCS after
