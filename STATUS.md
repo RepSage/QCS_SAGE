@@ -9,47 +9,29 @@ leave this file, and only what is still open moves down to the open items,
 dated with when it was last touched. The full text before the 2026-08-18
 pruning is in git (`git show a0994bf:STATUS.md`).
 
-## 2026-08-19 - v12.2.3 PUBLISHED; v12.2.4 open in the working tree
+## 2026-08-19 - v12.2.4 RELEASED; draft waiting for Publish
 
-v12.2.3 is published (the owner pressed Publish on 2026-08-19), installer and
-all; what it carries is in `changelog/v12.2.3.md`. The tag stays where it is -
-once a release is out, a tag never moves again.
+`master` is at `77689eb`, **tagged `v12.2.4` there** and pushed (78 tag refs on
+the remote). What the version carries is in `changelog/v12.2.4.md`; v12.2.3 and
+everything before it is published.
 
-**v12.2.4 is written but NOT committed, NOT tagged and has NO installer yet.**
-It is a patch, no QC rule touched, and it came out of the owner's first
-end-to-end test of a DCPS session. Three fixes, all verified by execution:
+The GitHub release is a **DRAFT waiting for the owner to press Publish** -
+release id **373305022**, name 'v12.2.4 - the Doppler run says where it is, and
+its database opens', asset `QCS_Setup_v12.2.4.exe` uploaded (81,566,595 bytes,
+md5 DC9463807663DB4D901BAEE76D221869; body also on the Desktop as
+`RELEASE_v12.2.4.md`). It is the FIRST release written to the restored v11.6
+format - `## Fixed / ## Note / ## Verification / ## Install`, unwrapped - which
+`CLAUDE.md` now requires; the next release copies THIS one.
 
-- the Qt progress bar reads the stage denominator from the log marker instead
-  of a hardcoded `/5`, so the 4-stage Doppler pipeline stops leaving the bar
-  blank (`QCS_QtApp.log_line`, plus `self._stage_total`);
-- the visualization Step 1 gate accepts `'Doppler'`
-  (`QCS_DatabaseView.saveInputSettings`) - it was the only piece of the tab
-  that did not, and it made a qualified DCPS database unopenable;
-- `build_database` keys the overlap warning on `Site+Datetime+Column+Cell` for
-  a Doppler layout: the tidy per-cell table repeats `Site+Datetime` by
-  construction and every row was being reported as an overlapping
-  requalification (measured 12 of 12 on a fixture, before and after);
-- the Data type is LOCKED once the selected `.bin` is a DCPS, in both shells
-  (`_apply_doppler_lock` in `QCS_QtApp`, `state='disabled'` in `QCS_Main`);
-- the four Doppler panels are SHOWN by the visualization: `plot_doppler_panels`
-  / `plot_doppler_across_sites` took a `show` flag (default False, so the
-  qualification at `QCS_Main.py:2283` and `batch/qualify_site.py:857` keep
-  writing files silently) - they were being generated and never displayed,
-  which read as 'no panels';
-- `toggle_panel_dependent_controls` stops graying out *Fixed scale* on a
-  Doppler database: the gate keys on a panel checkbox being selected, and a
-  Doppler has none by construction, so it undid what `toggle_data_type` had
-  just enabled.
+Built and gated before the tag: suite 54/54, ruff clean, PyInstaller bundle
+rebuilt with `--clean` (287 MB onedir), installer compiled, and the frozen exe
+launch-smoked - window title read 'QCS - Quality Control System (SAGE) -
+v12.2.4', closed cleanly, no crash log.
 
-Measured on the operator's own DCPS file with a throwaway probe (in the session
-scratchpad, `probe_doppler_step2.py`: hidden tk root, `save_user_prefs` no-oped,
-output redirected away from the Desktop): *Fixed scale* `disabled` -> `normal`,
-four SVGs written before and after. **The panels showing on screen is NOT
-verified** - the probe runs on Agg, where `plt.show()` is a no-op.
-
-Suite **54/54** (the Doppler build_database test is new), ruff clean. The
-manual's version line reads v12.2.4. What is left of the release ritual:
-commit, tag, rebuild and smoke-test the installer, draft the GitHub release.
+**Still unproven on screen**: the three interface fixes (progress bar on a DCPS
+run, the locked Data type, the panels appearing) were verified in code and, for
+the visualization, on the real qualified DCPS file outside the interface - the
+owner's own end-to-end run is what closes them.
 
 ## PARKED: the Doppler revamp (a later MAJOR - owner, 2026-08-19)
 
