@@ -8,6 +8,20 @@ import matplotlib.dates as _mdates # type: ignore
 from matplotlib.lines import Line2D # type: ignore
 from matplotlib.ticker import MaxNLocator # type: ignore
 import QCS_Theme as _theme
+
+
+def show_panels():
+    """Puts the panels produced so far on screen.
+
+    A hook, not a helper: the tk shell keeps matplotlib's own windows
+    (`plt.show()`); the Qt shell replaces it, because it runs on the Agg
+    backend - where `plt.show()` does nothing at all - and opens the figures in
+    its own windows instead (app icon, real title, navigation toolbar). The
+    batch drivers leave it alone: with no display, `plt.show()` is already a
+    no-op there.
+    """
+    plt.show()
+
 ####################################################################
 
 # Safe bounds for a matplotlib DATE axis (well inside the hard year 1..9999
@@ -165,13 +179,43 @@ def _fit_stacked_yticks(fig, spacing=None, pad=4.0, min_pt=4.0):
         pass
 
 
+def _report_points_outside(fig):
+    """Says how many plotted points fall OUTSIDE the view, per axis.
+
+    With 'Fixed scale' on, the scale defaults are computed from APPROVED data
+    only (flags 1/2 - see _param_data_extreme), so suspect or bad values the
+    operator chose to keep in the sheet can sit outside the axis and simply not
+    be drawn. That was silent, and it reads as missing data (owner, v12.3): a
+    HOBO series with 881 suspect points out of 2127 lost 6 of them under the
+    axis, and nothing said so.
+    """
+    try:
+        for ax in fig.axes:
+            lo, hi = ax.get_ylim()
+            lo, hi = min(lo, hi), max(lo, hi)
+            outside = total = 0
+            for line in ax.get_lines():
+                y = np.asarray(line.get_ydata(orig=False), dtype='float64')
+                y = y[np.isfinite(y)]
+                total += y.size
+                outside += int(((y < lo) | (y > hi)).sum())
+            if outside:
+                print('Info: %d of %d %s point(s) are outside the plotted scale '
+                      'and are not drawn (fixed scale uses the APPROVED range; '
+                      'untick it or widen Min/Max in Scale settings to see them).'
+                      % (outside, total, ax.get_ylabel() or 'axis'))
+    except Exception:
+        pass
+
+
 def enable_scroll_zoom(fig):
     """Interaction for a shown panel: mouse-wheel zoom around the cursor,
-    middle-button drag to pan, a 'Reset view' toolbar button that restores the
-    original plotted limits, and removal of the redundant Zoom lens. Call it
-    right before plt.show() (after all axes have their final limits)."""
+    middle-button drag to pan, and the plotted limits remembered on the figure
+    so the toolbar's home button returns to them. Call it right before the
+    panel is shown (after all axes have their final limits)."""
     # pull the margins in so no tick/axis label is clipped at the window edges
     _fit_margins(fig)
+    _report_points_outside(fig)
     # snapshot the original plotted view for Reset
     original = [(ax, ax.get_xlim(), ax.get_ylim()) for ax in fig.axes]
 
@@ -248,41 +292,13 @@ def enable_scroll_zoom(fig):
     fig.canvas.mpl_connect('motion_notify_event', on_move)
     fig.canvas.mpl_connect('button_release_event', on_release)
 
-    # toolbar: drop the Zoom lens, add a themed 'Reset view' button, and silence
-    # the coordinate readout. That readout changes width as the cursor crosses
-    # the several parameter axes, which makes the Tk window jitter/resize on its
-    # own - overriding set_message stops it. (Best-effort, backend-dependent;
-    # the mouse interactions above work regardless.)
-    # The toolbar belongs to whichever backend is showing the figure, and the
-    # two shells do not share one: the Qt shell runs backend_qtagg (QToolBar,
-    # QAction) and the legacy tk shell runs backend_tkagg (packed buttons).
-    # v12.0 shipped only the tk branch, so under Qt the whole block raised and
-    # was swallowed - no 'Reset view' button at all (owner, v12.1).
-    _DROP = ('Zoom', 'Home', 'Subplots', 'Customize')
-    try:
-        tb = fig.canvas.manager.toolbar
-        tb.set_message = lambda *a, **k: None   # no live coord text -> no resize
-        if hasattr(tb, 'addAction'):            # Qt
-            for act in tb.actions():
-                if (act.text() or '') in _DROP:
-                    act.setVisible(False)
-            if not getattr(tb, '_qcs_reset_added', False):
-                reset_act = tb.addAction('Reset view')
-                reset_act.setToolTip('Back to the view the panel opened with')
-                reset_act.triggered.connect(reset_view)
-                tb._qcs_reset_added = True
-        else:                                   # tk
-            from tkinter import ttk as _ttk
-            for _name in _DROP:
-                btn = getattr(tb, '_buttons', {}).get(_name)
-                if btn is not None:
-                    btn.pack_forget()
-            if not getattr(tb, '_qcs_reset_added', False):
-                _ttk.Button(tb, text='Reset view', command=reset_view,
-                            width=10).pack(side='left', padx=4)
-                tb._qcs_reset_added = True
-    except Exception:
-        pass
+    # The toolbar stays matplotlib's OWN, untouched (owner, v12.3): the house
+    # icon is the reset, and it works after a wheel zoom too because the window
+    # pushes the opening view onto the navigation stack (see PlotWindow in
+    # QCS_QtApp). Hiding buttons and adding a 'Reset view' text button, as
+    # v12.1 did, made these panels look unlike every other plot the program
+    # shows - which is the standard the owner picked.
+    fig._qcs_reset_view = reset_view      # the view the panel opened with
 
     # app icon + a meaningful window title (the plot's own title, so the taskbar
     # and window name say what is being shown instead of 'Figure 1')
@@ -811,7 +827,7 @@ def plot_database_panel1 (database, dataViewSettings):
                 _fit_stacked_yticks(fig, spacing)
                 plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year), bbox_inches='tight')
                 enable_scroll_zoom(fig)
-                plt.show()
+                show_panels()
 
 def plot_database_panel2(database, dataViewSettings):
     """
@@ -948,7 +964,7 @@ def plot_database_panel2(database, dataViewSettings):
             parameter_r = re.sub(r'\([^()]*\)', '', parameter).strip()
             plt.savefig(f'panel2_{parameter_r}_{semester}_{year}.svg')
             enable_scroll_zoom(fig)
-            plt.show()
+            show_panels()
 
 def plot_database_panel3(database, dataViewSettings):
     site_names = dataViewSettings['siteList']
@@ -1110,7 +1126,7 @@ def plot_database_panel3(database, dataViewSettings):
                 
                 plt.savefig('panel3_%s_%s_%d.svg'%(site, semester, year))
                 enable_scroll_zoom(fig)
-                plt.show()
+                show_panels()
 
 def plot_light_window(lux_info, site=''):
     """Daily envelope of the HOBO light with baseline and fouling threshold.
@@ -1326,7 +1342,7 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
     ax1.legend(handles=handles, fontsize=8)
     plt.savefig('hobo_params_%s.svg' % site, bbox_inches='tight')
     enable_scroll_zoom(fig)
-    plt.show()
+    show_panels()
     return 1
 
 
@@ -1430,7 +1446,7 @@ def plot_hobo_params_across_sites (database, dataViewSettings):
         param_r = re.sub(r'\([^()]*\)', '', param).strip().replace(' ', '_')
         plt.savefig('hobo_%s_across_sites.svg' % param_r, bbox_inches='tight')
         enable_scroll_zoom(fig)
-        plt.show()
+        show_panels()
         n_figs += 1
     return n_figs
 
@@ -1590,7 +1606,7 @@ def plot_TS_diagram (database, dataViewSettings):
             ax.set_ylim(tmin, tmax)
             plt.savefig('TS_Diagram_%s_%s_%d.svg'%(sites_label, semester, year))
             enable_scroll_zoom(fig)
-            plt.show()
+            show_panels()
 
 
 
@@ -1786,7 +1802,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False):
     if not show:
         plt.close(fig)
     if show:
-        plt.show()
+        show_panels()
     return files
 
 
@@ -1833,7 +1849,7 @@ def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=Fals
     p = os.path.join(out_dir, 'Current mean speed across sites.svg')
     fig.savefig(p, bbox_inches='tight')
     if show:
-        plt.show()
+        show_panels()
     else:
         plt.close(fig)
     return [p]

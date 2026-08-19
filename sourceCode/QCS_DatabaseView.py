@@ -406,11 +406,16 @@ def _param_data_extreme(param, kind):
     breathing room added to each side so the plot is not cramped ('' if
     unavailable). With several sites/years selected this spans them all.
 
-    Only APPROVED data (flag 1 good / 2 not evaluated) drives the default: the
-    qualified sheet may retain the values of suspect/bad/dismissed rows (the
-    operator's choice at qualification), and letting those extremes set the
-    scale would produce absurd defaults (e.g. a suspect DOM spike of 550 ppb
-    against a good range of 0-6)."""
+    The default spans EVERY value the panel will draw, whatever its flag
+    (owner, v12.3). Until then it spanned only the APPROVED values (flags 1 and
+    2), which cut the plot: a HOBO series whose approved range was 25.9-30.1
+    degC got a fixed scale of 25.07-30.88, and its six SUSPECT points between
+    24.69 and 25.03 were drawn nowhere. The old rule guarded against an extreme
+    setting an absurd scale (a suspect DOM spike of 550 ppb against a good
+    range of 0-6), but that trade was the wrong way round: the qualified sheet
+    ALREADY reflects what the operator chose to remove, the panel draws
+    everything that survived, and a scale that hides drawn data is worse than a
+    wide one - which the operator can narrow by typing Min/Max anyway."""
     if database is None or param not in database.columns:
         return ''
     df = database
@@ -420,12 +425,7 @@ def _param_data_extreme(param, kind):
         df = df[df['Site'].isin(sites)]
     if years and 'Datetime' in df.columns:
         df = df[df['Datetime'].dt.year.isin(years)]
-    col = df[param]
-    flag_col = data.PARAM_FLAG_COLUMN.get(param)
-    if flag_col and flag_col in df.columns:
-        flags = pd.to_numeric(df[flag_col], errors='coerce')
-        col = col[flags.isin([1, 2])]
-    col = col.dropna()
+    col = df[param].dropna()
     if col.empty:
         return ''
     lo, hi = float(col.min()), float(col.max())
@@ -932,14 +932,17 @@ def generatePanels():
                 out_dir = os.path.join(inputSettings.get('outputPath', ''), 'DatabaseView')
                 # the current panels honour the time window and the depth band.
                 # 'Fixed scale' ON = every heatmap shares one speed color scale
-                # (the max GOOD speed over the whole selection) so different
-                # sites/years compare 1:1; OFF = each panel autoscales.
+                # so different sites/years compare 1:1; OFF = each panel
+                # autoscales. The scale spans what the panels DRAW - every cell
+                # except BAD, the same rows plot_doppler_panels keeps - for the
+                # reason the scalar scales changed in v12.3: a scale built on
+                # the GOOD cells alone saturates the suspect ones it is drawing.
                 speed_max = None
                 if dataViewSettings.get('fixedScale') and 'Horizontal speed (cm/s)' in sub.columns:
-                    good = sub[sub.get('Flag_cur', 1) == 1]['Horizontal speed (cm/s)']
-                    good = pd.to_numeric(good, errors='coerce').dropna()
-                    if len(good):
-                        speed_max = float(good.max()) * 1.05
+                    drawn = sub[sub.get('Flag_cur', 1) != 4]['Horizontal speed (cm/s)']
+                    drawn = pd.to_numeric(drawn, errors='coerce').dropna()
+                    if len(drawn):
+                        speed_max = float(drawn.max()) * 1.05
                 dop_settings = {
                     'xAxisStart': dataViewSettings.get('xAxisStart'),
                     'xAxisEnd': dataViewSettings.get('xAxisEnd'),
@@ -2047,8 +2050,14 @@ def apply_pending_prefill(info):
             _go_step1()   # come back from Step 2 so the fields are visible
     except Exception:
         pass
-    restore_entry(fileNames_entry, info.get('file', ''))
+    files = [f for f in (info.get('files') or []) if f] or [info.get('file', '')]
+    restore_entry(fileNames_entry, ';'.join(files))
     restore_entry(outputPath_entry, info.get('out_root', ''))
+    # several files build a NEW unified database and the name is REQUIRED by the
+    # Step 1 validation - a batch handoff carries one, so Next can be pressed
+    # (or taken automatically) without stopping on a warning (v12.3)
+    if len(files) > 1 and info.get('database_name'):
+        restore_entry(outputName_entry, info['database_name'])
     # remember an output name for the folder-build mode; the visible field stays
     # blank/disabled in single-file mode (handled by toggle_input_mode)
     USER_PREFS['dbv_output_name'] = os.path.splitext(os.path.basename(info.get('file', '')))[0]

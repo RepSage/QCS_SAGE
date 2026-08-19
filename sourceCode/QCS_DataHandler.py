@@ -9,7 +9,7 @@ import QCS_Theme as _theme
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v12.2.4'
+QCS_VERSION = 'v12.3'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -159,10 +159,33 @@ def read_seaguard_bin(file_path):
     sibling DataNNN.bin files of the same session folder, concatenated in time
     order. Returns the CSV-export-equivalent DataFrame."""
     folder = os.path.dirname(file_path)
+    selected = os.path.basename(file_path)
     siblings = sorted(f for f in os.listdir(folder)
                       if re.fullmatch(r'Data\d+\.bin', f, re.IGNORECASE))
     if not siblings:
-        siblings = [os.path.basename(file_path)]
+        siblings = [selected]
+    # 'Every DataNNN.bin of the folder is a part of this session' holds for a
+    # real session folder, and NOT for a folder that merely happens to hold
+    # binaries of different deployments (a Desktop, a staging folder). A DCPS
+    # session among scalar ones cannot be a continuation of them: decoding it
+    # as one aborted the whole qualification with 'unsupported layout variant',
+    # naming a file the operator never selected (owner, v12.3).
+    if len(siblings) > 1:
+        selected_is_doppler = is_seaguard_doppler(file_path)
+        kept, dropped = [], []
+        for name in siblings:
+            if name.lower() == selected.lower():
+                kept.append(name)
+            elif is_seaguard_doppler(os.path.join(folder, name)) == selected_is_doppler:
+                kept.append(name)
+            else:
+                dropped.append(name)
+        if dropped:
+            print('Warning: %d file(s) in this folder belong to a different '
+                  'instrument session and were NOT merged into %s: %s. Keep one '
+                  'deployment per folder if they should be read together.'
+                  % (len(dropped), selected, ', '.join(dropped)))
+        siblings = kept
     parts = [_decode_aadi_bin(os.path.join(folder, f)) for f in siblings]
     if len(parts) > 1:
         print('Info: %d binary files of the session read together (%s).'

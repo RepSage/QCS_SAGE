@@ -20,12 +20,25 @@ Run with:  QCS.bat  (packaging/v12_env venv, PySide6 6.8.3).
 import os
 import re
 import sys
+import threading
 
 import matplotlib
-matplotlib.use('QtAgg')            # before any QCS import binds pyplot
+# Agg, not QtAgg (v12.3): under QtAgg every figure IS a QWidget, and Qt forbids
+# building a widget outside the interface thread - which is exactly what the
+# qualification does once it runs on a worker. Under Agg a figure is pure
+# computation, buildable anywhere, and the shell provides the window itself
+# (PlotWindow below). A figure keeps its mpl_connect callbacks when a QtAgg
+# canvas is attached to it later: the registry lives on the FIGURE
+# (matplotlib 3.10 `canvas.callbacks -> figure._canvas_callbacks`, measured).
+matplotlib.use('Agg')              # before any QCS import binds pyplot
+import matplotlib.pyplot as plt
+from matplotlib._pylab_helpers import Gcf
+from matplotlib.backend_bases import CloseEvent
+from matplotlib.backends.backend_qtagg import (FigureCanvasQTAgg,
+                                               NavigationToolbar2QT)
 
-from PySide6.QtCore import (QByteArray, QEvent, QObject, QSignalBlocker, Qt,
-                            Signal)
+from PySide6.QtCore import (QByteArray, QEvent, QEventLoop, QObject,
+                            QSignalBlocker, Qt, QThread, QTimer, Signal, Slot)
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QDockWidget, QFileDialog, QFormLayout,
@@ -42,6 +55,7 @@ import QCS_QtTheme as qtheme
 import QCS_Main as qm
 import QCS_DataHandler as data
 # installs the tk crash handler at import; main() installs the Qt one after
+import QCS_DataView as view      # the panel plots (show_panels hook)
 import QCS_DatabaseView as dbv
 import QCS_Update as upd
 from QCS_QtViz import VisualizationTab
@@ -104,41 +118,149 @@ def _interval_text(seconds):
 
 
 def _qt_style_plot_window(fig, title=None):
-    """Qt replacement for theme.style_plot_window: app icon + meaningful title
-    on the matplotlib window, brought to the front."""
+    """Qt replacement for theme.style_plot_window. Under Agg there is no window
+    to style yet, so the title is REMEMBERED on the figure and PlotWindow uses
+    it when the figure is shown - the six call sites keep working unchanged."""
+    if title:
+        fig._qcs_window_title = title
+
+
+def _prime_toolbar(fig, toolbar):
+    """Matplotlib's own toolbar, untouched - house icon, lens, configure, save
+    (owner, v12.3: that is the standard every plot in the program follows, and
+    the trimmed bar with a 'Reset view' text button was the odd one out).
+
+    The one thing added is the opening view on the navigation stack. Home
+    returns to whatever the stack holds, and the stack is only ever filled by
+    the toolbar's OWN pan/zoom - so after a wheel zoom (this program's usual
+    way of zooming, `QCS_DataView.enable_scroll_zoom`) the house button had
+    nothing to go back to and did nothing at all.
+    """
     try:
-        mgr = fig.canvas.manager
-        if title:
-            mgr.set_window_title(title)
-        win = getattr(mgr, 'window', None)
-        if win is not None:
-            win.setWindowIcon(_app_icon())
-            win.raise_()
-            win.activateWindow()
+        toolbar.push_current()
     except Exception:
         pass
+
+
+class PlotWindow(QWidget):
+    """The window a matplotlib figure is shown in.
+
+    Under Agg the backend has no window of its own, so the shell builds one:
+    canvas, navigation toolbar, the app icon and a real title. Closing works in
+    BOTH directions - closing the window fires matplotlib's `close_event`,
+    which is what the pipeline's waits are connected to, and a `plt.close(fig)`
+    from the pipeline (Done / Skip / Cancel all call it) closes the window.
+
+    A plain QWidget, not a QDialog: a dialog swallows Esc and Enter, and the
+    manual point cut binds both (Enter = done, Esc = cancel the whole run).
+    """
+
+    _open = []          # non-modal windows, kept referenced against the GC
+    _windows = []       # every window on screen, watched by the timer below
+    _watch = None       # one QTimer for all of them
+
+    # Under Agg, plt.close(fig) fires NOTHING: FigureManagerBase.destroy() is a
+    # no-op (matplotlib 3.10, read), unlike the Qt manager, whose destroy closes
+    # its window and emits close_event. The pipeline ends every review with
+    # plt.close(fig) - Done, Skip and Cancel all do - so the window has to
+    # notice by itself that its figure left pyplot. One timer serves every open
+    # window; it runs only while at least one is on screen.
+
+    @classmethod
+    def _tick(cls):
+        alive = {id(m.canvas.figure) for m in Gcf.figs.values()}
+        for window in list(cls._windows):
+            if window._watched and id(window._fig) not in alive:
+                window.close()
+        if not cls._windows and cls._watch is not None:
+            cls._watch.stop()
+
+    @classmethod
+    def _register(cls, window):
+        cls._windows.append(window)
+        if cls._watch is None:
+            cls._watch = QTimer()
+            cls._watch.setInterval(150)
+            cls._watch.timeout.connect(cls._tick)
+        if not cls._watch.isActive():
+            cls._watch.start()
+
+    def __init__(self, fig, parent=None):
+        super().__init__(parent)
+        self.setWindowFlag(Qt.Window)
+        self._fig = fig
+        self._closing = False
+        self._loop = None
+        canvas = fig.canvas
+        if not isinstance(canvas, FigureCanvasQTAgg):
+            canvas = FigureCanvasQTAgg(fig)
+        self._canvas = canvas
+        self.setWindowTitle(getattr(fig, '_qcs_window_title', '') or 'QCS - plot')
+        self.setWindowIcon(_app_icon())
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        toolbar = NavigationToolbar2QT(canvas, self)
+        self._toolbar = toolbar
+        _prime_toolbar(fig, toolbar)
+        lay.addWidget(toolbar)
+        lay.addWidget(canvas)
+        w, h = fig.get_size_inches() * fig.dpi
+        self.resize(int(w), int(h) + 48)
+        fig.canvas.mpl_connect('close_event', self._figure_closed)
+        # only a figure pyplot KNOWS can be detected as closed by the watchdog;
+        # one built straight from Figure() would otherwise be closed at once
+        self._watched = any(m.canvas.figure is fig for m in Gcf.figs.values())
+
+    def _figure_closed(self, _event):
+        if not self._closing:      # plt.close(fig) came from the pipeline
+            self._closing = True
+            self.close()
+
+    def closeEvent(self, event):
+        if not self._closing:      # the operator closed the window
+            self._closing = True
+            CloseEvent('close_event', self._canvas)._process()
+        if self in PlotWindow._open:
+            PlotWindow._open.remove(self)
+        if self in PlotWindow._windows:
+            PlotWindow._windows.remove(self)
+        if self._loop is not None and self._loop.isRunning():
+            self._loop.quit()
+        super().closeEvent(event)
+
+    def show_and_wait(self):
+        """Interactive review: show and block until the window is closed."""
+        PlotWindow._register(self)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self._canvas.setFocus()    # Enter/Esc reach the figure without a click
+        self._loop = QEventLoop()
+        self._loop.exec()
+
+    def show_free(self):
+        """A produced panel: show it and leave it open."""
+        PlotWindow._open.append(self)
+        PlotWindow._register(self)
+        self.show()
+        self.raise_()
+
+
+def _qt_show_panels():
+    """view.show_panels replacement: the visualization's figures open in the
+    shell's own windows. Under Agg `plt.show()` does nothing at all, so without
+    this the panels would be written and never displayed."""
+    for window in list(PlotWindow._open):
+        window.close()
+    for num in plt.get_fignums():
+        PlotWindow(plt.figure(num)).show_free()
 
 
 def wait_figure_close(fig):
     """Qt replacement for the pipeline's figure waits: shows the interactive
-    matplotlib window (QtAgg) and pumps Qt events until it is closed."""
-    state = {'open': True}
-
-    def _closed(_event):
-        state['open'] = False
-        fig.canvas.stop_event_loop()
-
-    fig.canvas.mpl_connect('close_event', _closed)
-    fig.show()
-    try:
-        win = fig.canvas.manager.window
-        win.setWindowIcon(_app_icon())   # figures not routed through style_plot_window
-        win.raise_()
-        win.activateWindow()
-    except Exception:
-        pass
-    if state['open']:
-        fig.canvas.start_event_loop()
+    figure in a PlotWindow and returns once it is closed."""
+    PlotWindow(fig).show_and_wait()
 
 
 class ChooseVariablesDialog(QDialog):
@@ -211,6 +333,10 @@ class QtShell(QMainWindow):
         self._co2_file = ''
         self._run_scope = None      # 'File k/n' / 'Replicate k/n' progress prefix
         self._doppler_file = False  # the selected .bin is a DCPS session
+        self._advance_viz = False   # 'Go to visualization' asked for Step 2
+        self._run_thread = None     # the qualification's worker (v12.3)
+        self._cancel = threading.Event()   # read by the worker, set by Cancel
+        self._cancel_raised = False        # RunCanceled already thrown once
         self._stage_total = 5       # stages the running pipeline logs (Doppler has 4)
 
         tabs = QTabWidget()
@@ -450,7 +576,10 @@ class QtShell(QMainWindow):
                     self.progress.setValue(stage)
                     self.progress.setFormat('Stage %d/%d' % (stage, total))
         self.log_dock.log(message)
-        QApplication.processEvents()   # progress shows while the pipeline runs
+        if self._run_thread is None:
+            # single-threaded callers (the visualization tab) still need the
+            # window repainted mid-work; a threaded run repaints on its own
+            QApplication.processEvents()
 
     # ----- qualification tab -----
     def _qualification_tab(self):
@@ -649,6 +778,12 @@ class QtShell(QMainWindow):
         self.run_btn.setObjectName('AccentButton')   # blue primary action
         self.run_btn.setToolTip(TOOLTIPS['run_button'])
         self.run_btn.clicked.connect(self._run)
+        self.cancel_btn = QPushButton('Cancel')
+        self.cancel_btn.setToolTip('Stops the qualification at the next step.\n'
+                                   'What is already written stays; the file '
+                                   'being processed is not finished')
+        self.cancel_btn.clicked.connect(self._cancel_run)
+        self.cancel_btn.setVisible(False)      # only while a run is in progress
         self.run_hint = QLabel('')
         qtheme.muted(self.run_hint)
         settings = QPushButton('Quality control settings')
@@ -657,6 +792,10 @@ class QtShell(QMainWindow):
 
         grid.addWidget(gin, 0, 0)
         grid.addWidget(gout, 0, 1)
+        # while a run is in progress the ONLY live control is Cancel (owner,
+        # v12.3): the window stays responsive now, and a form edited mid-run
+        # would describe a qualification that is no longer the one running
+        self._busy_freeze = [gin, gout, settings]
         actions = QGridLayout()
         for col in range(3):
             actions.setColumnStretch(col, 1)
@@ -680,8 +819,9 @@ class QtShell(QMainWindow):
         open_out = QPushButton('Open output folder')
         open_out.clicked.connect(self._open_output_folder)
         to_viz = QPushButton('Go to visualization')
-        to_viz.clicked.connect(
-            lambda: self.tabs.setCurrentIndex(self.tabs.count() - 1))
+        to_viz.setToolTip('Opens the visualization on the panels of what was '
+                          'just qualified')
+        to_viz.clicked.connect(self._go_to_visualization)
         pr.addWidget(open_out)
         pr.addWidget(to_viz)
         self.postrun_bar.setVisible(False)
@@ -690,6 +830,7 @@ class QtShell(QMainWindow):
         run_box.setContentsMargins(0, 0, 0, 0)
         run_box.setSpacing(4)   # the shortcuts hug RUN (owner, v12.1)
         run_box.addWidget(self.run_btn, alignment=Qt.AlignHCenter)
+        run_box.addWidget(self.cancel_btn, alignment=Qt.AlignHCenter)
         run_box.addWidget(self.run_hint, alignment=Qt.AlignHCenter)
         run_box.addWidget(self.postrun_bar, alignment=Qt.AlignHCenter)
         rb = QWidget()
@@ -715,13 +856,20 @@ class QtShell(QMainWindow):
         self.tabs.removeTab(idx)
         self.tabs.insertTab(idx, self._viz_page, 'Data visualization')
 
+    def _go_to_visualization(self):
+        """The post-run shortcut: unlike the tab bar, it goes all the way to
+        the panels of the run that just finished (owner, v12.3)."""
+        self._advance_viz = True
+        self.tabs.setCurrentIndex(self.tabs.count() - 1)
+
     def _tab_changed(self, _index):
         # hand a just-qualified file to the Visualization tab, exactly like
         # the tk shell does on its tab switch
+        advance, self._advance_viz = self._advance_viz, False
         if (self.viz_tab is not None
                 and self.tabs.currentWidget() is self._viz_page
                 and qm.PENDING_VIZ_PREFILL):
-            self.viz_tab.apply_prefill(qm.PENDING_VIZ_PREFILL)
+            self.viz_tab.apply_prefill(qm.PENDING_VIZ_PREFILL, advance=advance)
             qm.PENDING_VIZ_PREFILL = None
         # every switch starts at the top of the page, never wherever the tab
         # was left (owner, 2026-08-19)
@@ -1361,7 +1509,18 @@ class QtShell(QMainWindow):
     def set_busy(self, busy):
         self.run_btn.setEnabled(not busy)
         self.progress.setVisible(busy)
+        # everything but Cancel goes dead for the duration: the form, the
+        # settings button, the menus and the Visualization tab (its Generate
+        # panels would run heavy work on the interface thread, beside the run)
+        for widget in getattr(self, '_busy_freeze', ()):
+            widget.setEnabled(not busy)
+        self.menuBar().setEnabled(not busy)
+        if self.viz_tab is not None:
+            self.tabs.setTabEnabled(self.tabs.count() - 1, not busy)
+        self.cancel_btn.setVisible(busy)
         if busy:
+            self.cancel_btn.setEnabled(True)
+            self.cancel_btn.setText('Cancel')
             self._run_scope = None
             self._stage_total = 5   # re-learned from the first Stage marker
             self.batch_dock.hide()          # reappears on the first File marker
@@ -1372,7 +1531,11 @@ class QtShell(QMainWindow):
             # busy cursor on the MAIN window only (like the tk watch cursor):
             # an app-wide override cursor kept spinning over the interactive
             # review windows and dialogs, reading as a hang
-            self.setCursor(Qt.WaitCursor)
+            if not qm.THREADED:
+                # the pipeline no longer holds the interface thread (v12.3), so
+                # a wait cursor would say the opposite of what is true: the
+                # window is live and Cancel is there to be clicked
+                self.setCursor(Qt.WaitCursor)
         else:
             self.unsetCursor()
             self._finish_running_batch_row()
@@ -1390,7 +1553,38 @@ class QtShell(QMainWindow):
             self.region.setCurrentText(current)
 
     def _run(self):
-        qm.start_qualification()
+        """RUN: the qualification goes to a worker thread (v12.3), so the
+        window keeps repainting and Cancel can be pressed while it runs."""
+        if self._run_thread is not None and self._run_thread.isRunning():
+            return                       # already running: RUN is disabled anyway
+        self._cancel.clear()
+        self._cancel_raised = False
+        self._run_thread = _RunThread(self)
+        self._run_thread.finished.connect(self._run_thread_done)
+        self._run_thread.start()
+
+    def _run_thread_done(self):
+        self._run_thread = None
+        self.set_busy(False)             # the pipeline's own ui_busy(False)
+        self.cancel_btn.setVisible(False)   # already ran; this is the backstop
+
+    def _cancel_run(self):
+        """Cancel: cooperative. The worker notices at its next yield point or
+        its next log line and unwinds through the pipeline's own canceled path,
+        which closes the figures and restores the working directory."""
+        if self._run_thread is None or not self._run_thread.isRunning():
+            return
+        self._cancel.set()
+        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.setText('Canceling...')
+        self.log_line('Cancel requested - the run stops at the next step.')
+
+    def check_canceled(self):
+        """The pipeline's yield point (it replaces ui_pump: the window no
+        longer needs pumping). Called ON THE WORKER - it must touch no widget."""
+        if self._cancel.is_set() and not self._cancel_raised:
+            self._cancel_raised = True
+            raise qm.RunCanceled()
 
     # ----- prefs -----
     def restore_prefs(self):
@@ -1459,21 +1653,99 @@ def _bootstrap_tk_pipeline(shared_log):
     return root
 
 
+# ----- the worker thread (v12.3) -----
+# The qualification used to run ON the interface thread, with ui_pump() calls
+# sprinkled through it to keep the window repainting. It now runs on a worker,
+# and the pipeline is untouched: every point where it talks to the operator is
+# already a swappable hook (the UI facade below), so the hooks are what move
+# the call back to the interface thread and block the worker until it answers.
+
+class _GuiBridge(QObject):
+    """Runs a callable on the interface thread; the caller waits for it.
+
+    The signal is emitted from the worker and delivered on the interface
+    thread (a queued connection - that is what crossing threads means here),
+    which then releases the semaphore the worker is blocked on. The result, or
+    the exception, travels back in the same box: a dialog the operator cancels
+    must raise INSIDE the pipeline, exactly as it did single-threaded.
+    """
+
+    request = Signal(object)
+
+    def __init__(self):
+        super().__init__()
+        self.request.connect(self._serve)
+
+    @Slot(object)
+    def _serve(self, box):
+        try:
+            box['result'] = box['fn'](*box['args'], **box['kwargs'])
+        except BaseException as exc:      # noqa: BLE001 - re-raised on the worker
+            box['error'] = exc
+        finally:
+            box['done'].release()
+
+    def call(self, fn, args, kwargs):
+        box = {'fn': fn, 'args': args, 'kwargs': kwargs, 'result': None,
+               'error': None, 'done': threading.Semaphore(0)}
+        self.request.emit(box)
+        box['done'].acquire()
+        if box['error'] is not None:
+            raise box['error']
+        return box['result']
+
+
+_BRIDGE = None       # created with the shell, on the interface thread
+
+
+def _on_gui(fn):
+    """Wraps a facade hook so it always executes on the interface thread."""
+    def call_on_gui_thread(*args, **kwargs):
+        if QThread.currentThread() is QApplication.instance().thread():
+            return fn(*args, **kwargs)
+        return _BRIDGE.call(fn, args, kwargs)
+    return call_on_gui_thread
+
+
+class _RunThread(QThread):
+    """The qualification, off the interface thread."""
+
+    def run(self):
+        qm.start_qualification()      # handles its own errors and cleanup
+
+
 def _install_qt_facade(shell):
-    qm.ui_info = lambda t, m: QMessageBox.information(shell, t, m)
-    qm.ui_warn = lambda t, m: QMessageBox.warning(shell, t, m)
-    qm.ui_error = lambda t, m: QMessageBox.critical(shell, t, m)
-    qm.ui_info_parented = lambda t, m, parent=None: QMessageBox.information(shell, t, m)
-    qm.ui_busy = shell.set_busy
-    qm.ui_pump = QApplication.processEvents
-    qm.log_line = shell.log_line
-    qm.collect_input_settings = shell.collect_from_qt
-    qm.choose_variables_to_check = qt_choose_variables
-    qm.ui_ask_yes_no = lambda t, m: (QMessageBox.question(shell, t, m)
-                                     == QMessageBox.StandardButton.Yes)
-    qm.wait_figure_close = wait_figure_close
-    data._show_and_wait = lambda fig, tk_root=None: wait_figure_close(fig)
+    qm.THREADED = True                 # the log stops warning about a freeze
+    # every hook is wrapped: called from the worker it hops to the interface
+    # thread and blocks the worker; called from the interface thread it runs
+    # straight through (the visualization tab still calls some of these)
+    qm.ui_info = _on_gui(lambda t, m: QMessageBox.information(shell, t, m))
+    qm.ui_warn = _on_gui(lambda t, m: QMessageBox.warning(shell, t, m))
+    qm.ui_error = _on_gui(lambda t, m: QMessageBox.critical(shell, t, m))
+    qm.ui_info_parented = _on_gui(
+        lambda t, m, parent=None: QMessageBox.information(shell, t, m))
+    qm.ui_busy = _on_gui(shell.set_busy)
+    # ui_pump was 'let the window repaint'; the window repaints on its own now,
+    # so the pipeline's yield points become the CANCEL checkpoints instead
+    qm.ui_pump = shell.check_canceled
+    # the log is the FINE cancel checkpoint: every stage logs. The check runs
+    # BEFORE the hop, on the worker - raising it on the interface thread would
+    # throw inside the event loop and leave the run going (measured, v12.3)
+    _log_on_gui = _on_gui(shell.log_line)
+
+    def pipeline_log(message):
+        _log_on_gui(message)
+        shell.check_canceled()
+
+    qm.log_line = pipeline_log
+    qm.collect_input_settings = _on_gui(shell.collect_from_qt)
+    qm.choose_variables_to_check = _on_gui(qt_choose_variables)
+    qm.ui_ask_yes_no = _on_gui(lambda t, m: (QMessageBox.question(shell, t, m)
+                                             == QMessageBox.StandardButton.Yes))
+    qm.wait_figure_close = _on_gui(wait_figure_close)
+    data._show_and_wait = _on_gui(lambda fig, tk_root=None: wait_figure_close(fig))
     theme.style_plot_window = _qt_style_plot_window   # app icon on plot windows
+    view.show_panels = _qt_show_panels                # panels open in OUR windows
     dbv.ui_info = lambda t, m: QMessageBox.information(shell, t, m)
     dbv.ui_warn = lambda t, m: QMessageBox.warning(shell, t, m)
     dbv.ui_error = lambda t, m: QMessageBox.critical(shell, t, m)
@@ -1488,6 +1760,8 @@ def main():
     shell.dark_action.setChecked(dark)
     _out.set_sink(shell.log_dock.log)      # prints -> Qt log from here on
     _bootstrap_tk_pipeline(shell.log_dock)  # also runs restore prefs + version gate
+    global _BRIDGE
+    _BRIDGE = _GuiBridge()                 # lives on the interface thread
     _install_qt_facade(shell)
     shell.restore_prefs()
     shell.attach_visualization_tab()       # remote-controls the hidden wizard

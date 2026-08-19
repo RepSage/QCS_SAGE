@@ -950,6 +950,63 @@ def write_combined_replicates(combined, light_plots=()):
         log_line('Warning: could not plot the combined temperature series: %s' % e)
     return root
 
+def _claim_output_root(root):
+    """Creates the run's output root and remembers whether the RUN created it.
+
+    A canceled run deletes what it made (owner, v12.3) and must never delete
+    anything that was already on disk: re-qualifying into an existing '<name>_
+    QLF' folder is normal, and that folder holds the PREVIOUS product. Only a
+    root this run brought into existence is removable, and only while the file
+    that owns it is unfinished - see _commit_output_root / _discard_partial_output.
+    """
+    existed = os.path.isdir(root)
+    os.makedirs(root, exist_ok=True)
+    if not existed:
+        OUTPUT.setdefault('pending_roots', []).append(root)
+    else:
+        OUTPUT.setdefault('kept_roots', []).append(root)
+    return root
+
+
+def _commit_output_root():
+    """A file finished: its output is a product now, not a partial write."""
+    OUTPUT['pending_roots'] = []
+    OUTPUT['kept_roots'] = []
+
+
+def _discard_partial_output():
+    """Removes the output of the file that was interrupted. In a BATCH the
+    files already finished have been committed, so only the unfinished one is
+    removed. A root that existed BEFORE the run is never touched - it is
+    reported instead, because the partial write landed among earlier files."""
+    for root in OUTPUT.get('pending_roots', []):
+        try:
+            if os.path.isdir(root):
+                shutil.rmtree(root)
+                log_line('Canceled: partial output removed (%s).'
+                         % os.path.basename(root))
+        except Exception as exc:
+            log_line('Warning: could not remove the partial output %s: %s'
+                     % (root, exc))
+    for root in OUTPUT.get('kept_roots', []):
+        log_line('Note: %s already existed before this run and was NOT deleted; '
+                 'it may now hold files from the canceled run.'
+                 % os.path.basename(root))
+    OUTPUT['pending_roots'] = []
+    OUTPUT['kept_roots'] = []
+
+
+class RunCanceled(data.ManualCutCanceled):
+    """Cancel pressed while a run is in progress (v12.3).
+
+    It INHERITS ManualCutCanceled on purpose: every place that already knows
+    how to unwind a canceled run - the batch loop's `except ...: raise`, the
+    outer handler, the `finally` that closes the figures and restores the
+    working directory - then handles this one too, with no new branches. The
+    only thing that has to tell them apart is the log line below.
+    """
+
+
 def start_qualification():
     """Runs the qualification without closing the main window, allowing new runs.
     For HOBO with N>1 replicates, each file is qualified independently (its own
@@ -965,6 +1022,8 @@ def start_qualification():
     # log_line is a no-op and it only inspects dialogs on FAILURE, so without
     # this a product qualified from a wrong-clock file succeeds silently.
     OUTPUT['clock_checks'] = []
+    OUTPUT['pending_roots'] = []      # output of the file being processed
+    OUTPUT['kept_roots'] = []
     files = INPUT.get('replicate_files') or [None]
     n = len(files)
     combine_hobo = n > 1 and INPUT.get('input_type') == 'HOBO'
@@ -974,6 +1033,7 @@ def start_qualification():
         replicate_roots = []
         light_plots = []
         batch_failures = []
+        batch_outputs = []      # every qualified file of a batch, for the handoff
         for idx, fpath in enumerate(files, start=1):
             INPUT['file_name'] = os.path.basename(fpath)
             INPUT['raw_data_path'] = os.path.dirname(fpath)
@@ -992,8 +1052,10 @@ def start_qualification():
             elif n > 1:
                 log_line('=== Replicate %d/%d: %s ===' % (idx, n, INPUT['file_name']))
             else:
-                log_line('=== Qualification started: %s (the window may not respond while processing) ==='
-                         % INPUT['file_name'])
+                log_line('=== Qualification started: %s%s ==='
+                         % (INPUT['file_name'],
+                            '' if THREADED
+                            else ' (the window may not respond while processing)'))
             ui_pump()
             if batch:
                 # isolate each batch file: one bad session (e.g. a 1-record capture)
@@ -1012,6 +1074,12 @@ def start_qualification():
                     continue
             else:
                 run_full_qualification()
+            _commit_output_root()   # this file is finished: its output stays
+            if batch and OUTPUT.get('last_qualified_file'):
+                # a batch's products are handed to the Visualization tab as a
+                # SET: the operator's next step is one unified database, not the
+                # last file of the run (owner, v12.3)
+                batch_outputs.append(OUTPUT['last_qualified_file'])
             if combine_hobo:
                 qualified_dfs.append(OUTPUT['last_qualified_df'])
                 # the replicate's OWN output folder, so a deployment reduced to a
@@ -1093,6 +1161,10 @@ def start_qualification():
         if OUTPUT.get('last_qualified_file'):
             PENDING_VIZ_PREFILL = {
                 'file': OUTPUT['last_qualified_file'],
+                # every file of a batch (one entry otherwise): Step 1 selects
+                # them all and builds ONE database from them
+                'files': batch_outputs or [OUTPUT['last_qualified_file']],
+                'database_name': '%s_database' % (INPUT.get('site') or 'QCS'),
                 'out_root': OUTPUT.get('last_output_root', ''),
                 'instrument': ('HOBO' if INPUT.get('input_type') == 'HOBO'
                                else 'Doppler' if OUTPUT.get('doppler_run') else 'Seaguard'),
@@ -1117,10 +1189,14 @@ def start_qualification():
             ui_info("Done",
                     "Qualification completed.\n\nResults saved to:\n%s"
                     % OUTPUT.get('last_output_root', ''))
-    except data.ManualCutCanceled:
-        # Cancel/Esc during a manual-cut panel or the variable chooser: abort
-        # cleanly and return to the form (no error dialog, nothing written)
-        log_line('Qualification canceled by the user (manual point cut).')
+    except data.ManualCutCanceled as canceled:
+        # Cancel/Esc during a manual-cut panel or the variable chooser, or the
+        # Cancel button of a running qualification: abort cleanly and return to
+        # the form (no error dialog, nothing written)
+        log_line('Qualification canceled by the user (%s).'
+                 % ('Cancel' if isinstance(canceled, RunCanceled)
+                    else 'manual point cut'))
+        _discard_partial_output()
         plt.close('all')
         os.chdir(rootPath)
     except Exception as e:
@@ -1554,6 +1630,11 @@ rootPath = os.getcwd()
 # {'file', 'out_root', 'instrument'} so the shell can pre-select the just-made
 # file there; the shell clears it once applied.
 PENDING_VIZ_PREFILL = None
+
+# True once a shell runs the pipeline on a worker thread (the Qt shell does,
+# v12.3). It only decides what the log promises the operator: the tk shell
+# still qualifies ON the interface thread, where the window does freeze.
+THREADED = False
 
 # Manual point-cut: map each reviewable column to its flag key, so a manual
 # dismissal can be written as flag 5 at that variable's positions (traceable).
@@ -2264,6 +2345,7 @@ def build_qualification_tab(container, root, shared_log=None):
         log_line('Stage 3/4: writing the qualified current table...')
         base = _output_base_for(bin_path)
         root_out = os.path.join(OUTPUT['output_file_path'], base + '_DOPPLER_QLF')
+        _claim_output_root(root_out)
         table_dir = os.path.join(root_out, 'QCS qualified current data')
         os.makedirs(table_dir, exist_ok=True)
         out_name = os.path.splitext(OUTPUT['output_file_name'])[0]
@@ -2932,7 +3014,7 @@ def build_qualification_tab(container, root, shared_log=None):
         root_path = (OUTPUT['output_file_path'] + '/'
                      + _output_base_for(os.path.join(INPUT['raw_data_path'], INPUT['file_name']))
                      + '_QLF')
-        os.makedirs(root_path, exist_ok=True)
+        _claim_output_root(root_path)
         data_folder = 'QCS qualified hobo data' if layout_type == 'hobo' else 'QCS qualified tscp data'
         path = root_path + '/' + data_folder + '/'
         os.makedirs(path, exist_ok=True)

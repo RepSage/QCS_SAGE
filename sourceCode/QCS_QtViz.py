@@ -247,14 +247,18 @@ class VisualizationTab(QWidget):
             self.recent.setCurrentIndex(-1)
         self._sync_recent_state()
 
-    def apply_prefill(self, info):
-        """A qualification just finished: Step 1 shows ITS file, and the tab
-        goes back to Step 1 - landing on the Step 2 of an older database was
-        the v12.0 bug (owner, v12.1)."""
+    def apply_prefill(self, info, advance=False):
+        """A qualification just finished: Step 1 shows ITS file (or the whole
+        batch). The tab lands on Step 1 - showing the Step 2 of an OLDER
+        database was the v12.0 bug (owner, v12.1) - unless `advance` says the
+        operator asked to go straight to the panels, which only ever builds the
+        database that was JUST handed over (owner, v12.3)."""
         dbv.apply_pending_prefill(info)
         self.stack.setCurrentIndex(0)
         self.refresh_step1()
         qtheme.scroll_to_top(self)
+        if advance:
+            self._next()      # stays on Step 1 by itself if anything fails
 
     def _data_type_text(self):
         """'Seaguard TSCP Mooring' rather than a bare 'TSCP Mooring' - the

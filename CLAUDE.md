@@ -109,6 +109,28 @@ archive and diff the counts against the previous `qualified_index.csv`.
   `qtheme.muted()` carries the same warning for a different reason: a
   stylesheet on a child makes Qt re-render its ancestors through the
   stylesheet engine, which painted a gray slab behind a QGroupBox.
+- **The qualification runs on a WORKER THREAD in the Qt shell** (v12.3), and
+  the pipeline code knows nothing about it: every point where it talks to the
+  operator is a swappable hook, and `_install_qt_facade` wraps each one so the
+  call hops to the interface thread and blocks the worker until it answers.
+  Two rules follow, and breaking either one crashes or hangs a run:
+  - **A new interactive stop MUST go through a facade hook.** Build a Qt or
+    matplotlib WINDOW straight from the pipeline and it is built on the worker
+    - which Qt forbids for widgets.
+  - **Never call `plt.show()` in code the shells reach.** The Qt shell runs
+    matplotlib on **Agg** (a figure is then pure computation, safe to build on
+    any thread) and supplies the window itself - `QCS_QtApp.PlotWindow`, via
+    `wait_figure_close` for a review and `QCS_DataView.show_panels()` for a
+    produced panel. Under Agg a bare `plt.show()` does nothing at all, so the
+    figure is silently never displayed. `plt.close(fig)` fires no event under
+    Agg either (`FigureManagerBase.destroy` is a no-op), which is why
+    `PlotWindow` watches pyplot to notice that its figure was closed.
+  Cancel is cooperative: `QCS_Main.RunCanceled` (a subclass of
+  `ManualCutCanceled`, so every existing unwind path already handles it) is
+  raised on the worker at the pipeline's yield points - `ui_pump` and, finely,
+  every log line. It must be raised ON the worker: raising it inside a
+  marshalled call throws in the interface thread's event loop and the run
+  carries on (measured, v12.3).
 - **User settings** live in `sourceCode/qcs_user_settings.json` (auto-generated,
   gitignored, version-gated: a version bump may intentionally reset QC criteria
   to new defaults while preserving file paths).
