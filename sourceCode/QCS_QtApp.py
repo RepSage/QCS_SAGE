@@ -61,6 +61,11 @@ qm.USER_PREFS = dbv.USER_PREFS
 qtheme.install_crash_handler('QCS %s' % data.QCS_VERSION)
 
 
+# The status bar's criteria indicator, in both wordings: the widget is sized
+# for the wider of the two so it never changes width when it toggles.
+CRITERIA_TEXTS = ('criteria: defaults', 'criteria: CUSTOM')
+
+
 class _UpdateBridge(QObject):
     """Marshals the background update check's result onto the Qt main thread
     (the tk shell used root.after for the same purpose)."""
@@ -273,7 +278,14 @@ class QtShell(QMainWindow):
         # differ by theme, text and DPI, so they are measured, not hardcoded).
         btn = self.log_dock.clear_button
         label = self.criteria_label
-        width = max(btn.sizeHint().width(), label.sizeHint().width())
+        # The label's width is measured from the TEXT, not from sizeHint():
+        # once setFixedWidth has been applied the hint no longer grows with the
+        # text, so switching to the wider 'criteria: CUSTOM' left its ends cut
+        # off (owner, 2026-08-19). Both wordings are measured so the width does
+        # not jump when the indicator changes.
+        fm = label.fontMetrics()
+        text_width = max(fm.horizontalAdvance(t) for t in CRITERIA_TEXTS) + 18
+        width = max(btn.sizeHint().width(), text_width)
         if btn.width() != width or label.width() != width:
             btn.setFixedWidth(width)
             label.setFixedWidth(width)
@@ -353,12 +365,13 @@ class QtShell(QMainWindow):
                    and qm.CONFIG['tsSettings'] == d['tsSettings']
                    and {k: dict(v) for k, v in qm.CONFIG['tsFactors'].items()}
                    == d['tsFactors'])
-        self.criteria_label.setText('criteria: defaults' if default
-                                    else 'criteria: CUSTOM')
+        self.criteria_label.setText(CRITERIA_TEXTS[0] if default
+                                    else CRITERIA_TEXTS[1])
+        self._align_clear_button()      # 'CUSTOM' is the wider of the two
         self.criteria_label.setToolTip(
             'The quality criteria are the software defaults' if default else
             'At least one quality criterion differs from the defaults\n'
-            '(the edited fields show in bold in Parameter settings)')
+            '(the edited fields show in bold in Quality control settings)')
 
     # ----- logging -----
     def log_line(self, message):
@@ -587,7 +600,7 @@ class QtShell(QMainWindow):
         self.run_btn.clicked.connect(self._run)
         self.run_hint = QLabel('')
         qtheme.muted(self.run_hint)
-        settings = QPushButton('Parameter settings')
+        settings = QPushButton('Quality control settings')
         settings.setToolTip(TOOLTIPS['settings_button'])
         settings.clicked.connect(self._open_settings)
 
@@ -680,7 +693,7 @@ class QtShell(QMainWindow):
         act_showout = QAction('Open output folder', self)
         act_showout.triggered.connect(self._open_output_folder)
         filem.addAction(act_showout)
-        act_settings = QAction('Parameter settings...', self)
+        act_settings = QAction('Quality control settings...', self)
         act_settings.triggered.connect(self._open_settings)
         filem.addAction(act_settings)
         filem.addSeparator()
@@ -741,8 +754,10 @@ class QtShell(QMainWindow):
         answer = QMessageBox.question(
             self, 'Update available',
             'QCS %s is available - you are running %s.\n\n'
-            'Download and install it now%s? The program will close and reopen '
-            'updated; your settings and preferences are kept.'
+            'Download and install it now%s? The program closes and the '
+            'installer opens; keep "Launch QCS after installation" ticked on '
+            'its last page to come back updated. Your settings and '
+            'preferences are kept.'
             % (latest['tag'], data.QCS_VERSION, size))
         if answer != QMessageBox.StandardButton.Yes:
             return
@@ -796,12 +811,12 @@ class QtShell(QMainWindow):
             webbrowser.open(upd.RELEASES_PAGE)
             return False
         dlg.close()
-        # /SILENT: the .iss closes a running QCS and relaunches it updated;
-        # /LOG leaves the evidence for the one step nobody can watch (see
-        # QCS_Update.download_and_run)
+        # the wizard runs VISIBLY so its finish page can offer 'Launch QCS
+        # after installation' - see QCS_Update.download_and_run for why the
+        # silent path was abandoned
         log_path = upd.install_log_path()
         self.log_line('Info: installing the update; the installer log goes to %s' % log_path)
-        subprocess.Popen([dest, '/SILENT', '/NORESTART', '/LOG=%s' % log_path])
+        subprocess.Popen([dest, '/NORESTART', '/LOG=%s' % log_path])
         return True
 
     def _toggle_dark(self, on):

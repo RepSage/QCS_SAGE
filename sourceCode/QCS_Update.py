@@ -209,12 +209,14 @@ def download_and_run(latest, parent):
         return False
 
     win.destroy()
-    # /SILENT: progress bar only, no wizard; the .iss closes a running QCS if
-    # needed (CloseApplications) and relaunches it after a silent upgrade.
-    # /LOG because that relaunch is the one step nobody can watch: the app is
-    # gone while it happens, and without the log a 'it did not reopen' report
-    # has no evidence at all (owner, 2026-08-19).
-    subprocess.Popen([dest, '/SILENT', '/NORESTART', '/LOG=%s' % install_log_path()])
+    # The wizard runs VISIBLY (it used to be /SILENT). A silent install has no
+    # finish page, so the only way back into the app was the [Run] entry gated
+    # on WizardSilent - and that relaunch never happened on the owner's
+    # machine, twice in a row, with nothing to show why. The wizard ends on a
+    # finish page carrying 'Launch QCS after installation', ticked by default:
+    # the reopening becomes something the operator can see and control
+    # (owner, 2026-08-19). /LOG keeps the evidence either way.
+    subprocess.Popen([dest, '/NORESTART', '/LOG=%s' % install_log_path()])
     return True
 
 
@@ -227,8 +229,10 @@ def offer_update(latest, root):
     if not messagebox.askyesno(
             'Update available',
             'QCS %s is available - you are running %s.\n\n'
-            'Download and install it now%s? The program will close and '
-            'reopen updated; your settings and preferences are kept.'
+            'Download and install it now%s? The program closes and the '
+            'installer opens; keep "Launch QCS after installation" ticked on '
+            'its last page to come back updated. Your settings and '
+            'preferences are kept.'
             % (latest['tag'], QCS_VERSION, size)):
         return
     if download_and_run(latest, root):

@@ -12,15 +12,17 @@
 ;
 ; Self-update note: an upgrade reuses the PREVIOUS install's mode and folder
 ; (UsePreviousPrivileges/UsePreviousAppDir, both default) - over a Program
-; Files install the silent upgrade shows one UAC prompt, over a per-user
-; install it stays fully silent.
+; Files install it shows one UAC prompt, over a per-user install none.
 ;
 ; CloseApplications lets the one-click self-update (QCS_Update) upgrade a
-; running install; after a SILENT upgrade the app is relaunched by the [Run]
-; entry gated on WizardSilent. Compile with ISCC.exe after the PyInstaller
-; build; steps in README.md.
+; running install. Since v12.2.1 that update runs the WIZARD, not /SILENT: the
+; silent path's only way back into the app was the [Run] entry gated on
+; WizardSilent, and that relaunch failed on the owner's machine twice with
+; nothing to show why, so the reopening became a finish-page checkbox the
+; operator can see. Compile with ISCC.exe after the PyInstaller build; steps
+; in README.md.
 
-#define AppVersion "12.2"
+#define AppVersion "12.2.1"
 
 [Setup]
 AppId={{7B1C9D2E-4A31-4F5B-9C1E-QCSSAGE00001}
@@ -50,6 +52,13 @@ RestartApplications=no
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
+[CustomMessages]
+; Spelled out rather than Inno's own {cm:LaunchProgram} ('Launch QCS'): after
+; an update the finish page IS the reopening, so the checkbox has to say when
+; it happens (owner, 2026-08-19).
+english.LaunchAfterInstall=Launch QCS after installation
+brazilianportuguese.LaunchAfterInstall=Abrir o QCS após a instalação
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
@@ -76,9 +85,12 @@ Filename: "{app}\Quality Control System (SAGE) - User Manual.html"; Description:
 ; drop from Explorer into it (UIPI: a lower integrity level cannot post to a
 ; higher one) - the app looked broken until it was reopened from its shortcut
 ; (owner, 2026-08-18, confirmed on the v12.1 install).
-Filename: "{app}\QCS.exe"; Description: "{cm:LaunchProgram,QCS}"; Flags: nowait postinstall skipifsilent runasoriginaluser
-; a SILENT run is the self-update path (QCS_Update passes /SILENT): the app
-; closed itself to let the installer work, so reopen it updated
+; skipifsilent stays: without it this entry would ALSO run under /SILENT (where
+; there is no finish page to tick) and the app would be started twice.
+Filename: "{app}\QCS.exe"; Description: "{cm:LaunchAfterInstall}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; kept for a hand-run '/SILENT' install, which has no finish page and so no
+; checkbox. The self-update no longer takes this path: it runs the wizard
+; precisely so the operator gets the checkbox above (owner, 2026-08-19).
 Filename: "{app}\QCS.exe"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [UninstallDelete]

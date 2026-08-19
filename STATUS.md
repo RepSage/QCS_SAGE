@@ -17,7 +17,59 @@ git log -p -- STATUS.md             # how it got there
 Everything that was still OPEN in those entries was carried into the second
 section below, each line dated with when it was last touched - not with today.
 
-## 2026-08-18 - v12.2 RELEASED; publication pending
+## 2026-08-19 - v12.2.1 OPEN (branch `fix-update-relaunch`)
+
+v12.2 is PUBLISHED (latest release, asset downloaded once - the owner updated
+through the app and the installed version reads 12.2).
+
+**The automatic update still does not reopen the app, and the cause is NOT
+identified.** What was established, all of it verified here:
+
+- The install is ALL-USERS in `C:\Program Files (x86)\QCS` (HKLM), so the
+  silent upgrade runs ELEVATED. No `QCS_crash.log` anywhere, so nothing that
+  started crashed.
+- A minimal installer with the SAME shape as the real relaunch entry
+  (non-postinstall `[Run]`, `Check: WizardSilent`, `runasoriginaluser`, no
+  `[Code]` section) fires it normally in a silent NON-elevated install - all
+  three probe entries ran, the Inno log naming 'Run as: Original user'. So the
+  recipe is not malformed; the untested difference is the elevation.
+- Inno's own docs: `runasoriginaluser` "will have no effect" when Setup is
+  launched from an already-elevated process or via 'Run as administrator'.
+
+**The answer taken (owner, 2026-08-19): stop relying on that relaunch.** The
+update runs the WIZARD instead of `/SILENT`, and its finish page carries
+'Launch QCS after installation' (`[CustomMessages] LaunchAfterInstall`), ticked
+by default. The `WizardSilent` entry stays for a hand-run silent install. Both
+update paths also pass `/LOG=%TEMP%\QCS_update_install.log`, so the next report
+of a failed update arrives with the installer's own account of it.
+
+Also in this round (all measured, see `changelog/v12.2.1.md`):
+
+- **The v12.2 installer shipped the build machine's `qcs_user_settings.json`**:
+  step 4 of the build recipe smoke-tests the app INSIDE `dist\QCS`, and since
+  v12.2 the app writes its preferences on close. `[Files]` now excludes
+  `qcs_user_settings.json` and `QCS_crash.log`; proven with a probe installer -
+  only the payload file was installed, both runtime files kept out.
+- **Selection summary for a Seaguard file copied out of the archive**: serial,
+  start and interval now fall back to the file's own BXML header
+  (`_peek_seaguard_header`) when the folder names cannot supply them. Measured:
+  loose Desktop `Data000.bin` -> serial 5650-2104, start 16/03/2026 18:01,
+  interval 60 s in 0.01 s (the full read of the same file gives a 60.0 s median
+  step); cast folder unchanged (5650-2097, 2 groups, 5 s); and the DCPS folder
+  now reports 20 s, which it never could before (its records do not decode, but
+  the instrument declares `<SpecifiedInterval>`).
+- Interface: painted reset arrow instead of the U+21BA glyph; the Quality
+  control tests are indented by their layout instead of a stylesheet (an
+  unqualified rule is inherited by the widget's TOOLTIP - measured 18 px wider
+  than on an unstyled box, which is the strip the owner saw); one name for the
+  settings window everywhere; and the status bar's `criteria: CUSTOM` is sized
+  from the TEXT, since sizeHint stops growing once a fixed width is applied.
+
+**Left to do**: release v12.2.1 (bumped, changelog and manual written, suite
+52/52, ruff clean, `.iss` compiles) - and the checkbox can only be exercised by
+updating from a PUBLISHED v12.2.1.
+
+## 2026-08-18 - v12.2 RELEASED and PUBLISHED
 
 Merged (PR #32, merge commit `7c9bbbe`), **tagged `v12.2` there**, branch
 `improvements-v12.2` deleted both sides. `QCS_VERSION = 'v12.2'`, installer
@@ -43,7 +95,7 @@ md5 checked against `packaging\Output`.
 body from `RELEASE_v12.2.md` minus its heading, `QCS_Setup_v12.2.exe` already
 uploaded (state=uploaded, 81,553,054 bytes). A draft shows an 'untagged-...'
 URL until it is published; the tag `v12.2` is already on `7c9bbbe`.
-**Left to the owner: press Publish.**
+**Published by the owner on 2026-08-19.**
 
 **The persistence fix is proven in the FROZEN build, in part**: closing the
 smoke-tested exe wrote its own `qcs_user_settings.json` beside it with

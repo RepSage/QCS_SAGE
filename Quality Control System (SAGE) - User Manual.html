@@ -152,7 +152,24 @@
 </head>
 <body>
     <h1>User Manual of the QCS System (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v12.2</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v12.2.1</em></p>
+
+    <h3>Fixed in v12.2.1</h3>
+    <ul>
+      <li><strong>Updating:</strong> the update now opens the installer's
+      wizard, whose last page offers <em>Launch QCS after installation</em>,
+      ticked by default - the silent install had no such page, and the
+      automatic reopening it relied on did not happen.</li>
+      <li><strong>Selection summary, Seaguard:</strong> serial, logging start
+      and sampling interval also appear for a <code>Data000.bin</code> copied
+      out of the archive (they used to be read only from the session folder
+      names). A current profiler session now reports its interval too.</li>
+      <li><strong>Quality control settings:</strong> the window, the button and
+      the File menu entry now share one name; the reset arrows are drawn
+      sharply at any screen scale; the tooltips of the tests open without an
+      empty strip on their left; and the <em>criteria: CUSTOM</em> indicator in
+      the status bar is no longer clipped.</li>
+    </ul>
 
     <h3>What v12.2 added</h3>
     <ul>
