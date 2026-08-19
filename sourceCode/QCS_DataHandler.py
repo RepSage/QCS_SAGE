@@ -2370,6 +2370,43 @@ def draw_depth_context(ax, x, depth, times):
     return len(windows)
 
 
+def extend_selection_beyond_axes(selector, ax):
+    """Lets the selection rectangle keep following the mouse OUTSIDE the plot.
+
+    matplotlib freezes the rubber band the moment the cursor leaves the axes:
+    `_SelectorWidget._clean_event` replaces any event whose `xdata` is None -
+    which is every event outside the axes - by the PREVIOUS one, so the drag
+    stops at the edge. Points sitting on the very edge of a series are then
+    hard to enclose, which is exactly where a manual cut usually starts
+    (owner, 2026-08-19).
+
+    The event still carries its PIXEL position, and the widget's own
+    `_get_data_coords` converts that into data coordinates for this axes, so
+    the drag can continue, clipped to the axis bounds.
+
+    This reaches into private matplotlib API (read from 3.10.0, the pinned
+    build). If a future version renames either name the patch is skipped and
+    the old, frozen-at-the-edge behaviour returns - a panel that works less
+    well, never one that fails. Returns True when the patch went in.
+    """
+    import copy
+    if not (hasattr(selector, '_get_data_coords') and hasattr(selector, '_prev_event')):
+        return False
+
+    def _clean_event(event):
+        if getattr(event, 'x', None) is None or getattr(event, 'y', None) is None:
+            return selector._prev_event          # no position at all to use
+        ev = copy.copy(event)
+        xdata, ydata = selector._get_data_coords(ev)
+        ev.xdata = float(np.clip(xdata, *ax.get_xbound()))
+        ev.ydata = float(np.clip(ydata, *ax.get_ybound()))
+        selector._prev_event = ev
+        return ev
+
+    selector._clean_event = _clean_event
+    return True
+
+
 def _show_and_wait(fig, tk_root):
     # Shows the interactive figure without freezing the interface. plt.show(block=True)
     # inside a Tkinter callback creates a nested event loop that hangs the main
@@ -2574,6 +2611,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
     _selector = RectangleSelector(ax, on_select, useblit=True, button=[1],  # noqa: F841 (kept alive vs GC)
                                   minspanx=5, minspany=5, spancoords='pixels',
                                   interactive=True)
+    extend_selection_beyond_axes(_selector, ax)   # drag past the plot's edge
     fig.canvas.mpl_connect('key_press_event', on_key)
     fig.canvas.mpl_connect('scroll_event', on_scroll)
     fig.canvas.mpl_connect('button_press_event', on_pan_press)

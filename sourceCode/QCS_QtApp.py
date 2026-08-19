@@ -599,15 +599,20 @@ class QtShell(QMainWindow):
         fout.addRow('Output format:', self.out_format)
         gfil = QGroupBox('Data filtering')
         vf = QVBoxLayout(gfil)
-        self.remove_bad = QCheckBox('Remove bad data')
+        # Order and defaults are the owner's (2026-08-19): dismissed first,
+        # because dropping the rows a review cut is the routine choice, and it
+        # and 'bad' start CHECKED. These are OUTPUT filters, not QC criteria -
+        # they change what the sheet carries, never a flag, so the status bar's
+        # criteria indicator is untouched by them.
+        self.remove_dismissed = QCheckBox('Remove dismissed data', checked=True)
+        self.remove_dismissed.setToolTip(TOOLTIPS['remove_dismissed'])
+        vf.addWidget(self.remove_dismissed)
+        self.remove_bad = QCheckBox('Remove bad data', checked=True)
         self.remove_bad.setToolTip(TOOLTIPS['remove_bad'])
         vf.addWidget(self.remove_bad)
         self.remove_suspect = QCheckBox('Remove suspect data')
         self.remove_suspect.setToolTip(TOOLTIPS['remove_suspect'])
         vf.addWidget(self.remove_suspect)
-        self.remove_dismissed = QCheckBox('Remove dismissed data')
-        self.remove_dismissed.setToolTip(TOOLTIPS['remove_dismissed'])
-        vf.addWidget(self.remove_dismissed)
         fout.addRow(gfil)
 
         gsum = QGroupBox('Selection summary')
@@ -1202,6 +1207,9 @@ class QtShell(QMainWindow):
             self.light_adaptive.setEnabled(True)
             self.light_fixed.setEnabled(True)
             # HOBO has no Depth column, so no whole-row dismissals ever exist
+            if self.remove_dismissed.isEnabled():   # only a Seaguard state is
+                self._last_seaguard['remove_dismissed'] = (  # worth remembering
+                    self.remove_dismissed.isChecked())
             self.remove_dismissed.setChecked(False)
             self.remove_dismissed.setEnabled(False)
         elif itype == 'Seaguard':
@@ -1214,6 +1222,8 @@ class QtShell(QMainWindow):
             self.light_adaptive.setEnabled(False)
             self.light_fixed.setEnabled(False)
             self.remove_dismissed.setEnabled(True)
+            self.remove_dismissed.setChecked(
+                self._last_seaguard.get('remove_dismissed', True))
         else:
             # no instrument selected ('Select instrument' placeholder): the
             # dependent fields wait for a selection
@@ -1227,6 +1237,9 @@ class QtShell(QMainWindow):
             self._set_replicates('')
             self.light_adaptive.setEnabled(False)
             self.light_fixed.setEnabled(False)
+            if self.remove_dismissed.isEnabled():   # only a Seaguard state is
+                self._last_seaguard['remove_dismissed'] = (  # worth remembering
+                    self.remove_dismissed.isChecked())
             self.remove_dismissed.setChecked(False)
             self.remove_dismissed.setEnabled(False)
         self._update_profile_state()
@@ -1374,10 +1387,11 @@ class QtShell(QMainWindow):
             self.light_fixed.setChecked(True)
         elif p.get('light_cutoff_mode') == 'adaptive':
             self.light_adaptive.setChecked(True)
-        self.remove_bad.setChecked(bool(p.get('remove_bad', False)))
+        self.remove_bad.setChecked(bool(p.get('remove_bad', True)))
         self.remove_suspect.setChecked(bool(p.get('remove_suspect', False)))
+        self._last_seaguard['remove_dismissed'] = bool(p.get('remove_dismissed', True))
         if self.remove_dismissed.isEnabled():   # HOBO keeps it off and grayed
-            self.remove_dismissed.setChecked(bool(p.get('remove_dismissed', False)))
+            self.remove_dismissed.setChecked(self._last_seaguard['remove_dismissed'])
         if p.get('macroregion') in qm.REGIONS:
             self.macroregion.setCurrentText(p['macroregion'])
         regions = [r[0] for r in qm.REGIONS.get(self.macroregion.currentText(), [])]

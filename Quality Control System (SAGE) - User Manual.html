@@ -358,7 +358,9 @@
                 <strong>which</strong> variables to review (with "All variables" / "None").
                 Each panel lets you drag a box to <strong>dismiss</strong> points (mouse-wheel
                 zoom; Undo / Reset / Skip / Done / Help; live counter and an "X of N"
-                progress). Dismissed points are <strong>not deleted</strong>: they get
+                progress). The selection box keeps following the mouse when it leaves the
+                plot, clipped to the axes, so points sitting on an edge can be enclosed
+                without fighting the border. Dismissed points are <strong>not deleted</strong>: they get
                 <strong>flag 5</strong> and their value is blanked, so the manual cut stays
                 traceable. The mooring <strong>Depth</strong> review runs automatically
                 (independent of this option) to trim spurious depths from equipment handling;
@@ -455,23 +457,25 @@
                 columns auto-fitted to their content.</td>
         </tr>
         <tr>
-            <td>Remove bad data</td>
-            <td>Checkbox to <strong>blank</strong> the values flagged BAD (4) in the output.
-            Rows and timestamps are kept; only the flagged values become empty.</td>
-        </tr>
-        <tr>
-            <td>Remove suspect data</td>
-            <td>Checkbox to <strong>blank</strong> the values flagged SUSPECT (3) in the
-            output. Rows and timestamps are kept.</td>
-        </tr>
-        <tr>
             <td>Remove dismissed data</td>
             <td>(Seaguard only) Drops the rows where <strong>every</strong> variable was
             dismissed &mdash; the Depth review's whole-row cuts &mdash; leaving a gap in the
             original Sample numbers. Dismissed values are always blanked; this also removes the
             empty rows they leave behind. Single-variable dismissals keep their row (it still
             carries the other variables' data). Grayed for HOBO: with no Depth column, whole-row
-            dismissals cannot exist.</td>
+            dismissals cannot exist. <strong>Starts checked.</strong></td>
+        </tr>
+        <tr>
+            <td>Remove bad data</td>
+            <td>Checkbox to <strong>blank</strong> the values flagged BAD (4) in the output.
+            Rows and timestamps are kept; only the flagged values become empty.
+            <strong>Starts checked.</strong></td>
+        </tr>
+        <tr>
+            <td>Remove suspect data</td>
+            <td>Checkbox to <strong>blank</strong> the values flagged SUSPECT (3) in the
+            output. Rows and timestamps are kept. Starts unchecked: a SUSPECT value is
+            flagged for review, not condemned.</td>
         </tr>
         <tr>
             <td>Site code</td>

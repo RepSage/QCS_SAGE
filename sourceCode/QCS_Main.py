@@ -1164,9 +1164,9 @@ def restore_user_prefs():
     correct_gmt3h.set(True)   # GMT-3 defaults ON for Seaguard (not restored from prefs)
     select_profile_data.set(p.get('select_profile_data', False))
     check_variables.set(p.get('check_variables', False))
-    remove_bad.set(p.get('remove_bad', False))
+    remove_bad.set(p.get('remove_bad', True))
     remove_suspect.set(p.get('remove_suspect', False))
-    remove_dismissed.set(p.get('remove_dismissed', False))
+    remove_dismissed.set(p.get('remove_dismissed', True))
     update_profile_checkbox_state()
     update_inputtype_state()  # reapplies the input-type field states if applicable
     # Restore the quality CRITERIA only if they were saved by the SAME program
@@ -1854,7 +1854,14 @@ def build_qualification_tab(container, root, shared_log=None):
     filter_frame = ttk.LabelFrame(output_frame, text=" Data filtering ", padding=5)
     filter_frame.grid(row=8, column=0, columnspan=2, sticky='ew', pady=5)
 
-    remove_bad = BooleanVar(value=False)
+    # same order and defaults as the Qt shell (owner, 2026-08-19): dismissed
+    # first, and it and 'bad' start CHECKED
+    remove_dismissed = BooleanVar(value=True)
+    dismissed_check = ttk.Checkbutton(filter_frame, text="Remove dismissed data", variable=remove_dismissed)
+    dismissed_check.pack(anchor='w', pady=2)
+    ToolTip(dismissed_check, TOOLTIPS['remove_dismissed'])
+
+    remove_bad = BooleanVar(value=True)
     bad_check = ttk.Checkbutton(filter_frame, text="Remove bad data", variable=remove_bad)
     bad_check.pack(anchor='w', pady=2)
     ToolTip(bad_check, TOOLTIPS['remove_bad'])
@@ -1863,11 +1870,6 @@ def build_qualification_tab(container, root, shared_log=None):
     suspect_check = ttk.Checkbutton(filter_frame, text="Remove suspect data", variable=remove_suspect)
     suspect_check.pack(anchor='w', pady=2)
     ToolTip(suspect_check, TOOLTIPS['remove_suspect'])
-
-    remove_dismissed = BooleanVar(value=False)
-    dismissed_check = ttk.Checkbutton(filter_frame, text="Remove dismissed data", variable=remove_dismissed)
-    dismissed_check.pack(anchor='w', pady=2)
-    ToolTip(dismissed_check, TOOLTIPS['remove_dismissed'])
 
     # Macroregion + region of collection: provide a representative latitude/longitude
     # used only to RUN the qualification - pressure->depth and density inversion

@@ -1182,5 +1182,48 @@ with _tempfile2.TemporaryDirectory() as tmp:
         assert 'does not fit the deciphered layout' in str(e), e
 ok.append('read_hobo (.hobo binary: spec round-trip, timebase launch+1s, light lag, refusal)')
 
+# --- the manual cut's rectangle keeps following the mouse outside the plot ---
+# This guards a patch over PRIVATE matplotlib API: if an upgrade renames
+# _clean_event or _get_data_coords, the drag silently freezes at the axes edge
+# again (owner, 2026-08-19), and only this test would notice.
+import matplotlib.pyplot as _plt
+from matplotlib.backend_bases import MouseButton as _MouseButton, MouseEvent as _MouseEvent
+from matplotlib.widgets import RectangleSelector as _RectangleSelector
+
+def _drag_to_pixel(patched):
+    """Presses inside the axes and drags to a pixel BEYOND its right edge.
+    Returns the selector's extents after the move."""
+    fig, ax = _plt.subplots(figsize=(4, 3), dpi=100)
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 10)
+    fig.canvas.draw()
+    sel = _RectangleSelector(ax, lambda *a: None, useblit=False, button=[1],
+                             minspanx=1, minspany=1, spancoords='pixels',
+                             interactive=False)
+    if patched:
+        assert data.extend_selection_beyond_axes(sel, ax), 'patch did not go in'
+    x0, y0 = ax.transData.transform((2.0, 2.0))
+    inside = _MouseEvent('button_press_event', fig.canvas, x0, y0, _MouseButton.LEFT)
+    sel.press(inside)
+    # a pixel to the RIGHT of the axes: still on the canvas, outside the data area
+    x1 = ax.bbox.x1 + 20
+    y1 = ax.bbox.y0 + 5
+    assert x1 < fig.bbox.x1, 'the probe must stay inside the figure'
+    outside = _MouseEvent('motion_notify_event', fig.canvas, x1, y1, _MouseButton.LEFT)
+    assert outside.inaxes is None, 'the probe point is not outside the axes'
+    sel.onmove(outside)
+    extents = sel.extents
+    _plt.close(fig)
+    return extents
+
+_frozen = _drag_to_pixel(patched=False)
+_free = _drag_to_pixel(patched=True)
+# unpatched, matplotlib reuses the previous (inside) event: the box never grows
+assert abs(_frozen[1] - 2.0) < 1e-6, 'unpatched selector unexpectedly moved: %s' % (_frozen,)
+# patched, the drag reaches the axis bound and is CLIPPED to it (never past 10)
+assert abs(_free[1] - 10.0) < 1e-6, 'patched selector did not reach the edge: %s' % (_free,)
+assert _free[0] <= 2.0 + 1e-6 and _free[3] <= 10.0 + 1e-6, _free
+ok.append('manual cut: the selection rectangle follows the mouse outside the plot')
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))
