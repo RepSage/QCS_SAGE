@@ -102,9 +102,11 @@ class SettingsDialog(QDialog):
     def _reset_button(self, tip, on_click):
         btn = QToolButton()
         # painted icon, not the U+21BA glyph: the font's version was coarse
-        # beside the rest of the interface (owner, 2026-08-19)
-        btn.setIcon(qtheme.reset_icon(16))
-        btn.setIconSize(QSize(16, 16))
+        # beside the rest of the interface (owner, 2026-08-19). Drawn at 20 px
+        # rather than 16: the shape is a PAIR of arcs, and at 16 px each head
+        # is about three pixels and stops reading as an arrow.
+        btn.setIcon(qtheme.reset_icon(20))
+        btn.setIconSize(QSize(20, 20))
         btn.setToolTip(tip)
         btn.setAutoRaise(True)
         btn.clicked.connect(on_click)
