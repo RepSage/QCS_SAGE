@@ -368,6 +368,29 @@ with _tempfile.TemporaryDirectory() as tmp:
     assert len(dbt) == 2 and dbt['Temperature (degC)'].iloc[0] == 25.0, 'qualified csv corrupted on read'
 ok.append('build_database (discovery, dedup, provenance, refuse mix, csv ok)')
 
+# 11b) build_database on a DOPPLER table: one row per record x depth CELL, so
+# Site+Datetime repeats by construction. Keying the overlap check on it alone
+# accused every row of being an overlapping requalification (v12.2.4).
+with _tempfile.TemporaryDirectory() as tmp:
+    _t = pd.date_range('2026-01-01', periods=4, freq='h')
+    _rows = [{'Datetime': ts, 'Site': 'DCPS1', 'Column': 'C1', 'Cell': cell,
+              'Depth (m)': 5.0 * cell, 'Horizontal speed (cm/s)': 10.0 + cell,
+              'Signal strength (dB)': -30.0, 'Speed stdev (cm/s)': 2.0,
+              'Tilt (deg)': 3.0, 'Cell state': 0, 'Flag': '1111', 'Flag_cur': 1}
+             for ts in _t for cell in (1, 2, 3)]
+    _clean = _os.path.join(tmp, 'dcps_qlf.csv')
+    pd.DataFrame(_rows).to_csv(_clean, index=False)
+    _db, _msgs = data.build_database('Doppler', file_list=[_clean])
+    assert len(_db) == 12, 'the 12 cell rows must all be kept: %d' % len(_db)
+    assert not any('share the same' in m for m in _msgs), _msgs
+    # a GENUINE clash (same cell of the same record, different speed) still warns
+    _clash = dict(_rows[0]); _clash['Horizontal speed (cm/s)'] = 99.0
+    _p2 = _os.path.join(tmp, 'dcps_requalified.csv')
+    pd.DataFrame(_rows + [_clash]).to_csv(_p2, index=False)
+    _db2, _msgs2 = data.build_database('Doppler', file_list=[_p2])
+    assert any('Site+Datetime+Column+Cell' in m for m in _msgs2), _msgs2
+ok.append('build_database (Doppler cells are not overlaps; a real cell clash still warns)')
+
 # 12) combine_hobo_replicates: temperature mean + spread; light = max of the
 # non-fouled readings, usable window extended to the last replicate to foul
 tgrid = pd.date_range('2026-01-01', periods=10, freq='h')

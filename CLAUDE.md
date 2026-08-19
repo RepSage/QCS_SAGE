@@ -4,6 +4,13 @@ Tkinter application for qualification and visualization of oceanographic sensor
 data. Two instrument families: Seaguard/TSCP loggers (T, S, C, P, O2, pH,
 chlorophyll, turbidity) and HOBO Pendant loggers (temperature + light).
 
+**TSCP stays.** It is this project's house term for the four core variables of
+the Seaguard string (temperature, salinity, conductivity, pressure) - AADI does
+not call the instrument that - and it is spelled into interface values compared
+in logic, into the `'tscp'` layout key, and into 123 archived
+`*_QCS_tscp_stat.xlsx` files. The owner decided on 2026-08-19 that it is not to
+be renamed; do not reopen it.
+
 **Language: English, everywhere** — code, docstrings, UI text, error and log
 messages, docs, commits, branches. The pt-BR → English migration is complete
 (verified 2026-08-06: no Portuguese strings remain under `sourceCode/`). Some UI
@@ -18,10 +25,13 @@ and the code calls `zip(..., strict=True)`, which needs ≥ 3.10 — the suite d
 on it (verified 2026-08-06).
 
 - **`QCS.bat`** at the repo root is the launcher: a single window with the Data
-  Qualification and Data Visualization tabs (`sourceCode/QCS_App.py`, started
-  through `pythonw.exe`, so there is no console). Progress and errors go to the
-  app's Execution log; a fatal crash writes `sourceCode/QCS_crash.log` and pops a
-  message box (`install_crash_handler` in `QCS_Theme.py`).
+  Qualification and Data Visualization tabs. It starts **`QCS_QtApp.py`** (the
+  Qt shell) through `packaging/v12_env/Scripts/pythonw.exe`, so there is no
+  console - the Anaconda base cannot host PySide6 on this machine. The tk shell
+  `sourceCode/QCS_App.py` is still in the tree and still runs, but it is not
+  what the launcher opens. Progress and errors go to the app's Execution log; a
+  fatal crash writes `sourceCode/QCS_crash.log` and pops a message box
+  (`install_crash_handler` in `QCS_Theme.py`).
 - Dependencies: `sourceCode/requirements.txt`. `sv-ttk` is optional (falls back
   to the clam theme).
 - **`sourceCode/qcs_headless_harness.py`** drives the real qualification pipeline
@@ -147,6 +157,30 @@ archive and diff the counts against the previous `qualified_index.csv`.
   would rewrite history, which the rule above forbids.
 - Propose the next SemVer number for each change set. Any change that alters QC
   results (flags, thresholds, test logic) is a MAJOR bump.
+- **PRIORITY - a GitHub Release is formatted exactly like the release before
+  it.** Title and body follow the PREVIOUS release's format: same section
+  headings, same order, same voice, same level of detail. Read that release
+  before drafting - never draft from memory, and never from the changelog file
+  alone (the changelog is a different lane, hard-wrapped and written for the
+  repository):
+
+  ```bash
+  curl -s https://api.github.com/repos/RepSage/QCS_SAGE/releases/latest
+  ```
+
+  The chain's reference is **v11.6** (`releases/tags/v11.6`), the last one
+  before the format drifted; anything published between it and the release that
+  restores the format is not a model to copy. Its shape:
+  - **Title**: `vX.Y - <lowercase phrase naming what the version does>`, no
+    trailing period.
+  - **Opening line**: one sentence placing the round, with the SemVer step and
+    whether QC rules changed - 'QC rules unchanged (MINOR: v11.5 -> v11.6)'.
+  - **Sections**: `## Fixed`, `## New`, `## Note`, `## Verification`,
+    `## Install`, in that order, only the ones that apply.
+  - Each bullet leads with a **bold claim** and then explains it; `##
+    Verification` gives the suite count and the lint result; `## Install` names
+    the `.exe` and says what installing over an existing copy does.
+  - The body is NOT hard-wrapped (the changelog file is; the release is not).
 - On each release: add a file to `changelog/` listing the version's changes,
   update the HTML user manual (`Quality Control System (SAGE) - User Manual.html`)
   with the version and changes, and tag the version in Git. The installer is

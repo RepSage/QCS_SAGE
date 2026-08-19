@@ -1633,8 +1633,15 @@ def plot_replicate_review(replicates, referee, reference=None, label=''):
     return fig, ax
 
 
-def plot_doppler_panels(frame, out_dir, label='', settings=None):
+def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False):
     """Saves the 4 current panels as SVGs into out_dir. Returns file list.
+
+    show=True also puts them ON SCREEN, like every other panel family does
+    (plot_database_panel1/2/3, the HOBO panels and the T-S diagram all end in
+    plt.show()). It is the CALLER's choice: the Visualization tab shows them,
+    while the qualification and the batch drivers write the files silently -
+    the panels were being generated and never displayed, which read as 'no
+    panels at all' (owner, v12.2.4).
 
     settings (all optional; None -> the v8.0 behavior) lets the Visualization
     tab steer the panels:
@@ -1682,7 +1689,9 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None):
     fig.suptitle('Current profile - %s' % label)
     fig.autofmt_xdate()
     p = os.path.join(out_dir, 'Current profile (time x depth).svg')
-    fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+    fig.savefig(p, bbox_inches='tight'); files.append(p)
+    if not show:
+        plt.close(fig)
 
     # representative depth: the user's choice (nearest available cell) or the
     # GOOD cell with most samples. Rows can carry a NaN east/north pair even
@@ -1724,7 +1733,9 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None):
         ax.xaxis_date(); ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
         fig.autofmt_xdate()
         p = os.path.join(out_dir, 'Current stick plot.svg')
-        fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+        fig.savefig(p, bbox_inches='tight'); files.append(p)
+        if not show:
+            plt.close(fig)
 
     # 3) U/V component series at up to 4 depths
     depths = sorted(ok['Depth (m)'].dropna().unique())
@@ -1739,7 +1750,9 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None):
     axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
     fig.autofmt_xdate()
     p = os.path.join(out_dir, 'Current components (U-V).svg')
-    fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+    fig.savefig(p, bbox_inches='tight'); files.append(p)
+    if not show:
+        plt.close(fig)
 
     # 4) progressive vector diagram at the representative depth.
     # The series is NOT continuous: BAD cells are dropped, and a database can
@@ -1769,11 +1782,15 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None):
                     '; %d gap(s) not integrated' % n_gap if n_gap else ''))
     ax.set_aspect('equal', adjustable='datalim'); ax.grid(alpha=0.3)
     p = os.path.join(out_dir, 'Progressive vector diagram.svg')
-    fig.savefig(p, bbox_inches='tight'); plt.close(fig); files.append(p)
+    fig.savefig(p, bbox_inches='tight'); files.append(p)
+    if not show:
+        plt.close(fig)
+    if show:
+        plt.show()
     return files
 
 
-def plot_doppler_across_sites(database, out_dir, sites, settings=None):
+def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=False):
     """Cross-site current comparison (the current analogue of the scalar
     'parameter across sites'): mean horizontal speed vs depth, one line per
     site, over GOOD cells. Returns the file list ([] if <2 sites have data).
@@ -1814,5 +1831,9 @@ def plot_doppler_across_sites(database, out_dir, sites, settings=None):
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8)
     p = os.path.join(out_dir, 'Current mean speed across sites.svg')
-    fig.savefig(p, bbox_inches='tight'); plt.close(fig)
+    fig.savefig(p, bbox_inches='tight')
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
     return [p]
