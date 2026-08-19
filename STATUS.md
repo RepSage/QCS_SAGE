@@ -103,6 +103,106 @@ one file is selected), and the knowledge that this WRITES the unified xlsx to
 `<output>/DatabaseView/`. Do it after the worker thread: building N databases
 on the interface thread is exactly the freeze the thread is meant to remove.
 
+## 2026-08-19 - v12.3 RELEASED; draft waiting for Publish
+
+PR #36 merged by the owner; `master` is at `084c164`, **tagged `v12.3` there**
+and pushed. What the version carries is in `changelog/v12.3.md`; v12.2.4 and
+everything before it is published.
+
+The GitHub release is a **DRAFT waiting for the owner to press Publish** -
+release id **373358963**, name 'v12.3 - the window stays alive while it
+qualifies', asset `QCS_Setup_v12.3.exe` uploaded (81,573,401 bytes, md5
+0CAE1B0EE547A5B190CB59A6B261AFAF; body also on the Desktop as
+`RELEASE_v12.3.md`). Written in the v12.2.4 format, which is the v11.6 one -
+the rule in `CLAUDE.md` is now a chain, and the next release copies THIS one.
+
+Built and gated before the tag: suite 54/54, ruff clean, version reading v12.3
+in all three places (`QCS_VERSION`, the installer's `AppVersion`, the manual),
+no development banner in the interface, no AI attribution, bundle rebuilt with
+`--clean`, and the frozen exe launch-smoked - window title read 'QCS - Quality
+Control System (SAGE) - v12.3', closed cleanly, no crash log.
+
+**What v12.3 still owes a real run** (none of it blocks the release; all of it
+is in the app, not in the code):
+
+- the manual point cut and the replicate review through the worker thread;
+- a batch canceled in the middle - the finished files must keep their outputs
+  while the interrupted one is removed (the per-file commit implements it, it
+  was never executed);
+- 'Go to visualization' landing on step 2, single file and batch;
+- a Seaguard panel under the new fixed-scale rule (it changes every family,
+  and only HOBO and Doppler were looked at).
+
+## PARKED: the Doppler revamp (a later MAJOR - owner, 2026-08-19)
+
+Not next. The owner chose to finish the open work first; this section is
+the whole DCPS backlog, kept because a cold session cannot re-derive it.
+
+The same DCPS test showed two ABSENCES, not bugs: `run_doppler_qualification`
+(`QCS_Main.py`) returns before everything the scalar pipeline does, so a
+current session gets no Depth review and no Check variables panels. Both are
+v13.0, together with the worker thread, because they add a manual dismissal to
+the Doppler flag string - that is a QC-result change, hence MAJOR.
+
+What a session picking this up must know:
+
+- **The cut cannot be by depth.** The Doppler frame's `Depth (m)` is the CELL
+  depth: N fixed values repeated on every record, so `trim_by_depth` would plot
+  a comb, not a deployment profile. And the DCPS logs no pressure - its
+  record-level parameters are heading, pitch, roll, tilt and ping count
+  (`_DCPS_RECORD_PARAMS`, `QCS_DataHandler.py`).
+- **The owner chose TILT as the series** for the time-based review (2026-08-19):
+  the panel plots tilt against time and cuts whole RECORDS - every cell of the
+  cut instant - which is how deployment and recovery show up in a mooring.
+- **Check variables gets its own candidate list** for the Doppler (owner,
+  2026-08-19): horizontal speed, direction, vertical speed, speed stdev, signal
+  strength, tilt. `MANUAL_CUT_COLUMNS` (`QCS_Main.py:1556`) holds scalar
+  variables only, none of which exist in a current table - which is why the
+  chooser came up empty even with the option ticked.
+
+The owner parked the whole Doppler revamp on 2026-08-19 ("deixar pra MAJOR
+posterior") to finish what is already open. What the DCPS test found, all
+still true, none of it started:
+
+- **Dead surface on a Doppler database.** The three panel checkboxes carry the
+  SEAGUARD labels ('Parameters at a site' / 'Parameter across sites' /
+  'Vertical profile at a site', the `else` branch of the label block in
+  `build_step2`) and are all disabled: the four current panels are implicit, so
+  no panel is a choice. Same for 'Filter by parameter' (two dead checkboxes,
+  horizontal speed and direction) and the whole Scale settings column. Hiding
+  the three boxes for the Doppler is layout only, no QC effect.
+- **'Fixed scale' means something else here** and the interface does not say
+  so: for the scalar families it is a Min/Max the operator types per parameter;
+  for the Doppler it makes every heatmap share ONE speed color scale, computed
+  from the data (`max GOOD speed x 1.05` in `generatePanels`). Nothing is ever
+  typed, which is why Scale settings stays empty with it ticked -
+  `toggle_scale_controls` also gates on a panel being selected, and a Doppler
+  has none. Label and tooltip should say which of the two it is.
+- **The panels open as separate matplotlib windows with no app icon** (owner
+  noticed once they became visible, 2026-08-19). That is matplotlib's own
+  window, not a QCS one - it affects every panel family, not just the Doppler.
+- **The Direction (deg) color bar should be a compass wheel** (owner's idea,
+  2026-08-19): a circular scale where the color says north/south/east/west at a
+  glance, instead of a linear 0-360 bar.
+- **The flag string grows**: `DOPPLER_TEST_SEQUENCE` (`QCS_Tests.py`) has four
+  entries and `doppler_qc` builds a 4-character flag per row. A dismissal
+  position means touching both, plus the legend writer (it already iterates the
+  sequence) and `Flag_cur`.
+
+## Also on the table: 'Go to visualization' landing on Step 2 (owner, 2026-08-19)
+
+Today the post-run button only switches tab and `apply_prefill` forces Step 1
+(deliberately: landing on the Step 2 of an OLDER database was the v12.0 bug).
+Making it advance means calling `_next()` after the prefill. The owner's answer
+to the batch case is to hand the WHOLE batch over and let Step 1 build one
+unified database from it - which needs the batch loop to accumulate the output
+paths (today `OUTPUT['last_qualified_file']` is reset per file,
+`QCS_Main.py:978`, so only the last survives), `PENDING_VIZ_PREFILL` to carry
+the list plus a default database name (validation demands a name when more than
+one file is selected), and the knowledge that this WRITES the unified xlsx to
+`<output>/DatabaseView/`. Do it after the worker thread: building N databases
+on the interface thread is exactly the freeze the thread is meant to remove.
+
 ## 2026-08-19 - v12.3 ON A BRANCH: the worker thread, in review
 
 Branch `worker-thread-v12.3`, pull request open, **not merged, not tagged, no
