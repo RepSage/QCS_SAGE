@@ -712,6 +712,11 @@ class QtShell(QMainWindow):
                 and qm.PENDING_VIZ_PREFILL):
             self.viz_tab.apply_prefill(qm.PENDING_VIZ_PREFILL)
             qm.PENDING_VIZ_PREFILL = None
+        # every switch starts at the top of the page, never wherever the tab
+        # was left (owner, 2026-08-19)
+        page = self.tabs.currentWidget()
+        if isinstance(page, QScrollArea):
+            qtheme.scroll_to_top(page.widget() or page)
 
     def _menus(self):
         # File carries the file-level actions of the active workflow, so the

@@ -26,6 +26,14 @@ import pandas as pd
 import QCS_DatabaseView as dbv
 import QCS_QtTheme as qtheme
 
+# Placeholder of the 'Recent' box, usable only while no file is selected. Same
+# two wordings as the Qualification tab (QCS_QtApp.RECENT_HINTS), with this
+# tab's own name for what has to be cleared.
+RECENT_HINTS = {
+    True: 'Select a recent file to open',
+    False: 'Clear the database file(s) to select a recent file',
+}
+
 TOOLTIPS = dbv.TOOLTIPS
 
 
@@ -145,7 +153,7 @@ class VisualizationTab(QWidget):
         # selected (owner, 2026-08-17 - either pick files or reopen a recent
         # selection, never both at once)
         self.recent = QComboBox()
-        self.recent.setPlaceholderText('Select a recent file to open')
+        self.recent.setPlaceholderText(RECENT_HINTS[True])
         self.recent.setToolTip('Reopens one of the most recent file selections\n'
                                '(available while no file is selected above)')
         self.recent.activated.connect(self._apply_recent)
@@ -233,7 +241,7 @@ class VisualizationTab(QWidget):
             self.recent.addItems([dbv._recent_display(r)
                                   for r in dbv.USER_PREFS.get('dbv_recent', [])])
             self.recent.setCurrentIndex(-1)
-        self.recent.setEnabled(not self.files.text().strip())
+        self._sync_recent_state()
 
     def apply_prefill(self, info):
         """A qualification just finished: Step 1 shows ITS file, and the tab
@@ -242,10 +250,19 @@ class VisualizationTab(QWidget):
         dbv.apply_pending_prefill(info)
         self.stack.setCurrentIndex(0)
         self.refresh_step1()
+        qtheme.scroll_to_top(self)
+
+    def _sync_recent_state(self):
+        """Recent is usable only while nothing is selected above - and while it
+        is greyed out it says what makes it usable again, the same wording the
+        Qualification tab uses (owner, 2026-08-19)."""
+        usable = not self.files.text().strip()
+        self.recent.setEnabled(usable)
+        self.recent.setPlaceholderText(RECENT_HINTS[usable])
 
     def _files_edited(self, text):
         _tk_set_entry(dbv.fileNames_entry, text)
-        self.recent.setEnabled(not text.strip())
+        self._sync_recent_state()
 
     def _apply_recent(self, index):
         recents = dbv.USER_PREFS.get('dbv_recent', [])
@@ -286,6 +303,7 @@ class VisualizationTab(QWidget):
         if dbv._go_step2():
             self._rebuild_step2()
             self.stack.setCurrentIndex(1)
+            qtheme.scroll_to_top(self)     # step 2 opens at its top
 
     # ---------- Step 2 ----------
     def _rebuild_step2(self):
@@ -520,7 +538,20 @@ class VisualizationTab(QWidget):
             gs.addWidget(hdr, 0, col)
         self.scale_edits = {}
         self.color_buttons = {}
-        for r, param in enumerate(dbv.parameter_names, start=1):
+        # the same 'Rarely used:' heading the parameter filter carries, so the
+        # two columns break at the same place - the tk Step 2 headed both and
+        # the port kept it only on the filter (owner, 2026-08-19)
+        rare_scale = list(getattr(dbv, 'secondary_params', []) or [])
+        r = 0
+        for param in dbv.parameter_names:
+            r += 1
+            if rare_scale and param == rare_scale[0]:
+                head = QLabel('Rarely used:')
+                head.setFont(f)
+                head.setToolTip(TOOLTIPS['param_secondary'])
+                qtheme.muted(head)
+                gs.addWidget(head, r, 0, 1, 4)
+                r += 1
             # the plot color, clickable: opens the color wheel (which has a
             # hex field, so a house palette can be typed in) - v12.0
             swatch = QPushButton()
@@ -551,7 +582,7 @@ class VisualizationTab(QWidget):
         gs.setColumnStretch(1, 0)
         gs.setColumnStretch(2, 1)
         gs.setColumnStretch(3, 1)
-        gs.setRowStretch(len(dbv.parameter_names) + 1, 1)
+        gs.setRowStretch(r + 1, 1)     # r counts the heading row too
         grid.addWidget(gscale, 1, 2, Qt.AlignTop)
         # the settings column takes the slack; the filter and scale columns
         # keep their natural width, so their checkboxes stop drifting apart
@@ -688,3 +719,4 @@ class VisualizationTab(QWidget):
         dbv._go_step1()
         self.stack.setCurrentIndex(0)
         self.refresh_step1()
+        qtheme.scroll_to_top(self)
