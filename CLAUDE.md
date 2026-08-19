@@ -188,3 +188,11 @@ choice live beside the rule that uses them, in `sourceCode/batch/README.md` for
 corpus rules and in the changelog entry for QC ones.
 
 Current phase, unreleased work and known-bad artifacts: see `STATUS.md`.
+
+## Subagents
+
+Delegate the read-heavy work instead of pulling it into the session; the rules
+are in the global `CLAUDE.md`. Here: `@agent-selftest-runner` for the suite and
+ruff, `@agent-code-tracer` to locate something in the four large modules,
+`@agent-release-audit` before tagging. All three are read-only — commits, tags,
+the installer build and the corpus drivers stay in the main session.
