@@ -25,29 +25,25 @@ wizard and its checkbox. **The published `QCS_Setup_v12.2.2.exe` therefore
 ships the OLD manual**; the revised one goes out with the next installer. Do
 not swap the asset of a published release to fix this.
 
-**Waiting on one answer from the owner**: whether the in-app update, run from
-v12.2.1 to v12.2.2, actually ended on the wizard's 'Launch QCS after
-installation' page and brought the program back. That is the whole point of
-v12.2.1 and it is the ONE thing still unverified about it; the owner said
-things went well on 2026-08-19 but not in those words. If it failed,
-`%TEMP%\QCS_update_install.log` now records what the installer did.
+**The update path is CONFIRMED WORKING** (owner, 2026-08-19): updating in the
+app from v12.2.1 to v12.2.2 ran the wizard, ended on 'Launch QCS after
+installation', and the program came back by itself. That closes the item that
+had been open since v12.1 - 'the app does not reopen after an update' - and it
+closes it without the silent relaunch ever being diagnosed: the answer was to
+stop relying on a step nobody can watch and end on a checkbox instead. If a
+future update fails, `%TEMP%\QCS_update_install.log` now records what the
+installer did.
 
 ## Open items
 
 **Program and release**
 
-- **Does the app reopen after an update?** (2026-08-19). The silent relaunch
-  was never diagnosed - the `[Run]` entry gated on `Check: WizardSilent` fires
-  normally in a reproduction, but that reproduction could not be run ELEVATED,
-  which is what a Program Files upgrade does. The answer taken was to stop
-  relying on it: the update now runs the wizard and ends on a checkbox. Confirm
-  on the next real update before closing this.
-- **The installer wizard pages have never been watched on screen** (2026-08-19,
-  though every update since v12.2.1 runs them): the two Finish-page checkboxes
-  ('Open the user manual', 'Launch QCS after installation') are in the recipe
-  and it compiles clean. The folder page deliberately stays on Inno's default
-  'auto' - shown on a fresh install, hidden on an upgrade - after the owner
-  asked for the old rule back in v12.1.
+- **The installer's FRESH-INSTALL pages have not been watched on screen**
+  (2026-08-19). The Finish page is confirmed - the owner saw 'Launch QCS after
+  installation' on the v12.2.2 update and the program reopened - but an upgrade
+  hides the folder page by design (Inno's default 'auto', the rule the owner
+  asked back in v12.1), so the install-for-all-users / just-for-me choice and
+  the folder page have only ever been compiled, never seen.
 - **The FROZEN exe has never run a real qualification end to end** (open since
   v12.0; every build since is launch-smoked and closes cleanly): Depth review,
   adaptive light review, replicate review, the viz tab. A launch smoke test
