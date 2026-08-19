@@ -267,6 +267,28 @@ def scrollable(page):
     return area
 
 
+def scroll_to_top(widget):
+    """Puts the scroll area that holds `widget` back at its top.
+
+    Switching tab or step used to land wherever the previous page had been
+    scrolled to - stepping into the Visualization tab opened it at the BOTTOM
+    (owner, 2026-08-19). Qt also scrolls a page by itself to keep the focused
+    widget visible, and that happens after the switch, so the reset is queued
+    with a zero timer rather than applied inline."""
+    from PySide6.QtCore import QTimer
+    area = widget
+    while area is not None and not isinstance(area, QScrollArea):
+        area = area.parentWidget()
+    if area is None:
+        return
+
+    def top():
+        area.verticalScrollBar().setValue(0)
+        area.horizontalScrollBar().setValue(0)
+    top()
+    QTimer.singleShot(0, top)
+
+
 def dock_tooltips(dock, float_tip, close_tip):
     """Qt names the dock title-bar buttons but gives them no tooltips."""
     for btn in dock.findChildren(QAbstractButton):
