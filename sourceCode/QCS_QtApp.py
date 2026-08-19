@@ -796,8 +796,12 @@ class QtShell(QMainWindow):
             webbrowser.open(upd.RELEASES_PAGE)
             return False
         dlg.close()
-        # /SILENT: the .iss closes a running QCS and relaunches it updated
-        subprocess.Popen([dest, '/SILENT', '/NORESTART'])
+        # /SILENT: the .iss closes a running QCS and relaunches it updated;
+        # /LOG leaves the evidence for the one step nobody can watch (see
+        # QCS_Update.download_and_run)
+        log_path = upd.install_log_path()
+        self.log_line('Info: installing the update; the installer log goes to %s' % log_path)
+        subprocess.Popen([dest, '/SILENT', '/NORESTART', '/LOG=%s' % log_path])
         return True
 
     def _toggle_dark(self, on):

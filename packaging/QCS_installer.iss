@@ -55,7 +55,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; the PyInstaller onedir output, produced into dist\QCS next to this script
-Source: "dist\QCS\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Excludes: the app writes these two beside the exe at runtime, and the
+; recipe's own smoke test (step 4) runs the app inside dist\QCS - v12.2 shipped
+; the build machine's settings file because of it. Excluding them makes the
+; payload independent of whether the bundle was smoke-tested before compiling.
+Source: "dist\QCS\*"; DestDir: "{app}"; Excludes: "qcs_user_settings.json,QCS_crash.log"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\QCS"; Filename: "{app}\QCS.exe"

@@ -145,6 +145,12 @@ def check_in_background(current_version, on_newer):
     threading.Thread(target=_worker, daemon=True).start()
 
 
+def install_log_path():
+    """Where the silent installer writes its log. Fixed name in the temp
+    folder: the next update overwrites it, and a support request only has to
+    ask for one file."""
+    return os.path.join(tempfile.gettempdir(), 'QCS_update_install.log')
+
 def download_and_run(latest, parent):
     """Downloads the setup asset with a small progress window, launches it
     silently and asks the app to close. Returns True when the installer was
@@ -204,8 +210,11 @@ def download_and_run(latest, parent):
 
     win.destroy()
     # /SILENT: progress bar only, no wizard; the .iss closes a running QCS if
-    # needed (CloseApplications) and relaunches it after a silent upgrade
-    subprocess.Popen([dest, '/SILENT', '/NORESTART'])
+    # needed (CloseApplications) and relaunches it after a silent upgrade.
+    # /LOG because that relaunch is the one step nobody can watch: the app is
+    # gone while it happens, and without the log a 'it did not reopen' report
+    # has no evidence at all (owner, 2026-08-19).
+    subprocess.Popen([dest, '/SILENT', '/NORESTART', '/LOG=%s' % install_log_path()])
     return True
 
 
