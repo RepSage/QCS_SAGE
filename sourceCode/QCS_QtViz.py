@@ -256,6 +256,13 @@ class VisualizationTab(QWidget):
         self.refresh_step1()
         qtheme.scroll_to_top(self)
 
+    def _data_type_text(self):
+        """'Seaguard TSCP Mooring' rather than a bare 'TSCP Mooring' - the
+        instrument is what tells the operator which pipeline produced the
+        sheet (owner, 2026-08-19)."""
+        return dbv.data_type_display(dbv.instrument_combobox.get(),
+                                     dbv.dType_combobox.get())
+
     def _shown_params(self):
         """The parameters this database actually carries data for.
 
@@ -376,7 +383,7 @@ class VisualizationTab(QWidget):
         fd.addRow('Source:', src)
         # the data type is decided by what was imported in Step 1 - it is a
         # fact of the database, not a choice (owner, 2026-08-17)
-        self.dtype_label = QLabel(dbv.dType_combobox.get() or '-')
+        self.dtype_label = QLabel(self._data_type_text())
         self.dtype_label.setToolTip(TOOLTIPS['data_type'])
         qtheme.muted(self.dtype_label)
         fd.addRow('Data type:', self.dtype_label)
@@ -663,7 +670,7 @@ class VisualizationTab(QWidget):
         # HOBO has no depth at all: the whole depth block goes away
         for w in self._depth_rows:
             self._fv.setRowVisible(w, not dbv.is_hobo_input())
-        self.dtype_label.setText(dbv.dType_combobox.get() or '-')
+        self.dtype_label.setText(self._data_type_text())
         for qt, tk in self._entries:
             with QSignalBlocker(qt):
                 qt.setText(tk.get())

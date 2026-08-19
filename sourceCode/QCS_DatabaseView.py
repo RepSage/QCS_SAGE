@@ -142,6 +142,19 @@ def param_display(param):
     return name
 
 
+def data_type_display(instrument, data_type):
+    """How the collection type is SHOWN: with the instrument in front, so the
+    line reads 'Seaguard TSCP Mooring' instead of a bare 'TSCP Mooring'
+    (owner, 2026-08-19). A DCPS session is a Seaguard too, which is why the
+    Doppler instrument gets the same prefix. Display only: the combobox VALUE
+    is compared in logic all over QCS_Main."""
+    if not data_type:
+        return instrument or '-'
+    if data_type.startswith('TSCP') and instrument in ('Seaguard', 'Doppler'):
+        return 'Seaguard %s' % data_type
+    return data_type
+
+
 def set_param_color(param, color):
     """Sets (or clears, with color=None) a parameter's plot color and
     persists it. Toolkit-free: both shells call this."""
