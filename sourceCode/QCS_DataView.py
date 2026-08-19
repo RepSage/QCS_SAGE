@@ -10,7 +10,7 @@ from matplotlib.ticker import MaxNLocator # type: ignore
 import QCS_Theme as _theme
 
 
-def show_panels():
+def show_panels(figures=None, browse=False):
     """Puts the panels produced so far on screen.
 
     A hook, not a helper: the tk shell keeps matplotlib's own windows
@@ -19,6 +19,13 @@ def show_panels():
     its own windows instead (app icon, real title, navigation toolbar). The
     batch drivers leave it alone: with no display, `plt.show()` is already a
     no-op there.
+
+    figures: the exact figures to show. None means 'every figure pyplot holds',
+             which is what the scalar and HOBO panels rely on.
+    browse:  ask the shell for ONE window paging through the figures instead of
+             one window per figure (owner, v13.0: the four current panels
+             opened as four windows, which is noise for a comparison). Only a
+             request - a shell that cannot page them shows them side by side.
     """
     plt.show()
 
@@ -1649,7 +1656,52 @@ def plot_replicate_review(replicates, referee, reference=None, label=''):
     return fig, ax
 
 
-def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False):
+def _keep_or_close(fig, show, figures):
+    """What to do with a panel once it is saved: hand it to the caller's
+    list, leave it on screen, or close it. Closing is the default because a
+    batch run would otherwise pile up hundreds of open figures."""
+    if figures is not None:
+        figures.append(fig)
+    elif not show:
+        plt.close(fig)
+
+
+def _direction_compass(fig, slot, cmap):
+    """Circular colour key for a bearing, drawn where `slot` (a spent
+    colorbar axes) reserved the space.
+
+    A linear 0-360 bar puts north at both ends and says nothing about which
+    colour is east: on a wheel oriented like a compass, the colour IS the
+    direction (owner, 2026-08-19). `cmap` must be the cyclic map the heatmap
+    used, normalised over the same 0-360 range, or the key would describe a
+    different figure from the one it sits next to.
+    """
+    pos = slot.get_position()
+    side_x = 0.11                                   # figure fractions...
+    side_y = side_x * fig.get_figwidth() / fig.get_figheight()   # ...kept round
+    wheel = fig.add_axes([pos.x0, pos.y0 + (pos.height - side_y) / 2.0,
+                          side_x, side_y], projection='polar')
+    theta = np.linspace(0, 2 * np.pi, 361)
+    radius = np.array([0.62, 1.0])
+    tt, rr = np.meshgrid(theta, radius)
+    bearing = np.rad2deg(tt[:-1, :-1])              # shading='flat': C is 1 smaller
+    wheel.pcolormesh(tt, rr, bearing, cmap=cmap, vmin=0, vmax=360, shading='flat')
+    wheel.set_theta_zero_location('N')              # compass, not trigonometry:
+    wheel.set_theta_direction(-1)                   # 0 at the top, running E
+    wheel.set_ylim(0, 1)
+    wheel.set_yticks([])
+    wheel.set_xticks(np.deg2rad([0, 90, 180, 270]))
+    wheel.set_xticklabels(['N', 'E', 'S', 'W'], fontsize=8)
+    wheel.grid(False)
+    wheel.spines['polar'].set_visible(False)
+    wheel.tick_params(pad=-1)
+    # the title clears the 'N' tick: pad it, or the two overprint
+    wheel.set_title('Direction', fontsize=8, pad=13)
+    return wheel
+
+
+def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
+                        figures=None):
     """Saves the 4 current panels as SVGs into out_dir. Returns file list.
 
     show=True also puts them ON SCREEN, like every other panel family does
@@ -1667,6 +1719,11 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False):
                              default is still the best-covered cell
       currentSpeedMax        fix the heatmap speed color scale (cm/s), so
                              several sites/years compare 1:1; None -> autoscale
+
+    figures: a list to APPEND every figure to instead of showing or closing it.
+    The caller then owns them - which is how the Visualization tab collects the
+    panels of all the selected sites and opens them in ONE browsable window
+    (v13.0) instead of one window per site per panel.
     """
     import os
     import matplotlib.dates as mdates
@@ -1696,7 +1753,13 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False):
             kw = {'vmin': 0, 'vmax': float(vmx)} if vmx else {}
             m = ax.pcolormesh(piv.columns, piv.index, piv.values, cmap=cmap,
                               shading='nearest', **kw)
-            fig.colorbar(m, ax=ax, label='%s [%s]' % (col.split(' (')[0], unit))
+            bar = fig.colorbar(m, ax=ax, label='%s [%s]' % (col.split(' (')[0], unit))
+            if col.startswith('Direction'):
+                # the bar still RESERVES the space (both subplots must keep the
+                # same width or the shared time axis stops lining up), but the
+                # key drawn in it is a compass wheel
+                bar.ax.set_visible(False)
+                _direction_compass(fig, bar.ax, cmap)
         ax.invert_yaxis()
         ax.set_ylabel('Depth (m)')
     # ticks carry the year: a Doppler set can span several years/visits, and
@@ -1706,8 +1769,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False):
     fig.autofmt_xdate()
     p = os.path.join(out_dir, 'Current profile (time x depth).svg')
     fig.savefig(p, bbox_inches='tight'); files.append(p)
-    if not show:
-        plt.close(fig)
+    _keep_or_close(fig, show, figures)
 
     # representative depth: the user's choice (nearest available cell) or the
     # GOOD cell with most samples. Rows can carry a NaN east/north pair even
@@ -1750,8 +1812,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False):
         fig.autofmt_xdate()
         p = os.path.join(out_dir, 'Current stick plot.svg')
         fig.savefig(p, bbox_inches='tight'); files.append(p)
-        if not show:
-            plt.close(fig)
+        _keep_or_close(fig, show, figures)
 
     # 3) U/V component series at up to 4 depths
     depths = sorted(ok['Depth (m)'].dropna().unique())
@@ -1767,8 +1828,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False):
     fig.autofmt_xdate()
     p = os.path.join(out_dir, 'Current components (U-V).svg')
     fig.savefig(p, bbox_inches='tight'); files.append(p)
-    if not show:
-        plt.close(fig)
+    _keep_or_close(fig, show, figures)
 
     # 4) progressive vector diagram at the representative depth.
     # The series is NOT continuous: BAD cells are dropped, and a database can
@@ -1799,14 +1859,14 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False):
     ax.set_aspect('equal', adjustable='datalim'); ax.grid(alpha=0.3)
     p = os.path.join(out_dir, 'Progressive vector diagram.svg')
     fig.savefig(p, bbox_inches='tight'); files.append(p)
-    if not show:
-        plt.close(fig)
-    if show:
-        show_panels()
+    _keep_or_close(fig, show, figures)
+    if show and figures is None:
+        show_panels(browse=True)      # one window, paged (owner, v13.0)
     return files
 
 
-def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=False):
+def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=False,
+                              figures=None):
     """Cross-site current comparison (the current analogue of the scalar
     'parameter across sites'): mean horizontal speed vs depth, one line per
     site, over GOOD cells. Returns the file list ([] if <2 sites have data).
@@ -1848,8 +1908,7 @@ def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=Fals
     ax.legend(fontsize=8)
     p = os.path.join(out_dir, 'Current mean speed across sites.svg')
     fig.savefig(p, bbox_inches='tight')
-    if show:
-        show_panels()
-    else:
-        plt.close(fig)
+    _keep_or_close(fig, show, figures)
+    if show and figures is None:
+        show_panels(browse=True)
     return [p]

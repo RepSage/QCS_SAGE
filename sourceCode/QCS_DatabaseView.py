@@ -950,6 +950,9 @@ def generatePanels():
                     'depthAxisMax': dataViewSettings.get('depthAxisMax'),
                     'currentSpeedMax': speed_max,
                 }
+                # every panel of every selected site goes into ONE browsable
+                # window at the end (v13.0), instead of one window per figure
+                dop_figs = []
                 for site in selected_sites:
                     site_df = sub[sub['Site'] == site]
                     if not len(site_df):
@@ -958,7 +961,7 @@ def generatePanels():
                     try:
                         files = view.plot_doppler_panels(
                             site_df, os.path.join(out_dir, '%s (current)' % site),
-                            label=site, settings=dop_settings, show=True)
+                            label=site, settings=dop_settings, figures=dop_figs)
                         if files:
                             error_logger.log("Info: %d current panel(s) generated for %s." % (len(files), site))
                             n_ok += len(files)
@@ -971,7 +974,7 @@ def generatePanels():
                     try:
                         xfiles = view.plot_doppler_across_sites(
                             sub, out_dir, selected_sites, settings=dop_settings,
-                            show=True)
+                            figures=dop_figs)
                         if xfiles:
                             error_logger.log("Info: cross-site current comparison generated "
                                              "(%d site(s))." % len(selected_sites))
@@ -981,6 +984,8 @@ def generatePanels():
                                              "with data - skipped.")
                     except Exception as e:
                         error_logger.log("Error generating cross-site current panel: %s" % e)
+                if dop_figs:
+                    view.show_panels(dop_figs, browse=True)
 
         # Seaguard panels are generated once for each selected year
         for year in (selected_years if not (is_hobo_input() or is_doppler_input()) else []):

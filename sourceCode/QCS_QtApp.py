@@ -45,9 +45,9 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QMainWindow, QMessageBox,
                                QProgressBar, QProgressDialog, QPushButton,
-                               QRadioButton, QScrollArea, QTableWidget,
-                               QTableWidgetItem, QTabWidget, QToolButton,
-                               QVBoxLayout, QWidget)
+                               QRadioButton, QScrollArea, QStackedWidget,
+                               QTableWidget, QTableWidgetItem, QTabWidget,
+                               QToolButton, QVBoxLayout, QWidget)
 
 import QCS_Theme as theme          # writable_app_dir + output redirect (shared)
 _out = theme.install_output_redirect()
@@ -247,14 +247,99 @@ class PlotWindow(QWidget):
         self.raise_()
 
 
-def _qt_show_panels():
+class PanelBrowserWindow(QWidget):
+    """One window holding several panels, paged with Previous / Next.
+
+    The four current panels opened as four separate windows: fine for a first
+    look, noise for a comparison (owner, v13.0). Here they share a window and
+    the operator walks through them at their own pace, each page keeping its
+    own navigation toolbar so a panel can still be zoomed, panned and saved.
+
+    Only a REQUEST from the plotting code is honoured (`show_panels(browse=
+    True)`); everything else still gets one window per figure, because the
+    scalar panels are meant to be compared side by side.
+    """
+
+    def __init__(self, figs, parent=None):
+        super().__init__(parent)
+        self.setWindowFlag(Qt.Window)
+        self.setWindowIcon(_app_icon())
+        self._figs = list(figs)
+        self._stack = QStackedWidget()
+        for fig in self._figs:
+            page = QWidget()
+            pv = QVBoxLayout(page)
+            pv.setContentsMargins(0, 0, 0, 0)
+            pv.setSpacing(0)
+            canvas = fig.canvas
+            if not isinstance(canvas, FigureCanvasQTAgg):
+                canvas = FigureCanvasQTAgg(fig)
+            toolbar = NavigationToolbar2QT(canvas, page)
+            _prime_toolbar(fig, toolbar)
+            pv.addWidget(toolbar)
+            pv.addWidget(canvas)
+            self._stack.addWidget(page)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 8)
+        lay.setSpacing(6)
+        lay.addWidget(self._stack)
+        nav = QHBoxLayout()
+        nav.setContentsMargins(9, 0, 9, 0)
+        self._prev = QPushButton('< Previous')
+        self._prev.clicked.connect(lambda: self._step(-1))
+        self._next = QPushButton('Next >')
+        self._next.clicked.connect(lambda: self._step(1))
+        self._counter = QLabel()
+        nav.addWidget(self._prev)
+        nav.addStretch()
+        nav.addWidget(self._counter)
+        nav.addStretch()
+        nav.addWidget(self._next)
+        lay.addLayout(nav)
+        first = self._figs[0]
+        w, h = first.get_size_inches() * first.dpi
+        self.resize(int(w), int(h) + 96)     # toolbar + the paging row
+        self._go(0)
+
+    def _step(self, delta):
+        self._go(self._stack.currentIndex() + delta)
+
+    def _go(self, index):
+        index = max(0, min(index, len(self._figs) - 1))
+        self._stack.setCurrentIndex(index)
+        self._counter.setText('Panel %d of %d' % (index + 1, len(self._figs)))
+        self._prev.setEnabled(index > 0)
+        self._next.setEnabled(index < len(self._figs) - 1)
+        title = getattr(self._figs[index], '_qcs_window_title', '') or 'QCS - panels'
+        self.setWindowTitle('%s  (%d of %d)' % (title, index + 1, len(self._figs)))
+
+    def show_free(self):
+        PlotWindow._open.append(self)     # the next set of panels closes it
+        self.show()
+        self.raise_()
+
+    def closeEvent(self, event):
+        if self in PlotWindow._open:
+            PlotWindow._open.remove(self)
+        super().closeEvent(event)
+
+
+def _qt_show_panels(figures=None, browse=False):
     """view.show_panels replacement: the visualization's figures open in the
     shell's own windows. Under Agg `plt.show()` does nothing at all, so without
-    this the panels would be written and never displayed."""
+    this the panels would be written and never displayed.
+
+    figures: the exact figures to show (None = every figure pyplot holds).
+    browse:  the plotting code asked for ONE paged window (v13.0)."""
     for window in list(PlotWindow._open):
         window.close()
-    for num in plt.get_fignums():
-        PlotWindow(plt.figure(num)).show_free()
+    figs = (list(figures) if figures is not None
+            else [plt.figure(num) for num in plt.get_fignums()])
+    if browse and len(figs) > 1:
+        PanelBrowserWindow(figs).show_free()
+        return
+    for fig in figs:
+        PlotWindow(fig).show_free()
 
 
 def wait_figure_close(fig):
