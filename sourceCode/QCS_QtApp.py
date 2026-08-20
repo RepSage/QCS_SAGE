@@ -108,6 +108,16 @@ def _app_icon():
     return QIcon(_ICON_PATH) if os.path.isfile(_ICON_PATH) else QIcon()
 
 
+def _duration_text(hours):
+    """A session length a person reads at a glance: minutes for a cast, hours
+    for a day, days for a mooring."""
+    if hours < 1:
+        return '%d min' % round(hours * 60)
+    if hours < 48:
+        return '%.1f h' % hours
+    return '%.1f days' % (hours / 24.0)
+
+
 def _interval_text(seconds):
     """'3600' -> '1 h', '1800' -> '30 min', '45' -> '45 s'."""
     if seconds % 3600 == 0:
@@ -1208,9 +1218,28 @@ class QtShell(QMainWindow):
                     print("Info: DCPS current profiler detected - Data type set to 'TSCP Doppler'.")
             else:
                 self._doppler_file = False
-                if self.data_type.currentText() == 'TSCP Doppler':
-                    self.data_type.setCurrentText('TSCP Mooring')
-                    print("Info: scalar Seaguard session selected - Data type reset to 'TSCP Mooring'.")
+                # A scalar session says whether it is a mooring or a cast: it
+                # is a matter of how long it lasted, and reading that costs one
+                # decode of a file the run will read anyway (v13.0). Unlike the
+                # DCPS lock this is a SUGGESTION - the type decides which tests
+                # run, so the box stays editable and the log says what was
+                # detected and why.
+                looks_like, hours, step = data.detect_seaguard_data_type(first)
+                if looks_like:
+                    if self.data_type.currentText() != looks_like:
+                        self.data_type.setCurrentText(looks_like)
+                    print('Info: the session spans %.1f h at one record every '
+                          "%.0f s - Data type set to '%s' (change it if that is "
+                          'not what this file is).' % (hours, step, looks_like))
+                    self._detected_type = (looks_like, hours)
+                else:
+                    self._detected_type = None
+                    if self.data_type.currentText() == 'TSCP Doppler':
+                        self.data_type.setCurrentText('TSCP Mooring')
+                    print('Info: this session does not say whether it is a mooring '
+                          'or a cast (too few records to time it) - Data type left '
+                          "at '%s'; check it before running."
+                          % self.data_type.currentText())
             self._apply_doppler_lock()
         self.out_folder.setText(os.path.dirname(first))
         self._apply_output_name()
@@ -1329,6 +1358,16 @@ class QtShell(QMainWindow):
                 # sheet will carry
                 self.sum_labels['interval'].setText(
                     _interval_text(peek['interval_s']))
+        detected = getattr(self, '_detected_type', None)
+        if detected and itype == 'Seaguard' and len(names) == 1:
+            # how long the session lasted, and what that makes it: the summary
+            # is where the operator checks the auto-selected Data type (v13.0)
+            looks_like, hours = detected
+            self.sum_labels['period'].setText(
+                '%s   -   %s over %s'
+                % (self.sum_labels['period'].text(),
+                   'mooring' if looks_like == 'TSCP Mooring' else 'cast',
+                   _duration_text(hours)))
         if itype == 'HOBO':
             mode = ('%d replicates of one deployment, combined' % len(names)
                     if len(names) > 1 else 'single logger')
@@ -1513,6 +1552,11 @@ class QtShell(QMainWindow):
 
     # ----- run -----
     def _file_text_changed(self, text):
+        # 'Open output folder' and 'Go to visualization' point at the run that
+        # just finished. The moment the selection changes - cleared, or another
+        # file dropped in - they point at the WRONG thing, so they go away
+        # (owner, v13.0). The next run brings them back.
+        self.postrun_bar.setVisible(False)
         if not text.strip():
             # selection cleared: back to 'Select instrument', editable, and
             # the Replicates line and summary go away with it

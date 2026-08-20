@@ -2351,7 +2351,8 @@ def build_qualification_tab(container, root, shared_log=None):
         #   2. the per-cell series, when 'Check variables' is on; the tilt cuts
         #      carry over as locked points so they are not offered again.
         log_line('Stage 2/5: manual review of the current session...')
-        record_dismissed = data.trim_doppler_records(frame, tk_root=window)
+        record_dismissed = data.trim_doppler_records(
+            frame, tk_root=window, settings=doppler_settings())
         cell_dismissed = set()
         if INPUT['check_variables'] == True:
             candidates = [name for name in DOPPLER_CUT_COLUMNS if name in frame.columns]
@@ -2540,6 +2541,27 @@ def build_qualification_tab(container, root, shared_log=None):
         ms_interval = np.timedelta64(_median_step, 'us')
         INPUT['start_time'] = start_time
         INPUT['end_time'] = end_time
+
+        # Mooring or cast? The session knows (v13.0), and the answer is FREE
+        # here - the frame is already read. The Data type is not overridden:
+        # it decides which tests run (vertical gradient and density inversion
+        # are profile-only), so a disagreement is reported and the operator's
+        # choice is honoured. The Qt shell pre-selects the same answer when the
+        # file is chosen; this line is what a batch driver and the tk shell see.
+        if INPUT['input_type'] == 'Seaguard':
+            _looks_like, _hours, _step = data.detect_seaguard_data_type(
+                times=raw_data['Datetime'])
+            if _looks_like and _looks_like != INPUT.get('data_type'):
+                log_line("Warning: this session spans %.1f h at one record every "
+                         "%.0f s, which looks like a %s, but the Data type says "
+                         "'%s' - qualifying it as chosen. If that is wrong, stop "
+                         "and change the Data type: a profile also runs the "
+                         "vertical-gradient and density-inversion tests."
+                         % (_hours, _step, _looks_like, INPUT.get('data_type')))
+            elif _looks_like:
+                log_line('Info: session spans %.1f h at one record every %.0f s - '
+                         "consistent with the Data type '%s'."
+                         % (_hours, _step, _looks_like))
 
         # timestamp sanity checks (gap/monotonicity): reported, not flagged per sample
         dt_diff = raw_data['Datetime'].diff()

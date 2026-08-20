@@ -472,10 +472,16 @@ class VisualizationTab(QWidget):
         self._check_pair(self.fixed_scale, dbv.fixedScale, dbv.fixed_scale_cb,
                          after=(dbv.toggle_scale_controls,))
         fv.addRow(self.fixed_scale)
+        # 'Show data points' and the tendency rows draw ON a series the
+        # operator chose; the four current panels are heatmaps, sticks and a
+        # trajectory, with nothing to mark or fit. They were built disabled
+        # for a Doppler database - a greyed option is still a promise (owner,
+        # v13.0), so they are not built at all.
         self.points = QCheckBox('Show data points')
         self.points.setToolTip(TOOLTIPS['data_points'])
         self._check_pair(self.points, dbv.dataPoints, dbv.points_cb)
-        fv.addRow(self.points)
+        if not dbv.is_doppler_input():
+            fv.addRow(self.points)
         # the replicate-disagreement bars only exist on a HOBO temperature
         # series, so the row is not even built for the other instruments
         self.disagreement = None
@@ -488,12 +494,13 @@ class VisualizationTab(QWidget):
         self.tendency.setToolTip(TOOLTIPS['tendency'])
         self._check_pair(self.tendency, dbv.tendency, dbv.tendency_cb,
                          after=(dbv.toggle_panel_dependent_controls,))
-        fv.addRow(self.tendency)
         self.degree = QLineEdit()
         self.degree.setFixedWidth(60)
         self.degree.setToolTip(TOOLTIPS['tendency_degree'])
         self._entry_pair(self.degree, dbv.tendency_entry)
-        fv.addRow('Regression degree:', self.degree)
+        if not dbv.is_doppler_input():
+            fv.addRow(self.tendency)
+            fv.addRow('Regression degree:', self.degree)
         self.time_start = QLineEdit()
         self.time_start.setToolTip(TOOLTIPS['time_start'])
         self._entry_pair(self.time_start, dbv.time_start_entry)
