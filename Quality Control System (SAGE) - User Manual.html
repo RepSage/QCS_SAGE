@@ -350,8 +350,18 @@
             <strong>TSCP Mooring</strong> or <strong>TSCP Doppler</strong> (the last one is
             set automatically when a current-profiler session is selected). It does not apply
             to HOBO &mdash; a pendant logger is always a time series &mdash; and the field
-            says that itself while it is greyed out.</td>
-        </tr>
+            says that itself while it is greyed out.
+            <p><strong>Set automatically for a Seaguard raw session (v13.0).</strong>
+            A cast is lowered and recovered in minutes and logged fast; a mooring is left
+            down for hours to weeks and logged slowly. When a <code>.bin</code> is selected
+            the program times the session and pre-selects <em>TSCP Mooring</em> or
+            <em>TSCP Profile</em>, writing what it found in the log and in the Selection
+            summary. It is a suggestion, not a lock &mdash; the type decides which tests run,
+            so the box stays editable and you should check it. The qualification itself warns
+            again if the chosen type disagrees with the session it just read. A DCPS session
+            is different: there the file DECIDES, and the box is locked on
+            <em>TSCP Doppler</em>.</p></td>
+</tr>
         <tr>
             <td>Correct GMT-3</td>
             <td>Checkbox to apply the GMT-3 time-zone correction.</td>
@@ -387,7 +397,10 @@
                 &mdash; speed, direction and the U/V/W components of a cell are one velocity
                 solution &mdash; so every flag position of the row becomes 5 and every
                 measurement is blanked, the row keeping its Datetime, Site, Column, Cell and
-                Depth.</td>
+                Depth. The tilt panel shades every span where the instrument was
+                <strong>lying over</strong> (45&deg; or more from the vertical - being
+                handled, hauled up, knocked flat or on deck) and draws the suspect and bad
+                tilt thresholds, so those periods are visible before they are cut.</td>
         </tr>
         <tr>
             <td>Macroregion / Region</td>
@@ -1419,6 +1432,89 @@
             <td><code>hobo_&lt;parameter&gt;_across_sites.svg</code></td>
         </tr>
     </table>
+
+    <h3>Visualization Panels (Doppler / current-profiler databases)</h3>
+    <p>With <strong>Instrument = Doppler</strong> the panel content is fixed: a current
+    profiler measures the same four things everywhere, so there is nothing to choose
+    (the panel checkboxes, the parameter filter, the Scale settings column, the data
+    points and the tendency lines are not shown for this instrument). The four panels
+    are generated per selected site, and they open in <strong>one window</strong> that
+    is paged with <em>&lt; Previous</em> and <em>Next &gt;</em>.</p>
+    <p>They answer four different questions about the same deployment. Every panel
+    drops the cells flagged BAD, so a blank is a measurement the instrument itself
+    refused (see <em>Reading the blanks</em> below).</p>
+    <table>
+        <tr>
+            <th>Panel</th>
+            <th>What it shows, and how to read it</th>
+            <th>Generated file</th>
+        </tr>
+        <tr>
+            <td>Current profile (time &times; depth)</td>
+            <td><strong>The whole deployment at a glance.</strong> Two heatmaps sharing the
+                time axis: colour is the current SPEED in the upper one and the DIRECTION it
+                flows TOWARDS in the lower one, with depth increasing downwards. Read it in
+                columns (one instant, the whole water column: is the current faster at the
+                surface than at the bottom?) and in rows (one depth through time: tides,
+                fronts, a storm). The direction key is a <strong>compass wheel</strong>: the
+                colour is the bearing, so a band that keeps one colour is a current holding
+                its heading, and a band that sweeps through the wheel is one rotating - a
+                tide turning, for instance</td>
+            <td><code>Current profile (time x depth).svg</code></td>
+        </tr>
+        <tr>
+            <td>Current stick plot</td>
+            <td><strong>Speed and direction together, at ONE depth.</strong> Each stick is one
+                record: it points where the water is going (up = north, right = east) and its
+                length is the speed - the reference arrow in the corner gives the scale. The
+                sticks are rooted on the time axis, so a run of sticks leaning the same way
+                is a persistent flow, and sticks flipping back and forth are a reversing
+                (tidal) current. The depth used is the one you set with the depth band, or
+                the best-covered cell when you set none</td>
+            <td><code>Current stick plot.svg</code></td>
+        </tr>
+        <tr>
+            <td>Current components (U/V)</td>
+            <td><strong>The same current as two ordinary time series</strong>, at up to four
+                depths at once. U is the EAST component and V the NORTH one, both in cm/s,
+                positive to the east and to the north: a current flowing south-west is
+                negative in both. This is the panel to read when you want numbers rather
+                than a picture - the amplitude of the tidal oscillation, whether the deep
+                cells follow the shallow ones, when a component changes sign</td>
+            <td><code>Current components (U-V).svg</code></td>
+        </tr>
+        <tr>
+            <td>Progressive vector diagram</td>
+            <td><strong>Where a particle of water would have gone.</strong> The speeds at the
+                representative depth are integrated in time and drawn as a trajectory in
+                kilometres from the mooring (which sits at the origin, marked): it is NOT the
+                path of the instrument, and not a real drifter track - it assumes the whole
+                region moves like this one point. Read the NET displacement (how far and in
+                which direction the water ends up) and the shape: tidal loops that go nowhere
+                mean a reversing current, a straight line means a steady drift. Time gaps -
+                between visits, or across dismissed data - are never integrated, so the line
+                BREAKS there instead of inventing displacement, and the title says how many
+                gaps were skipped</td>
+            <td><code>Progressive vector diagram.svg</code></td>
+        </tr>
+        <tr>
+            <td>Current mean speed across sites</td>
+            <td>Added when two or more sites are selected: the mean horizontal speed of each
+                site as a profile against depth, over the good cells - which site is more
+                energetic, and at which depths</td>
+            <td><code>Current mean speed across sites.svg</code></td>
+        </tr>
+    </table>
+    <h4>Reading the blanks</h4>
+    <p>Large blank areas in the heatmaps are normal and are <strong>not</strong> the
+    qualification being severe: a DCPS writes its own quality word for every cell of
+    every record (<em>Cell state</em>), and the current tests reject the cells it
+    already condemns. On the reference session, 8,636 of 13,408 cell samples are BAD
+    and <strong>every one of them</strong> was rejected by the instrument's own word -
+    of the 4,772 cells it calls good, QCS rejected none. The pattern is geometry and
+    handling: the cells nearest the transducer (blanking distance) and the farthest one
+    (out of acoustic range) are rejected almost entirely, and any period when the
+    instrument was tilted over, hauled up or on deck is rejected as a block.</p>
 
     <h3>Scale Configuration</h3>
     <p>Advanced control over the plot scales through the "SCALE SETTINGS" panel.</p>

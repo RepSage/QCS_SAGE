@@ -116,6 +116,15 @@ archive and diff the counts against the previous `qualified_index.csv`.
   decides the resting value from what it can actually know (a cut came back,
   or the operator ticked 'Check variables'), never from the fact that it
   called the panel.
+- **The scalar Data type is a SUGGESTION, the DCPS one is a FACT.**
+  `detect_seaguard_data_type` (`QCS_DataHandler.py`) times a session and
+  pre-selects Mooring or Profile (v13.0), and the pipeline warns when the
+  choice disagrees with the data - but it never overrides: the type decides
+  which tests run (vertical gradient and density inversion are profile-only),
+  so the operator keeps the last word and the combobox stays enabled. Only a
+  DCPS locks the box, because there the binary itself decides. If the rule is
+  ever retuned, recalibrate it against the archive's own FUNDEIO / PERFIL
+  folders - that is the only ground truth there is.
 - **A new input file format has FOUR wiring points**, and the readers are only
   one of them: the extension gate in `collect_input_settings` (`QCS_Main.py`),
   the Browse dialog `filetypes`, `sniff_input_type`, and the reader itself.

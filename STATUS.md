@@ -50,10 +50,42 @@ v12.3's counts exactly (4,646 good / 126 suspect / 8,636 bad on
    current panels ask for it; the scalar and HOBO panels still open side by
    side.
 
+### Round 2 (owner review of the seven items, same day)
+
+8. **The tilt review shades what the instrument was DOING** -
+   `draw_tilt_context` (`QCS_DataHandler.py`), the tilt analogue of
+   `draw_depth_context`: the QC thresholds as lines, and every span at or over
+   `TILT_LYING_DEG` (45) shaded as 'lying over / handled / on deck'. The
+   number is measured and the reasoning is in the code; the review panel now
+   takes a `context=` drawer, which is how any future review annotates its own
+   axis.
+9. **'Show data points', 'Tendency lines' and the regression degree are not
+   built for a Doppler database** either - same reasoning as round 1's item 4.
+10. **The current panels' time axis is readable**: `_date_axis`
+    (`QCS_DataView.py`) rotates the labels 45 deg, anchors them under their
+    tick, caps the locator and moves the date/year to the axis offset line.
+    Applied to all three time panels.
+11. **The compass label is lettered like the speed panel's**, read from that
+    figure's own colorbar rather than hand-picked, and its gap from the 'N'
+    tick follows the font size.
+12. **The manual-cut buttons carry the program's look** -
+    `theme.style_plot_buttons`, applied in `manual_cut_panel`, so every review
+    panel matches the Previous/Next row of the panel browser.
+13. **Mooring or cast is detected from the session** -
+    `detect_seaguard_data_type`, calibrated on 182 labelled archive sessions
+    (`FUNDEIO`/`PERFIL`): 'duration >= 4 h OR cadence >= 5 min' names 181 of
+    them right. The Qt shell pre-selects it at file selection (editable, never
+    locked) and the pipeline warns when the choice disagrees with the data, so
+    the batch drivers and the tk shell see it too. The calibration tables are
+    in the session scratchpad, NOT in the repository - rebuild them with the
+    walk over `\\Abrolhos\...\SEAGUARD\raw` if the rule is ever retuned.
+14. **The post-run shortcuts disappear when the file selection changes**
+    (`_file_text_changed`, `QCS_QtApp.py`).
+
 ### Verified (executed 2026-08-19)
 
-- Self-test suite **55/55** (one new test: the two DCPS cut mappings), ruff
-  clean.
+- Self-test suite **57/57** (three new tests: the two DCPS cut mappings, the
+  tilt context, the mooring/cast detector), ruff clean.
 - **Three headless runs over the real session** `C:/Users/LAMB/Desktop/
   Data001.bin` (13,408 cell samples): no cut -> the v12.3 counts plus a '2' in
   position 5; tilt cut + all five per-cell panels -> 3 records (48 rows) and 47
@@ -64,6 +96,17 @@ v12.3's counts exactly (4,646 good / 126 suspect / 8,636 bad on
   interface thread and blocks the worker (6 windows with Check variables on,
   1 without; 56 interface ticks during a 7 s run, so the window never froze),
   and two DCPS runs in the same session both finish.
+- **Round 2, off-screen**: a Doppler step 2 builds no points/tendency/degree
+  rows while a scalar one builds all three; the mooring/cast detection was
+  driven through the real shell on four archive sessions (97 h mooring ->
+  Mooring, 3 h mooring at 10 min -> Mooring, 50 min cast at 10 s -> Profile,
+  one-record session -> 'cannot tell'); the post-run shortcuts vanish on any
+  file change; and the pipeline warning was exercised by qualifying a real
+  mooring correctly and then, on purpose, as a profile.
+- **The panels and the review were rendered from the real session** and looked
+  at: the tilt panel shades the deployment and the last third of the record
+  (the instrument lying at ~80 deg), the per-cell panel reads as 16 cell series
+  in sequence, and the time axis no longer overprints.
 - **The visualization tab, off-screen**, on a real qualified current table:
   0 panel checkboxes, 0 parameter rows, no Scale settings box, the Doppler
   wording on 'Fixed scale', one `PanelBrowserWindow` paging 4 figures; and on
@@ -82,10 +125,13 @@ v12.3's counts exactly (4,646 good / 126 suspect / 8,636 bad on
    merge the branch into `master` with a local `git merge --no-ff` + push (no
    `gh` CLI here), tag `v13.0` at the merge commit and draft the release by
    copying **v12.3's** text (that is now the chain's model).
-3. **Open question for the owner: is there any DCPS product in the archived
-   corpus?** If there is, it carries a 4-character flag string and no manual
-   review, and requalifying it is what makes the corpus consistent with v13.0.
-   Nothing was requalified in this round.
+3. **The corpus holds 54 DCPS products** (`*_DOPPLER_*_QLF.csv` under
+   `\\Abrolhos\...\SEAGUARD\qualified`, counted 2026-08-19), all with a
+   4-character flag string and no manual review. Requalifying them is what
+   makes the corpus consistent with v13.0 - and in a batch driver the review
+   panel opens no window, so they would come back with `cur_manual = 2` ('no
+   review ran'), which is the honest value. Nothing was requalified in this
+   round: it is a corpus operation and needs the owner's word.
 
 ### Known gaps left on purpose
 
@@ -99,10 +145,9 @@ v12.3's counts exactly (4,646 good / 126 suspect / 8,636 bad on
   from the WORKER thread on a hidden tk root; it is wrapped in try/except and
   was never exercised. It predates v13.0 - the whole manual point cut is on
   the 'never run in the app' list below.
-- The current panels' **time axis is unreadable** on a 3-day session: the tick
-  labels overprint each other (seen in the rendered panel, `Current profile
-  (time x depth).svg`). It is a pre-existing defect of
-  `plot_doppler_panels`, not part of the seven items, and it was left alone.
+- The **tk** shell's manual-cut panels get the styled buttons too (the panel is
+  shared), but the tk Visualization tab's Doppler surface was not touched -
+  see the note above.
 
 ## Open items
 
