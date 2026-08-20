@@ -434,6 +434,59 @@ def peek_seaguard_session(file_path):
     return out
 
 
+# Mooring or profile: the session says it itself (v13.0). A cast is lowered and
+# recovered in minutes and logged fast, because it is descending; a mooring is
+# left down for hours to weeks, and it is logged slowly to make the batteries
+# last. Either fact alone names the deployment.
+#
+# Measured over the whole archive - 182 labelled scalar sessions, 2019 to 2026,
+# the label taken from the archive's own FUNDEIO / PERFIL folders:
+#   duration >= 4 h ................................ 181/182
+#   cadence >= 5 min ............................... (see below)
+#   duration >= 4 h OR cadence >= 5 min ............ 181/182
+#   duration >= 4 h OR cadence >= 2 min ............ 179/182
+#   cadence alone .................................. 160/182 (87.6%)
+# The first and the third tie, and they fail on DIFFERENT sessions: duration
+# alone misses TIM2/FUNDEIO, a legitimate 3 h mooring logging every 10 min -
+# short moorings are a real category here, the shortest in the archive is 3 h.
+# Adding the cadence catches it, and the rule's only remaining miss is
+# PAB3/PERFIL: 16 records 10 minutes apart over 2.5 h, which is a mooring
+# cadence in a cast folder and ambiguous by every measure available.
+MOORING_MIN_HOURS = 4.0
+MOORING_MIN_INTERVAL_S = 300.0
+
+
+def detect_seaguard_data_type(file_path=None, times=None):
+    """What a scalar Seaguard session looks like:
+    ('TSCP Mooring' or 'TSCP Profile', duration in hours, cadence in seconds),
+    or (None, None, None) when it cannot tell - fewer than two timestamps, or a
+    file that will not decode.
+
+    Give it `times` when the session is already in memory (the pipeline has the
+    frame and pays nothing), or a Data000.bin path to read it - a full decode of
+    the largest session in the archive costs 0.71 s over the share.
+
+    It is a SUGGESTION, never a lock: the type decides which tests run (the
+    vertical gradient and the density inversion are profile-only), so the
+    operator keeps the last word. A DCPS session is not its business - that one
+    is decided by the instrument."""
+    if times is None:
+        if not file_path:
+            return None, None, None
+        try:
+            times = read_seaguard_bin(file_path)['Record Time']
+        except Exception:
+            return None, None, None
+    times = pd.to_datetime(pd.Series(times), errors='coerce').dropna().sort_values()
+    if len(times) < 2:
+        return None, None, None
+    hours = (times.max() - times.min()).total_seconds() / 3600.0
+    step = times.diff().dropna().median()
+    interval_s = float(step.total_seconds()) if pd.notna(step) else 0.0
+    moored = hours >= MOORING_MIN_HOURS or interval_s >= MOORING_MIN_INTERVAL_S
+    return ('TSCP Mooring' if moored else 'TSCP Profile'), hours, interval_s
+
+
 def read_seaguard_deployment(file_path):
     """Reads a whole Seaguard deployment: the selected sensor-group folder plus
     any sibling sensor-group folders of the SAME cast (same instrument serial and
@@ -2464,7 +2517,8 @@ class ManualCutCanceled(Exception):
 
 
 def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
-                     depth=None, times=None, xlabel='Sample number'):
+                     depth=None, times=None, xlabel='Sample number',
+                     context=None):
     """Interactive panel to manually DISMISS points of a series. Drag a rectangle
     over points to mark them dismissed; mouse wheel zooms; Undo/Reset/Skip/Done/
     Help buttons and a live counter. Returns a SET of positional indices to
@@ -2478,7 +2532,11 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
               (see draw_depth_context), which is where a cut usually belongs.
     xlabel:   what the x axis counts. The default 'Sample number' is the scalar
               series' row order; the DCPS reviews count records or cell samples
-              (v13.0), and a panel that mislabels its own axis is a trap."""
+              (v13.0), and a panel that mislabels its own axis is a trap.
+    context:  a callable (ax, x) drawing what the operator needs to SEE behind
+              the series - the depth panel shades the transits through
+              depth/times above, the DCPS tilt panel shades where the
+              instrument was lying over. Called on every redraw."""
     x = np.asarray(x)
     y = np.asarray(y, dtype=float)
     locked = set() if locked is None else set(int(i) for i in locked)
@@ -2527,6 +2585,8 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
                      % (label, prog, len(dismissed), extra))
         if depth is not None and times is not None:
             draw_depth_context(ax, x, depth, times)
+        if context is not None:
+            context(ax, x)
         ax.set_ylabel(label)
         ax.set_xlabel(xlabel)
         if restore:
@@ -2654,6 +2714,7 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
         b.on_clicked(cb)
         _buttons.append(b)
 
+    _theme.style_plot_buttons(_buttons)   # the program's button look, not matplotlib's
     redraw()
     _theme.style_plot_window(fig, 'Manual point cut - %s' % label)  # app icon + title
     _show_and_wait(fig, tk_root)
@@ -2710,16 +2771,83 @@ DCPS_RECORD_COLUMNS = [out for _descr, out in _DCPS_RECORD_PARAMS]
 DCPS_CELL_COLUMNS = [out for _descr, out in _DCPS_CELL_PARAMS]
 
 
-def trim_doppler_records(frame, tk_root=None, progress=None):
+# An AADI DCPS measures its own tilt off the vertical, and the number says what
+# the mooring is DOING. Upright on the bottom it reads a few degrees; the QC
+# thresholds (DOPPLER_DEFAULTS) call 15 deg suspect and 35 deg bad, because the
+# beam-geometry compensation degrades there. Well beyond that the instrument is
+# not tilted, it is LYING OVER - knocked flat, hanging from the line during
+# deployment or recovery, or on deck. Measured on the reference session
+# (838 records, 2025-04-01 to 04): 299 records exceed 35 deg, 299 exceed 45 and
+# 298 exceed 60, i.e. the population is bimodal and ANY threshold in that range
+# selects the same events - the 4 records of the deployment and the 294 from
+# the moment it went over to the end of the session. 45 deg is the middle of
+# that plateau and the physical midpoint too: past it the instrument is closer
+# to horizontal than to upright.
+TILT_LYING_DEG = 45.0
+
+
+def draw_tilt_context(ax, x, tilt, suspect=None, bad=None):
+    """Marks, on the DCPS tilt review, WHAT the instrument was doing: the
+    two QC thresholds as horizontal lines, and the spans where it was lying
+    over (>= TILT_LYING_DEG) shaded - the tilt panel's answer to the depth
+    panel's 'being lowered / hauled up' bands (owner, v13.0). Returns the
+    number of shaded spans."""
+    x = np.asarray(x, dtype=float)
+    tilt = np.asarray(tilt, dtype=float)
+    seen = set()
+
+    def once(text):
+        if text in seen:
+            return None
+        seen.add(text)
+        return text
+
+    for value, color, text in ((suspect, '#b8860b', 'Suspect tilt (%g deg)'),
+                               (bad, '#b30000', 'Bad tilt (%g deg)')):
+        if value:
+            ax.axhline(float(value), color=color, linestyle=':', linewidth=1,
+                       zorder=1, label=once(text % float(value)))
+    over = tilt >= TILT_LYING_DEG
+    spans = 0
+    if over.any():
+        idx = np.nonzero(over)[0]
+        breaks = np.nonzero(np.diff(idx) > 1)[0]
+        starts = np.concatenate(([idx[0]], idx[breaks + 1]))
+        ends = np.concatenate((idx[breaks], [idx[-1]]))
+        # a single record is a hairline nobody sees on a 800-record axis: every
+        # band gets at least this share of it, exactly as draw_depth_context does
+        floor_w = 0.006 * (float(np.max(x)) - float(np.min(x)))
+        for i0, i1 in zip(starts, ends, strict=True):
+            left, right = float(x[i0]), float(x[i1])
+            if right - left < floor_w:
+                mid = 0.5 * (left + right)
+                left, right = mid - floor_w / 2, mid + floor_w / 2
+            ax.axvspan(left, right, color='#b30000', alpha=0.10, zorder=0,
+                       label=once('Lying over / handled / on deck (>= %g deg)'
+                                  % TILT_LYING_DEG))
+            spans += 1
+    if seen:
+        ax.legend(loc='best', fontsize=8)
+    return spans
+
+
+def trim_doppler_records(frame, tk_root=None, progress=None, settings=None):
     """Manual review of a DCPS session on TILT, one point per RECORD. Returns
     the SET of row positions to dismiss - every cell of every record the
     operator cut - or an empty set when the review is skipped. Does not modify
-    `frame`."""
+    `frame`.
+
+    settings: the current DOPPLER thresholds, so the panel draws the operator's
+    OWN suspect/bad tilt lines rather than the shipped defaults."""
     rec = frame.drop_duplicates(subset='Datetime')      # already sorted in time
-    got = manual_cut_panel(np.arange(len(rec)),
-                           rec['Tilt (deg)'].to_numpy(dtype=float),
+    tilt = rec['Tilt (deg)'].to_numpy(dtype=float)
+    s = settings or {}
+    got = manual_cut_panel(np.arange(len(rec)), tilt,
                            'Tilt (deg)', tk_root, progress=progress,
-                           xlabel='Record number (one point per instant)')
+                           xlabel='Record number (one point per instant)',
+                           context=lambda ax, x: draw_tilt_context(
+                               ax, x, tilt, suspect=s.get('tilt_suspect'),
+                               bad=s.get('tilt_bad')))
     if not got:
         return set()
     cut_times = set(rec['Datetime'].to_numpy()[sorted(got)])

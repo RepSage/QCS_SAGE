@@ -1257,6 +1257,49 @@ finally:
 ok.append('DCPS manual review (tilt cuts whole records; per-cell cuts map back '
           'through the cell ordering)')
 
+# ------------------------- 35. DCPS tilt context on the review (v13.0)
+# The tilt panel has to SAY when the instrument was lying over, the way the
+# depth panel says when it was being hauled up - an operator cannot read
+# 'this is the recovery' off a bare angle. Two contiguous events must come out
+# as two bands, and the QC thresholds must be the ones drawn.
+import matplotlib.pyplot as _plt2
+_tilt = np.array([3.0, 80.0, 79.0, 4.0, 5.0, 6.0, 50.0, 3.0])
+_fig2, _ax2 = _plt2.subplots()
+_spans = data.draw_tilt_context(_ax2, np.arange(len(_tilt)), _tilt,
+                                suspect=15.0, bad=35.0)
+assert _spans == 2, _spans                       # records 1-2 and record 6
+_lines = [ln.get_ydata()[0] for ln in _ax2.get_lines()]
+assert 15.0 in _lines and 35.0 in _lines, _lines
+_labels = [t.get_text() for t in _ax2.get_legend().get_texts()]
+assert any('Lying over' in t for t in _labels), _labels
+assert len([t for t in _labels if 'Lying over' in t]) == 1, _labels  # one entry, 2 bands
+_plt2.close(_fig2)
+# an upright deployment gets no band at all, and no legend claiming one
+_fig2, _ax2 = _plt2.subplots()
+assert data.draw_tilt_context(_ax2, np.arange(3), np.array([1.0, 2.0, 3.0])) == 0
+_plt2.close(_fig2)
+ok.append('DCPS tilt context (lying-over spans shaded once, QC thresholds drawn)')
+
+# ------------------- 36. mooring or cast, from the session itself (v13.0)
+# Calibrated on 182 labelled archive sessions (see MOORING_MIN_HOURS): long OR
+# slow is a mooring. The three cases that matter are a long deployment, the
+# SHORT mooring that duration alone misses, and a real cast.
+_t0 = pd.Timestamp('2025-01-01 12:00')
+_long = pd.Series(_t0 + pd.to_timedelta(np.arange(50) * 30, unit='m'))    # 24.5 h
+_short_slow = pd.Series(_t0 + pd.to_timedelta(np.arange(19) * 10, unit='m'))  # 3 h @10 min
+_cast = pd.Series(_t0 + pd.to_timedelta(np.arange(300) * 10, unit='s'))   # 49.8 min @10 s
+assert data.detect_seaguard_data_type(times=_long)[0] == 'TSCP Mooring'
+assert data.detect_seaguard_data_type(times=_short_slow)[0] == 'TSCP Mooring'
+assert data.detect_seaguard_data_type(times=_cast)[0] == 'TSCP Profile'
+# it must be able to say 'I do not know' rather than guess: aborted sessions
+# with a single record exist in the archive
+assert data.detect_seaguard_data_type(times=pd.Series([_t0])) == (None, None, None)
+assert data.detect_seaguard_data_type() == (None, None, None)
+_type, _hours, _step = data.detect_seaguard_data_type(times=_cast)
+assert abs(_hours - 299 * 10 / 3600.0) < 1e-6 and abs(_step - 10.0) < 1e-6, (_hours, _step)
+ok.append('mooring/cast detection (long or slow = mooring; fast and short = cast; '
+          'no verdict without two records)')
+
 # --- the manual cut's rectangle keeps following the mouse outside the plot ---
 # This guards a patch over PRIVATE matplotlib API: if an upgrade renames
 # _clean_event or _get_data_coords, the drag silently freezes at the axes edge

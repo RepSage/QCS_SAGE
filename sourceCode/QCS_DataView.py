@@ -1666,7 +1666,41 @@ def _keep_or_close(fig, show, figures):
         plt.close(fig)
 
 
-def _direction_compass(fig, slot, cmap):
+def _date_axis(ax, fig=None, rotation=45):
+    """Makes a time axis on a current panel readable.
+
+    The panels used to set a fixed '%d/%m/%y %H:%M' formatter on a locator that
+    chose its own number of ticks, and then rotate through fig.autofmt_xdate():
+    on a three-day session that printed ~15 labels of 14 characters flat on an
+    11-inch axis, which overprinted into a solid line (owner, v13.0). The
+    labels are rotated 45 degrees and anchored at their right end - so each one
+    ends under its own tick - and the locator is capped at what fits."""
+    import matplotlib.dates as mdates
+    locator = mdates.AutoDateLocator(minticks=3, maxticks=9)
+    ax.xaxis.set_major_locator(locator)
+    # the offset line (the '2025-Apr' at the right end of the axis) is what
+    # carries the YEAR now: a current database can span several visits, and a
+    # 'day/month' tick alone cannot say which one it belongs to
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator, show_offset=True))
+    for label in ax.get_xticklabels():
+        label.set_rotation(rotation)
+        label.set_horizontalalignment('right')
+        label.set_rotation_mode('anchor')
+    if fig is not None:
+        fig.subplots_adjust(bottom=0.18)
+
+
+def _bar_tick_size(bar):
+    """The tick-label size of a colorbar, or None when there is no bar to
+    copy from. Read from the drawn label rather than from rcParams: a figure
+    may have been built under different settings."""
+    if bar is None:
+        return None
+    labels = bar.ax.get_yticklabels()
+    return labels[0].get_fontsize() if labels else None
+
+
+def _direction_compass(fig, slot, cmap, label_font=None, tick_font=None):
     """Circular colour key for a bearing, drawn where `slot` (a spent
     colorbar axes) reserved the space.
 
@@ -1675,6 +1709,10 @@ def _direction_compass(fig, slot, cmap):
     direction (owner, 2026-08-19). `cmap` must be the cyclic map the heatmap
     used, normalised over the same 0-360 range, or the key would describe a
     different figure from the one it sits next to.
+
+    label_font/tick_font are taken from the speed panel's own colorbar, so the
+    two keys of the same figure are lettered alike (owner, v13.0) instead of
+    this one carrying a hand-picked size.
     """
     pos = slot.get_position()
     side_x = 0.11                                   # figure fractions...
@@ -1691,12 +1729,15 @@ def _direction_compass(fig, slot, cmap):
     wheel.set_ylim(0, 1)
     wheel.set_yticks([])
     wheel.set_xticks(np.deg2rad([0, 90, 180, 270]))
-    wheel.set_xticklabels(['N', 'E', 'S', 'W'], fontsize=8)
+    wheel.set_xticklabels(['N', 'E', 'S', 'W'],
+                          fontsize=tick_font if tick_font else 8)
     wheel.grid(False)
     wheel.spines['polar'].set_visible(False)
     wheel.tick_params(pad=-1)
-    # the title clears the 'N' tick: pad it, or the two overprint
-    wheel.set_title('Direction', fontsize=8, pad=13)
+    # the title has to clear the 'N' tick BELOW it, and the tick moves with the
+    # font size - so the gap is measured in the same units, never a fixed 13 pt
+    size = label_font if label_font else 10
+    wheel.set_title('Direction [deg]', fontsize=size, pad=1.9 * size)
     return wheel
 
 
@@ -1745,6 +1786,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
 
     # 1) time x depth heatmaps: speed + direction
     fig, axes = plt.subplots(2, 1, figsize=(11, 7), sharex=True)
+    speed_bar = None
     for ax, col, cmap, unit, vmx in (
             (axes[0], 'Horizontal speed (cm/s)', 'viridis', 'cm/s', speed_max),
             (axes[1], 'Direction (deg)', 'twilight', 'deg', 360)):
@@ -1754,19 +1796,25 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
             m = ax.pcolormesh(piv.columns, piv.index, piv.values, cmap=cmap,
                               shading='nearest', **kw)
             bar = fig.colorbar(m, ax=ax, label='%s [%s]' % (col.split(' (')[0], unit))
+            if col.startswith('Horizontal speed'):
+                speed_bar = bar          # the compass copies its lettering
             if col.startswith('Direction'):
                 # the bar still RESERVES the space (both subplots must keep the
                 # same width or the shared time axis stops lining up), but the
                 # key drawn in it is a compass wheel
                 bar.ax.set_visible(False)
-                _direction_compass(fig, bar.ax, cmap)
+                _direction_compass(fig, bar.ax, cmap,
+                                   label_font=speed_bar.ax.yaxis.label.get_fontsize()
+                                   if speed_bar is not None else None,
+                                   tick_font=_bar_tick_size(speed_bar))
         ax.invert_yaxis()
         ax.set_ylabel('Depth (m)')
     # ticks carry the year: a Doppler set can span several years/visits, and
-    # '%d/%m' alone cannot say which one a tick belongs to
-    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
+    # a day/month tick alone cannot say which one it belongs to. ConciseDate
+    # writes the year (and the date) once, on the offset line of the axis,
+    # instead of repeating it on every label
+    _date_axis(axes[1], fig)
     fig.suptitle('Current profile - %s' % label)
-    fig.autofmt_xdate()
     p = os.path.join(out_dir, 'Current profile (time x depth).svg')
     fig.savefig(p, bbox_inches='tight'); files.append(p)
     _keep_or_close(fig, show, figures)
@@ -1808,8 +1856,8 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
         ax.set_ylim(-1, 1)
         ax.set_yticks([])
         ax.set_title('Current sticks at %.1f m - %s' % (rep_depth, label))
-        ax.xaxis_date(); ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
-        fig.autofmt_xdate()
+        ax.xaxis_date()
+        _date_axis(ax, fig)
         p = os.path.join(out_dir, 'Current stick plot.svg')
         fig.savefig(p, bbox_inches='tight'); files.append(p)
         _keep_or_close(fig, show, figures)
@@ -1824,8 +1872,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
         axes[1].plot(sub['Datetime'], sub['North speed (cm/s)'], lw=0.9, label='%.1f m' % d)
     axes[0].set_ylabel('East U (cm/s)'); axes[1].set_ylabel('North V (cm/s)')
     axes[0].legend(fontsize=8, ncol=len(sel)); axes[0].set_title('Current components - %s' % label)
-    axes[1].xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
-    fig.autofmt_xdate()
+    _date_axis(axes[1], fig)
     p = os.path.join(out_dir, 'Current components (U-V).svg')
     fig.savefig(p, bbox_inches='tight'); files.append(p)
     _keep_or_close(fig, show, figures)
