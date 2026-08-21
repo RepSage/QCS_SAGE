@@ -23,8 +23,8 @@ def show_panels(figures=None, browse=False):
     figures: the exact figures to show. None means 'every figure pyplot holds',
              which is what the scalar and HOBO panels rely on.
     browse:  ask the shell for ONE window paging through the figures instead of
-             one window per figure (owner, v13.0: the four current panels
-             opened as four windows, which is noise for a comparison). Only a
+             one window per figure (owner, v13.0: the current panels opened as
+             separate windows, which is noise for a comparison). Only a
              request - a shell that cannot page them shows them side by side.
     """
     plt.show()
@@ -215,16 +215,35 @@ def _report_points_outside(fig):
         pass
 
 
-def enable_scroll_zoom(fig):
+def enable_scroll_zoom(fig, fit=True):
     """Interaction for a shown panel: mouse-wheel zoom around the cursor,
     middle-button drag to pan, and the plotted limits remembered on the figure
     so the toolbar's home button returns to them. Call it right before the
     panel is shown (after all axes have their final limits)."""
-    # pull the margins in so no tick/axis label is clipped at the window edges
-    _fit_margins(fig)
+    # Most scalar panels need a final margin pass. Doppler lays out its compass
+    # explicitly, so its callers disable this pass to preserve that alignment.
+    if fit:
+        _fit_margins(fig)
     _report_points_outside(fig)
     # snapshot the original plotted view for Reset
     original = [(ax, ax.get_xlim(), ax.get_ylim()) for ax in fig.axes]
+    opening = {ax: (xl, yl) for ax, xl, yl in original}
+
+    def _bounded_zoom(limits, opening_limits):
+        """Keep wheel zoom between 1/10,000 and 1x the opening span."""
+        lo, hi = limits
+        opening_span = abs(opening_limits[1] - opening_limits[0])
+        minimum = max(
+            opening_span / 10_000.0,
+            max(abs(opening_limits[0]), abs(opening_limits[1]), 1.0) *
+            np.finfo(float).eps * 64)
+        span = abs(hi - lo)
+        target = min(max(span, minimum), opening_span)
+        if abs(target - span) <= np.finfo(float).eps * max(span, 1.0):
+            return limits
+        centre = (lo + hi) / 2.0
+        lower, upper = centre - target / 2.0, centre + target / 2.0
+        return (lower, upper) if hi >= lo else (upper, lower)
 
     def _overlaid_axes(ref_ax):
         # These panels stack several parameter y-axes with twinx(): they overlap
@@ -239,7 +258,7 @@ def enable_scroll_zoom(fig):
     ZOOM = 1.1   # gentle per-notch factor (was 1.2, too aggressive)
 
     def on_scroll(event):
-        if event.inaxes is None:
+        if event.inaxes is None or not event.inaxes.get_navigate():
             return
         axes = _overlaid_axes(event.inaxes)
         if not axes:
@@ -248,12 +267,17 @@ def enable_scroll_zoom(fig):
         ref = event.inaxes
         xd, _ = ref.transData.inverted().transform((event.x, event.y))
         xl = ref.get_xlim()
-        new_xlim = _clamp_x(ref, xd - (xd - xl[0]) * scale, xd + (xl[1] - xd) * scale)
+        new_xlim = _clamp_x(
+            ref, xd - (xd - xl[0]) * scale,
+            xd + (xl[1] - xd) * scale)
+        new_xlim = _bounded_zoom(new_xlim, opening[ref][0])
         for ax in axes:
             ax.set_xlim(new_xlim)          # shared x: same absolute value, no compounding
             _, yd = ax.transData.inverted().transform((event.x, event.y))
             yl = ax.get_ylim()
-            ax.set_ylim(yd - (yd - yl[0]) * scale, yd + (yl[1] - yd) * scale)
+            new_ylim = (yd - (yd - yl[0]) * scale,
+                        yd + (yl[1] - yd) * scale)
+            ax.set_ylim(_bounded_zoom(new_ylim, opening[ax][1]))
         fig.canvas.draw_idle()
 
     pan = {'x': None, 'y': None, 'ref': None, 'axes': None}
@@ -299,18 +323,19 @@ def enable_scroll_zoom(fig):
     fig.canvas.mpl_connect('motion_notify_event', on_move)
     fig.canvas.mpl_connect('button_release_event', on_release)
 
-    # The toolbar stays matplotlib's OWN, untouched (owner, v12.3): the house
-    # icon is the reset, and it works after a wheel zoom too because the window
-    # pushes the opening view onto the navigation stack (see PlotWindow in
-    # QCS_QtApp). Hiding buttons and adding a 'Reset view' text button, as
-    # v12.1 did, made these panels look unlike every other plot the program
-    # shows - which is the standard the owner picked.
+    # The house icon restores the opening view. The Qt shell supplies the shared
+    # QCS toolbar; its Back/Forward history is intentionally omitted because it
+    # cannot represent these wheel and middle-button interactions.
     fig._qcs_reset_view = reset_view      # the view the panel opened with
 
     # app icon + a meaningful window title (the plot's own title, so the taskbar
     # and window name say what is being shown instead of 'Figure 1')
-    _title = next((a.get_title() for a in fig.axes if a.get_title()), '')
-    _theme.style_plot_window(fig, _title)
+    # A panel family may already have assigned its operator-facing name. Do not
+    # replace it with an internal axes title (the Doppler compass, for example,
+    # is titled "Direction [deg]" but the window is "Current profile").
+    if not getattr(fig, '_qcs_window_title', ''):
+        _title = next((a.get_title() for a in fig.axes if a.get_title()), '')
+        _theme.style_plot_window(fig, _title)
 
 def renameParameters (parameter_names):
     rParam = []
@@ -550,8 +575,11 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
             ax1.set_ylim(SETTINGS['env_min_org'], SETTINGS['env_max_org'])
         elif re.search('turbidity', variable, re.IGNORECASE):
             ax1.set_ylim(SETTINGS['env_min_tur'], SETTINGS['env_max_tur'])
+        elif re.search(r'\bPAR\b', variable, re.IGNORECASE):
+            ax1.set_ylim(SETTINGS['env_min_PAR'], SETTINGS['env_max_PAR'])
         elif re.search('luminosity|lux', variable, re.IGNORECASE):
-            ax1.set_ylim(SETTINGS.get('env_min_lux', 0), SETTINGS.get('env_max_lux', 20000))
+            ax1.set_ylim(SETTINGS.get('env_min_lux', 0),
+                         SETTINGS.get('env_max_lux', 200000))
 
     if re.search('depth', variable, re.IGNORECASE):
         ax1.invert_yaxis()
@@ -597,8 +625,11 @@ def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SET
             ax1.set_xlim(SETTINGS['env_min_org'], SETTINGS['env_max_org'])
         elif re.search('turbidity', variable, re.IGNORECASE):
             ax1.set_xlim(SETTINGS['env_min_tur'], SETTINGS['env_max_tur'])
+        elif re.search(r'\bPAR\b', variable, re.IGNORECASE):
+            ax1.set_xlim(SETTINGS['env_min_PAR'], SETTINGS['env_max_PAR'])
         elif re.search('luminosity|lux', variable, re.IGNORECASE):
-            ax1.set_xlim(SETTINGS.get('env_min_lux', 0), SETTINGS.get('env_max_lux', 20000))
+            ax1.set_xlim(SETTINGS.get('env_min_lux', 0),
+                         SETTINGS.get('env_max_lux', 200000))
 
     maxProf = qualified_data['Depth (m)'].max()
     maxY = math.ceil(maxProf / 10) * 10
@@ -1666,22 +1697,25 @@ def _keep_or_close(fig, show, figures):
         plt.close(fig)
 
 
+def _name_panel(fig, panel, label=''):
+    """Give exported and browsed panels one stable, directly selectable name."""
+    title = '%s - %s' % (label, panel) if label else panel
+    fig._qcs_window_title = title
+    _theme.style_plot_window(fig, title)
+
+
 def _date_axis(ax, fig=None, rotation=45):
     """Makes a time axis on a current panel readable.
 
-    The panels used to set a fixed '%d/%m/%y %H:%M' formatter on a locator that
-    chose its own number of ticks, and then rotate through fig.autofmt_xdate():
-    on a three-day session that printed ~15 labels of 14 characters flat on an
-    11-inch axis, which overprinted into a solid line (owner, v13.0). The
-    labels are rotated 45 degrees and anchored at their right end - so each one
-    ends under its own tick - and the locator is capped at what fits."""
+    The scalar panels establish the program's datetime notation as
+    day/month/two-digit-year plus hour:minute. Doppler used ConciseDateFormatter
+    instead, which split the date between the ticks and an offset label. Keep
+    the same notation as the scalar panels while retaining the capped locator,
+    45-degree rotation and right anchoring that prevent overprinting."""
     import matplotlib.dates as mdates
     locator = mdates.AutoDateLocator(minticks=3, maxticks=9)
     ax.xaxis.set_major_locator(locator)
-    # the offset line (the '2025-Apr' at the right end of the axis) is what
-    # carries the YEAR now: a current database can span several visits, and a
-    # 'day/month' tick alone cannot say which one it belongs to
-    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator, show_offset=True))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m/%y %H:%M'))
     for label in ax.get_xticklabels():
         label.set_rotation(rotation)
         label.set_horizontalalignment('right')
@@ -1700,7 +1734,40 @@ def _bar_tick_size(bar):
     return labels[0].get_fontsize() if labels else None
 
 
-def _direction_compass(fig, slot, cmap, label_font=None, tick_font=None):
+def _coordinate_edges(values, singleton_width):
+    """Convert ordered cell centres to pcolormesh edges.
+
+    Matplotlib cannot infer a cell height from one centre: it duplicates that
+    coordinate and draws a zero-height mesh. The explicit singleton width is
+    therefore part of the caller's physical/time coordinate system.
+    """
+    values = np.asarray(values, dtype=float)
+    if len(values) == 1:
+        half = float(singleton_width) / 2.0
+        return np.array([values[0] - half, values[0] + half])
+    middle = (values[:-1] + values[1:]) / 2.0
+    return np.concatenate(([values[0] - (middle[0] - values[0])], middle,
+                           [values[-1] + (values[-1] - middle[-1])]))
+
+
+def doppler_available_depths(frame):
+    """Depth cells with at least one complete, non-BAD current solution."""
+    if frame is None or 'Depth (m)' not in frame.columns:
+        return pd.Series(dtype=float)
+    depth = pd.to_numeric(frame['Depth (m)'], errors='coerce')
+    usable = depth.notna()
+    if 'Flag_cur' in frame.columns:
+        usable &= frame['Flag_cur'] != 4
+    current_cols = [col for col in ('Horizontal speed (cm/s)', 'Direction (deg)',
+                                    'East speed (cm/s)', 'North speed (cm/s)')
+                    if col in frame.columns]
+    if current_cols:
+        usable &= frame[current_cols].notna().all(axis=1)
+    return depth[usable]
+
+
+def _direction_compass(fig, slot, align_ax, cmap, label_font=None,
+                       tick_font=None):
     """Circular colour key for a bearing, drawn where `slot` (a spent
     colorbar axes) reserved the space.
 
@@ -1714,10 +1781,19 @@ def _direction_compass(fig, slot, cmap, label_font=None, tick_font=None):
     two keys of the same figure are lettered alike (owner, v13.0) instead of
     this one carrying a hand-picked size.
     """
+    # The date formatter adjusts the subplot layout before this function is
+    # called. Centre the absolute polar axes vertically on the direction
+    # heatmap, while the spent colorbar's left edge anchors a dedicated key
+    # column to the right. Creating the wheel before subplots_adjust left it
+    # below the plot; centring its wide title on the thin bar made the text
+    # overlap the data (owner, 2026-08-20).
+    fig.canvas.draw()
     pos = slot.get_position()
-    side_x = 0.11                                   # figure fractions...
+    target = align_ax.get_position()
+    side_x = 0.085                                  # figure fractions...
     side_y = side_x * fig.get_figwidth() / fig.get_figheight()   # ...kept round
-    wheel = fig.add_axes([pos.x0, pos.y0 + (pos.height - side_y) / 2.0,
+    centre_y = target.y0 + target.height / 2.0
+    wheel = fig.add_axes([pos.x0, centre_y - side_y / 2.0,
                           side_x, side_y], projection='polar')
     theta = np.linspace(0, 2 * np.pi, 361)
     radius = np.array([0.62, 1.0])
@@ -1738,12 +1814,17 @@ def _direction_compass(fig, slot, cmap, label_font=None, tick_font=None):
     # font size - so the gap is measured in the same units, never a fixed 13 pt
     size = label_font if label_font else 10
     wheel.set_title('Direction [deg]', fontsize=size, pad=1.9 * size)
+    wheel.set_in_layout(False)     # tight_layout moves its heatmap, not the key
+    wheel.set_navigate(False)       # it is a key, never a zoomable data axes
     return wheel
 
 
 def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
                         figures=None):
-    """Saves the 4 current panels as SVGs into out_dir. Returns file list.
+    """Saves the current panels as SVGs into out_dir. Returns file list.
+
+    The normal output has three figures. `uvGapMode='both'` adds a second U/V
+    components figure so connected and interrupted lines can be compared.
 
     show=True also puts them ON SCREEN, like every other panel family does
     (plot_database_panel1/2/3, the HOBO panels and the T-S diagram all end in
@@ -1756,10 +1837,9 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
     tab steer the panels:
       xAxisStart / xAxisEnd  keep only this datetime window (also on the X axis)
       depthAxisMin / Max     keep only cells in this depth band (m)
-      currentRepDepth        force the stick/progressive-vector depth (m); the
-                             default is still the best-covered cell
       currentSpeedMax        fix the heatmap speed color scale (cm/s), so
                              several sites/years compare 1:1; None -> autoscale
+      uvGapMode              'break', 'connect' or 'both' for the U/V lines
 
     figures: a list to APPEND every figure to instead of showing or closing it.
     The caller then owns them - which is how the Visualization tab collects the
@@ -1770,32 +1850,61 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
     import matplotlib.dates as mdates
     s = settings or {}
     os.makedirs(out_dir, exist_ok=True)
-    ok = frame[frame['Flag_cur'] != 4].copy()
+    # A rerun can reuse an existing output folder. Remove only the two files
+    # retired from this panel family, otherwise they look newly generated even
+    # though the browser correctly contains only the current run's panels.
+    for retired_name in ('Current stick plot.svg',
+                         'Progressive vector diagram.svg',
+                         'Current components (U-V).svg',
+                         'Current components (U-V, lines broken).svg',
+                         'Current components (U-V, connected).svg'):
+        retired_path = os.path.join(out_dir, retired_name)
+        if os.path.isfile(retired_path):
+            os.remove(retired_path)
+    selected = frame.copy()
     # time window + depth band (no-ops when the bounds are None)
     xs, xe = s.get('xAxisStart'), s.get('xAxisEnd')
     if xs is not None and xe is not None:
-        ok = ok[(ok['Datetime'] >= pd.Timestamp(xs)) & (ok['Datetime'] <= pd.Timestamp(xe))]
+        selected = selected[(selected['Datetime'] >= pd.Timestamp(xs)) &
+                            (selected['Datetime'] <= pd.Timestamp(xe))]
     dmin, dmax = s.get('depthAxisMin'), s.get('depthAxisMax')
     if dmin is not None and dmax is not None:
-        ok = ok[(ok['Depth (m)'] >= float(dmin)) & (ok['Depth (m)'] <= float(dmax))]
+        selected = selected[(selected['Depth (m)'] >= float(dmin)) &
+                            (selected['Depth (m)'] <= float(dmax))]
+    ok = selected[selected['Flag_cur'] != 4].copy()
     if not len(ok):
         return []
     files = []
-    t0 = ok['Datetime'].min()
     speed_max = s.get('currentSpeedMax')
+    panel_times = pd.Index(selected['Datetime'].dropna().drop_duplicates().sort_values())
+    depth_reference = np.sort(doppler_available_depths(frame).unique())
 
     # 1) time x depth heatmaps: speed + direction
-    fig, axes = plt.subplots(2, 1, figsize=(11, 7), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(11, 7), sharex=True, sharey=True)
     speed_bar = None
+    direction_key = None
     for ax, col, cmap, unit, vmx in (
             (axes[0], 'Horizontal speed (cm/s)', 'viridis', 'cm/s', speed_max),
             (axes[1], 'Direction (deg)', 'twilight', 'deg', 360)):
         piv = ok.pivot_table(index='Depth (m)', columns='Datetime', values=col)
         if piv.size:
             kw = {'vmin': 0, 'vmax': float(vmx)} if vmx else {}
-            m = ax.pcolormesh(piv.columns, piv.index, piv.values, cmap=cmap,
-                              shading='nearest', **kw)
+            if len(piv.index) == 1:
+                depth = float(piv.index[0])
+                neighbours = np.abs(depth_reference - depth)
+                neighbours = neighbours[neighbours > 0]
+                cell_width = float(neighbours.min()) if len(neighbours) else 1.0
+                x_values = mdates.date2num(piv.columns.to_pydatetime())
+                x_edges = _coordinate_edges(x_values, 1.0 / (24 * 60))
+                y_edges = _coordinate_edges([depth], cell_width)
+                m = ax.pcolormesh(x_edges, y_edges, piv.values, cmap=cmap,
+                                  shading='flat', **kw)
+            else:
+                m = ax.pcolormesh(piv.columns, piv.index, piv.values, cmap=cmap,
+                                  shading='nearest', **kw)
+            m.set_label('%s heatmap' % col.split(' (')[0])
             bar = fig.colorbar(m, ax=ax, label='%s [%s]' % (col.split(' (')[0], unit))
+            bar.ax.set_navigate(False)   # scrolling the key must not zoom it
             if col.startswith('Horizontal speed'):
                 speed_bar = bar          # the compass copies its lettering
             if col.startswith('Direction'):
@@ -1803,109 +1912,164 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
                 # same width or the shared time axis stops lining up), but the
                 # key drawn in it is a compass wheel
                 bar.ax.set_visible(False)
-                _direction_compass(fig, bar.ax, cmap,
-                                   label_font=speed_bar.ax.yaxis.label.get_fontsize()
-                                   if speed_bar is not None else None,
-                                   tick_font=_bar_tick_size(speed_bar))
-        ax.invert_yaxis()
+                direction_key = (bar.ax, cmap,
+                                 speed_bar.ax.yaxis.label.get_fontsize()
+                                 if speed_bar is not None else None,
+                                 _bar_tick_size(speed_bar))
         ax.set_ylabel('Depth (m)')
-    # ticks carry the year: a Doppler set can span several years/visits, and
-    # a day/month tick alone cannot say which one it belongs to. ConciseDate
-    # writes the year (and the date) once, on the offset line of the axis,
-    # instead of repeating it on every label
+    axes[0].invert_yaxis()  # shared Y keeps Pan/Zoom synchronous on both plots
+    # One shared formatter keeps all three time-based current panels in the
+    # same day/month/year hour:minute notation as the scalar panels.
     _date_axis(axes[1], fig)
+    direction_compass = None
+    if direction_key is not None:
+        slot, cmap, label_font, tick_font = direction_key
+        direction_compass = _direction_compass(
+            fig, slot, axes[1], cmap,
+            label_font=label_font, tick_font=tick_font)
     fig.suptitle('Current profile - %s' % label)
+    fig._qcs_axes_names = {
+        axes[0]: 'Horizontal speed heatmap',
+        axes[1]: 'Direction heatmap',
+    }
+    fig._qcs_customize_axes = [
+        ('Horizontal speed heatmap', axes[0]),
+        ('Direction heatmap', axes[1]),
+    ]
+    fig._qcs_layout_keys = []
+    fig._qcs_legend_labels = {axes[0]: [], axes[1]: []}
+    if speed_bar is not None:
+        fig._qcs_layout_keys.append({
+            'name': 'Horizontal speed color scale',
+            'axes': speed_bar.ax,
+            'anchor': axes[0],
+            'vertical': 'match',
+        })
+        fig._qcs_legend_labels[axes[0]].append({
+            'name': 'Horizontal speed color scale',
+            'artist': speed_bar.ax.yaxis.label,
+        })
+    if direction_compass is not None:
+        fig._qcs_layout_keys.append({
+            'name': 'Direction compass',
+            'axes': direction_compass,
+            'anchor': axes[1],
+            'vertical': 'center',
+        })
+        fig._qcs_legend_labels[axes[1]].append({
+            'name': 'Direction compass',
+            'artist': direction_compass.title,
+        })
+    _name_panel(fig, 'Current profile', label)
     p = os.path.join(out_dir, 'Current profile (time x depth).svg')
     fig.savefig(p, bbox_inches='tight'); files.append(p)
+    enable_scroll_zoom(fig, fit=False)
     _keep_or_close(fig, show, figures)
 
-    # representative depth: the user's choice (nearest available cell) or the
-    # GOOD cell with most samples. Rows can carry a NaN east/north pair even
-    # when not flagged BAD (partial records) - they cannot enter the vector
-    # panels: a single NaN would poison the arrow scale (int(NaN) crash) and
-    # the progressive-vector cumsum.
-    avail = ok['Depth (m)'].dropna()
-    want = s.get('currentRepDepth')
-    if want is None and dmin is not None and dmax is not None:
-        want = (float(dmin) + float(dmax)) / 2.0   # centre of the chosen band
-    if want is not None and len(avail):
-        rep_depth = float(avail.iloc[(avail - float(want)).abs().argmin()])
+    # The complementary panels use the same depths, spread from the shallowest
+    # to the deepest available cell. This avoids the old arbitrary single-depth
+    # stick plot while keeping four traces/rows readable.
+    vector_ok = ok.dropna(subset=['Depth (m)', 'East speed (cm/s)',
+                                  'North speed (cm/s)'])
+    depths = sorted(vector_ok['Depth (m)'].unique())
+    if not depths:
+        return files
+    if len(depths) <= 4:
+        sel = depths
     else:
-        rep_depth = ok.groupby('Depth (m)').size().idxmax()
-    rep = ok[ok['Depth (m)'] == rep_depth].sort_values('Datetime')
-    rep = rep.dropna(subset=['East speed (cm/s)', 'North speed (cm/s)'])
+        indices = np.rint(np.linspace(0, len(depths) - 1, 4)).astype(int)
+        sel = [depths[i] for i in indices]
 
-    # 2) stick plot: current vectors rooted on the time axis, angle-true. A
-    # plain scale=1 quiver mixes cm/s with the date x-units and blows the
-    # sticks across the whole axis; scale_units='width' makes the arrow length
-    # proportional to speed and independent of the date axis, and the
-    # reference key carries the magnitude scale (so the y-axis carries none).
-    if len(rep):
-        fig, ax = plt.subplots(figsize=(11, 4))
-        tnum = mdates.date2num(rep['Datetime'].to_numpy())
-        u = rep['East speed (cm/s)'].to_numpy()
-        v = rep['North speed (cm/s)'].to_numpy()
-        vmax = float(np.nanmax(np.hypot(u, v)))
-        if not np.isfinite(vmax) or vmax <= 0:
-            vmax = 1.0
-        q = ax.quiver(tnum, np.zeros(len(rep)), u, v, angles='uv',
-                      scale_units='width', scale=vmax * 12.5, width=0.003, color='tab:blue')
-        ref = max(10, int(round(vmax / 2 / 10)) * 10)
-        ax.quiverkey(q, 0.88, 0.9, ref, '%d cm/s' % ref, labelpos='E', coordinates='axes')
-        ax.axhline(0, color='0.6', lw=0.8)
-        ax.set_ylim(-1, 1)
-        ax.set_yticks([])
-        ax.set_title('Current sticks at %.1f m - %s' % (rep_depth, label))
-        ax.xaxis_date()
-        _date_axis(ax, fig)
-        p = os.path.join(out_dir, 'Current stick plot.svg')
-        fig.savefig(p, bbox_inches='tight'); files.append(p)
+    # 2) U/V component series at up to 4 depths. The operator may view the
+    # surviving points as one connected trajectory, interrupt every missing/BAD
+    # cell, or generate both figures side by side for comparison.
+    gap_mode = s.get('uvGapMode', 'break')
+    if gap_mode not in ('break', 'connect', 'both'):
+        gap_mode = 'break'
+    component_modes = (('break', 'connect') if gap_mode == 'both'
+                       else (gap_mode,))
+    for component_mode in component_modes:
+        break_gaps = component_mode == 'break'
+        treatment = 'lines broken at data gaps' if break_gaps else 'connected across data gaps'
+        fig, axes = plt.subplots(2, 1, figsize=(11, 6), sharex=True)
+        for d in sel:
+            sub = vector_ok[vector_ok['Depth (m)'] == d].sort_values('Datetime')
+            if break_gaps:
+                sub = sub.drop_duplicates(subset='Datetime', keep='first').set_index('Datetime')
+                times = panel_times
+                east_values = sub['East speed (cm/s)'].reindex(times)
+                north_values = sub['North speed (cm/s)'].reindex(times)
+            else:
+                times = sub['Datetime']
+                east_values = sub['East speed (cm/s)']
+                north_values = sub['North speed (cm/s)']
+            axes[0].plot(times, east_values, lw=0.9, label='%.1f m' % d)
+            axes[1].plot(times, north_values, lw=0.9, label='%.1f m' % d)
+        axes[0].set_ylabel('East U (cm/s)')
+        axes[1].set_ylabel('North V (cm/s)')
+        axes[0].legend(fontsize=8, ncol=len(sel))
+        axes[0].set_title('Current components (%s) - %s' % (treatment, label))
+        fig._qcs_axes_names = {
+            axes[0]: 'East component (U)',
+            axes[1]: 'North component (V)',
+        }
+        fig._qcs_customize_axes = [
+            ('East component (U)', axes[0]),
+            ('North component (V)', axes[1]),
+        ]
+        _date_axis(axes[1], fig)
+        panel_name = 'U/V components - %s' % treatment
+        _name_panel(fig, panel_name, label)
+        filename = ('Current components (U-V, lines broken).svg' if break_gaps
+                    else 'Current components (U-V, connected).svg')
+        p = os.path.join(out_dir, filename)
+        fig.savefig(p, bbox_inches='tight')
+        files.append(p)
+        enable_scroll_zoom(fig, fit=False)
         _keep_or_close(fig, show, figures)
 
-    # 3) U/V component series at up to 4 depths
-    depths = sorted(ok['Depth (m)'].dropna().unique())
-    sel = depths[:: max(1, len(depths) // 4)][:4]
-    fig, axes = plt.subplots(2, 1, figsize=(11, 6), sharex=True)
+    # 3) angle-true vector field at the same depths. The depth is only the
+    # arrow's anchor row: vertical arrow direction means north/south, never
+    # vertical water motion. Temporal decimation caps each row at about 60
+    # arrows, so a long deployment stays legible without changing the data.
+    max_samples = max((vector_ok['Depth (m)'] == d).sum() for d in sel)
+    stride = max(1, int(np.ceil(max_samples / 60.0)))
+    tnum, anchor, east, north = [], [], [], []
     for d in sel:
-        sub = ok[ok['Depth (m)'] == d].sort_values('Datetime')
-        axes[0].plot(sub['Datetime'], sub['East speed (cm/s)'], lw=0.9, label='%.1f m' % d)
-        axes[1].plot(sub['Datetime'], sub['North speed (cm/s)'], lw=0.9, label='%.1f m' % d)
-    axes[0].set_ylabel('East U (cm/s)'); axes[1].set_ylabel('North V (cm/s)')
-    axes[0].legend(fontsize=8, ncol=len(sel)); axes[0].set_title('Current components - %s' % label)
-    _date_axis(axes[1], fig)
-    p = os.path.join(out_dir, 'Current components (U-V).svg')
+        sub = vector_ok[vector_ok['Depth (m)'] == d].sort_values('Datetime').iloc[::stride]
+        tnum.extend(mdates.date2num(sub['Datetime'].to_numpy()))
+        anchor.extend(np.full(len(sub), d))
+        east.extend(sub['East speed (cm/s)'].to_numpy())
+        north.extend(sub['North speed (cm/s)'].to_numpy())
+    east = np.asarray(east, dtype=float)
+    north = np.asarray(north, dtype=float)
+    vmax = float(np.nanmax(np.hypot(east, north)))
+    if not np.isfinite(vmax) or vmax <= 0:
+        vmax = 1.0
+    fig, ax = plt.subplots(figsize=(11, 5.5))
+    q = ax.quiver(tnum, anchor, east, north, angles='uv', scale_units='width',
+                  scale=vmax * 12.5, width=0.0025, color='tab:blue', pivot='middle')
+    ref = max(10, int(round(vmax / 2 / 10)) * 10)
+    ax.quiverkey(q, 0.86, 0.94, ref, '%d cm/s' % ref, labelpos='E', coordinates='axes')
+    ax.text(0.01, 0.96, 'Arrow direction: N ↑   E →', transform=ax.transAxes,
+            ha='left', va='top', fontsize=9)
+    ax.set_yticks(sel)
+    ax.set_ylabel('Depth (m)')
+    if len(sel) > 1:
+        row_gap = float(np.min(np.diff(sel)))
+        pad = max(1.0, row_gap * 0.75)
+    else:
+        pad = 1.0
+    ax.set_ylim(float(max(sel)) + pad, float(min(sel)) - pad)
+    ax.grid(axis='y', alpha=0.18)
+    ax.set_title('Current vectors by depth - %s' % label)
+    fig._qcs_axes_names = {ax: 'Current vectors by depth'}
+    fig._qcs_customize_axes = [('Current vectors by depth', ax)]
+    _name_panel(fig, 'Current vectors by depth', label)
+    _date_axis(ax, fig)
+    p = os.path.join(out_dir, 'Current vectors (time x depth).svg')
     fig.savefig(p, bbox_inches='tight'); files.append(p)
-    _keep_or_close(fig, show, figures)
-
-    # 4) progressive vector diagram at the representative depth.
-    # The series is NOT continuous: BAD cells are dropped, and a database can
-    # hold several visits to the site. Integrating speed x elapsed-time across
-    # such a gap invents displacement (one sample after a 30-day gap adds
-    # ~130 km), so a gap is never integrated - it breaks the trajectory.
-    if not len(rep):
-        return files
-    fig, ax = plt.subplots(figsize=(7, 7))
-    dt_s = rep['Datetime'].diff().dt.total_seconds().fillna(0.0).to_numpy()
-    step = np.median(dt_s[dt_s > 0]) if (dt_s > 0).any() else 0.0
-    gap = (dt_s > 3 * step) if step > 0 else np.zeros(len(dt_s), dtype=bool)
-    dt_eff = np.where(gap, 0.0, dt_s)            # no displacement across a gap
-    x_km = np.cumsum(rep['East speed (cm/s)'].to_numpy() / 100.0 * dt_eff) / 1000.0
-    y_km = np.cumsum(rep['North speed (cm/s)'].to_numpy() / 100.0 * dt_eff) / 1000.0
-    x_plot, y_plot = x_km.astype(float).copy(), y_km.astype(float).copy()
-    x_plot[gap] = np.nan                          # break the line at each gap
-    y_plot[gap] = np.nan
-    ax.plot(x_plot, y_plot, '-', lw=1.2)
-    ax.plot([0], [0], 'o', ms=6)
-    ax.set_xlabel('East displacement (km)')
-    ax.set_ylabel('North displacement (km)')
-    n_gap = int(gap.sum())
-    ax.set_title('Progressive vector at %.1f m - %s\n(%s to %s%s)'
-                 % (rep_depth, label, t0.strftime('%d/%m/%Y %H:%M'),
-                    ok['Datetime'].max().strftime('%d/%m/%Y %H:%M'),
-                    '; %d gap(s) not integrated' % n_gap if n_gap else ''))
-    ax.set_aspect('equal', adjustable='datalim'); ax.grid(alpha=0.3)
-    p = os.path.join(out_dir, 'Progressive vector diagram.svg')
-    fig.savefig(p, bbox_inches='tight'); files.append(p)
+    enable_scroll_zoom(fig, fit=False)
     _keep_or_close(fig, show, figures)
     if show and figures is None:
         show_panels(browse=True)      # one window, paged (owner, v13.0)
@@ -1951,10 +2115,14 @@ def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=Fals
     ax.set_xlabel('Mean horizontal speed (cm/s)')
     ax.set_ylabel('Depth (m)')
     ax.set_title('Mean current speed by depth - across sites')
+    fig._qcs_axes_names = {ax: 'Mean current speed by depth'}
+    fig._qcs_customize_axes = [('Mean current speed by depth', ax)]
+    _name_panel(fig, 'Mean current speed by depth - across sites')
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8)
     p = os.path.join(out_dir, 'Current mean speed across sites.svg')
     fig.savefig(p, bbox_inches='tight')
+    enable_scroll_zoom(fig, fit=False)
     _keep_or_close(fig, show, figures)
     if show and figures is None:
         show_panels(browse=True)

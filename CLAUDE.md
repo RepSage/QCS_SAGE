@@ -2,7 +2,7 @@
 
 Tkinter application for qualification and visualization of oceanographic sensor
 data. Two instrument families: Seaguard/TSCP loggers (T, S, C, P, O2, pH,
-chlorophyll, turbidity) and HOBO Pendant loggers (temperature + light).
+chlorophyll, turbidity, PAR) and HOBO Pendant loggers (temperature + light).
 
 **TSCP stays.** It is this project's house term for the four core variables of
 the Seaguard string (temperature, salinity, conductivity, pressure) - AADI does
@@ -78,12 +78,19 @@ archive and diff the counts against the previous `qualified_index.csv`.
 
 - **Flag strings**: each data row gets a flag string with exactly one character
   per test, in `test_sequence` order (built in `QCS_Main.py`). Per-variable
-  columns (`Flag_T`, `Flag_S`, `Flag_lux`, …) are derived via `FLAG_BUCKET_MAP`
+  columns (`Flag_T`, `Flag_S`, `Flag_PAR`, `Flag_lux`, …) are derived via `FLAG_BUCKET_MAP`
   in `QCS_DataHandler.py`. Adding, removing or reordering a test requires keeping
   `FLAG_BUCKET_MAP` in sync. Flag codes: 1=good, 2=not evaluated, 3=suspect,
   4=bad, 5=dismissed, 9=missing.
-- **Values ≤ 0 are discarded by design** for physically positive variables — this
-  is intentional, not a bug.
+- **Nonpositive handling is variable-specific.** Values ≤ 0 are discarded for
+  physically positive non-optical variables. Optical dark-offset noise is
+  clamped near zero, and every negative PAR/light value is clamped to zero;
+  zero PAR/light is valid (night). This happens before quality tests.
+- **PAR spike scale excludes zero.** PAR uses the ordinary three-point spike
+  residual and per-variable factors, but `positive_sigma=True` estimates its
+  robust scale from positive irradiance and treats stable night-zero runs as
+  good. Including night zeros collapses MAD and creates mass false positives;
+  never remove this exception without a full corpus replay.
 - **`build_database()`** (`QCS_DataHandler.py`) is the single unification engine
   for merging qualified files. It detects HOBO vs. Seaguard layouts and refuses
   to mix them; it deduplicates exact rows and warns on Site+Datetime overlaps.

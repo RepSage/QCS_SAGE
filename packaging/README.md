@@ -6,7 +6,7 @@ Python, no Anaconda and no dependencies**. Two stages: PyInstaller produces a
 
 The v2.0 release shipped PyInstaller executables and v2.2 dropped them for
 script execution; this recipe brings packaging back on today's layout (the
-single `QCS_App.py` entry point). **No source change is needed**: the
+single `QCS_QtApp.py` entry point). **No source change is needed**: the
 frozen-aware paths from the v2.0 era survived (`settings_store_path`, the
 crash handler), so packaging never moves `QCS_VERSION`.
 
@@ -18,10 +18,11 @@ crash handler), so packaging never moves `QCS_VERSION`.
 - **Build from a clean pip venv, not from Anaconda.** Conda's numpy/scipy link
   MKL, which roughly doubles the bundle for nothing the app uses.
 - **No UPX.** Compressed DLLs trip antivirus heuristics for marginal size gain.
-- **Install to `{localappdata}\QCS`, `PrivilegesRequired=lowest`.** No admin
-  account needed on the notebook, and the folder is user-writable — which is
-  where the frozen app expects to write its settings and crash log (beside the
-  exe).
+- **All users by default, with a per-user override.** The current 32-bit Inno
+  recipe resolves `{autopf}` to `C:\Program Files (x86)\QCS`; the owner accepted
+  that existing destination. The wizard still offers “only for me” on machines
+  without an administrator account. Read-only installs write settings and the
+  crash log under `%APPDATA%\QCS`.
 
 ## Build steps (from the repository root)
 
@@ -105,8 +106,8 @@ wrong claim: nobody looked.)
 
 Default is **all users**; the wizard still offers "only for me" (user area, no
 admin) for the field notebook. Upgrades — including the in-app self-update —
-reuse the previous install's mode and folder; over Program Files the silent
-upgrade shows one UAC prompt, over a per-user install it stays fully silent.
+reuse the previous install's mode and folder. The update wizard stays visible;
+Program Files upgrades add the normal UAC prompt, while per-user upgrades do not.
 
 **Which Program Files: measured, 2026-08-13.** An all-users install lands in
 **`C:\Program Files (x86)\QCS`**, not `C:\Program Files\QCS`. Inno Setup

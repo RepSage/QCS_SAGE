@@ -17,10 +17,13 @@ windows are pure matplotlib and open as Qt windows.
 
 Run with:  QCS.bat  (packaging/v12_env venv, PySide6 6.8.3).
 """
+import math
 import os
 import re
 import sys
 import threading
+import warnings
+from numbers import Real
 
 import matplotlib
 # Agg, not QtAgg (v12.3): under QtAgg every figure IS a QWidget, and Qt forbids
@@ -32,18 +35,25 @@ import matplotlib
 # (matplotlib 3.10 `canvas.callbacks -> figure._canvas_callbacks`, measured).
 matplotlib.use('Agg')              # before any QCS import binds pyplot
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import matplotlib.dates as mdates
 from matplotlib._pylab_helpers import Gcf
 from matplotlib.backend_bases import CloseEvent
 from matplotlib.backends.backend_qtagg import (FigureCanvasQTAgg,
                                                NavigationToolbar2QT)
+from matplotlib.backends.backend_qt import SubplotToolQt
+from matplotlib.backends.qt_editor import figureoptions
+from matplotlib.transforms import Bbox
 
-from PySide6.QtCore import (QByteArray, QEvent, QEventLoop, QObject,
+from PySide6.QtCore import (QByteArray, QEvent, QEventLoop, QObject, QSize,
                             QSignalBlocker, Qt, QThread, QTimer, Signal, Slot)
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtGui import QAction, QIcon, QPainter, QPalette, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QDockWidget, QFileDialog, QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
-                               QLineEdit, QMainWindow, QMessageBox,
+                               QDoubleSpinBox, QLineEdit, QMainWindow,
+                               QMessageBox, QPlainTextEdit, QInputDialog,
                                QProgressBar, QProgressDialog, QPushButton,
                                QRadioButton, QScrollArea, QStackedWidget,
                                QTableWidget, QTableWidgetItem, QTabWidget,
@@ -102,10 +112,31 @@ class _UpdateBridge(QObject):
 TOOLTIPS = qm.TOOLTIPS             # single source: the real texts (v11.6.1)
 
 _ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'qcs_icon.png')
+_FLUENT_ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                'icons', 'fluent')
+_FLUENT_TOOLBAR_ICONS = {
+    'home': 'home.svg',
+    'move': 'pan.svg',
+    'zoom_to_rect': 'zoom.svg',
+    'subplots': 'subplots.svg',
+    'qt4_editor_options': 'customize.svg',
+    'filesave': 'save.svg',
+}
 
 
 def _app_icon():
     return QIcon(_ICON_PATH) if os.path.isfile(_ICON_PATH) else QIcon()
+
+
+def _row_reset_button(tooltip, callback):
+    """Small reset action shared by plot-editing value rows."""
+    button = QToolButton()
+    button.setIcon(qtheme.reset_icon(20))
+    button.setIconSize(QSize(20, 20))
+    button.setToolTip(tooltip)
+    button.setAutoRaise(True)
+    button.clicked.connect(callback)
+    return button
 
 
 def _duration_text(hours):
@@ -135,16 +166,1306 @@ def _qt_style_plot_window(fig, title=None):
         fig._qcs_window_title = title
 
 
-def _prime_toolbar(fig, toolbar):
-    """Matplotlib's own toolbar, untouched - house icon, lens, configure, save
-    (owner, v12.3: that is the standard every plot in the program follows, and
-    the trimmed bar with a 'Reset view' text button was the odd one out).
+def _axes_display_name(ax, index):
+    """Return a stable, operator-facing name for a Matplotlib axes."""
+    custom = getattr(ax.figure, '_qcs_axes_names', {}).get(ax)
+    if custom:
+        return custom
+    title = (ax.get_title() or ax.get_title('left') or
+             ax.get_title('right')).strip()
+    if title:
+        return title
+    label = ax.get_label().strip()
+    if label and not label.startswith(('_', '<')):
+        return label
+    if getattr(ax, 'name', '') == 'polar':
+        return 'Direction compass'
+    x_label = ax.get_xlabel().strip()
+    y_label = ax.get_ylabel().strip()
+    if label == '<colorbar>':
+        scale_label = y_label or x_label
+        return ('Color scale - %s' % scale_label
+                if scale_label else 'Color scale')
+    if x_label and y_label:
+        return '%s by %s' % (y_label, x_label)
+    if y_label or x_label:
+        return y_label or x_label
+    return 'Plot %d' % (index + 1)
 
-    The one thing added is the opening view on the navigation stack. Home
-    returns to whatever the stack holds, and the stack is only ever filled by
-    the toolbar's OWN pan/zoom - so after a wheel zoom (this program's usual
-    way of zooming, `QCS_DataView.enable_scroll_zoom`) the house button had
-    nothing to go back to and did nothing at all.
+
+def _unique_axes_names(axes):
+    """Keep duplicate axes names readable without exposing memory addresses."""
+    names = []
+    counts = {}
+    for index, ax in enumerate(axes):
+        base = _axes_display_name(ax, index)
+        counts[base] = counts.get(base, 0) + 1
+        names.append(base if counts[base] == 1
+                     else '%s (%d)' % (base, counts[base]))
+    return names
+
+
+def _subplot_grid_shape(fig):
+    """Rows/columns in the top-level grids that subplotpars can affect."""
+    rows = columns = 1
+    for ax in fig.axes:
+        try:
+            spec = ax.get_subplotspec()
+            if spec is None:
+                continue
+            grid = spec.get_topmost_subplotspec().get_gridspec()
+            rows = max(rows, grid.nrows)
+            columns = max(columns, grid.ncols)
+        except (AttributeError, TypeError):
+            continue
+    return rows, columns
+
+
+class QCSSubplotToolQt(SubplotToolQt):
+    """Matplotlib's layout editor with clear names and legend positioning."""
+
+    _FIELD_LABELS = {
+        'top': 'Plot top edge',
+        'bottom': 'Plot bottom edge',
+        'left': 'Plot left edge',
+        'right': 'Plot right edge',
+        'hspace': 'Vertical gap',
+        'wspace': 'Horizontal gap',
+    }
+
+    def __init__(self, targetfig, parent, window_icon=None):
+        QDialog.__init__(self, parent)
+        self.setObjectName('SubplotTool')
+        self._figure = targetfig
+        self._spinboxes = {}
+        self._spinbox_labels = {}
+        self._row_reset_buttons = {}
+        self._defaults = {}
+        self._export_values_dialog = None
+        self._product_subplotpars = {
+            name: getattr(targetfig.subplotpars, name) for name in (
+                'top', 'bottom', 'left', 'right', 'hspace', 'wspace')
+        }
+        self.setWindowTitle('Adjust plot layout')
+        if window_icon is not None:
+            self.setWindowIcon(window_icon)
+
+        outer = QVBoxLayout(self)
+        controls = QHBoxLayout()
+        controls.setSpacing(10)
+        outer.addLayout(controls)
+        for title, names in (
+                ('Plot area', ('top', 'bottom', 'left', 'right')),
+                ('Gaps between plots', ('hspace', 'wspace'))):
+            box = QGroupBox(title)
+            form = QFormLayout(box)
+            for name in names:
+                spinbox = QDoubleSpinBox()
+                spinbox.setRange(0, 1)
+                spinbox.setDecimals(3)
+                spinbox.setSingleStep(0.005)
+                spinbox.setKeyboardTracking(False)
+                spinbox.valueChanged.connect(self._on_value_changed)
+                label = QLabel(self._FIELD_LABELS[name])
+                holder = QWidget()
+                row = QHBoxLayout(holder)
+                row.setContentsMargins(0, 0, 0, 0)
+                row.setSpacing(4)
+                row.addWidget(spinbox, 1)
+                reset = _row_reset_button(
+                    'Restore the original %s.' %
+                    self._FIELD_LABELS[name].lower(),
+                    lambda _checked=False, key=name:
+                    self._reset_subplot_field(key))
+                row.addWidget(reset)
+                form.addRow(label, holder)
+                self._spinboxes[name] = spinbox
+                self._spinbox_labels[name] = label
+                self._row_reset_buttons[name] = reset
+            controls.addWidget(box)
+
+        self._layout_keys = [dict(item) for item in
+                             getattr(targetfig, '_qcs_layout_keys', [])]
+        rows, columns = _subplot_grid_shape(targetfig)
+        self._set_spacing_availability(
+            'wspace', columns > 1,
+            'Used only when the figure has two or more subplot columns.')
+        self._set_spacing_availability(
+            'hspace', rows > 1,
+            'Used only when the figure has two or more subplot rows.')
+
+        self._legend_group = QGroupBox('Legend / key position')
+        legend_form = QFormLayout(self._legend_group)
+        self._legend_target = QComboBox()
+        legend_form.addRow('Apply to', self._legend_target)
+        self._legend_x = self._legend_spinbox(
+            'Fraction of the figure width; positive values move right.')
+        self._legend_y = self._legend_spinbox(
+            'Fraction of the figure height; positive values move up.')
+        for name, label, spinbox in (
+                ('legend_x', 'Horizontal offset', self._legend_x),
+                ('legend_y', 'Vertical offset', self._legend_y)):
+            holder = QWidget()
+            row = QHBoxLayout(holder)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(4)
+            row.addWidget(spinbox, 1)
+            reset = _row_reset_button(
+                'Restore the original %s for the selected legend or key.' %
+                label.lower(),
+                lambda _checked=False, field=spinbox: field.setValue(0.0))
+            row.addWidget(reset)
+            legend_form.addRow(label, holder)
+            self._row_reset_buttons[name] = reset
+        controls.addWidget(self._legend_group)
+
+        self._position_records = []
+        self._position_bases = {}
+        self._position_offsets = {}
+        self._legend_target.currentIndexChanged.connect(
+            self._show_target_legend_offset)
+        self._legend_x.valueChanged.connect(self._legend_value_changed)
+        self._legend_y.valueChanged.connect(self._legend_value_changed)
+        for name, spinbox in self._spinboxes.items():
+            spinbox.blockSignals(True)
+            spinbox.setValue(self._product_subplotpars[name])
+            spinbox.blockSignals(False)
+        self._defaults = {
+            spinbox: self._product_subplotpars[name]
+            for name, spinbox in self._spinboxes.items()
+        }
+        self._refresh_position_items()
+        self._on_value_changed()
+        self._product_positions = {}
+        for record in self._position_records:
+            item = record['item']
+            if record['kind'] == 'legend':
+                bbox = item.get_bbox_to_anchor().transformed(
+                    self._figure.transFigure.inverted())
+            else:
+                bbox = item.get_position()
+            self._product_positions[item] = Bbox.from_extents(*bbox.extents)
+
+        action_grid = QGridLayout()
+        action_grid.setHorizontalSpacing(8)
+        action_grid.setVerticalSpacing(6)
+        self._buttons = {
+            'tight': QPushButton('Tight layout'),
+            'export': QPushButton('Export values'),
+            'reset': QPushButton('Reset values'),
+            'ok': QPushButton('OK'),
+        }
+        self._buttons['tight'].clicked.connect(self._tight_layout)
+        self._buttons['export'].clicked.connect(self._export_values)
+        self._buttons['reset'].clicked.connect(self._reset)
+        self._buttons['reset'].setToolTip(
+            'Restore all original product layout and legend/key positions.')
+        self._buttons['ok'].clicked.connect(self.accept)
+        self._buttons['ok'].setDefault(True)
+        for button in self._buttons.values():
+            button.setAutoDefault(False)
+        button_width = max(
+            132, *(button.sizeHint().width()
+                   for button in self._buttons.values()))
+        for button in self._buttons.values():
+            button.setFixedWidth(button_width)
+        action_grid.addWidget(self._buttons['tight'], 0, 0)
+        action_grid.addWidget(self._buttons['reset'], 0, 1)
+        action_grid.addWidget(self._buttons['export'], 1, 0)
+        action_grid.addWidget(self._buttons['ok'], 1, 1)
+        self._action_grid = action_grid
+        actions = QHBoxLayout()
+        actions.addStretch(1)
+        actions.addLayout(action_grid)
+        actions.addStretch(1)
+        outer.addSpacing(4)
+        outer.addLayout(actions)
+
+    @staticmethod
+    def _legend_spinbox(tooltip):
+        spinbox = QDoubleSpinBox()
+        spinbox.setRange(-1, 1)
+        spinbox.setDecimals(3)
+        spinbox.setSingleStep(0.005)
+        spinbox.setKeyboardTracking(False)
+        spinbox.setToolTip(tooltip)
+        return spinbox
+
+    def _set_spacing_availability(self, name, available, tooltip):
+        spinbox = self._spinboxes[name]
+        spinbox.setEnabled(available)
+        spinbox.setToolTip(tooltip)
+        self._row_reset_buttons[name].setEnabled(available)
+        self._row_reset_buttons[name].setToolTip(tooltip)
+        label = self._spinbox_labels.get(name)
+        if label is not None:
+            label.setEnabled(available)
+            label.setToolTip(tooltip)
+
+    def _reset_subplot_field(self, name):
+        """Restore one plot-layout field without changing its neighbours."""
+        self._spinboxes[name].setValue(self._product_subplotpars[name])
+
+    def _on_value_changed(self):
+        super()._on_value_changed()
+        if hasattr(self, '_position_records'):
+            self._apply_position_offsets()
+
+    def _collect_position_items(self):
+        records = [
+            {'name': 'Figure legend', 'kind': 'legend', 'item': legend}
+            for legend in self._figure.legends
+        ]
+        for index, ax in enumerate(self._figure.axes):
+            legend = ax.get_legend()
+            if legend is not None:
+                records.append({
+                    'name': 'Legend - %s' % _axes_display_name(ax, index),
+                    'kind': 'legend',
+                    'item': legend,
+                })
+        for item in self._layout_keys:
+            key_axes = item.get('axes')
+            anchor = item.get('anchor')
+            if key_axes in self._figure.axes and anchor in self._figure.axes:
+                records.append({
+                    'name': item['name'],
+                    'kind': 'axes',
+                    'item': key_axes,
+                    'anchor': anchor,
+                    'vertical': item.get('vertical', 'fixed'),
+                })
+        unique = []
+        seen = set()
+        for record in records:
+            identity = id(record['item'])
+            if identity not in seen:
+                unique.append(record)
+                seen.add(identity)
+        return unique
+
+    def _refresh_position_items(self):
+        self._position_records = self._collect_position_items()
+        self._position_bases = {}
+        self._position_offsets = {}
+        self._legend_target.blockSignals(True)
+        self._legend_target.clear()
+        if len(self._position_records) > 1:
+            self._legend_target.addItem('All legends and keys')
+        for record in self._position_records:
+            self._legend_target.addItem(record['name'])
+            item = record['item']
+            if record['kind'] == 'legend':
+                bbox = item.get_bbox_to_anchor().transformed(
+                    self._figure.transFigure.inverted())
+                base = {'bbox': Bbox.from_extents(*bbox.extents)}
+            else:
+                position = item.get_position()
+                anchor = record['anchor'].get_position()
+                base = {
+                    'gap_x': position.x0 - anchor.x1,
+                    'relative_y': position.y0 - anchor.y0,
+                    'width': position.width,
+                    'height': position.height,
+                }
+            self._position_bases[item] = base
+            self._position_offsets[item] = (0.0, 0.0)
+        self._legend_target.blockSignals(False)
+        available = bool(self._position_records)
+        self._legend_group.setEnabled(available)
+        if not available:
+            self._legend_target.addItem('No legend or key on this figure')
+        self._show_target_legend_offset()
+
+    def _target_position_items(self):
+        if not self._position_records:
+            return []
+        index = self._legend_target.currentIndex()
+        if len(self._position_records) > 1:
+            if index == 0:
+                return [record['item'] for record in self._position_records]
+            index -= 1
+        return [self._position_records[max(0, index)]['item']]
+
+    def _show_target_legend_offset(self, *_):
+        items = self._target_position_items()
+        x_value, y_value = (self._position_offsets.get(items[0], (0.0, 0.0))
+                            if items else (0.0, 0.0))
+        for spinbox, value in ((self._legend_x, x_value),
+                               (self._legend_y, y_value)):
+            spinbox.blockSignals(True)
+            spinbox.setValue(value)
+            spinbox.blockSignals(False)
+
+    def _legend_value_changed(self, *_):
+        for item in self._target_position_items():
+            self._position_offsets[item] = (self._legend_x.value(),
+                                            self._legend_y.value())
+        self._apply_position_offsets()
+
+    def _apply_position_offsets(self):
+        for record in self._position_records:
+            item = record['item']
+            base = self._position_bases[item]
+            dx, dy = self._position_offsets[item]
+            if record['kind'] == 'legend':
+                bbox = base['bbox']
+                moved = Bbox.from_extents(bbox.x0 + dx, bbox.y0 + dy,
+                                          bbox.x1 + dx, bbox.y1 + dy)
+                item.set_bbox_to_anchor(moved,
+                                        transform=self._figure.transFigure)
+                continue
+            anchor = record['anchor'].get_position()
+            x0 = anchor.x1 + base['gap_x'] + dx
+            if record['vertical'] == 'match':
+                y0 = anchor.y0 + dy
+                height = anchor.height
+            elif record['vertical'] == 'center':
+                y0 = anchor.y0 + anchor.height / 2 - base['height'] / 2 + dy
+                height = base['height']
+            else:
+                y0 = anchor.y0 + base['relative_y'] + dy
+                height = base['height']
+            item.set_position([x0, y0, base['width'], height])
+        self._figure.canvas.draw_idle()
+
+    def update_from_current_subplotpars(self):
+        if not hasattr(self, '_legend_x'):
+            super().update_from_current_subplotpars()
+            return
+        self._defaults = {
+            spinbox: self._product_subplotpars[name]
+            for name, spinbox in self._spinboxes.items()
+        }
+        for name, spinbox in self._spinboxes.items():
+            spinbox.blockSignals(True)
+            spinbox.setValue(getattr(self._figure.subplotpars, name))
+            spinbox.blockSignals(False)
+        SubplotToolQt._on_value_changed(self)
+        self._refresh_position_items()
+
+    def _reset(self):
+        if not hasattr(self, '_position_records'):
+            super()._reset()
+            return
+        super()._reset()
+        for record in self._position_records:
+            item = record['item']
+            bbox = self._product_positions.get(item)
+            if bbox is None:
+                continue
+            if record['kind'] == 'legend':
+                item.set_bbox_to_anchor(
+                    bbox, transform=self._figure.transFigure)
+            else:
+                item.set_position(bbox)
+        self._refresh_position_items()
+        self._figure.canvas.draw_idle()
+
+    def _tight_layout(self):
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                'ignore',
+                message='This figure includes Axes that are not compatible '
+                        'with tight_layout.*')
+            super()._tight_layout()
+        # Color scales are normal Matplotlib axes and follow tight_layout, but
+        # the compass is an absolute polar axes. Re-anchor every side key after
+        # the data axes move so neither can land on top of its heatmap.
+        self._apply_position_offsets()
+
+    def _export_values(self):
+        dialog = QDialog(self, Qt.WindowType.Tool)
+        dialog.setWindowTitle('Layout values')
+        layout = QVBoxLayout(dialog)
+        text = QPlainTextEdit()
+        text.setReadOnly(True)
+        values = [
+            '%s=%.3f' % (name, spinbox.value())
+            for name, spinbox in self._spinboxes.items()
+        ]
+        if self._position_records:
+            values.extend([
+                'legend_horizontal_offset=%.3f' % self._legend_x.value(),
+                'legend_vertical_offset=%.3f' % self._legend_y.value(),
+            ])
+        text.setPlainText(',\n'.join(values))
+        text.setMinimumWidth(330)
+        layout.addWidget(text)
+        buttons = QHBoxLayout()
+        copy_button = QPushButton('Copy all')
+        copy_button.clicked.connect(
+            lambda: QApplication.clipboard().setText(text.toPlainText()))
+        close_button = QPushButton('Close')
+        close_button.clicked.connect(dialog.close)
+        buttons.addWidget(copy_button)
+        buttons.addStretch()
+        buttons.addWidget(close_button)
+        layout.addLayout(buttons)
+        self._export_values_dialog = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+
+class QCSNavigationToolbar(NavigationToolbar2QT):
+    """QCS plot toolbar: useful actions only, with readable Qt dialogs."""
+
+    toolitems = tuple(
+        item for item in NavigationToolbar2QT.toolitems
+        if item[3] not in ('back', 'forward')
+    )
+
+    def __init__(self, canvas, parent=None, coordinates=True):
+        super().__init__(canvas, parent, coordinates)
+        configured = getattr(canvas.figure, '_qcs_customize_axes', None)
+        default_axes = ([ax for _name, ax in configured]
+                        if configured is not None else [
+                            ax for ax in canvas.figure.axes
+                            if ax.get_visible() and ax.get_label() != '<colorbar>'
+                        ])
+        # Capture the published product before wheel zoom, Pan or Customize can
+        # alter it; Reset values must not treat the latest view as the default.
+        self._figure_option_defaults = {
+            ax: self._capture_figure_options(ax) for ax in default_axes
+        }
+        self._zoom_min_spans = {}
+        self._zoom_max_spans = {}
+        for ax in canvas.figure.axes:
+            if not ax.get_visible() or not ax.get_navigate():
+                continue
+            xlim = ax.get_xlim()
+            ylim = ax.get_ylim()
+            self._zoom_min_spans[ax] = (
+                self._minimum_axis_span(xlim),
+                self._minimum_axis_span(ylim),
+            )
+            self._zoom_max_spans[ax] = (
+                abs(float(xlim[1]) - float(xlim[0])),
+                abs(float(ylim[1]) - float(ylim[0])),
+            )
+        self._legend_label_defaults = {
+            ax: {
+                record['key']: record['artist'].get_text()
+                for record in self._collect_legend_labels(ax)
+            }
+            for ax in default_axes
+        }
+        self.setIconSize(QSize(20, 20))
+        self.layout().setContentsMargins(5, 3, 5, 3)
+        self.layout().setSpacing(3)
+        zoom_action = self._actions.get('zoom')
+        if zoom_action is not None:
+            zoom_action.setToolTip(
+                'Zoom to rectangle (range: 1/10,000 to 1x the opening view)')
+        if coordinates:
+            font = self.locLabel.font()
+            font.setBold(True)
+            self.locLabel.setFont(font)
+
+    def _icon(self, name):
+        """Render the selected Fluent Regular asset in the active palette."""
+        stem = os.path.splitext(os.path.basename(name))[0]
+        filename = _FLUENT_TOOLBAR_ICONS.get(stem)
+        if filename is None:
+            return super()._icon(name)
+        path = os.path.join(_FLUENT_ICON_DIR, filename)
+        try:
+            with open(path, encoding='utf-8') as stream:
+                svg = stream.read()
+            color = self.palette().color(
+                QPalette.ColorRole.WindowText).name()
+            svg = svg.replace('#212121', color)
+            renderer = QSvgRenderer(QByteArray(svg.encode('utf-8')))
+            ratio = self.devicePixelRatioF() or 1.0
+            pixmap = QPixmap(round(20 * ratio), round(20 * ratio))
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            pixmap.setDevicePixelRatio(ratio)
+            return QIcon(pixmap)
+        except (OSError, RuntimeError):
+            return super()._icon(name)
+
+    def _refresh_icons(self):
+        if not hasattr(self, '_actions'):
+            return
+        for _text, _tooltip, image_file, callback in self.toolitems:
+            if image_file is not None and callback in self._actions:
+                self._actions[callback].setIcon(self._icon(image_file + '.png'))
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.PaletteChange:
+            self._refresh_icons()
+
+    def _deactivate_navigation_mode(self):
+        """Leave Pan/Zoom before another toolbar command takes focus."""
+        if self.mode.name == 'PAN':
+            super().pan()
+        elif self.mode.name == 'ZOOM':
+            super().zoom()
+
+    def home(self, *args):
+        self._deactivate_navigation_mode()
+        return super().home(*args)
+
+    def save_figure(self, *args):
+        self._deactivate_navigation_mode()
+        return super().save_figure(*args)
+
+    @staticmethod
+    def _minimum_axis_span(limits):
+        """Finite zoom floor derived from one axis' published opening view."""
+        low, high = map(float, limits)
+        opening_span = abs(high - low)
+        roundoff_floor = (max(abs(low), abs(high), 1.0) *
+                          sys.float_info.epsilon * 64)
+        return max(opening_span / 10_000.0, roundoff_floor)
+
+    def _enforce_zoom_limits(self):
+        """Bound zoom-in and zoom-out without changing the Home view."""
+        changed = False
+        for ax, (min_x, min_y) in self._zoom_min_spans.items():
+            if ax not in self.canvas.figure.axes:
+                continue
+            max_x, max_y = self._zoom_max_spans[ax]
+            for getter, setter, minimum, maximum in (
+                    (ax.get_xlim, ax.set_xlim, min_x, max_x),
+                    (ax.get_ylim, ax.set_ylim, min_y, max_y)):
+                low, high = map(float, getter())
+                if not math.isfinite(low) or not math.isfinite(high):
+                    continue
+                span = abs(high - low)
+                if span < minimum:
+                    target = minimum
+                elif span > maximum:
+                    target = maximum
+                else:
+                    continue
+                centre = (low + high) / 2.0
+                lower = centre - target / 2.0
+                upper = centre + target / 2.0
+                setter((lower, upper) if high >= low else (upper, lower))
+                changed = True
+        if changed:
+            self.canvas.draw_idle()
+        return changed
+
+    def release_zoom(self, event):
+        super().release_zoom(event)
+        self._enforce_zoom_limits()
+
+    @staticmethod
+    def _capture_figure_options(ax):
+        axes = {}
+        for name, axis in ax._axis_map.items():
+            axes[name] = {
+                'limits': tuple(getattr(ax, 'get_%slim' % name)()),
+                'label': axis.label.get_text(),
+                'scale': axis.get_scale(),
+            }
+        lines = []
+        for line in ax.get_lines():
+            lines.append({
+                'item': line,
+                'label': line.get_label(),
+                'linestyle': line.get_linestyle(),
+                'drawstyle': line.get_drawstyle(),
+                'linewidth': line.get_linewidth(),
+                'color': line.get_color(),
+                'alpha': line.get_alpha(),
+                'marker': line.get_marker(),
+                'markersize': line.get_markersize(),
+                'markerfacecolor': line.get_markerfacecolor(),
+                'markeredgecolor': line.get_markeredgecolor(),
+            })
+        mappables = []
+        for item in [*ax.images, *ax.collections]:
+            if item.get_array() is None:
+                continue
+            values = {
+                'item': item,
+                'label': item.get_label(),
+                'cmap': item.get_cmap(),
+                'clim': item.get_clim(),
+            }
+            if hasattr(item, 'get_interpolation'):
+                values['interpolation'] = item.get_interpolation()
+                values['interpolation_stage'] = item.get_interpolation_stage()
+            mappables.append(values)
+        legend = ax.get_legend()
+        legend_state = None
+        if legend is not None:
+            bbox = legend.get_bbox_to_anchor().transformed(
+                ax.figure.transFigure.inverted())
+            legend_state = {
+                'loc': legend._loc,
+                'bbox': Bbox.from_extents(*bbox.extents),
+                'ncols': legend._ncols,
+                'draggable': legend._draggable is not None,
+                'frameon': legend.get_frame_on(),
+            }
+        return {
+            'figure_title': (ax.figure._suptitle.get_text()
+                             if ax.figure._suptitle is not None else ''),
+            'title': ax.get_title(),
+            'axes': axes,
+            'lines': lines,
+            'mappables': mappables,
+            'legend': legend_state,
+        }
+
+    @staticmethod
+    def _collect_legend_labels(ax):
+        """Visible legend/key texts that Figure options can meaningfully edit."""
+        records = []
+        seen = set()
+
+        def add(key, name, artist, kind, index=None):
+            if artist is None or id(artist) in seen:
+                return
+            records.append({
+                'key': key,
+                'name': name,
+                'artist': artist,
+                'kind': kind,
+                'index': index,
+            })
+            seen.add(id(artist))
+
+        legend = ax.get_legend()
+        if legend is not None:
+            for index, artist in enumerate(legend.get_texts()):
+                add(('legend', index), 'Legend entry %d' % (index + 1),
+                    artist, 'legend', index)
+        for legend_index, figure_legend in enumerate(ax.figure.legends):
+            for index, artist in enumerate(figure_legend.get_texts()):
+                add(('figure legend', legend_index, index),
+                    'Figure legend entry %d' % (index + 1),
+                    artist, 'figure legend', index)
+        metadata = getattr(ax.figure, '_qcs_legend_labels', {}).get(ax, [])
+        for index, item in enumerate(metadata):
+            add(('key', index, item['name']), item['name'], item['artist'],
+                'key')
+        for item in [*ax.images, *ax.collections]:
+            colorbar = getattr(item, 'colorbar', None)
+            if colorbar is None or not colorbar.ax.get_visible():
+                continue
+            axis = (colorbar.ax.xaxis if colorbar.orientation == 'horizontal'
+                    else colorbar.ax.yaxis)
+            artist = axis.label
+            add(('colorbar', id(item)),
+                artist.get_text() or 'Color scale', artist, 'key')
+        return records
+
+    @staticmethod
+    def _set_form_values(form, values):
+        """Put values into Matplotlib's private FormWidget without applying."""
+        value_iter = iter(values)
+        for index, (label, original) in enumerate(form.data):
+            if label is None:
+                continue
+            value = next(value_iter)
+            field = form.widgets[index]
+            if hasattr(field, 'lineedit') and hasattr(field, 'colorbtn'):
+                field.lineedit.setText(str(value))
+                field.update_color()
+            elif isinstance(field, QComboBox):
+                choices = original
+                wanted = field.findText(str(value))
+                if (wanted < 0 and choices and
+                        isinstance(choices[0], (list, tuple))):
+                    keys = [choice[0] for choice in choices]
+                    wanted = keys.index(value) if value in keys else 0
+                elif wanted < 0:
+                    texts = [str(choice) for choice in choices]
+                    wanted = texts.index(str(value)) if str(value) in texts else 0
+                field.setCurrentIndex(wanted)
+            elif isinstance(field, QCheckBox):
+                field.setChecked(bool(value))
+            elif hasattr(field, 'setDateTime'):
+                if isinstance(value, Real):
+                    value = mdates.num2date(value)
+                field.setDateTime(value)
+            elif hasattr(field, 'setDate'):
+                field.setDate(value)
+            elif isinstance(field, QLineEdit):
+                field.setText(
+                    repr(float(value)) if field.validator() else str(value))
+            elif hasattr(field, 'setValue'):
+                field.setValue(value)
+
+    @staticmethod
+    def _form_widget_value(field):
+        """Capture one editable Figure-options widget without applying it."""
+        if hasattr(field, 'lineedit') and hasattr(field, 'colorbtn'):
+            return 'color', field.lineedit.text()
+        if isinstance(field, QComboBox):
+            return 'combo', field.currentIndex()
+        if isinstance(field, QCheckBox):
+            return 'check', field.isChecked()
+        if isinstance(field, QLineEdit):
+            return 'text', field.text()
+        if hasattr(field, 'dateTime') and hasattr(field, 'setDateTime'):
+            return 'datetime', field.dateTime()
+        if hasattr(field, 'date') and hasattr(field, 'setDate'):
+            return 'date', field.date()
+        if hasattr(field, 'value') and hasattr(field, 'setValue'):
+            return 'value', field.value()
+        return None
+
+    @staticmethod
+    def _restore_form_widget_value(field, state):
+        """Restore one captured Figure-options field, still form-only."""
+        kind, value = state
+        if kind == 'color':
+            field.lineedit.setText(value)
+            field.update_color()
+        elif kind == 'combo':
+            field.setCurrentIndex(value)
+        elif kind == 'check':
+            field.setChecked(value)
+        elif kind == 'text':
+            field.setText(value)
+        elif kind == 'datetime':
+            field.setDateTime(value)
+        elif kind == 'date':
+            field.setDate(value)
+        elif kind == 'value':
+            field.setValue(value)
+
+    def _figure_option_form_rows(self, dialog):
+        """All Figure-options value rows and whether each is user-visible."""
+        rows = []
+        seen = set()
+        hidden_fields = getattr(dialog, '_qcs_hidden_option_fields', set())
+        for form in dialog.findChildren(QFormLayout):
+            for row in range(form.rowCount()):
+                item = form.itemAt(row, QFormLayout.ItemRole.FieldRole)
+                field = item.widget() if item is not None else None
+                if field is None or id(field) in seen:
+                    continue
+                state = self._form_widget_value(field)
+                if state is None:
+                    continue
+                seen.add(id(field))
+                label_item = form.itemAt(
+                    row, QFormLayout.ItemRole.LabelRole)
+                label = label_item.widget() if label_item is not None else None
+                label_text = label.text() if isinstance(label, QLabel) else ''
+                label_text = re.sub('<[^>]+>', '', label_text).strip()
+                rows.append({
+                    'form': form,
+                    'row': row,
+                    'field': field,
+                    'label': label_text,
+                    # Runtime visibility is false for new rows and for every
+                    # inactive tab. Only fields deliberately suppressed by the
+                    # QCS adapter are excluded from per-row reset actions.
+                    'visible': field not in hidden_fields,
+                })
+        return rows
+
+    def _reset_one_figure_option(self, dialog, field, state):
+        """Refill one product default; Apply remains the mutation step."""
+        self._restore_form_widget_value(field, state)
+        for record in getattr(dialog, '_qcs_legend_records', []):
+            if record.get('field') is field:
+                record['dirty'] = True
+                break
+        dialog.update_buttons()
+
+    def _install_figure_option_row_resets(self, dialog, ax):
+        """Add the Settings-style reset arrow to every editable visible row."""
+        rows = self._figure_option_form_rows(dialog)
+        current = {
+            record['field']: self._form_widget_value(record['field'])
+            for record in rows
+        }
+        legend_dirty = {
+            record['field']: record['dirty']
+            for record in getattr(dialog, '_qcs_legend_records', [])
+        }
+        self._reset_figure_options_form(dialog, ax)
+        defaults = {
+            record['field']: self._form_widget_value(record['field'])
+            for record in rows
+        }
+        for field, state in current.items():
+            self._restore_form_widget_value(field, state)
+        for record in getattr(dialog, '_qcs_legend_records', []):
+            record['dirty'] = legend_dirty[record['field']]
+        dialog.update_buttons()
+
+        installed = []
+        for record in rows:
+            if not record['visible'] or not record['label']:
+                continue
+            field = record['field']
+            form = record['form']
+            row = record['row']
+            holder = QWidget()
+            layout = QHBoxLayout(holder)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(4)
+            form.removeWidget(field)
+            layout.addWidget(field, 1)
+            button = _row_reset_button(
+                'Restore the original %s.' % record['label'].lower(),
+                lambda _checked=False, widget=field, value=defaults[field]:
+                self._reset_one_figure_option(dialog, widget, value))
+            layout.addWidget(button)
+            form.setWidget(row, QFormLayout.ItemRole.FieldRole, holder)
+            installed.append({**record, 'button': button})
+        dialog._qcs_row_reset_buttons = installed
+
+    def _reset_figure_options_form(self, dialog, ax):
+        """Refill product defaults; Apply remains the only mutation step."""
+        state = self._figure_option_defaults[ax]
+        axes_values = [state['title']]
+        for name in ax._axis_map:
+            values = state['axes'][name]
+            limits = values['limits']
+            axes_values.extend([
+                *limits, values['label'], values['scale']])
+
+        tabs = dialog.formwidget.tabwidget
+        tab_forms = {
+            tabs.tabText(index): dialog.formwidget.widgetlist[index]
+            for index in range(len(dialog.formwidget.widgetlist))
+        }
+        self._set_form_values(tab_forms['Axes'], axes_values)
+        dialog._qcs_figure_title.setText(state['figure_title'])
+        datetime_fields = getattr(dialog, '_qcs_datetime_fields', None)
+        if datetime_fields is not None:
+            lower, upper = dialog._qcs_datetime_bounds
+            datetime_fields[0].setText(lower.strftime(dbv.TIME_TEXT_FORMAT))
+            datetime_fields[1].setText(upper.strftime(dbv.TIME_TEXT_FORMAT))
+
+        curve_states = [
+            values for values in state['lines']
+            if values['label'] != '_nolegend_'
+        ]
+        curves = tab_forms.get('Curves')
+        if curves is not None:
+            for form, values in zip(
+                    curves.widgetlist, curve_states, strict=True):
+                color = mcolors.to_hex(mcolors.to_rgba(
+                    values['color'], values['alpha']), keep_alpha=True)
+                face = mcolors.to_hex(mcolors.to_rgba(
+                    values['markerfacecolor'], values['alpha']),
+                    keep_alpha=True)
+                edge = mcolors.to_hex(mcolors.to_rgba(
+                    values['markeredgecolor'], values['alpha']),
+                    keep_alpha=True)
+                self._set_form_values(form, [
+                    values['label'], values['linestyle'],
+                    values['drawstyle'], values['linewidth'], color,
+                    values['marker'], values['markersize'], face, edge])
+
+        graphs = tab_forms.get('Graphs')
+        if graphs is not None:
+            graph_states = [
+                values for values in state['mappables']
+                if values['label'] != '_nolegend_'
+            ]
+            for form, values in zip(
+                    graphs.widgetlist, graph_states, strict=True):
+                graph_values = [
+                    values['label'], values['cmap'].name, *values['clim']]
+                if 'interpolation' in values:
+                    graph_values.extend([
+                        values['interpolation'],
+                        values['interpolation_stage']])
+                self._set_form_values(form, graph_values)
+
+        for record in getattr(dialog, '_qcs_legend_records', []):
+            default = self._legend_label_defaults.get(ax, {}).get(
+                record['key'], record['artist'].get_text())
+            record['field'].setText(default)
+            record['dirty'] = True
+        dialog.update_buttons()
+
+    def _configure_datetime_x_options(self, dialog, ax):
+        """Use readable text controls for the selected product time range."""
+        converter = ax.xaxis.get_converter()
+        converter_name = type(converter).__name__.lower()
+        if (converter is None or 'date' not in converter_name or
+                'converter' not in converter_name):
+            return False
+        general = dialog.formwidget.widgetlist[0]
+        state = self._figure_option_defaults[ax]
+        lower, upper = sorted(state['axes']['x']['limits'])
+        available_start, available_end = dbv.normalized_time_bounds(
+            mdates.num2date(lower), mdates.num2date(upper))
+        x_section = False
+        header_row = None
+        min_position = max_position = None
+        hidden_fields = getattr(dialog, '_qcs_hidden_option_fields', set())
+        dialog._qcs_hidden_option_fields = hidden_fields
+        for row, (label, value) in enumerate(general.data):
+            if label is None and value == '<b>X-Axis</b>':
+                x_section = True
+                header_row = row
+                heading = general.formlayout.itemAt(
+                    row, QFormLayout.ItemRole.SpanningRole)
+                if heading is not None and heading.widget() is not None:
+                    heading.widget().setText('<b>Date/time range</b>')
+                continue
+            if not x_section:
+                continue
+            if label is None and value is None:
+                general.formlayout.setRowVisible(row, False)
+                break
+            field = general.widgets[row]
+            general.formlayout.setRowVisible(row, False)
+            hidden_fields.add(field)
+            value_position = sum(
+                item_label is not None
+                for item_label, _item_value in general.data[:row])
+            if label == 'Min':
+                min_position = value_position
+            elif label == 'Max':
+                max_position = value_position
+
+        if header_row is None or min_position is None or max_position is None:
+            return False
+
+        current_lower, current_upper = sorted(ax.get_xlim())
+        current_lower, current_upper = dbv.normalized_time_bounds(
+            mdates.num2date(current_lower), mdates.num2date(current_upper))
+        current_lower = max(current_lower, available_start)
+        current_upper = min(current_upper, available_end)
+        start_field = QLineEdit()
+        end_field = QLineEdit()
+        for field, value in (
+                (start_field, current_lower), (end_field, current_upper)):
+            field.setInputMask('00/00/0000 00:00;_')
+            field.setText(value.strftime(dbv.TIME_TEXT_FORMAT))
+            field.setToolTip(
+                'Edit as DD/MM/YYYY HH:MM. Both values must stay inside the '
+                'available interval shown below.')
+        available = QLabel(
+            'From %s to %s' % (
+                available_start.strftime('%d/%m/%Y %H:%M'),
+                available_end.strftime('%d/%m/%Y %H:%M')))
+        available.setToolTip(
+            'Range available after the Data Visualization filters were '
+            'applied to this product.')
+        general.formlayout.insertRow(header_row + 1, 'Start', start_field)
+        general.formlayout.insertRow(header_row + 2, 'End', end_field)
+        general.formlayout.insertRow(header_row + 3, 'Available', available)
+        dialog._qcs_datetime_fields = (start_field, end_field)
+        dialog._qcs_datetime_data_positions = (min_position, max_position)
+        dialog._qcs_datetime_bounds = (available_start, available_end)
+        dialog._qcs_datetime_available = available
+        return True
+
+    @staticmethod
+    def _datetime_form_values(dialog, show_error=True):
+        fields = getattr(dialog, '_qcs_datetime_fields', None)
+        if fields is None:
+            return ()
+        available_start, available_end = dialog._qcs_datetime_bounds
+        try:
+            return dbv.validate_time_window_texts(
+                fields[0].text(), fields[1].text(),
+                available_start, available_end)
+        except ValueError:
+            if show_error:
+                QMessageBox.critical(
+                    dialog, 'Invalid date/time range',
+                    dbv.time_window_error_message(
+                        available_start, available_end))
+            return None
+
+    @staticmethod
+    def _hide_graph_names(dialog):
+        """Mappable labels are metadata, not the visible color-key title."""
+        tabs = dialog.formwidget.tabwidget
+        hidden_fields = getattr(dialog, '_qcs_hidden_option_fields', set())
+        dialog._qcs_hidden_option_fields = hidden_fields
+        for index in range(len(dialog.formwidget.widgetlist)):
+            if tabs.tabText(index) != 'Graphs':
+                continue
+            graphs = dialog.formwidget.widgetlist[index]
+            if len(graphs.widgetlist) == 1:
+                graphs.combobox.hide()
+            else:
+                graphs.combobox.setToolTip(
+                    'Select the graph element to customize.')
+            for form in graphs.widgetlist:
+                for row, (label, _value) in enumerate(form.data):
+                    if label == 'Label':
+                        form.formlayout.setRowVisible(row, False)
+                        hidden_fields.add(form.widgets[row])
+                        break
+
+    def _add_legends_tab(self, dialog, ax):
+        tabs = dialog.formwidget.tabwidget
+        page = QWidget()
+        form = QFormLayout(page)
+        records = self._collect_legend_labels(ax)
+        if not records:
+            form.addRow(QLabel('This plot has no editable legend labels.'))
+        for record in records:
+            field = QLineEdit(record['artist'].get_text())
+            record['field'] = field
+            record['dirty'] = False
+            field.textEdited.connect(
+                lambda _text, item=record: item.__setitem__('dirty', True))
+            form.addRow(record['name'], field)
+        tabs.addTab(page, 'Legends')
+        dialog._qcs_legend_records = records
+
+        # A visible line legend should track its Graph/Curve label unless the
+        # operator explicitly types a different visible legend text.
+        curve_widget = None
+        graph_widget = None
+        for index in range(len(dialog.formwidget.widgetlist)):
+            if tabs.tabText(index) == 'Curves':
+                curve_widget = dialog.formwidget.widgetlist[index]
+            elif tabs.tabText(index) == 'Graphs':
+                graph_widget = dialog.formwidget.widgetlist[index]
+        legend_records = [
+            record for record in records if record['kind'] == 'legend'
+        ]
+        labeled_lines = [
+            line for line in ax.get_lines()
+            if line.get_label() != '_nolegend_'
+        ]
+        if curve_widget is not None:
+            eligible_fields = [
+                curve_form.widgets[0]
+                for curve_form, line in zip(
+                    curve_widget.widgetlist, labeled_lines, strict=True)
+                if not line.get_label().startswith('_')
+            ]
+            for source, record in zip(
+                    eligible_fields, legend_records, strict=False):
+                source.textChanged.connect(
+                    lambda text, item=record: (
+                        item['field'].setText(text)
+                        if not item['dirty'] else None))
+
+        original_apply = dialog.apply_callback
+
+        def apply_with_legends(data):
+            datetime_fields = getattr(dialog, '_qcs_datetime_fields', None)
+            if datetime_fields is not None:
+                datetime_values = self._datetime_form_values(dialog)
+                if datetime_values is None:
+                    return
+                min_position, max_position = \
+                    dialog._qcs_datetime_data_positions
+                data[0][min_position] = mdates.date2num(
+                    datetime_values[0].to_pydatetime())
+                data[0][max_position] = mdates.date2num(
+                    datetime_values[1].to_pydatetime())
+            # The upstream Matplotlib callback has one positional boolean at
+            # the end of the Axes form. QCS has no automatic-regeneration
+            # feature, field or saved state; the adapter always disables it.
+            data[0].append(False)
+            # Matplotlib sets vmin and vmax in two callback-emitting steps. If
+            # the requested range sits wholly above/below the current one, the
+            # attached colorbar can clamp the first endpoint. Expand once to
+            # the union so the normal callback can then reach both exact values.
+            if graph_widget is not None:
+                graph_values = [form.get()
+                                for form in graph_widget.widgetlist]
+                graph_items = [
+                    item for item in [*ax.images, *ax.collections]
+                    if item.get_array() is not None and
+                    item.get_label() != '_nolegend_'
+                ]
+                for item, values in zip(
+                        graph_items, graph_values, strict=True):
+                    low, high = sorted(values[2:4])
+                    current_low, current_high = item.get_clim()
+                    norm = item.norm
+                    with norm.callbacks.blocked():
+                        norm.vmin = min(current_low, low)
+                        norm.vmax = max(current_high, high)
+                    item.changed()
+            original_apply(data)
+            figure_title = dialog._qcs_figure_title.text()
+            if ax.figure._suptitle is None:
+                if figure_title:
+                    ax.figure.suptitle(figure_title)
+            else:
+                ax.figure._suptitle.set_text(figure_title)
+            for record in records:
+                record['artist'].set_text(record['field'].text())
+            ax.figure.canvas.draw_idle()
+
+        dialog.apply_callback = apply_with_legends
+
+    def _prepare_figure_options_dialog(self, dialog, ax, can_go_back=False,
+                                       plot_name=None):
+        dialog.setWindowIcon(self._actions['edit_parameters'].icon())
+        dialog.setWindowTitle(
+            'Figure options - %s' % (
+                plot_name or _axes_display_name(ax, 0)))
+        tabs = dialog.formwidget.tabwidget
+        for index in range(tabs.count()):
+            if tabs.tabText(index) == 'Images, etc.':
+                tabs.setTabText(index, 'Graphs')
+        general = dialog.formwidget.widgetlist[0]
+        for row, (label, _value) in enumerate(general.data):
+            if label == 'Title':
+                title_label = general.formlayout.labelForField(
+                    general.widgets[row])
+                if title_label is not None:
+                    title_label.setText('Plot title')
+                break
+        for row, (label, _value) in enumerate(general.data):
+            if label != '(Re-)Generate automatic legend':
+                continue
+            field = general.widgets[row]
+            general.formlayout.removeRow(field)
+            general.data.pop(row)
+            general.widgets.pop(row)
+            break
+        self._configure_datetime_x_options(dialog, ax)
+        figure_title = QLineEdit(
+            ax.figure._suptitle.get_text()
+            if ax.figure._suptitle is not None else '')
+        figure_title.setToolTip(
+            'Edit the title shown above the complete figure.')
+        general.formlayout.insertRow(0, 'Figure title', figure_title)
+        dialog._qcs_figure_title = figure_title
+        self._hide_graph_names(dialog)
+        self._add_legends_tab(dialog, ax)
+
+        dialog.layout().removeWidget(dialog.bbox)
+        dialog.bbox.hide()
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        buttons = {
+            'back': QPushButton('< Back'),
+            'reset': QPushButton('Reset values'),
+            'apply': QPushButton('Apply'),
+            'ok': QPushButton('OK'),
+        }
+        button_width = max(
+            108, *(button.sizeHint().width() for button in buttons.values()))
+        for button in buttons.values():
+            button.setFixedWidth(button_width)
+            button.setAutoDefault(False)
+            button_row.addWidget(button)
+        button_row.addStretch(1)
+        dialog.layout().addLayout(button_row)
+        dialog._qcs_buttons = buttons
+        buttons['back'].setEnabled(can_go_back)
+        buttons['back'].setToolTip(
+            'Return to plot selection.' if can_go_back
+            else 'This figure has only one customizable plot.')
+        buttons['ok'].setDefault(True)
+        buttons['back'].clicked.connect(
+            lambda: self._return_to_customize_picker(dialog))
+        reset = buttons['reset']
+        reset.setToolTip(
+            'Refill the original product values; use Apply to confirm them.')
+        reset.clicked.connect(
+            lambda: self._reset_figure_options_form(dialog, ax))
+
+        def apply_checked():
+            if self._datetime_form_values(dialog) is not None:
+                dialog.apply()
+
+        def accept_checked():
+            if self._datetime_form_values(dialog) is None:
+                return
+            dialog.apply()
+            QDialog.accept(dialog)
+
+        buttons['apply'].clicked.connect(apply_checked)
+        buttons['ok'].clicked.connect(accept_checked)
+
+        def update_buttons():
+            valid = all(field.hasAcceptableInput()
+                        for field in dialog.float_fields)
+            valid = valid and all(
+                field.hasAcceptableInput() for field in
+                getattr(dialog, '_qcs_datetime_fields', ()))
+            buttons['apply'].setEnabled(valid)
+            buttons['ok'].setEnabled(valid)
+
+        dialog.update_buttons = update_buttons
+        update_buttons()
+        self._install_figure_option_row_resets(dialog, ax)
+
+    def _return_to_customize_picker(self, dialog):
+        dialog.reject()
+        QTimer.singleShot(0, self.edit_parameters)
+
+    def _open_figure_options(self, ax, can_go_back=False, plot_name=None):
+        self._figure_option_defaults.setdefault(
+            ax, self._capture_figure_options(ax))
+        figureoptions.figure_edit(ax, self)
+        dialog = getattr(self, '_fedit_dialog', None)
+        if dialog is not None:
+            self._prepare_figure_options_dialog(
+                dialog, ax, can_go_back=can_go_back,
+                plot_name=plot_name)
+        return dialog
+
+    def edit_parameters(self):
+        self._deactivate_navigation_mode()
+        figure = self.canvas.figure
+        configured = getattr(figure, '_qcs_customize_axes', None)
+        if configured is not None:
+            choices = [(name, ax) for name, ax in configured
+                       if ax in figure.axes and ax.get_visible()]
+        else:
+            axes = [ax for ax in figure.get_axes()
+                    if ax.get_visible() and ax.get_label() != '<colorbar>']
+            names = _unique_axes_names(axes)
+            choices = list(zip(names, axes, strict=True))
+        if not choices:
+            QMessageBox.warning(
+                self.canvas.parent(), 'Error', 'There are no plots to edit.')
+            return
+        if len(choices) == 1:
+            plot_name, ax = choices[0]
+        else:
+            names = [name for name, _ in choices]
+            picker = QInputDialog(self.canvas.parent())
+            picker.setWindowTitle('Customize')
+            picker.setWindowIcon(
+                self._actions['edit_parameters'].icon())
+            picker.setLabelText('Select plot:')
+            picker.setComboBoxItems(names)
+            picker.setComboBoxEditable(False)
+            if picker.exec() != QDialog.DialogCode.Accepted:
+                return
+            item = picker.textValue()
+            plot_name = item
+            ax = choices[names.index(item)][1]
+        self._open_figure_options(
+            ax, can_go_back=len(choices) > 1, plot_name=plot_name)
+
+    def configure_subplots(self):
+        self._deactivate_navigation_mode()
+        if self._subplot_dialog is None:
+            self._subplot_dialog = QCSSubplotToolQt(
+                self.canvas.figure, self.canvas.parent(),
+                self._actions['configure_subplots'].icon())
+            self.canvas.mpl_connect(
+                'close_event', lambda _event: self._subplot_dialog.reject())
+        self._subplot_dialog.update_from_current_subplotpars()
+        self._subplot_dialog.setModal(True)
+        self._subplot_dialog.show()
+        return self._subplot_dialog
+
+
+def _prime_toolbar(fig, toolbar):
+    """Prime the opening view used by Home in the QCS navigation toolbar.
+
+    Back/Forward are intentionally absent: they tracked only toolbar Pan/Zoom,
+    not the wheel and middle-button interactions used throughout QCS.
     """
     try:
         toolbar.push_current()
@@ -199,6 +1520,7 @@ class PlotWindow(QWidget):
         super().__init__(parent)
         self.setWindowFlag(Qt.Window)
         self._fig = fig
+        fig._qcs_plot_window = self
         self._closing = False
         self._loop = None
         canvas = fig.canvas
@@ -210,13 +1532,35 @@ class PlotWindow(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
-        toolbar = NavigationToolbar2QT(canvas, self)
+        toolbar = QCSNavigationToolbar(canvas, self)
         self._toolbar = toolbar
         _prime_toolbar(fig, toolbar)
         lay.addWidget(toolbar)
         lay.addWidget(canvas)
+        button_specs = getattr(fig, '_qcs_native_buttons', None)
+        self._review_buttons = []
+        if button_specs:
+            # The figure retains its Matplotlib buttons for the legacy Tk shell.
+            # In Qt, hide those drawn axes and use the same native QPushButtons,
+            # margins and spacing as the panel browser's Previous / Next row.
+            for button_ax in getattr(fig, '_qcs_mpl_button_axes', []):
+                button_ax.set_visible(False)
+            fig.subplots_adjust(bottom=0.12)
+            canvas.draw_idle()
+            lay.setContentsMargins(0, 0, 0, 8)
+            lay.setSpacing(6)
+            actions = QHBoxLayout()
+            actions.setContentsMargins(9, 0, 9, 0)
+            actions.setSpacing(6)
+            for text, callback in button_specs:
+                button = QPushButton(text)
+                button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                button.clicked.connect(lambda _checked=False, cb=callback: cb())
+                actions.addWidget(button, 1)
+                self._review_buttons.append(button)
+            lay.addLayout(actions)
         w, h = fig.get_size_inches() * fig.dpi
-        self.resize(int(w), int(h) + 48)
+        self.resize(int(w), int(h) + (96 if button_specs else 48))
         fig.canvas.mpl_connect('close_event', self._figure_closed)
         # only a figure pyplot KNOWS can be detected as closed by the watchdog;
         # one built straight from Figure() would otherwise be closed at once
@@ -260,7 +1604,7 @@ class PlotWindow(QWidget):
 class PanelBrowserWindow(QWidget):
     """One window holding several panels, paged with Previous / Next.
 
-    The four current panels opened as four separate windows: fine for a first
+    The current panels opened as separate windows: fine for a first
     look, noise for a comparison (owner, v13.0). Here they share a window and
     the operator walks through them at their own pace, each page keeping its
     own navigation toolbar so a panel can still be zoomed, panned and saved.
@@ -276,6 +1620,7 @@ class PanelBrowserWindow(QWidget):
         self.setWindowIcon(_app_icon())
         self._figs = list(figs)
         self._stack = QStackedWidget()
+        self._toolbars = []
         for fig in self._figs:
             page = QWidget()
             pv = QVBoxLayout(page)
@@ -284,7 +1629,8 @@ class PanelBrowserWindow(QWidget):
             canvas = fig.canvas
             if not isinstance(canvas, FigureCanvasQTAgg):
                 canvas = FigureCanvasQTAgg(fig)
-            toolbar = NavigationToolbar2QT(canvas, page)
+            toolbar = QCSNavigationToolbar(canvas, page)
+            self._toolbars.append(toolbar)
             _prime_toolbar(fig, toolbar)
             pv.addWidget(toolbar)
             pv.addWidget(canvas)
@@ -300,8 +1646,16 @@ class PanelBrowserWindow(QWidget):
         self._next = QPushButton('Next >')
         self._next.clicked.connect(lambda: self._step(1))
         self._counter = QLabel()
+        self._picker = QComboBox()
+        self._picker.setToolTip('Jump directly to a site and panel')
+        for i, fig in enumerate(self._figs):
+            title = getattr(fig, '_qcs_window_title', '') or 'Panel %d' % (i + 1)
+            self._picker.addItem(title)
+        self._picker.currentIndexChanged.connect(self._go)
         nav.addWidget(self._prev)
         nav.addStretch()
+        nav.addWidget(QLabel('Go to:'))
+        nav.addWidget(self._picker, 1)
         nav.addWidget(self._counter)
         nav.addStretch()
         nav.addWidget(self._next)
@@ -315,13 +1669,16 @@ class PanelBrowserWindow(QWidget):
         self._go(self._stack.currentIndex() + delta)
 
     def _go(self, index):
-        index = max(0, min(index, len(self._figs) - 1))
-        self._stack.setCurrentIndex(index)
-        self._counter.setText('Panel %d of %d' % (index + 1, len(self._figs)))
-        self._prev.setEnabled(index > 0)
-        self._next.setEnabled(index < len(self._figs) - 1)
-        title = getattr(self._figs[index], '_qcs_window_title', '') or 'QCS - panels'
-        self.setWindowTitle('%s  (%d of %d)' % (title, index + 1, len(self._figs)))
+        with qtheme.wait_cursor(self):
+            index = max(0, min(index, len(self._figs) - 1))
+            self._stack.setCurrentIndex(index)
+            with QSignalBlocker(self._picker):
+                self._picker.setCurrentIndex(index)
+            self._counter.setText('Panel %d of %d' % (index + 1, len(self._figs)))
+            self._prev.setEnabled(index > 0)
+            self._next.setEnabled(index < len(self._figs) - 1)
+            title = getattr(self._figs[index], '_qcs_window_title', '') or 'QCS - panels'
+            self.setWindowTitle('%s  (%d of %d)' % (title, index + 1, len(self._figs)))
 
     def show_free(self):
         PlotWindow._open.append(self)     # the next set of panels closes it
@@ -1853,6 +3210,9 @@ def _install_qt_facade(shell):
     qm.ui_error = _on_gui(lambda t, m: QMessageBox.critical(shell, t, m))
     qm.ui_info_parented = _on_gui(
         lambda t, m, parent=None: QMessageBox.information(shell, t, m))
+    data._show_plot_info = _on_gui(
+        lambda fig, t, m: QMessageBox.information(
+            getattr(fig, '_qcs_plot_window', shell), t, m))
     qm.ui_busy = _on_gui(shell.set_busy)
     # ui_pump was 'let the window repaint'; the window repaints on its own now,
     # so the pipeline's yield points become the CANCEL checkpoints instead

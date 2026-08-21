@@ -15,9 +15,9 @@ whether the pipeline caught them.
      out FLAGGED. An impossible value carrying flag 1 is a pipeline defect; one
      carrying flag 4 is the QC working as designed.
 
-The limits are the app's own (`QCS_Main.py` defaultSettings['tsSettings']) and
-the variable -> flag mapping is `QCS_DataHandler.PARAM_FLAG_COLUMN`, so this
-script cannot drift away from what the pipeline actually enforces.
+The limits below mirror `QCS_Main.py` defaults and must be updated with them;
+the variable -> flag mapping is read directly from
+`QCS_DataHandler.PARAM_FLAG_COLUMN`.
 
 Two things worth knowing before reading the output:
 
@@ -25,8 +25,10 @@ Two things worth knowing before reading the output:
     ONLY an environmental-range test, and every environmental test assigns
     SUSPECT (3), not BAD (4) - see `test_sequence` in `QCS_Main.py`. Checking
     for flag 4 on those variables produces false alarms.
-  - `Density`, `Soundspeed`, `TSS`, `Depth` and `PAR` are derived or untested
-    and carry no flag column of their own. A density below 1000 kg/m3 is not a
+  - `Soundspeed` remains untested and carries no flag column of its own;
+    `Density` and `Depth` have derived flags, `TSS` shares `Flag_tur`, and PAR
+    has its own `Flag_PAR` from v13.0.
+    A density below 1000 kg/m3 is not a
     defect: it is fresh-water density, and it means the CONDUCTIVITY reads
     zero - the instrument was out of the water, or the sensor is dead. Read it
     through `Flag_S` / `Flag_C`, which is where the verdict lives.
@@ -54,6 +56,7 @@ LIMITS = {
     'Chlorophyll (ug/L)':             ((0, 500),   (0, 30)),
     'O2 level (uM)':                  ((0, 500),   (120, 450)),
     'Turbidity (FTU)':                ((0, 1500),  (0, 50)),
+    'PAR (umol/m2/s)':                ((0, 5000),  (0, 4000)),
     'CO2 Level (ppm)':                ((0, 10000), (100, 2000)),
     # HOBO temperature shares the Seaguard column name; its own reader limits
     # are wider (-5..60), so the sensor bound below is the stricter of the two.
@@ -63,7 +66,27 @@ ENV_ONLY = {'Dissolved organic matter (ppb)': (0, 50)}
 
 
 def sweep():
-    idx = pd.read_csv(os.path.join(ROOT, 'qualified_index.csv'), encoding='utf-8-sig')
+    index_path = os.path.join(ROOT, 'qualified_index.csv')
+    if os.path.isfile(index_path):
+        idx = pd.read_csv(index_path, encoding='utf-8-sig')
+    else:
+        # A validation sweep must still work between index rebuilds. Discover
+        # only qualified data CSVs (never report files) and retain the same
+        # relative-path/product columns used by build_index.py.
+        rows = []
+        for instrument in ('SEAGUARD', 'HOBO'):
+            qualified = os.path.join(ROOT, instrument, 'qualified')
+            for folder, _dirs, files in os.walk(qualified):
+                for name in files:
+                    if (not name.lower().endswith('.csv') or
+                            name.lower().startswith('qcs_')):
+                        continue
+                    path = os.path.join(folder, name)
+                    rows.append({'path': os.path.relpath(path, ROOT),
+                                 'product': name})
+        idx = pd.DataFrame(rows)
+        print('Warning: qualified_index.csv is absent; discovered %d qualified '
+              'CSV product(s) directly.' % len(idx))
     scale_hits, unflagged, impossible = [], [], []
     n_read = 0
     for _i, r in idx.iterrows():

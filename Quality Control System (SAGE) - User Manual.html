@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Manual of the QCS System (Quality Control System)</title>
+    <title>User Manual of the QCS (Quality Control System)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -151,7 +151,7 @@
     </style>
 </head>
 <body>
-    <h1>User Manual of the QCS System (Quality Control System)</h1>
+    <h1>User Manual of the QCS (Quality Control System)</h1>
     <p style="text-align:center; opacity:0.7;"><em>For version v13.0</em></p>
 
     <div class="indice">
@@ -236,7 +236,8 @@
     software default is shown in <strong>bold</strong>, each row carries a circular-arrow
     button that restores just that parameter, and a <em>Find</em> box filters the rows by
     name — so it is always visible whether a qualification ran with the canonical criteria
-    or with edited ones.
+    or with edited ones. The <strong>Bold = differs from defaults</strong> key is itself bold
+    so the convention is not hidden in a tooltip.
     If a fatal error happens before the window can
     open, a message box appears and a <code>QCS_crash.log</code> file is written with the
     details — next to <code>QCS.exe</code> on an installed copy (in <code>%APPDATA%\QCS</code>
@@ -266,22 +267,21 @@
             standard deviation; instrument tilt) and a fifth flag position recording the
             manual review, output in
             <code>&lt;session&gt;_DOPPLER_QLF</code> (qualified current table with a Site
-            column + flag legend + the 4 current panels in <code>QCS DataView (current)</code>:
-            time&times;depth heatmaps, stick plot, U/V components, progressive vector). In the
+            column + flag legend + the 3 current panels in <code>QCS DataView (current)</code>:
+            time&times;depth heatmaps, U/V components and multi-depth current vectors). In the
             Visualization tab, the same qualified table is auto-detected as Instrument
             <strong>Doppler</strong> / Data type <strong>TSCP Doppler</strong>, and 'Generate
             panels' renders the current panels into <code>DatabaseView\&lt;site&gt;
             (current)</code> per selected site &mdash; all of them in ONE window, walked
             through with <em>&lt; Previous</em> and <em>Next &gt;</em>. The current panels
-            honour the <strong>time window</strong> and the <strong>depth range</strong>
-            (which also sets the stick/vector reference depth to the band's centre);
+            honour the <strong>time window</strong> and the <strong>depth range</strong>;
             <strong>Fixed scale (one speed colour scale)</strong> gives every heatmap one
             shared speed color scale so sites/years compare 1:1 &mdash; nothing is typed for
             it, unlike the scalar Min/Max; and selecting two or more sites adds a cross-site
             <em>"Current mean speed across sites"</em> panel. The direction heatmap carries a
             <strong>compass wheel</strong> instead of a colour bar, so the colour reads as a
             bearing (N/E/S/W). A Doppler database does not show the three panel checkboxes,
-            the parameter filter or the Scale settings column: the four current panels have
+            the parameter filter or the Scale settings column: the three current panels have
             fixed content, so none of them applies. The four current QC thresholds (max speed, min signal strength,
             max speed stdev, tilt) are editable under Settings &rarr; Parameters &rarr;
             <em>Current profiler (Doppler)</em>. Selecting SEVERAL Seaguard files creates a
@@ -378,7 +378,9 @@
                 zoom; Undo / Reset / Skip / Done / Help; live counter and an "X of N"
                 progress). The selection box keeps following the mouse when it leaves the
                 plot, clipped to the axes, so points sitting on an edge can be enclosed
-                without fighting the border. Dismissed points are <strong>not deleted</strong>: they get
+                without fighting the border; it disappears as soon as the selection is
+                applied, leaving a clean view for the next box. Dismissed points are
+                <strong>not deleted</strong>: they get
                 <strong>flag 5</strong> and their value is blanked, so the manual cut stays
                 traceable. The mooring <strong>Depth</strong> review runs automatically
                 (independent of this option) to trim spurious depths from equipment handling;
@@ -576,11 +578,12 @@
         </tr>
         <tr>
             <td>Instrument</td>
-            <td>Selects the instrument that produced the qualified files (Seaguard or HOBO).
-            It is <strong>auto-detected</strong> from the selected files (and stays
-            editable). Seaguard and HOBO spreadsheets have different layouts and are
-            <strong>never combined with each other</strong> — build a separate database for
-            each instrument. Both .csv and .xlsx files are read automatically.</td>
+            <td>Selects the instrument that produced the qualified files (Seaguard, HOBO or
+            Doppler). It is <strong>auto-detected and locked</strong> when every selected
+            qualified-file header proves the same family. An unknown, unreadable or mixed
+            selection leaves the field editable instead of locking a guess. The three layouts
+            are <strong>never combined with each other</strong> &mdash; build a separate database
+            for each instrument. Both .csv and .xlsx files are read automatically.</td>
         </tr>
         <tr>
             <td>Recent</td>
@@ -607,8 +610,10 @@
             <td>Opens the explorer to select the output folder.</td>
         </tr>
         <tr>
-            <td>Save Input Settings</td>
-            <td>Saves the settings and moves on to visualization.</td>
+            <td>Next &gt;</td>
+            <td>Builds (or reuses the previewed) database, saves the input settings and
+            moves to the visualization options. The wait cursor remains visible while the
+            database and next page are being prepared.</td>
         </tr>
     </table>
 
@@ -695,13 +700,17 @@
             <td>(Optional) Start and end of the time axis in mooring plots, in the format
             <code>DD/MM/YYYY HH:MM</code>. Standardizes the time scale across plots, even where there
             is no data (e.g. from 09:00 one day to 09:00 the next). Grayed out when the type is profile.
-            A label below shows the date range available in the loaded spreadsheet.</td>
+            A label below follows the Site/Year filters and shows their available interval.
+            An invalid date, reversed interval or value outside that interval stops generation
+            and asks you to use the displayed <em>Data available</em> range.</td>
         </tr>
         <tr>
-            <td>Depth-Axis Min / Max (profile)</td>
-            <td>(Optional) Minimum and maximum of the depth axis in profile plots (panel 3),
-            in meters. Standardizes the depth scale across profiles. Grayed out when the type is
-            mooring. A label below shows the depth range available in the loaded spreadsheet.</td>
+            <td>Depth-Axis Min / Max (profile/current)</td>
+            <td>(Optional) Minimum and maximum depth, in meters. It standardizes the depth
+            scale across profiles and selects the cell-depth band in Doppler panels; it is
+            grayed out for scalar moorings. The label below shows the available range. For a
+            Doppler database this means depths with at least one complete, non-BAD current
+            cell, because rejected or blank solutions cannot enter all three panels.</td>
         </tr>
         <tr>
             <td>Filter by Site</td>
@@ -731,7 +740,8 @@
             <td>Generate panels</td>
             <td>Generates the plots with the current settings (the choices are saved
             automatically before plotting; parameter selection and scale values are
-            recomputed for each imported sheet).</td>
+            recomputed for each imported sheet). The wait cursor remains visible until the
+            panels are ready or a validation message needs attention.</td>
         </tr>
     </table>
 
@@ -794,6 +804,17 @@
             has to be requalified to gain the fifth</li>
     </ul>
 
+    <p><strong>Doppler quality-control settings do exist.</strong> The
+    <em>Quality control tests</em> tab lists four independent automatic switches under
+    <em>Seaguard current profiler (Doppler)</em>; the <em>Parameters</em> tab contains their
+    five numeric thresholds. By default, speed above 300 cm/s is BAD; a nonzero instrument
+    cell state, signal below &minus;60 dB or the no-ping 0 dB value is BAD; speed standard
+    deviation above 50 cm/s is SUSPECT; and tilt above 15&deg;/35&deg; is respectively
+    SUSPECT/BAD. Missing speed produces a missing flag. The fifth flag position records
+    whether manual review ran and whether the operator dismissed that complete cell sample.
+    <code>Flag_cur</code> is the row's worst result. These criteria are independent of the
+    visualization settings.</p>
+
     <h4>Example</h4>
     <p>The flag <code>1942</code> means:</p>
     <ul>
@@ -806,7 +827,7 @@
     <h3>Per-variable Flag_ columns</h3>
     <p>Besides the full <code>Flag</code> string, the qualified file carries a summary column
     per variable (<code>Flag_T</code>, <code>Flag_S</code>, <code>Flag_C</code>, ...,
-    <code>Flag_lux</code> in HOBO files), with the <strong>worst flag</strong> of that variable
+    <code>Flag_PAR</code> in Seaguard files and <code>Flag_lux</code> in HOBO files), with the <strong>worst flag</strong> of that variable
     in that row (priority 4 &gt; 3 &gt; 9 &gt; 1 &gt; 2 &gt; 5). This way you do not need to
     decode the string position by position to filter data by quality — for example, keeping only
     the rows with <code>Flag_T &lt;= 2</code> in a temperature analysis.</p>
@@ -821,6 +842,27 @@
     older program versions may lack the two columns — merging old and new files in the database
     builder works, with the old rows left empty there.</p>
 
+    <h3>PAR qualification</h3>
+    <p>A Seaguard <code>PAR (umol/m2/s)</code> channel is read, merged, qualified and available
+    in Data Visualization as <strong>PAR (&micro;mol/m&sup2;/s)</strong>. It follows the same
+    optical-sensor sequence as chlorophyll and turbidity: sensor range (0&ndash;5,000,
+    outside = BAD), environmental range (0&ndash;4,000, outside = SUSPECT), and the
+    configurable robust spike test. These three results roll up to <code>Flag_PAR</code>.
+    For the spike calculation, valid night zeros are excluded from the robust scale so a
+    zero-heavy night cannot make a smooth daylight curve look like mass spikes; a stable run
+    of night zeros passes. Rate-of-change, flat-line and vertical-gradient tests do not apply
+    to PAR.</p>
+    <p>Negative dark-offset readings are still clamped to zero <strong>before</strong> the tests;
+    zero is a valid night reading. Archived templates identify both <em>PAR-SER ICSW #1372</em>
+    and <em>Satlantic PAR #2301</em> with a 0&ndash;5,000 &micro;mol/m&sup2;/s range. Across the
+    123 archived qualified products containing PAR, 311 of 158,815 finite values (0.20%) exceed
+    4,000 and none exceeds 5,000, which keeps rare high observations visible as SUSPECT while
+    reserving BAD for values outside the sensor range. A read-only replay of all three tests
+    rolled those finite values up as 156,293 GOOD, 1,099 SUSPECT and 1,423 BAD, with no read
+    error; the remaining 19,142 rows had missing PAR. Products qualified before v13.0 do not
+    contain <code>Flag_PAR</code>; requalify their raw data before comparing qualification results.
+    HOBO lux is a separate relative visible-light measurement and is not a substitute for PAR.</p>
+
     <h3>Light clock check: the anomalous-phase verdict</h3>
     <p>For HOBO files, the light clock check names three situations rather than two: a clean
     <strong>±12 h antiphase</strong> (AM/PM swapped at launch), the <strong>collapsed 12-hour
@@ -831,10 +873,16 @@
     the fixed 60-day rule, so the phase drives no QC decision).</p>
 
     <h2 id="settings_management">6. Settings Management</h2>
-    <p>All quality criteria (tests on/off, parameters and per-variable factors) are adjusted in
+    <p>All quality criteria (tests on/off, parameters and statistical thresholds) are adjusted in
     the <strong>Quality control settings</strong> window, opened by the button of that name or
     from <em>File &rarr; Quality control settings…</em>. The choices are saved automatically
     across sessions.</p>
+    <p>Every tab uses the same instrument order: <strong>Seaguard</strong>,
+    <strong>Seaguard current profiler (Doppler)</strong>, then <strong>HOBO</strong>.
+    The tests are genuinely independent: disabling the HOBO temperature range, spike or
+    rate-of-change test does not disable its Seaguard counterpart. Doppler has switches for
+    speed range, signal quality, speed standard deviation and tilt. Manual point review is
+    selected during qualification and therefore is not an automatic-test checkbox.</p>
     <h3>What the program remembers</h3>
     <p>Closing the program stores, and the next launch restores:</p>
     <ul>
@@ -890,21 +938,31 @@
     <pre><code>{
     "tsQualityTests": {
         "temperature sensor range": "ON",
-        "salinity sensor range": "ON",
+        "hobo temperature sensor range": "ON",
+        "doppler current speed range": "ON",
         ...
     },
     "tsSettings": {
         "sensor_min_temp": -5,
         "sensor_max_temp": 40,
+        "hobo_sensor_min_temp": -5,
+        "hobo_sensor_max_temp": 40,
         ...
+    },
+    "tsFactors": {
+        "sg_spike_T": {"fail": 3.0, "susp": 2.5, "window": "30M"},
+        "sg_rate_T": {"susp": 2.5, "window": "30M"},
+        "hobo_spike_T": {"fail": 3.0, "susp": 2.5, "window": "30M"}
     }
 }</code></pre>
 
     <h2 id="configuration_parameters">7. Detailed Configuration Parameters</h2>
-    <p><code>time_window</code>, <code>fail_factor</code> and <code>susp_factor</code> are
-    defined <strong>per variable</strong>, in the <strong>"Factors per Variable"</strong> tab of
-    the Settings window (one row per variable, columns Fail / Susp / Time window). The
-    descriptions below apply to each variable.</p>
+    <p>The <strong>Statistical thresholds</strong> tab separates thresholds by instrument,
+    test and variable. It shows only fields used by that algorithm: spike has Bad, Suspect and
+    Time window; rate of change has Suspect and Time window; vertical gradient has Bad and
+    Suspect. HOBO temperature has its own spike and rate-of-change rows. A row is disabled when
+    its corresponding test checkbox is off. Doppler uses direct physical limits in
+    <strong>Parameters</strong>, so its section in this tab contains no statistical fields.</p>
     <h3>time_window</h3>
     <p>Defines the time window for standard-deviation calculations in the spike and rate-of-change tests.</p>
     <p><strong>Accepted formats:</strong></p>
@@ -932,12 +990,27 @@
     standard deviation.</p>
     <p><strong>Behavior:</strong></p>
     <ul>
-        <li>fail_factor > susp_factor (typically 3 and 2.5)</li>
+        <li>For spike and vertical gradient, fail_factor &gt; susp_factor
+            (typically 3 and 2.5); rate of change has only a suspect factor</li>
         <li>High values reduce false positives but may let errors through</li>
         <li>Low values increase sensitivity but also false positives</li>
         <li>For noisy data, increase both by 0.5-1.0</li>
         <li>For very stable data, you can reduce by 0.5</li>
     </ul>
+
+    <h3>Parameters tab organization</h3>
+    <p>Instrument capabilities are kept separate: Seaguard sensor limits cannot silently change
+    HOBO limits. The tab is ordered as Seaguard sensor/profile settings, Seaguard current
+    profiler thresholds, HOBO temperature/deployment settings, <em>Light plots</em>,
+    <em>Light fouling</em>, and finally the shared
+    environmental ranges. The former ambiguous <em>Other parameters</em> section no longer
+    exists.</p>
+    <p>Flat-line thresholds are still expressed in <strong>samples</strong>. The test treats
+    changes up to the decimal resolution inferred from the series as effectively identical;
+    missing samples do not break a run. For that reason <strong>Pressure flat line remains OFF
+    by default</strong>: a fixed instrument can legitimately repeat quantized pressure values.
+    A future duration-based criterion requires corpus validation before it can safely become a
+    default.</p>
 
     <h3>HOBO light-window parameters (lux_*)</h3>
     <p>In the <strong>Parameters</strong> tab of the Settings window, the parameters with the
@@ -947,9 +1020,23 @@
             (the highest daily light peak in that period)</li>
         <li><code>lux_cutoff_frac</code>: the fraction of the baseline below which the daily peak
             indicates fouling</li>
-        <li><code>lux_sustain_days</code>: for how many consecutive days the peak must stay below
-            the threshold to confirm the cutoff</li>
+        <li><code>lux_sustain_days</code>: the minimum length of the <strong>final</strong>
+            consecutive run below the threshold. The default 3 does not change the 50% rule;
+            it waits for three final daily peaks so one or two cloudy days at the end cannot
+            trigger a cutoff. No later day may reach the threshold</li>
     </ul>
+    <p><code>env_min_lux</code> and <code>env_max_lux</code> appear separately under
+    <strong>Light plots</strong>. They are not sensor tests or environmental expectations: they
+    only set the fixed-scale qualification product. The default maximum is
+    <strong>200,000 lux</strong>: it covers every finite qualified value in the current archive
+    (maximum 198,401.3 lux) while using the vertical space more effectively than the
+    320,000-lux upper measurement range published for the UA-002.
+    Qualification always writes both a fixed-scale product and an automatic-scale companion;
+    Data Visualization starts with automatic scaling unless the operator enables (or has saved)
+    <em>Fixed scale</em>. The automatic product provides detail for submerged deployments whose
+    values occupy only a small part of the full sensor range. The
+    manufacturer describes this channel as a measurement of <em>relative</em> light levels, so
+    its lux values should not be interpreted as research-grade photometry.</p>
     <p>The values used are written on the <code>QCS_light_window.svg</code> plot itself, in the log
     and in <code>QCS_test_report.xlsx</code> — the cutoff is always traceable.</p>
 
@@ -983,7 +1070,7 @@
             (physically impossible value for the sensor)
             <ul>
                 <li>Temperature, Salinity, Conductivity, Pressure, Dissolved Oxygen,
-                    pH, Chlorophyll, Turbidity</li>
+                    pH, Chlorophyll, Turbidity, PAR, Dissolved CO<sub>2</sub></li>
             </ul>
         </li>
         <li><strong>Environmental Range Tests</strong> — failure becomes
@@ -991,13 +1078,15 @@
             suspect, since a real extreme event is possible)
             <ul>
                 <li>Temperature, Salinity, Conductivity, Pressure, pH, Chlorophyll,
-                    Dissolved Oxygen, Dissolved Organic Matter, Turbidity</li>
+                    Dissolved Oxygen, Dissolved Organic Matter, Turbidity, PAR,
+                    Dissolved CO<sub>2</sub></li>
             </ul>
         </li>
         <li><strong>Spike Tests (Spurious Values)</strong> — 3-point method
             <ul>
                 <li>Temperature, Salinity, Conductivity, Pressure, pH, Chlorophyll,
-                    Dissolved Oxygen, Dissolved Organic Matter, Turbidity</li>
+                    Dissolved Oxygen, Dissolved Organic Matter, Turbidity, PAR,
+                    Dissolved CO<sub>2</sub></li>
             </ul>
         </li>
         <li><strong>Rate-of-Change Tests</strong> — failure becomes at most
@@ -1038,7 +1127,10 @@
     <div class="note">
         <p><strong>HOBO files:</strong> since the HOBO Pendant measures only temperature and light,
         only the <strong>temperature</strong> tests from the list above are run, plus the light
-        window test. The flag string stays short and free of meaningless positions.</p>
+        window test. These switches, its sensor limits and its statistical thresholds are
+        independent from Seaguard. The environmental temperature bounds remain shared because
+        they describe the expected site, not an instrument capability. The flag string stays
+        short and free of meaningless positions.</p>
     </div>
 
     <div class="note">
@@ -1145,11 +1237,15 @@
         <li>From the start of the <strong>final sustained decline</strong> — where the daily peak
             stays below <code>lux_cutoff_frac</code> × baseline for at least
             <code>lux_sustain_days</code> consecutive days and <strong>never recovers</strong> to the
-            threshold — the light is flagged <strong>BAD (4, unusable)</strong>. Light that recovers
-            above the threshold is kept. The values stay in the sheet until you remove them with
-            <strong>"Remove Bad Data"</strong>;</li>
-        <li>If, after the cutoff, the light still reaches the threshold on a good share of the days
-            (~20%+), a <strong>warning</strong> indicates that the decline is not permanent
+            threshold before the series ends — the light is flagged <strong>BAD (4,
+            unusable)</strong>. Thus the default 3 is a confirmation period, not another cutoff:
+            it operationalizes “the series no longer reaches 50%” while rejecting a one- or
+            two-day cloudy tail. Light that later recovers above the threshold is kept. The
+            values stay in the sheet until you remove them with <strong>"Remove Bad
+            Data"</strong>;</li>
+        <li>If, after an earlier below-threshold excursion, the light returns to the threshold on
+            a good share of the following days (~20%+), a <strong>warning</strong> indicates that
+            the decline is not permanent
             (possible sensor cleaning, multiple deployments in the same file, or a cloudy period) —
             review it.</li>
     </ol>
@@ -1435,14 +1531,18 @@
 
     <h3>Visualization Panels (Doppler / current-profiler databases)</h3>
     <p>With <strong>Instrument = Doppler</strong> the panel content is fixed: a current
-    profiler measures the same four things everywhere, so there is nothing to choose
+    profiler uses the same three views everywhere, so there is nothing to choose
     (the panel checkboxes, the parameter filter, the Scale settings column, the data
-    points and the tendency lines are not shown for this instrument). The four panels
+    points and the tendency lines are not shown for this instrument). The three panels
     are generated per selected site, and they open in <strong>one window</strong> that
-    is paged with <em>&lt; Previous</em> and <em>Next &gt;</em>.</p>
-    <p>They answer four different questions about the same deployment. Every panel
-    drops the cells flagged BAD, so a blank is a measurement the instrument itself
-    refused (see <em>Reading the blanks</em> below).</p>
+    is paged with <em>&lt; Previous</em> and <em>Next &gt;</em>. The mouse wheel zooms
+    around the cursor and a middle-button drag pans the current view. When changing a heavy
+    panel, the wait cursor stays visible while its canvas is brought on screen.</p>
+    <p>They answer three different questions about the same deployment. Every panel
+    omits cells flagged BAD; manually dismissed measurements are blank, and
+    <em>Remove dismissed data</em> may remove their rows entirely. A blank is therefore
+    a quality-control result, a manual removal or a genuinely absent record &mdash; the
+    qualified table distinguishes them (see <em>Reading the blanks</em> below).</p>
     <table>
         <tr>
             <th>Panel</th>
@@ -1463,17 +1563,6 @@
             <td><code>Current profile (time x depth).svg</code></td>
         </tr>
         <tr>
-            <td>Current stick plot</td>
-            <td><strong>Speed and direction together, at ONE depth.</strong> Each stick is one
-                record: it points where the water is going (up = north, right = east) and its
-                length is the speed - the reference arrow in the corner gives the scale. The
-                sticks are rooted on the time axis, so a run of sticks leaning the same way
-                is a persistent flow, and sticks flipping back and forth are a reversing
-                (tidal) current. The depth used is the one you set with the depth band, or
-                the best-covered cell when you set none</td>
-            <td><code>Current stick plot.svg</code></td>
-        </tr>
-        <tr>
             <td>Current components (U/V)</td>
             <td><strong>The same current as two ordinary time series</strong>, at up to four
                 depths at once. U is the EAST component and V the NORTH one, both in cm/s,
@@ -1484,18 +1573,16 @@
             <td><code>Current components (U-V).svg</code></td>
         </tr>
         <tr>
-            <td>Progressive vector diagram</td>
-            <td><strong>Where a particle of water would have gone.</strong> The speeds at the
-                representative depth are integrated in time and drawn as a trajectory in
-                kilometres from the mooring (which sits at the origin, marked): it is NOT the
-                path of the instrument, and not a real drifter track - it assumes the whole
-                region moves like this one point. Read the NET displacement (how far and in
-                which direction the water ends up) and the shape: tidal loops that go nowhere
-                mean a reversing current, a straight line means a steady drift. Time gaps -
-                between visits, or across dismissed data - are never integrated, so the line
-                BREAKS there instead of inventing displacement, and the title says how many
-                gaps were skipped</td>
-            <td><code>Progressive vector diagram.svg</code></td>
+            <td>Current vectors (time &times; depth)</td>
+            <td><strong>Speed and direction together, at up to four depths.</strong> Each arrow
+                points where the water is going (up = north, right = east), and its length is
+                proportional to speed; the reference arrow gives the scale. The rows are
+                distributed from the shallowest to the deepest valid cell in the selected
+                depth band, matching the depths in the U/V panel. Depth is only the row where
+                an arrow is anchored: an arrow pointing up means northward flow, not upward
+                water motion. Long deployments are sampled only for drawing so that arrows
+                remain readable; no rows or values are changed in the qualified table</td>
+            <td><code>Current vectors (time x depth).svg</code></td>
         </tr>
         <tr>
             <td>Current mean speed across sites</td>
@@ -1505,16 +1592,72 @@
             <td><code>Current mean speed across sites.svg</code></td>
         </tr>
     </table>
+    <h3>Plot Toolbar</h3>
+    <p>The same Fluent Regular icon toolbar appears above produced panels and manual-cut plots. <strong>Home</strong>
+    restores the opening view; four-arrow <strong>Pan</strong> and rectangular <strong>Zoom</strong>
+    change only the view. On Current profile, horizontal and vertical navigation stay synchronized
+    between the speed and direction heatmaps. Toolbar and mouse-wheel Zoom stay between
+    1/10,000 and 1&times; each axis' opening span, preventing both an indefinitely small view and
+    unlimited zoom out while retaining fine inspection.
+    Selecting Home, Subplots, Customize or Save leaves an active Pan
+    or Zoom mode before carrying out that command. <strong>Subplots</strong> adjusts the plot area, gaps and legend
+    position; <strong>Customize</strong> edits a selected plot; and <strong>Save</strong>
+    writes a separate custom copy. Back/Forward are omitted because their history did not
+    include mouse-wheel zoom or middle-button pan. The live cursor coordinates at the right
+    are bold for easier reading. In a manual cut, the separate <strong>Reset</strong> action
+    still restores the dismissed points; it is not the Home command.</p>
+    <p>The Subplots window uses the descriptive names <em>Plot top/bottom/left/right
+    edge</em>, <em>Horizontal gap</em> and <em>Vertical gap</em>, and carries the same icon
+    as its toolbar command. A gap control is disabled when the figure has no subplot rows,
+    or columns for it to separate: <em>Horizontal gap</em> means only the space between plots
+    placed side by side, so it is disabled on the one-column Current profile. Its
+    <em>Legend / key position</em> section moves one or all legends, color scales and compasses
+    by horizontal and vertical offsets. Those keys follow their heatmap when plot borders or
+    Tight layout change. <em>Export
+    values</em> remains in front of the layout window and provides <em>Copy all</em>, so
+    settings can be transferred to another plot. The layout window has one global
+    <em>Reset values</em>: its compact two-column action area places <em>Tight layout</em>
+    above <em>Export values</em>, and <em>Reset values</em> above <em>OK</em>. Reset restores
+    the complete original layout immediately. Every editable layout row also has a circular
+    arrow that restores only that value. Figure options instead refills the original
+    fields and waits for <em>Apply</em>, like every other edit in that window. Its action
+    buttons, in order, are <em>&lt; Back</em>, <em>Reset values</em>, <em>Apply</em> and
+    <em>OK</em>. Its editable rows carry the same individual reset arrow; these refill only the
+    selected field and still wait for <em>Apply</em>. Back returns to plot selection and is
+    disabled when the figure has no
+    alternative plot.
+    Customize names the Doppler plots by their
+    content (for example, <em>Horizontal speed heatmap</em>) rather than exposing internal
+    object identifiers, and its window title reads <em>Figure options - [plot name]</em>.
+    For plots whose X axis is datetime, Figure options replaces serial numeric limits with
+    editable <em>Start</em> and <em>End</em> fields in <code>DD/MM/YYYY HH:MM</code>, matching
+    Data Visualization step 2. An invalid or out-of-range value leaves the graph unchanged
+    and displays the available interval, which is also shown below the fields. The top of the <em>Axes</em> tab edits the title of the
+    complete figure separately from an individual plot title. Its heatmap tab is named
+    <em>Graphs</em>; the graph selector is hidden when there is only one editable element and
+    retained when it is needed to choose between several. Mappable metadata
+    names that do not change visible text are omitted. A separate <em>Legends</em> tab edits
+    the labels actually drawn in line legends, color scales and the direction compass; line
+    labels follow their curve name unless edited separately. Automatic legend regeneration
+    is not offered. Both the plot selector and Figure options carry the Customize toolbar
+    icon.</p>
     <h4>Reading the blanks</h4>
-    <p>Large blank areas in the heatmaps are normal and are <strong>not</strong> the
-    qualification being severe: a DCPS writes its own quality word for every cell of
-    every record (<em>Cell state</em>), and the current tests reject the cells it
-    already condemns. On the reference session, 8,636 of 13,408 cell samples are BAD
-    and <strong>every one of them</strong> was rejected by the instrument's own word -
-    of the 4,772 cells it calls good, QCS rejected none. The pattern is geometry and
-    handling: the cells nearest the transducer (blanking distance) and the farthest one
-    (out of acoustic range) are rejected almost entirely, and any period when the
-    instrument was tilted over, hauled up or on deck is rejected as a block.</p>
+    <p>Large blank areas in the heatmaps are normal. A DCPS writes its own quality word
+    for every cell of every record (<em>Cell state</em>), and the current tests reject
+    the cells it already condemns. On the uncut reference session, 8,636 of 13,408 cell
+    samples are BAD and <strong>every one of them</strong> was rejected by the
+    instrument's own word &mdash; of the 4,772 cells it calls good, QCS rejected none.
+    The pattern is geometry and handling: the cells nearest the transducer (blanking
+    distance) and the farthest one (out of acoustic range) are rejected almost
+    entirely, and any period when the instrument was tilted over, hauled up or on deck
+    is rejected as a block.</p>
+    <p>To distinguish cases, inspect the qualified row: <code>Flag_cur = 4</code> means
+    an automatic test rejected a cell that is still traceable in the table;
+    <code>Flag_cur = 5</code> means the operator dismissed it. If a whole instant has no
+    row, either the raw record was absent or <em>Remove dismissed data</em> removed it;
+    comparison with the raw timestamps settles which. White horizontal bands are
+    usually depth cells outside the usable acoustic range, while a white vertical band
+    means that one instant failed or is absent across depths.</p>
 
     <h3>Scale Configuration</h3>
     <p>Advanced control over the plot scales through the "SCALE SETTINGS" panel.</p>
@@ -1689,7 +1832,7 @@
     <div class="code-container">
         <button class="copy-btn" onclick="copyToClipboard('qcs-run-code')">Copy</button>
         <div class="code-block" id="qcs-run-code">
-        <pre><code class="language-bash">python QCS_App.py           # unified app (both tabs) - the normal entry point
+	        <pre><code class="language-bash">python QCS_QtApp.py         # unified app (both tabs) - the normal entry point
 python QCS_Main.py          # qualification tool only (development)
 python QCS_DatabaseView.py  # visualization tool only (development)</code></pre>
         </div>

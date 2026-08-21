@@ -1,11 +1,11 @@
 ; Inno Setup recipe for the QCS installer.
 ;
-; DUAL-MODE, Program Files by DEFAULT (owner decision, 2026-08-13): the wizard
-; opens preselected on "install for all users" -> C:\Program Files\QCS (this is
-; a 64-bit app, so plain Program Files is its correct home; the (x86) folder is
-; the convention for 32-bit programs). "Only for me" remains available in the
-; same dialog for machines without an administrator account - the field
-; notebook - landing in the user area. A Program Files install dir is read-only
+; DUAL-MODE, Program Files by DEFAULT (owner decisions, 2026-08-13/20): the
+; wizard opens preselected on "install for all users". This 32-bit Inno recipe
+; resolves {autopf} to C:\Program Files (x86)\QCS; the owner explicitly kept
+; that existing destination. "Only for me" remains available in the same dialog
+; for machines without an administrator account - the field notebook - landing
+; in the user area. A Program Files install dir is read-only
 ; for regular users, which is fine: since v11.2 the app writes its settings and
 ; crash log to %APPDATA%\QCS whenever the install dir is not writable
 ; (QCS_Theme.writable_app_dir).

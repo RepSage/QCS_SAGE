@@ -462,13 +462,10 @@ def set_window_icon(window, icon_name='qcs_icon.ico', app_id='sage.qcs.qualityco
         pass
 
 
-# Buttons drawn INSIDE a figure (the manual point-cut panels, the light-window
-# review). matplotlib's own Button is a flat 0.85 grey box that turns 0.95 on
-# hover, with no border - visibly rawer than every other button in the program,
-# which is the platform's own (owner, v13.0: the review panels should match the
-# Previous / Next row of the panel browser). These are the Fusion/Windows
-# push-button colours; a figure in this program is always drawn light, so one
-# palette answers for both themes.
+# Buttons drawn INSIDE a figure for the legacy Tk shell. The Qt shell hides the
+# manual-cut row and builds native QPushButtons instead, exactly like its
+# Previous / Next row. Where Matplotlib buttons remain, its default is a flat
+# grey box with no border; these Fusion/Windows colours are the closest fallback.
 PLOT_BUTTON_FACE = '#f0f0f0'
 PLOT_BUTTON_HOVER = '#e3effb'
 PLOT_BUTTON_EDGE = '#adadad'
@@ -476,7 +473,7 @@ PLOT_BUTTON_TEXT = '#1a1a1a'
 
 
 def style_plot_buttons(buttons, fontsize=9):
-    """Gives matplotlib Button widgets the program's button look. Best-effort:
+    """Styles Matplotlib Button widgets used by the legacy Tk shell. Best-effort:
     a styling failure must never cost the operator the review itself."""
     for button in buttons or []:
         try:

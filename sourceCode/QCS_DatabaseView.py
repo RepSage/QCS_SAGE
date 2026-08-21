@@ -1,6 +1,7 @@
 import os
 import re
 import json
+from datetime import datetime
 import pandas as pd
 import QCS_DataHandler as data
 import QCS_DataView as view
@@ -34,8 +35,11 @@ TOOLTIPS = {
     'filter_year': "Year(s) to visualize\nPanels are generated once per selected year",
     'time_start': "Optional: start of the time axis in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 15/04/2019 09:00); empty = fit the data\nCross-site panels keep the time of day: day offset + clock time\napply to each site's own days",
     'time_end': "Optional: end of the time axis in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 16/04/2019 09:00); empty = fit the data\nCross-site panels keep the time of day: day offset + clock time\napply to each site's own days",
-    'depth_min': "Optional: upper limit of the depth axis in profile plots (m)\nEmpty = fit the data",
-    'depth_max': "Optional: lower limit of the depth axis in profile plots (m)\nEmpty = fit the data",
+    'depth_min': "Optional: upper limit of the depth axis in profile/current plots (m)\nEmpty = fit the data",
+    'depth_max': "Optional: lower limit of the depth axis in profile/current plots (m)\nEmpty = fit the data",
+    'uv_gap_mode': "How the U/V component lines treat missing or BAD current cells\n"
+                   "Break = show the discontinuity; Connect = join the surviving points;\n"
+                   "Both = generate the two versions for direct comparison",
     'panel1': "Panel 1: parameters compared at the same site",
     'panel2': "Panel 2: one parameter compared between sites",
     'panel3': "Panel 3: parameters compared at the same site (vertical profile)",
@@ -59,6 +63,18 @@ TOOLTIPS = {
     'min_scale': "Lower limit of this parameter's fixed scale\nDefault: smallest approved value (flags 1/2) of the current\nSite/Year selection, minus 20% - floored at 0",
     'max_scale': "Upper limit of this parameter's fixed scale\nDefault: largest approved value (flags 1/2) of the current\nSite/Year selection, plus 20%"
 }
+
+UV_GAP_OPTIONS = {
+    'break': 'Break lines at data gaps',
+    'connect': 'Connect across data gaps',
+    'both': 'Generate both for comparison',
+}
+
+
+def uv_gap_mode_from_display(text):
+    """Stable setting key for a human-readable U/V gap choice."""
+    return next((key for key, label in UV_GAP_OPTIONS.items() if label == text),
+                'break')
 
 class ErrorLogger(theme.LogConsole):
     """Execution log (shared theme console), positioned via pack."""
@@ -202,8 +218,133 @@ def is_hobo_input():
     return inputSettings.get('instrument', 'Seaguard') == 'HOBO'
 
 def is_doppler_input():
-    """Doppler current-profiler database: Step 2 renders the 4 current panels."""
+    """Doppler current-profiler database: Step 2 renders current panels."""
     return inputSettings.get('instrument', 'Seaguard') == 'Doppler'
+
+def available_depths(frame=None):
+    """Depths that the active panel family can actually draw."""
+    source = globals().get('database') if frame is None else frame
+    if source is None or 'Depth (m)' not in source.columns:
+        return pd.Series(dtype=float)
+    if is_doppler_input():
+        return view.doppler_available_depths(source)
+    return pd.to_numeric(source['Depth (m)'], errors='coerce').dropna()
+
+
+def selected_database(frame=None):
+    """Rows selected by the live Site and Year filters.
+
+    During Step 2 construction the filter variables do not exist yet, so the
+    supplied/full frame is returned until the controls are ready. Once ready,
+    selecting none means no data - never silently fall back to the whole
+    database when the operator has chosen a subset.
+    """
+    source = globals().get('database') if frame is None else frame
+    if source is None:
+        return None
+    out = source
+    sites = globals().get('site_vars')
+    if sites:
+        chosen = [site for site, var in sites.items() if var.get()]
+        out = out[out['Site'].isin(chosen)]
+    years = globals().get('year_vars')
+    if years and 'Datetime' in out.columns:
+        chosen = [year for year, var in years.items() if var.get()]
+        out = out[out['Datetime'].dt.year.isin(chosen)]
+    return out
+
+
+TIME_TEXT_FORMAT = '%d/%m/%Y %H:%M'
+
+
+def normalized_time_bounds(start, end):
+    """Minute-resolution bounds that exactly match the text shown to users."""
+    if start is None or end is None:
+        return None, None
+    start = pd.Timestamp(start).tz_localize(None).floor('min')
+    end = pd.Timestamp(end).tz_localize(None).ceil('min')
+    return start, end
+
+
+def time_availability(frame=None):
+    """First/last datetime in a data selection, or ``(None, None)``."""
+    source = globals().get('database') if frame is None else frame
+    if source is None or source.empty or 'Datetime' not in source.columns:
+        return None, None
+    values = pd.to_datetime(source['Datetime'], errors='coerce').dropna()
+    if values.empty:
+        return None, None
+    return pd.Timestamp(values.min()), pd.Timestamp(values.max())
+
+
+def time_availability_text(frame=None):
+    """Shared Qt/Tk wording for the selected Site/Year time interval."""
+    start, end = time_availability(frame)
+    if start is None or end is None:
+        return 'Data available: no data in the selected sites/years'
+    start, end = normalized_time_bounds(start, end)
+    return 'Data available: %s to %s' % (
+        start.strftime(TIME_TEXT_FORMAT), end.strftime(TIME_TEXT_FORMAT))
+
+
+def validate_time_window_texts(start_text, end_text,
+                               available_start, available_end):
+    """Strict, shared parser for Step 2 and Figure options date/time fields."""
+    try:
+        start = pd.Timestamp(datetime.strptime(start_text, TIME_TEXT_FORMAT))
+        end = pd.Timestamp(datetime.strptime(end_text, TIME_TEXT_FORMAT))
+    except (TypeError, ValueError) as exc:
+        raise ValueError('invalid date/time text') from exc
+    if available_start is None or available_end is None:
+        raise ValueError('no data in the selected interval')
+    available_start, available_end = normalized_time_bounds(
+        available_start, available_end)
+    if (end <= start or start < available_start or
+            end > available_end):
+        raise ValueError('date/time outside the available interval')
+    return start, end
+
+
+def time_window_error_message(available_start, available_end):
+    if available_start is None or available_end is None:
+        available = 'Available: no data in the selected sites/years.'
+    else:
+        available_start, available_end = normalized_time_bounds(
+            available_start, available_end)
+        available = 'Available: %s to %s.' % (
+            pd.Timestamp(available_start).strftime(TIME_TEXT_FORMAT),
+            pd.Timestamp(available_end).strftime(TIME_TEXT_FORMAT))
+    return (
+        'Use DD/MM/YYYY HH:MM for both values, with End after Start.\n\n'
+        '%s\n\nChoose date/times inside this available interval.' % available)
+
+def depth_availability_text(frame=None):
+    """Shared Qt/Tk wording for the actual plottable depth interval."""
+    source = globals().get('database') if frame is None else frame
+    if source is None or 'Depth (m)' not in source.columns:
+        return 'Depth available: no depth column'
+    if source.empty:
+        return 'Depth available: no data in the selected sites/years'
+    depths = available_depths(source)
+    if depths.empty:
+        if is_doppler_input():
+            return 'Depth available: no complete non-BAD current cells'
+        return 'Depth available: no valid depths'
+    return 'Depth available: %.2f to %.2f m' % (depths.min(), depths.max())
+
+
+def refresh_depth_availability():
+    """Refresh the Tk label from exactly the rows selected by Site and Year."""
+    label = globals().get('depth_avail_lbl')
+    if label is not None:
+        label.config(text=depth_availability_text(selected_database()))
+
+
+def refresh_time_availability():
+    """Refresh the Tk label from exactly the rows selected by Site and Year."""
+    label = globals().get('time_avail_lbl')
+    if label is not None:
+        label.config(text=time_availability_text(selected_database()))
 
 def toggle_all_controls(enabled=False):
     """Enables or disables all controls depending on the selected Data Type"""
@@ -217,6 +358,8 @@ def toggle_all_controls(enabled=False):
     tendency_entry.config(state='normal' if enabled and tendency.get() else 'disabled')
     points_cb.config(state='normal' if enabled else 'disabled')
     fixed_scale_cb.config(state='normal' if enabled else 'disabled')
+    uvGap_combobox.config(state=('readonly' if enabled and is_doppler_input()
+                                 else 'disabled'))
     
     # TS Diagram
     ts_cb.config(state='normal' if enabled else 'disabled')
@@ -256,6 +399,7 @@ def toggle_input_mode():
         # remembered name when the field becomes active
         if not outputName_entry.get().strip():
             restore_entry(outputName_entry, USER_PREFS.get('dbv_output_name', ''))
+        set_instrument_locked(False)  # a folder has not been inspected yet
     else:  # unchecked: pick files one by one (multi-select already joins them)
         set_enabled_style(fileNames_entry)
         set_enabled_style(browse_file_btn)
@@ -282,6 +426,11 @@ def toggle_input_mode():
             else:
                 sort.set(False)
                 set_disabled_style(sort_cb)
+        files = [p for p in fileNames_entry.get().split(';') if p.strip()]
+        if files and all(os.path.isfile(p) for p in files):
+            autodetect_instrument(files)
+        else:
+            set_instrument_locked(False)
     # the Preview button applies to FOLDER mode only (it scans/builds a folder)
     if preview_btn is not None:
         if join.get():
@@ -397,6 +546,8 @@ def _refresh_scale_defaults():
     Also re-evaluates which rows are available: a parameter without data in the
     new selection goes gray (see toggle_scale_controls)."""
     toggle_scale_controls()
+    refresh_depth_availability()
+    refresh_time_availability()
     for param in list(_auto_scale):
         if param in parameter_vars and parameter_vars[param].get():
             _fill_scale(param)
@@ -481,11 +632,10 @@ def toggle_data_type():
         if _field_cache.get(key):
             entry.insert(0, _field_cache[key])
             return
-        if database is not None and 'Depth (m)' in database.columns:
-            col = database['Depth (m)'].dropna()
-            if not col.empty:
-                val = col.min() if which == 'min' else col.max()
-                entry.insert(0, '%.2f' % val)
+        col = available_depths()
+        if not col.empty:
+            val = col.min() if which == 'min' else col.max()
+            entry.insert(0, '%.2f' % val)
 
     def _reset_time_default(entry, which):
         # The X-axis time window is NOT persisted across data-type switches: when it
@@ -496,7 +646,7 @@ def toggle_data_type():
         if database is not None and 'Datetime' in database.columns:
             dt = database['Datetime'].min() if which == 'start' else database['Datetime'].max()
             if pd.notna(dt):
-                entry.insert(0, dt.strftime('%d/%m/%Y %H:%M'))
+                entry.insert(0, dt.strftime(TIME_TEXT_FORMAT))
 
     # a cross-site comparison panel is pointless with a single site in the
     # database: 'Parameter across sites' (Seaguard panel 2) / 'HOBO Light
@@ -549,8 +699,8 @@ def toggle_data_type():
         _restore_or_default_depth(depth_min_entry, 'depth_min', 'min')   # depth range applies
         _restore_or_default_depth(depth_max_entry, 'depth_max', 'max')
     elif data_type == 'TSCP Doppler':
-        # Doppler current profiler: the 4 current panels are fixed (time x depth
-        # heatmaps, stick plot, U/V components, progressive vector), so the
+        # Doppler current profiler: the current panel family is fixed (time x depth
+        # heatmaps, U/V components, multi-depth vectors), so the
         # panel/parameter/tendency choices do not apply - but the TIME WINDOW
         # and the DEPTH BAND both crop the current data, and 'fixed scale' fixes
         # the heatmap speed color scale so sites/years compare 1:1.
@@ -593,6 +743,18 @@ def selectFiles():
     if filenames:
         apply_selected_files(list(filenames))
 
+_instrument_locked = False
+
+
+def set_instrument_locked(locked):
+    """Lock Instrument only when file contents or pipeline provenance prove it."""
+    global _instrument_locked
+    _instrument_locked = bool(locked)
+    combo = globals().get('instrument_combobox')
+    if combo is not None:
+        combo.config(state='disabled' if _instrument_locked else 'readonly')
+
+
 def apply_selected_files(filenames):
     """Shared tail of the database-file selection (Browse or drag-and-drop,
     v11.5): fills the entry, switches to single-file mode and auto-detects
@@ -620,26 +782,37 @@ def apply_selected_files(filenames):
         USER_PREFS['dbv_last_output_dir'] = out_root
         USER_PREFS['dbv_output_name'] = os.path.splitext(os.path.basename(filenames[0]))[0]
     save_user_prefs()
-    autodetect_instrument(filenames[0])
 
-def autodetect_instrument(path):
-    """Sets the Instrument combobox from the first selected file's columns
-    (detect_qualified_layout). Just a convenience: the combobox stays editable,
-    and any failure only leaves the current selection with a log warning."""
-    try:
-        if path.lower().endswith('.csv'):
-            head = pd.read_csv(path, nrows=1)
-        else:
-            head = pd.read_excel(path, nrows=1)
-        layout = data.detect_qualified_layout(head)
-        detected = ('HOBO' if layout == 'hobo'
-                    else 'Doppler' if layout == 'doppler' else 'Seaguard')
-        instrument_combobox.set(detected)
-        print('Info: instrument auto-detected as %s (from %s).'
-              % (detected, os.path.basename(path)))
-    except Exception as e:
-        print('Warning: could not auto-detect the instrument from %s: %s'
-              % (os.path.basename(path), e))
+def autodetect_instrument(paths):
+    """Lock Instrument only when every selected qualified header agrees."""
+    if isinstance(paths, (str, os.PathLike)):
+        paths = [str(paths)]
+    detected = []
+    for path in paths:
+        try:
+            head = (pd.read_csv(path, nrows=0) if path.lower().endswith('.csv')
+                    else pd.read_excel(path, nrows=0))
+            instrument = data.detect_known_qualified_instrument(head)
+            if instrument is None:
+                raise ValueError('header is not a recognized qualified QCS layout')
+            detected.append(instrument)
+        except Exception as e:
+            set_instrument_locked(False)
+            print('Warning: could not prove the instrument from %s: %s'
+                  % (os.path.basename(path), e))
+            return False
+    families = set(detected)
+    if len(families) != 1:
+        set_instrument_locked(False)
+        print('Warning: selected files do not agree on one instrument: %s.'
+              % ', '.join(sorted(families)))
+        return False
+    instrument = detected[0]
+    instrument_combobox.set(instrument)
+    set_instrument_locked(True)
+    print('Info: instrument auto-detected as %s from %d selected file(s).'
+          % (instrument, len(detected)))
+    return True
 
 def selectOutputFolder():
     # start at the current field value (or last used) to avoid the drive-root
@@ -670,7 +843,7 @@ def selectInputFolder():
 def saveInputSettings():
     # validation with clear warnings before closing the window
     # Doppler belongs here too: every other piece of the tab already handles it
-    # (autodetect, is_doppler_input, the 4 current panels), and only this gate
+    # (autodetect, is_doppler_input, the current panels), and only this gate
     # refused - a qualified DCPS database could not leave Step 1 (owner, v12.2.4)
     if instrument_combobox.get() not in ('Seaguard', 'HOBO', 'Doppler'):
         ui_warn("Warning", "Select the instrument that produced the files\n('Instrument' field).")
@@ -729,6 +902,8 @@ def saveDataViewSettings():
         dataViewSettings['panel2'] = panel2.get()
         dataViewSettings['panel3'] = panel3.get()
         dataViewSettings['fixedScale'] = fixedScale.get()
+        dataViewSettings['uvGapMode'] = uv_gap_mode_from_display(
+            uvGap_combobox.get())
         
         dataViewSettings['tsDiagram'] = tsDiagram.get()
         if dataViewSettings['tsDiagram'] == True:
@@ -765,20 +940,21 @@ def saveDataViewSettings():
         start_text = time_start_entry.get().strip()
         end_text = time_end_entry.get().strip()
         if start_text or end_text:
+            available_start, available_end = time_availability(
+                selected_database())
             try:
-                x_start = pd.to_datetime(start_text, dayfirst=True)
-                x_end = pd.to_datetime(end_text, dayfirst=True)
-                if pd.isna(x_start) or pd.isna(x_end) or x_end <= x_start:
-                    raise ValueError('invalid interval')
+                x_start, x_end = validate_time_window_texts(
+                    start_text, end_text, available_start, available_end)
                 dataViewSettings['xAxisStart'] = x_start
                 dataViewSettings['xAxisEnd'] = x_end
-            except Exception:
-                ui_warn("Warning",
-                                       "Invalid X-axis time window.\n\n"
-                                       "Fill BOTH fields using DD/MM/YYYY HH:MM\n"
-                                       "(end after start), e.g. 15/04/2019 09:00,\n"
-                                       "or leave both empty to fit the data automatically.")
-                error_logger.log("Warning: invalid X-axis time window - ignored")
+            except ValueError:
+                ui_error(
+                    "Invalid date/time range",
+                    time_window_error_message(
+                        available_start, available_end))
+                error_logger.log(
+                    "Error: invalid X-axis date/time range - generation stopped")
+                return False
 
         # optional fixed depth range for the depth axis of profile plots
         dataViewSettings['depthAxisMin'] = None
@@ -848,6 +1024,7 @@ def saveDataViewSettings():
             'dbv_data_points': dataPoints.get(),
             'dbv_disagreement': disagreement.get(),
             'dbv_fixed_scale': fixedScale.get(),
+            'dbv_uv_gap_mode': dataViewSettings['uvGapMode'],
             'dbv_selected_sites': selectedSites,
             # NOTE: parameter selection and scale values are per-imported-sheet
             # (defaults recomputed from the data each time) and are NOT persisted.
@@ -855,19 +1032,22 @@ def saveDataViewSettings():
         save_user_prefs()
 
         error_logger.log("Info: view settings saved.")
+        return True
     except Exception as e:
         error_logger.log(f"Error saving view settings: {str(e)}")
+        return False
 
 def generatePanels():
     error_logger.clear()  # Clear the log before generating new panels
-    # close panels from a previous run so the new ones (with the new settings,
-    # e.g. an edited X-axis window) replace them instead of opening behind and
-    # looking like nothing changed
-    view.plt.close('all')
-
     # implicitly saves the current interface choices: generating panels with
     # stale settings was a pitfall of the 2-click save->generate flow
-    saveDataViewSettings()
+    if not saveDataViewSettings():
+        return
+
+    # Close panels from a previous VALID run only after the new settings pass
+    # validation. A mistyped date must not destroy the product the warning asks
+    # the operator to use as a reference.
+    view.plt.close('all')
 
     if not dataViewSettings.get('dataType'):
         error_logger.log("Error: nothing to plot - configure the options and click 'Generate panels'")
@@ -922,7 +1102,7 @@ def generatePanels():
                         error_logger.log("Error generating HOBO across-sites panel: %s" % e)
 
         if is_doppler_input():
-            # Doppler: the 4 current panels per selected site, spanning every
+            # Doppler: the current panels per selected site, spanning every
             # selected year in one set (like HOBO, deployments are not split)
             selected_sites = dataViewSettings.get('siteList', [])
             if not selected_sites:
@@ -949,6 +1129,7 @@ def generatePanels():
                     'depthAxisMin': dataViewSettings.get('depthAxisMin'),
                     'depthAxisMax': dataViewSettings.get('depthAxisMax'),
                     'currentSpeedMax': speed_max,
+                    'uvGapMode': dataViewSettings.get('uvGapMode', 'break'),
                 }
                 # every panel of every selected site goes into ONE browsable
                 # window at the end (v13.0), instead of one window per figure
@@ -1080,7 +1261,7 @@ dataViewSettings = {}
 def build_step1(parent):
     """Builds Step 1 (choose or build the database) inside `parent`, a frame in
     the unified app's Visualization tab. The root window, header and dark-mode
-    switch are owned by the QCS_App shell."""
+    switch are owned by the host shell."""
     global fileNames_entry, inputPath_entry, browse_file_btn, browse_input_btn
     global join, sort, sort_cb, instrument_combobox, outputName_entry, outputPath_entry
 
@@ -1109,6 +1290,7 @@ def build_step1(parent):
     fileNames_entry = ttk.Entry(input_frame, width=24)
     fileNames_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
     ToolTip(fileNames_entry, TOOLTIPS['database_files'])
+    fileNames_entry.bind('<KeyRelease>', lambda _e: set_instrument_locked(False))
 
     browse_file_btn = ttk.Button(input_frame, text="Browse...", command=selectFiles, width=10)
     browse_file_btn.grid(row=1, column=1, padx=5)
@@ -1139,7 +1321,8 @@ def build_step1(parent):
 
     # Instrument (Seaguard/TSCP or HOBO): the two are never stackable, so the
     # database is built for one instrument at a time (.csv and .xlsx both read).
-    # Auto-set from the selected files (detect_qualified_layout); still editable.
+    # Auto-set and locked only when every selected qualified header proves the
+    # same family; otherwise it remains an explicit operator choice.
     ttk.Label(input_frame, text="Instrument:", style='Header.TLabel').grid(row=6, column=0, sticky='w', pady=(5,2))
     instrument_combobox = ttk.Combobox(input_frame, values=["Seaguard", "HOBO", "Doppler"], width=15, state='readonly')
     instrument_combobox.set("Seaguard")
@@ -1330,10 +1513,11 @@ def _current_source_label():
 def build_step2(parent):
     """Builds Step 2 (visualization settings) inside `parent`, a frame in the
     unified app's Visualization tab. Rebuilt fresh each time the user advances
-    from Step 1. The root window and header are owned by the QCS_App shell."""
+    from Step 1. The root window and header are owned by the host shell."""
     global dType_combobox, panel1, panel2, panel3, panel1_cb, panel2_cb, panel3_cb
     global tsDiagram, ts_cb, latitude_entry, longitude_entry, tsParam_combobox
     global tendency, tendency_cb, tendency_entry, dataPoints, points_cb, fixedScale, fixed_scale_cb
+    global uvGap_combobox, time_avail_lbl, depth_avail_lbl
     global disagreement
     global year_vars, year_widgets, time_start_entry, time_end_entry, depth_min_entry, depth_max_entry
     global site_names, site_vars, site_widgets, parameter_names, parameter_vars, parameter_widgets
@@ -1422,7 +1606,8 @@ def build_step2(parent):
                         "Vertical profile at a site")
         panel_tips = (TOOLTIPS['panel1'], TOOLTIPS['panel2'], TOOLTIPS['panel3'])
 
-    ttk.Label(vis_frame, text="Select panels:").grid(row=0, column=0, sticky='w', pady=5)
+    panels_lbl = ttk.Label(vis_frame, text="Select panels:")
+    panels_lbl.grid(row=0, column=0, sticky='w', pady=5)
     panel1 = BooleanVar(value=False)
     panel1_cb = ttk.Checkbutton(vis_frame, text=panel_labels[0], variable=panel1,
                                command=lambda: [toggle_panel_dependent_controls(), toggle_parameter_checkboxes()])
@@ -1442,6 +1627,22 @@ def build_step2(parent):
     ToolTip(panel3_cb, panel_tips[2])
     if is_hobo_input():
         panel3_cb.grid_remove()          # HOBO has no third panel at all
+    elif is_doppler_input():
+        # Current panels have fixed content and are always generated. Do not
+        # display disabled scalar choices in the legacy Tk shell.
+        for w in (panels_lbl, panel1_cb, panel2_cb, panel3_cb):
+            w.grid_remove()
+
+    uv_gap_lbl = ttk.Label(vis_frame, text="U/V gap treatment:")
+    uv_gap_lbl.grid(row=1, column=0, sticky='w', pady=(2, 1))
+    uvGap_combobox = ttk.Combobox(
+        vis_frame, values=list(UV_GAP_OPTIONS.values()), width=28,
+        state='readonly')
+    uvGap_combobox.grid(row=2, column=0, sticky='w', pady=(1, 5))
+    ToolTip(uvGap_combobox, TOOLTIPS['uv_gap_mode'])
+    if not is_doppler_input():
+        uv_gap_lbl.grid_remove()
+        uvGap_combobox.grid_remove()
 
     # TS Diagram
     tsDiagram = BooleanVar(value=False)
@@ -1505,15 +1706,16 @@ def build_step2(parent):
                           lambda e: tsParam_combobox.after_idle(_widen_ts_popup), add='+')
     _widen_ts_popup()
 
-    if is_hobo_input():
-        # a temp/light logger has no salinity: the whole T-S section (checkbox,
-        # coordinates and parameter choice) is removed, not just grayed out
+    if is_hobo_input() or is_doppler_input():
+        # HOBO has no salinity and the current panel family has fixed content:
+        # the whole T-S section is absent, not merely grayed out.
         for w in (ts_cb, lat_lbl, latitude_entry, long_lbl, longitude_entry,
                   tsp_lbl, tsParam_combobox):
             w.grid_remove()
 
     # Display options
-    ttk.Label(vis_frame, text="Display options:").grid(row=0, column=1, sticky='w', pady=5)
+    ttk.Label(vis_frame, text="Display options:").grid(
+        row=0, column=1, sticky='w', pady=5)
 
     tendency = BooleanVar(value=False)
     tendency_cb = ttk.Checkbutton(vis_frame, text="Trend lines", variable=tendency, 
@@ -1521,7 +1723,8 @@ def build_step2(parent):
     tendency_cb.grid(row=1, column=1, sticky='w', pady=2)
     ToolTip(tendency_cb, TOOLTIPS['tendency'])
 
-    ttk.Label(vis_frame, text="Degree:").grid(row=2, column=1, sticky='w', pady=2)
+    degree_lbl = ttk.Label(vis_frame, text="Degree:")
+    degree_lbl.grid(row=2, column=1, sticky='w', pady=2)
     tendency_entry = ttk.Entry(vis_frame, width=28)
     tendency_entry.grid(row=3, column=1, sticky='w', pady=2)
     set_disabled_style(tendency_entry)
@@ -1538,9 +1741,20 @@ def build_step2(parent):
     disagreement = BooleanVar(value=True)
 
     fixedScale = BooleanVar(value=False)
-    fixed_scale_cb = ttk.Checkbutton(vis_frame, text="Fixed scale", variable=fixedScale, command=toggle_scale_controls)
+    fixed_label = ("Fixed scale (one speed colour scale)"
+                   if is_doppler_input() else "Fixed scale")
+    fixed_scale_cb = ttk.Checkbutton(vis_frame, text=fixed_label, variable=fixedScale,
+                                     command=toggle_scale_controls)
     fixed_scale_cb.grid(row=5, column=1, sticky='w', pady=5)
-    ToolTip(fixed_scale_cb, TOOLTIPS['fixed_scale'])
+    fixed_tip = ("One speed colour scale for every current panel generated, "
+                 "computed from the data being plotted\nOff = each panel "
+                 "autoscales to its own site and years"
+                 if is_doppler_input() else TOOLTIPS['fixed_scale'])
+    ToolTip(fixed_scale_cb, fixed_tip)
+    if is_doppler_input():
+        # Trend and point overlays do not apply to the fixed current panels.
+        for w in (tendency_cb, degree_lbl, tendency_entry, points_cb):
+            w.grid_remove()
 
     # X-axis time window (time-series plots; label says which family applies)
     _x_kind = ('HOBO' if is_hobo_input()
@@ -1559,22 +1773,20 @@ def build_step2(parent):
     # need to open the spreadsheet to know which days were sampled
     data_start = database['Datetime'].min()
     data_end = database['Datetime'].max()
-    if pd.notna(data_start) and pd.notna(data_end):
-        coverage_text = "Data available: %s to %s" % (data_start.strftime('%d/%m/%Y %H:%M'),
-                                                      data_end.strftime('%d/%m/%Y %H:%M'))
-    else:
-        coverage_text = "Data available: unknown (invalid dates)"
-    ttk.Label(vis_frame, text=coverage_text, style='Small.TLabel').grid(
-        row=10, column=1, sticky='w', pady=(0,2))
+    time_avail_lbl = ttk.Label(
+        vis_frame, text=time_availability_text(database),
+        style='Small.TLabel')
+    time_avail_lbl.grid(row=10, column=1, sticky='w', pady=(0,2))
 
     # Depth-axis range (profile plots) - analogous to the time window above
-    dmin_lbl = ttk.Label(vis_frame, text="Depth-axis min (profile):")
+    depth_kind = 'current' if is_doppler_input() else 'profile'
+    dmin_lbl = ttk.Label(vis_frame, text="Depth-axis min (%s):" % depth_kind)
     dmin_lbl.grid(row=11, column=1, sticky='w', pady=(10,2))
     depth_min_entry = ttk.Entry(vis_frame, width=28)
     depth_min_entry.grid(row=12, column=1, sticky='w', pady=2)
     ToolTip(depth_min_entry, TOOLTIPS['depth_min'])
 
-    dmax_lbl = ttk.Label(vis_frame, text="Depth-axis max (profile):")
+    dmax_lbl = ttk.Label(vis_frame, text="Depth-axis max (%s):" % depth_kind)
     dmax_lbl.grid(row=13, column=1, sticky='w', pady=2)
     depth_max_entry = ttk.Entry(vis_frame, width=28)
     depth_max_entry.grid(row=14, column=1, sticky='w', pady=2)
@@ -1582,11 +1794,7 @@ def build_step2(parent):
 
     # shows the depth range covered by the loaded database (same single-line
     # format as the "Data available" label above)
-    if 'Depth (m)' in database.columns and database['Depth (m)'].notna().any():
-        depth_text = "Depth available: %.2f to %.2f m" % (database['Depth (m)'].min(),
-                                                          database['Depth (m)'].max())
-    else:
-        depth_text = "Depth available: no depth column"
+    depth_text = depth_availability_text()
     depth_avail_lbl = ttk.Label(vis_frame, text=depth_text, style='Small.TLabel')
     depth_avail_lbl.grid(row=15, column=1, sticky='w', pady=(2,5))
     if is_hobo_input():
@@ -1655,7 +1863,7 @@ def build_step2(parent):
         main_params = ['Temperature (degC)', 'Luminosity (lux)']
         secondary_params = []
     elif is_doppler_input():
-        # the 4 current panels have a fixed content - the parameter selection
+        # the current panels have fixed content - the parameter selection
         # does not apply (kept for the row-height/layout machinery only)
         main_params = ['Horizontal speed (cm/s)', 'Direction (deg)']
         secondary_params = []
@@ -1790,6 +1998,14 @@ def build_step2(parent):
             param_col.grid_rowconfigure(r, minsize=h)
             scale_frame.grid_rowconfigure(r, minsize=h)
 
+    if is_doppler_input():
+        # The current panels decide their variables internally. Match the Qt
+        # shell by omitting the inert parameter filter and empty scale column.
+        param_col.grid_remove()
+        scale_frame.grid_remove()
+        filter_frame.columnconfigure(1, weight=0)
+        main_content_frame.columnconfigure(2, weight=0)
+
     # 'Filter by year:' sits beside the parameters header (which is taller now,
     # holding the All/None buttons): pad it down so the two headers align
     dy = max(0, (param_hdr_row.winfo_reqheight() - year_lbl.winfo_reqheight()) // 2)
@@ -1830,6 +2046,8 @@ def build_step2(parent):
     dataPoints.set(USER_PREFS.get('dbv_data_points', False))
     disagreement.set(USER_PREFS.get('dbv_disagreement', True))
     fixedScale.set(USER_PREFS.get('dbv_fixed_scale', False))
+    gap_mode = USER_PREFS.get('dbv_uv_gap_mode', 'break')
+    uvGap_combobox.set(UV_GAP_OPTIONS.get(gap_mode, UV_GAP_OPTIONS['break']))
     # Year/Site: ALL checked by default on every import (like the parameters,
     # these are per-imported-sheet and NOT restored from preferences): with
     # several years/sites the user usually wants everything, and unchecking is
@@ -1838,6 +2056,8 @@ def build_step2(parent):
         v.set(True)
     for v in site_vars.values():
         v.set(True)
+    refresh_time_availability()
+    refresh_depth_availability()
     # Parameters: default to the MAIN-group ones that actually HAVE data in this
     # database (recomputed per imported sheet; NOT persisted between sessions).
     # SECONDARY parameters (rarely used) always start unchecked.
@@ -1897,13 +2117,13 @@ def build_step2(parent):
         keep = False
         if cur:
             try:
-                cv = pd.to_datetime(cur, dayfirst=True)
+                cv = pd.Timestamp(datetime.strptime(cur, TIME_TEXT_FORMAT))
                 keep = pd.notna(cv) and data_start <= cv <= data_end
             except Exception:
                 keep = False
         if not keep:
             entry.delete(0, END)
-            entry.insert(0, default_dt.strftime('%d/%m/%Y %H:%M'))
+            entry.insert(0, default_dt.strftime(TIME_TEXT_FORMAT))
 
     _default_time(time_start_entry, data_start)
     _default_time(time_end_entry, data_end)
@@ -1936,7 +2156,7 @@ def build_step2(parent):
 _viz_root = None
 _step1_frame = None
 _step2_frame = None
-_shared_log = None        # app-wide Execution log (owned by the QCS_App shell)
+_shared_log = None        # app-wide Execution log (owned by the host shell)
 _db_msgs_logged = False   # True once db_build_messages went to the log (no dupes)
 _recent_combobox = None   # Step 1 'Recent' picker (created in build_step1)
 preview_btn = None        # Step 1 'Preview' button (folder mode only)
@@ -2043,9 +2263,11 @@ def _apply_recent(event=None):
     restore_entry(fileNames_entry, entry['files'])
     if entry.get('instrument') in ('Seaguard', 'HOBO', 'Doppler'):
         instrument_combobox.set(entry['instrument'])
+    files = [p for p in entry['files'].split(';') if p.strip()]
+    autodetect_instrument(files)
 
 def apply_pending_prefill(info):
-    """Pre-fill Step 1 from a just-finished qualification (called by the QCS_App
+    """Pre-fill Step 1 from a just-finished qualification (called by the GUI
     shell when the user switches to the Visualization tab). info holds
     {'file', 'out_root', 'instrument'}. Ensures Step 1 is showing."""
     if not info or globals().get('fileNames_entry') is None:
@@ -2075,6 +2297,9 @@ def apply_pending_prefill(info):
                       'longitude': info.get('longitude')}
     join.set(False)
     toggle_input_mode()
+    if info.get('instrument') in ('Seaguard', 'HOBO', 'Doppler'):
+        instrument_combobox.set(info['instrument'])
+        set_instrument_locked(True)  # qualification handoff is trusted provenance
     _preview_cache['key'] = None   # force a rebuild for the new selection
     # the just-qualified file IS the current selection: Recent must show it
     # (not the previous session's file)
@@ -2118,7 +2343,7 @@ def build_visualization_tab(container, root, shared_log=None):
     """Builds the Data Visualization UI inside `container` (a frame in the
     unified app's notebook). Hosts the Step 1 <-> Step 2 wizard as two stacked
     frames swapped by the Next/Back buttons. `root` is the shared Tk root;
-    `shared_log` is the app-wide Execution log owned by the QCS_App shell."""
+    `shared_log` is the app-wide Execution log owned by the host shell."""
     global _viz_root, _step1_frame, _step2_frame, _shared_log
     _viz_root = root
     _shared_log = shared_log
@@ -2129,7 +2354,7 @@ def build_visualization_tab(container, root, shared_log=None):
 
 
 if __name__ == '__main__':
-    # Standalone dev launch (the shipped entry point is QCS_App.py).
+    # Standalone Tk development launch (the shipped entry point is QCS_QtApp.py).
     theme.enable_high_dpi()
     _root = Tk()
     _root.title("QCS - Data Visualization %s" % data.QCS_VERSION)

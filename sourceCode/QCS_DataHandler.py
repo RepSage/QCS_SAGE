@@ -6,6 +6,18 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Button, RectangleSelector
 import QCS_Theme as _theme
 
+
+def _show_plot_info(fig, title, message):
+    """Show information owned by an interactive plot window.
+
+    The Qt shell replaces this hook so a native QMessageBox is used.  Keeping
+    the Tk implementation here preserves the standalone legacy shell without
+    making a Qt callback open a second GUI toolkit directly.
+    """
+    from tkinter import messagebox
+    parent = getattr(getattr(fig.canvas, 'manager', None), 'window', None)
+    messagebox.showinfo(title, message, parent=parent)
+
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
@@ -1979,6 +1991,7 @@ def clean_below_zero(data, settings):
 FLAG_BUCKET_MAP = {
     'T': ['T'], 'S': ['S'], 'C': ['C'], 'P': ['P'], 'pH': ['pH'],
     'chl': ['chl'], 'O2': ['O2'], 'org': ['org'], 'tur': ['tur'],
+    'PAR': ['PAR'],
     'dens': ['T', 'S'],
     'lux': ['lux'],  # HOBO light (fouling test)
     'CO2': ['CO2'],  # dissolved CO2 (imported from the separate logger, v6.0)
@@ -1988,8 +2001,8 @@ FLAG_BUCKET_MAP = {
 # need to select rows by qualification result (e.g. the DataView scale defaults).
 # Density and Depth carry DERIVED flags (v11.1): they are computed values, so
 # their flag is their parents' worst - dens from T+S, depth from P. Soundspeed
-# and PAR remain untested and intentionally absent. (This comment once listed
-# CO2 as unflagged; Flag_CO2 exists since v6.0.)
+# remains untested and intentionally absent. (Flag_CO2 exists since v6.0;
+# Flag_PAR is added in v13.0.)
 PARAM_FLAG_COLUMN = {
     'Temperature (degC)': 'Flag_T',
     'Salinity (PSU)': 'Flag_S',
@@ -2003,6 +2016,7 @@ PARAM_FLAG_COLUMN = {
     'Dissolved organic matter (ppb)': 'Flag_org',
     'Turbidity (FTU)': 'Flag_tur',
     'TSS (mg/L)': 'Flag_tur',
+    'PAR (umol/m2/s)': 'Flag_PAR',
     'Luminosity (lux)': 'Flag_lux',
     'Density (kg/m3)': 'Flag_dens',
     'Depth (m)': 'Flag_depth',
@@ -2144,6 +2158,8 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 output_df.loc[org_bdata, name] = np.nan
             if re.search('turbidity|tss', name, re.IGNORECASE):
                 output_df.loc[tur_bdata, name] = np.nan
+            if re.search(r'\bPAR\b', name, re.IGNORECASE) and 'PAR' in bdata:
+                output_df.loc[bdata['PAR'], name] = np.nan
             if re.search('luminosity|lux', name, re.IGNORECASE) and 'lux' in bdata:
                 output_df.loc[bdata['lux'], name] = np.nan
     if remove_suspect == True:
@@ -2171,6 +2187,8 @@ def handle_output_file (input_df, flags, flag_layout, remove_suspect, remove_bad
                 output_df.loc[org_sdata, name] = np.nan
             if re.search('turbidity|tss', name, re.IGNORECASE):
                 output_df.loc[tur_sdata, name] = np.nan
+            if re.search(r'\bPAR\b', name, re.IGNORECASE) and 'PAR' in sdata:
+                output_df.loc[sdata['PAR'], name] = np.nan
             if re.search('luminosity|lux', name, re.IGNORECASE) and 'lux' in sdata:
                 output_df.loc[sdata['lux'], name] = np.nan
     return output_df, input_df, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata
@@ -2187,10 +2205,11 @@ def order_var (qualified_data, n_cel, data_type):
                         'Dissolved organic matter (ppb)': 17, 'Luminosity (lux)': 18, 'Soundspeed (m/s)': 19,
                         'Battery voltage (V)': 20, 'Flag': 21,
                         'Flag_T': 22, 'Flag_S': 23, 'Flag_C': 24, 'Flag_P': 25, 'Flag_pH': 26,
-                        'Flag_chl': 27, 'Flag_CO2': 28, 'Flag_O2': 29, 'Flag_org': 30,
-                        'Flag_tur': 31, 'Flag_lux': 32,
+                        'Flag_chl': 27, 'Flag_O2': 28, 'Flag_org': 29,
+                        'Flag_tur': 30, 'Flag_PAR': 31, 'Flag_CO2': 32,
+                        'Flag_lux': 33,
                         # derived-variable flags (v11.1) sit after the measured ones
-                        'Flag_dens': 33, 'Flag_depth': 34, 'QCS version': 35}
+                        'Flag_dens': 34, 'Flag_depth': 35, 'QCS version': 36}
     elif data_type == 'hobo':
         # HOBO Pendant: only the measured variables (temperature in Celsius and
         # light in lux), with the same metadata block as the TSCP standard. The
@@ -2546,17 +2565,6 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
 
     fig, ax = plt.subplots(figsize=(10, 6.5))
     plt.subplots_adjust(bottom=0.20, top=0.88)
-    # keep the useful navigation toolbar but drop the Zoom lens (wheel zoom
-    # replaces it), the Home button (the 'Reset' button resets the view) and
-    # Configure subplots (its wspace/hspace do nothing here); best-effort
-    try:
-        tb = fig.canvas.manager.toolbar
-        for _name in ('Zoom', 'Home', 'Subplots'):
-            btn = getattr(tb, '_buttons', {}).get(_name)
-            if btn is not None:
-                btn.pack_forget()
-    except Exception:
-        pass
 
     def redraw(keep_view=True):
         # preserve the current view (zoom/pan) across redraws; the first draw
@@ -2667,26 +2675,19 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
         plt.close(fig)
 
     def do_help(_=None):
-        try:
-            from tkinter import messagebox
-            # parent the dialog to the PLOT window so it pops over the plot
-            # instead of raising the main program window behind it
-            parent = getattr(getattr(fig.canvas, 'manager', None), 'window', None)
-            messagebox.showinfo(
-                'Manual point cut - help',
-                'Drag a rectangle (left button) over points to DISMISS them (flag 5).\n'
-                'Mouse wheel zooms around the cursor; middle-button drag pans.\n\n'
-                'The points are NOT deleted: they stay in the sheet with flag 5 and\n'
-                'their value blanked, so the manual cut stays traceable. Points already\n'
-                'cut in the Depth review appear grayed and are kept dismissed.\n\n'
-                'Undo   - undo the last box\n'
-                'Reset  - clear the dismissals made here and reset the zoom\n'
-                'Skip   - leave this series untouched (continue)\n'
-                'Cancel - abort the whole qualification (shortcut: Esc)\n'
-                'Done   - confirm and continue (shortcut: Enter)',
-                parent=parent)
-        except Exception:
-            pass
+        _show_plot_info(
+            fig,
+            'Manual point cut - help',
+            'Drag a rectangle (left button) over points to DISMISS them (flag 5).\n'
+            'Mouse wheel zooms around the cursor; middle-button drag pans.\n\n'
+            'The points are NOT deleted: they stay in the sheet with flag 5 and\n'
+            'their value blanked, so the manual cut stays traceable. Points already\n'
+            'cut in the Depth review appear grayed and are kept dismissed.\n\n'
+            'Undo   - undo the last box\n'
+            'Reset  - clear the dismissals made here and reset the zoom\n'
+            'Skip   - leave this series untouched (continue)\n'
+            'Cancel - abort the whole qualification (shortcut: Esc)\n'
+            'Done   - confirm and continue (shortcut: Enter)')
 
     def on_key(event):
         if event.key == 'enter':
@@ -2694,9 +2695,13 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
         elif event.key == 'escape':
             do_cancel()
 
-    _selector = RectangleSelector(ax, on_select, useblit=True, button=[1],  # noqa: F841 (kept alive vs GC)
+    # A box is an immediate action, not an editable annotation: non-interactive
+    # selectors hide their rubber band on release and leave a clean view for
+    # the next cut. The selected points remain visible as dismissed circles.
+    _selector = RectangleSelector(ax, on_select, useblit=True, button=[1],
                                   minspanx=5, minspany=5, spancoords='pixels',
-                                  interactive=True)
+                                  interactive=False)
+    fig._qcs_selector = _selector       # lifetime + behavioural test probe
     extend_selection_beyond_axes(_selector, ax)   # drag past the plot's edge
     fig.canvas.mpl_connect('key_press_event', on_key)
     fig.canvas.mpl_connect('scroll_event', on_scroll)
@@ -2704,17 +2709,23 @@ def manual_cut_panel(x, y, label, tk_root=None, locked=None, progress=None,
     fig.canvas.mpl_connect('motion_notify_event', on_pan_move)
     fig.canvas.mpl_connect('button_release_event', on_pan_release)
 
-    # buttons along the bottom (kept referenced so the GC does not collect them)
+    # Buttons along the bottom (kept referenced so the GC does not collect
+    # them). Under Tk these Matplotlib widgets remain the controls. The Qt shell
+    # reads the metadata below, hides their axes and builds native QPushButtons
+    # with the exact same platform styling as its Previous / Next row.
+    button_specs = [('Undo', do_undo), ('Reset', do_reset),
+                    ('Skip', do_skip), ('Help', do_help),
+                    ('Done', do_done), ('Cancel', do_cancel)]
     _buttons = []
-    for i, (txt, cb) in enumerate([('Undo', do_undo), ('Reset', do_reset),
-                                   ('Skip', do_skip), ('Help', do_help),
-                                   ('Done', do_done), ('Cancel', do_cancel)]):
+    for i, (txt, cb) in enumerate(button_specs):
         bax = fig.add_axes([0.025 + i * 0.163, 0.04, 0.145, 0.07])
         b = Button(bax, txt)
         b.on_clicked(cb)
         _buttons.append(b)
 
-    _theme.style_plot_buttons(_buttons)   # the program's button look, not matplotlib's
+    _theme.style_plot_buttons(_buttons)   # Tk fallback; Qt replaces their visible row
+    fig._qcs_native_buttons = button_specs
+    fig._qcs_mpl_button_axes = [button.ax for button in _buttons]
     redraw()
     _theme.style_plot_window(fig, 'Manual point cut - %s' % label)  # app icon + title
     _show_and_wait(fig, tk_root)
@@ -2898,6 +2909,29 @@ def detect_qualified_layout(df):
     return 'tscp'
 
 
+def detect_known_qualified_instrument(df):
+    """Qualified instrument identity, or None when the header is ambiguous.
+
+    `detect_qualified_layout` intentionally defaults old scalar tables to TSCP
+    for backwards-compatible database loading. A UI must not lock Instrument
+    from that default: locking requires positive identity columns.
+    """
+    cols = set(str(col) for col in df.columns)
+    if not {'Datetime', 'Site'}.issubset(cols):
+        return None
+    if {'Flag_cur', 'Horizontal speed (cm/s)'}.issubset(cols):
+        return 'Doppler'
+    if {'Temperature (degC)', 'Luminosity (lux)'}.issubset(cols):
+        return 'HOBO'
+    scalar_markers = {
+        'Salinity (PSU)', 'Conductivity (mS/cm)', 'Pressure (dbar)',
+        'Density (kg/m3)', 'Dissolved Oxygen (mg/L)', 'Chlorophyll (ug/L)',
+    }
+    if 'Flag' in cols and cols.intersection(scalar_markers):
+        return 'Seaguard'
+    return None
+
+
 def build_database(instrument, file_list=None, input_path=None):
     """Single unification engine for qualified spreadsheets (Seaguard and HOBO).
 
@@ -3038,17 +3072,47 @@ def combine_hobo_replicates(replicates, temp_tol=0.5):
         raise ValueError('combine_hobo_replicates: need at least 2 replicates.')
     messages = []
 
+    # A repeated timestamp with identical signals is a harmless duplicated row.
+    # Conflicting values at the same instant are not: the old collapsed 12-hour
+    # clock produced exactly that shape, and choosing the first reading silently
+    # throws away half a record. Condense only identical signal rows and fail
+    # closed on an ambiguous timestamp.
+    clean_replicates = []
+    signal_cols = ['Temperature (degC)', 'Luminosity (lux)', 'Flag_T', 'Flag_lux']
+    for i, replicate in enumerate(replicates):
+        clean = replicate.copy()
+        clean['Datetime'] = pd.to_datetime(clean['Datetime'])
+        clean = clean.sort_values('Datetime', kind='stable')
+        duplicate = clean['Datetime'].duplicated(keep=False)
+        if duplicate.any():
+            repeated = clean.loc[duplicate, ['Datetime'] + signal_cols]
+            conflicts = [stamp for stamp, group in repeated.groupby('Datetime', sort=False)
+                         if any(group[col].nunique(dropna=False) > 1
+                                for col in signal_cols)]
+            n_extra = int(clean['Datetime'].duplicated().sum())
+            if conflicts:
+                raise ValueError(
+                    'HOBO replicate %d has %d repeated timestamp(s) with '
+                    'conflicting values (first: %s). This can indicate a '
+                    'collapsed 12-hour clock; the replicates were not combined.'
+                    % (i + 1, len(conflicts), conflicts[0]))
+            clean = clean.drop_duplicates(subset=['Datetime'], keep='first')
+            messages.append(
+                'Warning: HOBO replicate %d contained %d identical duplicate '
+                'row(s); one copy per timestamp was kept before combination.'
+                % (i + 1, n_extra))
+        clean_replicates.append(clean)
+
     # align every replicate onto the first replicate's time grid (nearest match
     # within half the sampling interval, to absorb small clock differences)
-    ref_times = pd.DatetimeIndex(pd.to_datetime(replicates[0]['Datetime'])).sort_values()
+    ref_times = pd.DatetimeIndex(clean_replicates[0]['Datetime'])
     step = ref_times.to_series().diff().median()
     tol = (step / 2) if (pd.notna(step) and step > pd.Timedelta(0)) else None
     aligned = []
-    for r in replicates:
+    for r in clean_replicates:
         a = r.copy()
-        a['Datetime'] = pd.to_datetime(a['Datetime'])
         a = a.set_index('Datetime')
-        a = a[~a.index.duplicated(keep='first')].sort_index()
+        a = a.sort_index()
         aligned.append(a.reindex(ref_times, method='nearest', tolerance=tol))
 
     def stack(name):
@@ -3062,8 +3126,8 @@ def combine_hobo_replicates(replicates, temp_tol=0.5):
     # replicates configured at DIFFERENT sampling intervals leave every other
     # row of the finer grid without a partner - say so, or the holes in the
     # spread column read as noise
-    steps = [pd.DatetimeIndex(pd.to_datetime(r['Datetime'])).to_series()
-             .diff().median() for r in replicates]
+    steps = [pd.DatetimeIndex(r['Datetime']).to_series().diff().median()
+             for r in clean_replicates]
     if len({s for s in steps if pd.notna(s)}) > 1:
         messages.append(
             'Warning: the replicates were configured at DIFFERENT sampling '
@@ -3100,8 +3164,8 @@ def combine_hobo_replicates(replicates, temp_tol=0.5):
         'Flag_T': flag_t.values.astype(int),
         'Flag_lux': flag_lux.values.astype(int),
     })
-    if 'Site' in replicates[0].columns and len(replicates[0]):
-        out.insert(1, 'Site', replicates[0]['Site'].iloc[0])
+    if 'Site' in clean_replicates[0].columns and len(clean_replicates[0]):
+        out.insert(1, 'Site', clean_replicates[0]['Site'].iloc[0])
 
     messages.append('Info: combined %d HOBO replicates over %d aligned timestamps.'
                     % (len(replicates), len(out)))

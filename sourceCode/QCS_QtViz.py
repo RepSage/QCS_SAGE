@@ -21,8 +21,6 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QCheckBox, QColorDialog,
                                QSizePolicy, QSpinBox, QStackedWidget,
                                QVBoxLayout, QWidget)
 
-import pandas as pd
-
 import QCS_DatabaseView as dbv
 import QCS_QtTheme as qtheme
 
@@ -65,22 +63,11 @@ def _tk_enabled(widget):
 def _coverage_text():
     """The period the loaded database covers (the tk step 2 showed this under
     the X-axis fields; kept permanently on screen in Qt)."""
-    db = dbv.database
-    if db is None or 'Datetime' not in db.columns:
-        return 'Data available: unknown'
-    start, end = db['Datetime'].min(), db['Datetime'].max()
-    if pd.isna(start) or pd.isna(end):
-        return 'Data available: unknown (invalid dates)'
-    return 'Data available: %s to %s' % (start.strftime('%d/%m/%Y %H:%M'),
-                                         end.strftime('%d/%m/%Y %H:%M'))
+    return dbv.time_availability_text(dbv.selected_database())
 
 
 def _depth_text():
-    db = dbv.database
-    if db is None or 'Depth (m)' not in db.columns or not db['Depth (m)'].notna().any():
-        return 'Depth available: no depth column'
-    return 'Depth available: %.2f to %.2f m' % (db['Depth (m)'].min(),
-                                                db['Depth (m)'].max())
+    return dbv.depth_availability_text(dbv.selected_database())
 
 
 def _tk_set_entry(entry, text):
@@ -258,6 +245,7 @@ class VisualizationTab(QWidget):
             self.sort.setEnabled(_tk_enabled(dbv.sort_cb))
         with QSignalBlocker(self.instrument):
             self.instrument.setCurrentText(dbv.instrument_combobox.get())
+            self.instrument.setEnabled(_tk_enabled(dbv.instrument_combobox))
         with QSignalBlocker(self.recent):
             self.recent.clear()
             self.recent.addItems([dbv._recent_display(r)
@@ -308,6 +296,8 @@ class VisualizationTab(QWidget):
 
     def _files_edited(self, text):
         _tk_set_entry(dbv.fileNames_entry, text)
+        dbv.set_instrument_locked(False)
+        self.instrument.setEnabled(True)
         self._sync_recent_state()
 
     def _apply_recent(self, index):
@@ -346,10 +336,11 @@ class VisualizationTab(QWidget):
             self.refresh_step1()
 
     def _next(self):
-        if dbv._go_step2():
-            self._rebuild_step2()
-            self.stack.setCurrentIndex(1)
-            qtheme.scroll_to_top(self)     # step 2 opens at its top
+        with qtheme.wait_cursor(self):
+            if dbv._go_step2():
+                self._rebuild_step2()
+                self.stack.setCurrentIndex(1)
+                qtheme.scroll_to_top(self)     # step 2 opens at its top
 
     # ---------- Step 2 ----------
     def _rebuild_step2(self):
@@ -418,7 +409,7 @@ class VisualizationTab(QWidget):
         panel_tips = ((TOOLTIPS['hobo_params_site'], TOOLTIPS['hobo_params_across'], '')
                       if dbv.is_hobo_input() else
                       (TOOLTIPS['panel1'], TOOLTIPS['panel2'], TOOLTIPS['panel3']))
-        # A current database has FIXED panel content (the four current
+        # A current database has FIXED panel content (the three current
         # panels), so the three panel choices do not apply to it: they were
         # built disabled and still carrying the SEAGUARD labels - three dead
         # rows promising figures this instrument never draws. Hidden since
@@ -472,9 +463,17 @@ class VisualizationTab(QWidget):
         self._check_pair(self.fixed_scale, dbv.fixedScale, dbv.fixed_scale_cb,
                          after=(dbv.toggle_scale_controls,))
         fv.addRow(self.fixed_scale)
+        self.uv_gap = None
+        if dbv.is_doppler_input():
+            self.uv_gap = QComboBox()
+            self.uv_gap.addItems(list(dbv.UV_GAP_OPTIONS.values()))
+            self.uv_gap.setToolTip(TOOLTIPS['uv_gap_mode'])
+            self.uv_gap.currentTextChanged.connect(
+                lambda text: dbv.uvGap_combobox.set(text))
+            fv.addRow('U/V gap treatment:', self.uv_gap)
         # 'Show data points' and the tendency rows draw ON a series the
-        # operator chose; the four current panels are heatmaps, sticks and a
-        # trajectory, with nothing to mark or fit. They were built disabled
+        # operator chose; the current panels are heatmaps, component
+        # series and vectors, with nothing to mark or fit. They were built disabled
         # for a Doppler database - a greyed option is still a promise (owner,
         # v13.0), so they are not built at all.
         self.points = QCheckBox('Show data points')
@@ -502,10 +501,12 @@ class VisualizationTab(QWidget):
             fv.addRow(self.tendency)
             fv.addRow('Regression degree:', self.degree)
         self.time_start = QLineEdit()
+        self.time_start.setInputMask('00/00/0000 00:00;_')
         self.time_start.setToolTip(TOOLTIPS['time_start'])
         self._entry_pair(self.time_start, dbv.time_start_entry)
         fv.addRow('Time window start:', self.time_start)
         self.time_end = QLineEdit()
+        self.time_end.setInputMask('00/00/0000 00:00;_')
         self.time_end.setToolTip(TOOLTIPS['time_end'])
         self._entry_pair(self.time_end, dbv.time_end_entry)
         fv.addRow('Time window end:', self.time_end)
@@ -565,7 +566,7 @@ class VisualizationTab(QWidget):
         ff.addWidget(yh)
         ff.addLayout(self._all_none_row(lambda: self.year_checks.values()))
         # The parameter filter and the Scale settings column both name the
-        # VARIABLES a panel draws. The four current panels have fixed content,
+        # VARIABLES a panel draws. The current panels have fixed content,
         # so on a Doppler database the filter offered two checkboxes that
         # decide nothing and the scale column stood empty - both are gone
         # since v13.0 (owner).
@@ -741,6 +742,11 @@ class VisualizationTab(QWidget):
         with QSignalBlocker(self.ts_param):
             self.ts_param.setCurrentText(dbv.tsParam_combobox.get())
             self.ts_param.setEnabled(_tk_enabled(dbv.tsParam_combobox))
+        if self.uv_gap is not None:
+            with QSignalBlocker(self.uv_gap):
+                self.uv_gap.setCurrentText(dbv.uvGap_combobox.get())
+        self.data_available.setText(_coverage_text())
+        self.depth_available.setText(_depth_text())
 
     # ---------- plot colors ----------
     def _refresh_color_buttons(self):
@@ -798,8 +804,9 @@ class VisualizationTab(QWidget):
                             % (param, chosen.name()))
 
     def _generate(self):
-        dbv.generatePanels()
-        self.refresh_step2()   # a run may adjust settings (e.g. skipped T-S)
+        with qtheme.wait_cursor(self):
+            dbv.generatePanels()
+            self.refresh_step2()   # a run may adjust settings (e.g. skipped T-S)
 
     def _back(self):
         dbv._go_step1()
