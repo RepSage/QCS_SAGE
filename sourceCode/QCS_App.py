@@ -1,9 +1,10 @@
-"""QCS unified application.
+"""Legacy Tk QCS shell, retained as a development fallback.
 
-Single entry point that hosts both tools in one window: a menu bar
+Hosts both tools in one window: a menu bar
 (File / Edit / View / Tools / Help) plus a notebook with two tabs,
 "Data Qualification" (QCS_Main) and "Data Visualization" (QCS_DatabaseView).
-Replaces the two separate .bat launchers.
+The shipped entry point is QCS_QtApp.py; this module preserves the older Tk
+surface for compatibility and standalone diagnostics.
 """
 import os
 import re

@@ -92,7 +92,8 @@ def robust_rolling_sigma(pop, win):
     return sigma.bfill().ffill()
 
 
-def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interval, threshold_fail, threshold_susp):
+def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interval,
+                 threshold_fail, threshold_susp, positive_sigma=False):
     # QARTOD 3-point spike test: spike = |V2 - (V1 + V3)/2|, compared to a
     # relative threshold (factor x robust local sigma of the values, 1.4826xMAD,
     # so the spikes themselves do not inflate the reference). Single pass.
@@ -106,7 +107,13 @@ def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interva
     if 0 < win < MIN_SIGMA_SAMPLES and win < n:
         _warn_once("Warning: spike-test window '%s' spans only %d sample(s) at this "
                    "sampling interval; using the whole-series sigma instead." % (time_window, win))
-    std = robust_rolling_sigma(pop, win)
+    # PAR has a legitimate zero-heavy night state. Including those zeros in a
+    # robust scale can collapse MAD to the sensor's last decimal and condemn a
+    # smooth daylight curve as spikes. Its three-point residual stays unchanged,
+    # but the scale is estimated from positive irradiance only; a stable run of
+    # night zeros is explicitly GOOD. Other variables retain the original rule.
+    sigma_pop = pop.where(pop > 0) if positive_sigma else pop
+    std = robust_rolling_sigma(sigma_pop, win)
 
     upperLimit = (threshold_fail * std).abs().to_numpy()
     lowerLimit = (threshold_susp * std).abs().to_numpy()
@@ -114,10 +121,16 @@ def outlier_test(dataframe, parameter, n_cel, flags, time_window, sample_interva
 
     missing = np.where(dataframe[parameter].isna())[0]
     # spike/threshold NaN => no valid neighbors or indeterminate sigma: not evaluable
-    unevaluated = np.where(np.isnan(spike_vals) | np.isnan(upperLimit))[0]
+    stable_zero = np.zeros(n, dtype=bool)
+    if positive_sigma:
+        stable_zero = ((pop == 0) & (pop.shift(1) == 0) &
+                       (pop.shift(-1) == 0)).to_numpy()
+    unevaluated = np.where((np.isnan(spike_vals) | np.isnan(upperLimit)) &
+                           ~stable_zero)[0]
     unevaluated = [i for i in unevaluated if i not in missing]
-    reproved = list(np.where(spike_vals > upperLimit)[0])
-    suspect = list(np.where((spike_vals > lowerLimit) & (spike_vals <= upperLimit))[0])
+    reproved = list(np.where((spike_vals > upperLimit) & ~stable_zero)[0])
+    suspect = list(np.where((spike_vals > lowerLimit) &
+                            (spike_vals <= upperLimit) & ~stable_zero)[0])
     reproved = [i for i in reproved if i not in missing]
     suspect = [i for i in suspect if i not in missing and i not in reproved]
 
@@ -683,6 +696,10 @@ DOPPLER_TEST_SEQUENCE = [
     ('cur_signal', 'Signal quality (strength + cell state)'),
     ('cur_stdev', 'Speed standard deviation'),
     ('cur_tilt', 'Instrument tilt'),
+    # v13.0: the operator's manual review is a POSITION of the flag string, not
+    # an overwrite of the automatic ones. 2 = no review ran, 1 = reviewed and
+    # kept, 5 = dismissed by the operator (written by the pipeline, never here).
+    ('cur_manual', 'Manual review (operator point cut)'),
 ]
 
 DOPPLER_DEFAULTS = {
@@ -694,13 +711,26 @@ DOPPLER_DEFAULTS = {
 }
 
 
-def doppler_qc(frame, settings=None):
+def doppler_qc(frame, settings=None, enabled=None, manual_reviewed=False):
     """Qualifies a Doppler current frame. Returns (flags, Flag_cur):
-    flags = list of 4-char strings (one per row, DOPPLER_TEST_SEQUENCE order);
-    Flag_cur = per-row rollup with the scalar priority (4 > 3 > 9 > 1)."""
+    flags = list of 5-char strings (one per row, DOPPLER_TEST_SEQUENCE order);
+    Flag_cur = per-row rollup with the scalar priority (4 > 3 > 9 > 1).
+
+    ``enabled`` maps the four automatic test keys to booleans; a disabled test
+    writes DISMISSED (5), matching the scalar pipeline's "test off" semantics.
+    ``manual_reviewed`` says whether the operator's manual point-cut review ran in
+    this qualification: it only decides the RESTING value of the cur_manual
+    position - 1 (reviewed and kept) or 2 (not evaluated). The dismissals
+    themselves are written by the pipeline afterwards (flag 5), because they
+    are collected before the tests and applied to the whole row."""
     s = dict(DOPPLER_DEFAULTS)
     if settings:
         s.update({k: v for k, v in settings.items() if k in DOPPLER_DEFAULTS})
+    enabled = dict(enabled or {})
+
+    def test_flag(key, value):
+        return value if enabled.get(key, True) else QC_flags.DISMISSED
+
     speed = frame['Horizontal speed (cm/s)'].to_numpy(float)
     strength = frame['Signal strength (dB)'].to_numpy(float)
     state = frame['Cell state'].to_numpy(float)
@@ -711,36 +741,48 @@ def doppler_qc(frame, settings=None):
     n = len(frame)
     flags = []
     rollup = np.ones(n, dtype=int)
+    manual_rest = '%d' % (QC_flags.GOOD_DATA if manual_reviewed else QC_flags.UNKNOWN)
     for i in range(n):
         if missing[i]:
-            flags.append('%d' % QC_flags.MISSING * 4)
+            flags.append('%d' % QC_flags.MISSING * len(DOPPLER_TEST_SEQUENCE))
             rollup[i] = QC_flags.MISSING
             continue
-        f = ''
+        row_flags = []
         # 1) current range: impossible magnitude
-        f += '%d' % (QC_flags.BAD_DATA if (speed[i] < 0 or speed[i] > s['max_speed'])
-                     else QC_flags.GOOD_DATA)
+        row_flags.append(test_flag(
+            'cur_range',
+            QC_flags.BAD_DATA if (speed[i] < 0 or speed[i] > s['max_speed'])
+            else QC_flags.GOOD_DATA))
         # 2) signal quality: cell state != 0 (out of range / no echo), return
         #    strength below the noise floor, or strength >= 0 dB - genuine
         #    echoes are always negative dB; 0.0 is the 'no ping' placeholder
         bad_sig = (not np.isnan(state[i]) and state[i] != 0) or \
                   (not np.isnan(strength[i]) and
                    (strength[i] < s['min_strength'] or strength[i] >= 0.0))
-        f += '%d' % (QC_flags.BAD_DATA if bad_sig else QC_flags.GOOD_DATA)
+        row_flags.append(test_flag(
+            'cur_signal', QC_flags.BAD_DATA if bad_sig else QC_flags.GOOD_DATA))
         # 3) noisy measurement: single-ping stdev too high
-        f += '%d' % (QC_flags.SUSPECT if (not np.isnan(stdev[i]) and stdev[i] > s['max_stdev'])
-                     else QC_flags.GOOD_DATA)
+        row_flags.append(test_flag(
+            'cur_stdev',
+            QC_flags.SUSPECT
+            if (not np.isnan(stdev[i]) and stdev[i] > s['max_stdev'])
+            else QC_flags.GOOD_DATA))
         # 4) instrument attitude: tilt compromises the whole record
         if np.isnan(tilt[i]):
-            f += '%d' % QC_flags.UNKNOWN
+            tilt_flag = QC_flags.UNKNOWN
         elif tilt[i] > s['tilt_bad']:
-            f += '%d' % QC_flags.BAD_DATA
+            tilt_flag = QC_flags.BAD_DATA
         elif tilt[i] > s['tilt_suspect']:
-            f += '%d' % QC_flags.SUSPECT
+            tilt_flag = QC_flags.SUSPECT
         else:
-            f += '%d' % QC_flags.GOOD_DATA
+            tilt_flag = QC_flags.GOOD_DATA
+        row_flags.append(test_flag('cur_tilt', tilt_flag))
+        # 5) manual review: nothing is dismissed here (the operator's cuts are
+        #    applied by the pipeline); this only records whether a review ran
+        row_flags.append(int(manual_rest))
+        f = ''.join('%d' % value for value in row_flags)
         flags.append(f)
-        chars = [int(c) for c in f]
+        chars = row_flags
         if QC_flags.BAD_DATA in chars:
             rollup[i] = QC_flags.BAD_DATA
         elif QC_flags.SUSPECT in chars:
@@ -829,15 +871,33 @@ def replicate_referee(replicates, reference=None, settings=None):
         return out
 
     series = []
-    for r in replicates:
+    for i, r in enumerate(replicates):
         t = pd.DatetimeIndex(pd.to_datetime(r['Datetime']))
         v = pd.to_numeric(r['Temperature (degC)'], errors='coerce')
         if 'Flag_T' in r.columns:
             v = v.where(pd.to_numeric(r['Flag_T'], errors='coerce') <= 2)
         x = pd.Series(v.to_numpy(), index=t).sort_index()
-        # duplicated timestamps DO occur in these exports (one file carries
-        # 8833 of them) and reindex refuses to work on a duplicated axis
-        series.append(x[~x.index.duplicated(keep='first')])
+        duplicate = x.index.duplicated(keep=False)
+        if duplicate.any():
+            repeated = x[duplicate]
+            conflicts = [stamp for stamp, group in repeated.groupby(level=0, sort=False)
+                         if group.nunique(dropna=False) > 1]
+            n_extra = int(x.index.duplicated().sum())
+            if conflicts:
+                out['warnings'].append(
+                    'Replicate referee: replicate %d has %d repeated timestamp(s) '
+                    'with conflicting acceptable temperatures (first: %s). This '
+                    'can indicate a collapsed 12-hour clock; no replicate was '
+                    'named and the inputs must be corrected.'
+                    % (i + 1, len(conflicts), conflicts[0]))
+                out['verdict'] = 'duplicate timestamps with conflicting values'
+                return out
+            out['warnings'].append(
+                'Replicate referee: replicate %d contained %d identical duplicate '
+                'temperature row(s); one copy per timestamp was used.'
+                % (i + 1, n_extra))
+            x = x[~x.index.duplicated(keep='first')]
+        series.append(x)
     grid = series[0].index
     aligned = [x.reindex(grid, method='nearest', tolerance=pd.Timedelta(minutes=30))
                for x in series]

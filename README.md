@@ -9,7 +9,7 @@ The program runs directly from the Python scripts, using Anaconda's Python.
 Since v5.0 both tools live in a single window; double-click one shortcut in the
 main folder:
 
-- **`QCS.bat`** — the unified app (`sourceCode/QCS_App.py`): a menu bar plus two
+- **`QCS.bat`** — the unified Qt app (`sourceCode/QCS_QtApp.py`): a menu bar plus two
   tabs, **Data Qualification** and **Data Visualization**.
 
 The app runs with no terminal window; progress and any errors are shown in the
@@ -28,7 +28,8 @@ python -m pip install -r sourceCode/requirements.txt
 ## Structure
 
 - `sourceCode/` — source code:
-  - `QCS_App.py` — unified app shell (menu bar + Qualification/Visualization tabs); the entry point.
+  - `QCS_QtApp.py` — shipped Qt shell and entry point (Qualification/Visualization tabs).
+  - `QCS_App.py` — retired Tk shell, kept only as a legacy development fallback.
   - `QCS_Main.py` — qualification tool (interface + QC test pipeline).
   - `QCS_DatabaseView.py` — database visualization tool.
   - `QCS_DataHandler.py` — data reading, conversion and formatting; the `QCS_VERSION` constant.

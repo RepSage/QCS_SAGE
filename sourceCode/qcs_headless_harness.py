@@ -54,8 +54,9 @@ qm.save_user_prefs = lambda *a, **k: None
 def set_entry(w, val):
     w.delete(0, 'end'); w.insert(0, val)
 
-# physically non-negative variables: a NEGATIVE value surviving in a GOOD (flag 1)
-# row is a bug (values <= 0 are discarded by design)
+# Physically non-negative variables: a negative value surviving in a GOOD row
+# is a bug. PAR/light negatives are clamped to valid zero; other listed sensors
+# discard nonphysical values according to clean_below_zero.
 NONNEG = ['pH', 'Turbidity (FTU)', 'Chlorophyll (ug/L)', 'PAR (umol/m2/s)',
           'O2 level (uM)', 'Dissolved organic matter (ppb)', 'CO2 Level (ppm)']
 PLAUS = {'pH': (0, 14), 'Temperature (degC)': (-5, 45), 'Salinity (PSU)': (0, 45)}

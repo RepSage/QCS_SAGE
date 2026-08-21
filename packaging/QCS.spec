@@ -16,7 +16,7 @@
 # steps live in packaging/README.md.
 #
 # The user manual is NOT listed in datas: datas land inside _internal/, while
-# QCS_App resolves the manual at the app root (two dirname()s up from the
+# The GUI shell resolves the manual at the app root (two dirname()s up from the
 # frozen module, which is _internal/..). The build step copies it beside the
 # exe instead - see README.md - so the source needs no frozen-mode special
 # case and QCS_VERSION does not move for packaging.
@@ -41,9 +41,11 @@ for pkg in ('sv_ttk', 'gsw', 'certifi', 'tkinterdnd2'):
     hiddenimports += h
 # The window/taskbar icons: set_window_icon resolves them beside QCS_Theme
 # (dirname(__file__) = _internal when frozen), so they must ship as datas -
-# without this the installed app silently falls back to the Tk feather.
+# without this the installed app silently falls back to the Tk feather. The
+# Fluent Regular SVGs are the plot toolbar's own palette-aware icon family.
 datas += [(os.path.join(SRC, 'qcs_icon.ico'), '.'),
-          (os.path.join(SRC, 'qcs_icon.png'), '.')]
+          (os.path.join(SRC, 'qcs_icon.png'), '.'),
+          (os.path.join(SRC, 'icons', 'fluent'), 'icons/fluent')]
 # pandas imports its Excel engine lazily; make it explicit (the v2.2-era spec
 # needed the same).
 hiddenimports += ['openpyxl', 'openpyxl.cell._writer']
@@ -60,7 +62,7 @@ hiddenimports += ['matplotlib.backends.backend_svg',
                   'matplotlib.backends.backend_agg']
 # the Qt shell selects the QtAgg backend at startup (matplotlib.use('QtAgg')),
 # another lazy import the static trace cannot see
-hiddenimports += ['matplotlib.backends.backend_qtagg']
+hiddenimports += ['matplotlib.backends.backend_qtagg', 'PySide6.QtSvg']
 
 a = Analysis(
     [os.path.join(SRC, 'QCS_QtApp.py')],

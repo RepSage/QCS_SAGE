@@ -21,8 +21,6 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QCheckBox, QColorDialog,
                                QSizePolicy, QSpinBox, QStackedWidget,
                                QVBoxLayout, QWidget)
 
-import pandas as pd
-
 import QCS_DatabaseView as dbv
 import QCS_QtTheme as qtheme
 
@@ -36,6 +34,24 @@ RECENT_HINTS = {
 
 TOOLTIPS = dbv.TOOLTIPS
 
+# 'Fixed scale' does two different things and the interface never said which
+# (owner, 2026-08-19). On the scalar families it is the Min/Max the operator
+# TYPES per parameter under Scale settings; on a current profiler nothing is
+# ever typed - it makes every speed heatmap share ONE colour scale computed
+# from the data, so sites and years compare 1:1.
+FIXED_SCALE_LABEL = {
+    'doppler': 'Fixed scale (one speed colour scale)',
+    'scalar': 'Fixed scale',
+}
+FIXED_SCALE_TIP = {
+    'doppler': ('One speed colour scale for every current panel generated, '
+                'computed from\nthe data being plotted - there is nothing '
+                'to type\nOff = each panel autoscales to its own site and years'),
+    'scalar': ('Same y-axis scale on every plot, for direct comparison\n'
+               'The limits are the Min/Max you type per parameter under '
+               'Scale settings'),
+}
+
 
 def _tk_enabled(widget):
     try:
@@ -47,22 +63,11 @@ def _tk_enabled(widget):
 def _coverage_text():
     """The period the loaded database covers (the tk step 2 showed this under
     the X-axis fields; kept permanently on screen in Qt)."""
-    db = dbv.database
-    if db is None or 'Datetime' not in db.columns:
-        return 'Data available: unknown'
-    start, end = db['Datetime'].min(), db['Datetime'].max()
-    if pd.isna(start) or pd.isna(end):
-        return 'Data available: unknown (invalid dates)'
-    return 'Data available: %s to %s' % (start.strftime('%d/%m/%Y %H:%M'),
-                                         end.strftime('%d/%m/%Y %H:%M'))
+    return dbv.time_availability_text(dbv.selected_database())
 
 
 def _depth_text():
-    db = dbv.database
-    if db is None or 'Depth (m)' not in db.columns or not db['Depth (m)'].notna().any():
-        return 'Depth available: no depth column'
-    return 'Depth available: %.2f to %.2f m' % (db['Depth (m)'].min(),
-                                                db['Depth (m)'].max())
+    return dbv.depth_availability_text(dbv.selected_database())
 
 
 def _tk_set_entry(entry, text):
@@ -240,6 +245,7 @@ class VisualizationTab(QWidget):
             self.sort.setEnabled(_tk_enabled(dbv.sort_cb))
         with QSignalBlocker(self.instrument):
             self.instrument.setCurrentText(dbv.instrument_combobox.get())
+            self.instrument.setEnabled(_tk_enabled(dbv.instrument_combobox))
         with QSignalBlocker(self.recent):
             self.recent.clear()
             self.recent.addItems([dbv._recent_display(r)
@@ -290,6 +296,8 @@ class VisualizationTab(QWidget):
 
     def _files_edited(self, text):
         _tk_set_entry(dbv.fileNames_entry, text)
+        dbv.set_instrument_locked(False)
+        self.instrument.setEnabled(True)
         self._sync_recent_state()
 
     def _apply_recent(self, index):
@@ -328,10 +336,11 @@ class VisualizationTab(QWidget):
             self.refresh_step1()
 
     def _next(self):
-        if dbv._go_step2():
-            self._rebuild_step2()
-            self.stack.setCurrentIndex(1)
-            qtheme.scroll_to_top(self)     # step 2 opens at its top
+        with qtheme.wait_cursor(self):
+            if dbv._go_step2():
+                self._rebuild_step2()
+                self.stack.setCurrentIndex(1)
+                qtheme.scroll_to_top(self)     # step 2 opens at its top
 
     # ---------- Step 2 ----------
     def _rebuild_step2(self):
@@ -400,7 +409,14 @@ class VisualizationTab(QWidget):
         panel_tips = ((TOOLTIPS['hobo_params_site'], TOOLTIPS['hobo_params_across'], '')
                       if dbv.is_hobo_input() else
                       (TOOLTIPS['panel1'], TOOLTIPS['panel2'], TOOLTIPS['panel3']))
-        for i, (pvar, pcb) in enumerate(((dbv.panel1, dbv.panel1_cb),
+        # A current database has FIXED panel content (the three current
+        # panels), so the three panel choices do not apply to it: they were
+        # built disabled and still carrying the SEAGUARD labels - three dead
+        # rows promising figures this instrument never draws. Hidden since
+        # v13.0 (owner), together with the parameter filter and the whole
+        # Scale settings column below.
+        for i, (pvar, pcb) in enumerate(() if dbv.is_doppler_input() else
+                                        ((dbv.panel1, dbv.panel1_cb),
                                          (dbv.panel2, dbv.panel2_cb),
                                          (dbv.panel3, dbv.panel3_cb))):
             if not pcb.winfo_ismapped() and str(pcb.grid_info()) == '{}':
@@ -441,15 +457,30 @@ class VisualizationTab(QWidget):
         # is drawn over the data, and the trend line with its degree last.
         # The T-S rows stay above, with the panel checkboxes: they choose a
         # FIGURE, not a way of drawing one.
-        self.fixed_scale = QCheckBox('Fixed scale')
-        self.fixed_scale.setToolTip(TOOLTIPS['fixed_scale'])
+        kind = 'doppler' if dbv.is_doppler_input() else 'scalar'
+        self.fixed_scale = QCheckBox(FIXED_SCALE_LABEL[kind])
+        self.fixed_scale.setToolTip(FIXED_SCALE_TIP[kind])
         self._check_pair(self.fixed_scale, dbv.fixedScale, dbv.fixed_scale_cb,
                          after=(dbv.toggle_scale_controls,))
         fv.addRow(self.fixed_scale)
+        self.uv_gap = None
+        if dbv.is_doppler_input():
+            self.uv_gap = QComboBox()
+            self.uv_gap.addItems(list(dbv.UV_GAP_OPTIONS.values()))
+            self.uv_gap.setToolTip(TOOLTIPS['uv_gap_mode'])
+            self.uv_gap.currentTextChanged.connect(
+                lambda text: dbv.uvGap_combobox.set(text))
+            fv.addRow('U/V gap treatment:', self.uv_gap)
+        # 'Show data points' and the tendency rows draw ON a series the
+        # operator chose; the current panels are heatmaps, component
+        # series and vectors, with nothing to mark or fit. They were built disabled
+        # for a Doppler database - a greyed option is still a promise (owner,
+        # v13.0), so they are not built at all.
         self.points = QCheckBox('Show data points')
         self.points.setToolTip(TOOLTIPS['data_points'])
         self._check_pair(self.points, dbv.dataPoints, dbv.points_cb)
-        fv.addRow(self.points)
+        if not dbv.is_doppler_input():
+            fv.addRow(self.points)
         # the replicate-disagreement bars only exist on a HOBO temperature
         # series, so the row is not even built for the other instruments
         self.disagreement = None
@@ -462,17 +493,20 @@ class VisualizationTab(QWidget):
         self.tendency.setToolTip(TOOLTIPS['tendency'])
         self._check_pair(self.tendency, dbv.tendency, dbv.tendency_cb,
                          after=(dbv.toggle_panel_dependent_controls,))
-        fv.addRow(self.tendency)
         self.degree = QLineEdit()
         self.degree.setFixedWidth(60)
         self.degree.setToolTip(TOOLTIPS['tendency_degree'])
         self._entry_pair(self.degree, dbv.tendency_entry)
-        fv.addRow('Regression degree:', self.degree)
+        if not dbv.is_doppler_input():
+            fv.addRow(self.tendency)
+            fv.addRow('Regression degree:', self.degree)
         self.time_start = QLineEdit()
+        self.time_start.setInputMask('00/00/0000 00:00;_')
         self.time_start.setToolTip(TOOLTIPS['time_start'])
         self._entry_pair(self.time_start, dbv.time_start_entry)
         fv.addRow('Time window start:', self.time_start)
         self.time_end = QLineEdit()
+        self.time_end.setInputMask('00/00/0000 00:00;_')
         self.time_end.setToolTip(TOOLTIPS['time_end'])
         self._entry_pair(self.time_end, dbv.time_end_entry)
         fv.addRow('Time window end:', self.time_end)
@@ -531,6 +565,71 @@ class VisualizationTab(QWidget):
         yh.setLayout(ygrid)
         ff.addWidget(yh)
         ff.addLayout(self._all_none_row(lambda: self.year_checks.values()))
+        # The parameter filter and the Scale settings column both name the
+        # VARIABLES a panel draws. The current panels have fixed content,
+        # so on a Doppler database the filter offered two checkboxes that
+        # decide nothing and the scale column stood empty - both are gone
+        # since v13.0 (owner).
+        self.param_checks = {}
+        self.scale_edits = {}
+        self.color_buttons = {}
+        if not dbv.is_doppler_input():
+            self._build_param_filter(ff, f)
+        ff.addStretch()
+        grid.addWidget(gfil, 1, 1, Qt.AlignTop)
+
+        gscale = None
+        if not dbv.is_doppler_input():
+            gscale = self._build_scale_settings(f)
+            grid.addWidget(gscale, 1, 2, Qt.AlignTop)
+        # the settings column takes the slack; the filter and scale columns
+        # keep their natural width, so their checkboxes stop drifting apart
+        # when the window is resized (owner)
+        grid.setColumnStretch(0, 3)
+        grid.setColumnStretch(1, 0)
+        grid.setColumnStretch(2, 2 if gscale is not None else 0)
+        grid.setRowStretch(0, 0)     # the Data settings band keeps its height
+        grid.setRowStretch(1, 1)
+        for box in [gdata, gvis, gfil] + ([gscale] if gscale is not None else []):
+            box.setSizePolicy(box.sizePolicy().horizontalPolicy(),
+                              QSizePolicy.Policy.Preferred)
+
+        qtheme.bold_form_labels(fd)
+        qtheme.bold_form_labels(fv)
+        grid.setContentsMargins(0, 0, 0, 0)
+        # the boxes take the slack and the action row hugs the bottom of the
+        # PAGE, exactly like the Qualification tab. This page had a scroll
+        # area of its own until v12.0 round 13, and it made '< Back' and
+        # 'Generate panels' ride up with the Execution log while the settings
+        # shrank; the whole page is inside the tab's scroll area since round
+        # 11, so the buttons now scroll with the content instead of following
+        # the log (owner, 2026-08-18).
+        outer.addLayout(grid, 1)
+
+        # Back on the left, Generate truly CENTERED and styled like the
+        # Run qualification button (owner, 2026-08-17)
+        actions = QGridLayout()
+        for col in range(3):
+            actions.setColumnStretch(col, 1)
+        back = QPushButton('< Back')
+        back.clicked.connect(self._back)
+        actions.addWidget(back, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        gen = QPushButton('Generate panels')
+        gen.setDefault(True)
+        gen.setMinimumSize(260, 42)
+        gf = gen.font()
+        gf.setBold(True)
+        gf.setPointSizeF(gf.pointSizeF() + 1)
+        gen.setFont(gf)
+        gen.setObjectName('AccentButton')   # blue primary action
+        gen.setToolTip('Generates the selected panels with the current settings')
+        gen.clicked.connect(self._generate)
+        actions.addWidget(gen, 0, 1, Qt.AlignHCenter)
+        outer.addLayout(actions)
+        return page
+
+    def _build_param_filter(self, ff, f):
+        """The 'Filter by parameter' block of the Filter settings box."""
         params_lab = QLabel('Filter by parameter:')
         params_lab.setFont(f)      # same bold section font as 'Sites:'
         ff.addWidget(params_lab)
@@ -556,9 +655,10 @@ class VisualizationTab(QWidget):
             self.param_checks[param] = cb
             ff.addWidget(cb)
         ff.addLayout(self._all_none_row(lambda: self.param_checks.values()))
-        ff.addStretch()
-        grid.addWidget(gfil, 1, 1, Qt.AlignTop)
 
+    def _build_scale_settings(self, f):
+        """The Scale settings column: one row per parameter, its plot colour
+        and the Min/Max that 'Fixed scale' applies. Returns the group box."""
         gscale = QGroupBox('Scale settings')
         gs = QGridLayout(gscale)
         for col, title in ((1, 'Parameter'), (2, 'Min'), (3, 'Max')):
@@ -615,52 +715,7 @@ class VisualizationTab(QWidget):
         gs.setColumnStretch(2, 1)
         gs.setColumnStretch(3, 1)
         gs.setRowStretch(r + 1, 1)     # r counts the heading row too
-        grid.addWidget(gscale, 1, 2, Qt.AlignTop)
-        # the settings column takes the slack; the filter and scale columns
-        # keep their natural width, so their checkboxes stop drifting apart
-        # when the window is resized (owner)
-        grid.setColumnStretch(0, 3)
-        grid.setColumnStretch(1, 0)
-        grid.setColumnStretch(2, 2)
-        grid.setRowStretch(0, 0)     # the Data settings band keeps its height
-        grid.setRowStretch(1, 1)
-        for box in (gdata, gvis, gfil, gscale):
-            box.setSizePolicy(box.sizePolicy().horizontalPolicy(),
-                              QSizePolicy.Policy.Preferred)
-
-        qtheme.bold_form_labels(fd)
-        qtheme.bold_form_labels(fv)
-        grid.setContentsMargins(0, 0, 0, 0)
-        # the boxes take the slack and the action row hugs the bottom of the
-        # PAGE, exactly like the Qualification tab. This page had a scroll
-        # area of its own until v12.0 round 13, and it made '< Back' and
-        # 'Generate panels' ride up with the Execution log while the settings
-        # shrank; the whole page is inside the tab's scroll area since round
-        # 11, so the buttons now scroll with the content instead of following
-        # the log (owner, 2026-08-18).
-        outer.addLayout(grid, 1)
-
-        # Back on the left, Generate truly CENTERED and styled like the
-        # Run qualification button (owner, 2026-08-17)
-        actions = QGridLayout()
-        for col in range(3):
-            actions.setColumnStretch(col, 1)
-        back = QPushButton('< Back')
-        back.clicked.connect(self._back)
-        actions.addWidget(back, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        gen = QPushButton('Generate panels')
-        gen.setDefault(True)
-        gen.setMinimumSize(260, 42)
-        gf = gen.font()
-        gf.setBold(True)
-        gf.setPointSizeF(gf.pointSizeF() + 1)
-        gen.setFont(gf)
-        gen.setObjectName('AccentButton')   # blue primary action
-        gen.setToolTip('Generates the selected panels with the current settings')
-        gen.clicked.connect(self._generate)
-        actions.addWidget(gen, 0, 1, Qt.AlignHCenter)
-        outer.addLayout(actions)
-        return page
+        return gscale
 
     def refresh_step2(self):
         # T-S rows exist only for profile data (owner: the diagram makes no
@@ -687,6 +742,11 @@ class VisualizationTab(QWidget):
         with QSignalBlocker(self.ts_param):
             self.ts_param.setCurrentText(dbv.tsParam_combobox.get())
             self.ts_param.setEnabled(_tk_enabled(dbv.tsParam_combobox))
+        if self.uv_gap is not None:
+            with QSignalBlocker(self.uv_gap):
+                self.uv_gap.setCurrentText(dbv.uvGap_combobox.get())
+        self.data_available.setText(_coverage_text())
+        self.depth_available.setText(_depth_text())
 
     # ---------- plot colors ----------
     def _refresh_color_buttons(self):
@@ -744,8 +804,9 @@ class VisualizationTab(QWidget):
                             % (param, chosen.name()))
 
     def _generate(self):
-        dbv.generatePanels()
-        self.refresh_step2()   # a run may adjust settings (e.g. skipped T-S)
+        with qtheme.wait_cursor(self):
+            dbv.generatePanels()
+            self.refresh_step2()   # a run may adjust settings (e.g. skipped T-S)
 
     def _back(self):
         dbv._go_step1()

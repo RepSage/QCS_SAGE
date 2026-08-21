@@ -8,11 +8,12 @@ as a dockable panel with the same severity colors as the tk LogConsole, and
 the crash handler. File-path helpers (writable_app_dir) stay in QCS_Theme -
 they are toolkit-free and both shells share them.
 """
+from contextlib import contextmanager
 import math
 import sys
 import traceback
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEventLoop, Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDockWidget,
                                QHBoxLayout, QMessageBox, QProxyStyle,
@@ -38,6 +39,36 @@ LOG_COLORS = {'light': {'error': '#b30000', 'warning': '#9a6a00',
 # (owner, 2026-08-17: the tk app's blue check marks were missed)
 ACCENT = '#2a6fb5'
 ACCENT_DARK = '#4a90d9'      # lighter, for the dark scheme
+
+
+@contextmanager
+def wait_cursor(widget):
+    """Shows Qt's wait cursor on one window during synchronous UI work.
+
+    Cursor changes need one event-loop pass before expensive work blocks the
+    interface. User input is excluded from those passes so the visual feedback
+    cannot make a primary action re-enter itself. The final pass paints any
+    newly built page/panel before restoring the normal cursor. The cursor is
+    window-local rather than application-wide, so a validation dialog remains
+    visibly interactive. Exceptions still restore the previous state.
+    """
+    app = QApplication.instance()
+    if app is None or widget is None:
+        yield
+        return
+    had_own_cursor = widget.testAttribute(Qt.WidgetAttribute.WA_SetCursor)
+    previous_cursor = widget.cursor()
+    widget.setCursor(Qt.CursorShape.WaitCursor)
+    app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+    try:
+        yield
+    finally:
+        app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        if had_own_cursor:
+            widget.setCursor(previous_cursor)
+        else:
+            widget.unsetCursor()
+        app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
 
 
 class AccentStyle(QProxyStyle):

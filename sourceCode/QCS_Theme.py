@@ -462,6 +462,34 @@ def set_window_icon(window, icon_name='qcs_icon.ico', app_id='sage.qcs.qualityco
         pass
 
 
+# Buttons drawn INSIDE a figure for the legacy Tk shell. The Qt shell hides the
+# manual-cut row and builds native QPushButtons instead, exactly like its
+# Previous / Next row. Where Matplotlib buttons remain, its default is a flat
+# grey box with no border; these Fusion/Windows colours are the closest fallback.
+PLOT_BUTTON_FACE = '#f0f0f0'
+PLOT_BUTTON_HOVER = '#e3effb'
+PLOT_BUTTON_EDGE = '#adadad'
+PLOT_BUTTON_TEXT = '#1a1a1a'
+
+
+def style_plot_buttons(buttons, fontsize=9):
+    """Styles Matplotlib Button widgets used by the legacy Tk shell. Best-effort:
+    a styling failure must never cost the operator the review itself."""
+    for button in buttons or []:
+        try:
+            button.color = PLOT_BUTTON_FACE
+            button.hovercolor = PLOT_BUTTON_HOVER
+            button.ax.set_facecolor(PLOT_BUTTON_FACE)
+            for spine in button.ax.spines.values():
+                spine.set_visible(True)
+                spine.set_color(PLOT_BUTTON_EDGE)
+                spine.set_linewidth(1.0)
+            button.label.set_fontsize(fontsize)
+            button.label.set_color(PLOT_BUTTON_TEXT)
+        except Exception:
+            pass
+
+
 def style_plot_window(fig, title=None):
     """Give a matplotlib figure window the app icon and a meaningful title (so it
     matches the rest of the software instead of showing the default matplotlib

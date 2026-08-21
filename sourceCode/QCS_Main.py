@@ -47,6 +47,35 @@ def set_replicate_reference(series):
 # do not fit the original 10, and the code is only a label in the Site column.
 SITE_CODE_MAX = 20
 
+
+_SEAGUARD_FACTOR_VARIABLES = (
+    ('T', 'Temperature'), ('S', 'Salinity'), ('C', 'Conductivity'),
+    ('P', 'Pressure'), ('pH', 'pH'), ('chl', 'Chlorophyll'),
+    ('O2', 'Dissolved O₂'), ('org', 'Organic matter'),
+    ('tur', 'Turbidity'), ('PAR', 'PAR'), ('CO2', 'Dissolved CO₂'),
+)
+
+
+def _default_statistical_factors():
+    """Independent defaults for every instrument/test combination.
+
+    Before v13.0 one ``T`` row fed Seaguard spikes, rate of change and
+    vertical gradients *and* the HOBO temperature tests.  Besides coupling two
+    instruments, that exposed fields which an algorithm ignored.  Flat keys
+    keep the JSON easy to inspect while the UI metadata below decides which
+    fields each algorithm actually owns.
+    """
+    out = {}
+    for key, _display in _SEAGUARD_FACTOR_VARIABLES:
+        out['sg_spike_%s' % key] = {'fail': 3.0, 'susp': 2.5, 'window': '30M'}
+    for key in ('T', 'S', 'C', 'P'):
+        out['sg_rate_%s' % key] = {'susp': 2.5, 'window': '30M'}
+    for key in ('T', 'S', 'C'):
+        out['sg_gradient_%s' % key] = {'fail': 3.0, 'susp': 2.5}
+    out['hobo_spike_T'] = {'fail': 3.0, 'susp': 2.5, 'window': '30M'}
+    out['hobo_rate_T'] = {'susp': 2.5, 'window': '30M'}
+    return out
+
 # Global configuration
 CONFIG = {
     'tsQualityTests': {
@@ -58,6 +87,7 @@ CONFIG = {
         'pH sensor range': 'ON',
         'chlorophyll sensor range': 'ON',
         'turbidity sensor range': 'ON',
+        'PAR sensor range': 'ON',
         'dissolved CO2 sensor range': 'ON',
         'temperature environmental range': 'ON',
         'salinity environmental range': 'ON',
@@ -68,6 +98,7 @@ CONFIG = {
         'dissolved oxygen environmental range': 'ON',
         'dissolved organic matter environmental range': 'ON',
         'turbidity environmental range': 'ON',
+        'PAR environmental range': 'ON',
         'dissolved CO2 environmental range': 'ON',
         'temperature spikes': 'ON',
         'salinity spikes': 'ON',
@@ -78,6 +109,7 @@ CONFIG = {
         'dissolved oxygen spikes': 'ON',
         'dissolved organic matter spikes': 'ON',
         'turbidity spikes': 'ON',
+        'PAR spikes': 'ON',
         'dissolved CO2 spikes': 'ON',
         'temperature rate of change': 'ON',
         'salinity rate of change': 'ON',
@@ -91,7 +123,18 @@ CONFIG = {
         'salinity vertical gradient': 'ON',
         'conductivity vertical gradient': 'ON',
         'density inversion': 'ON',
-        'light fouling window': 'ON'
+        # Seaguard current profiler (Doppler): independent automatic switches.
+        'doppler current speed range': 'ON',
+        'doppler signal quality': 'ON',
+        'doppler speed standard deviation': 'ON',
+        'doppler instrument tilt': 'ON',
+        # HOBO: independent from the same-named Seaguard temperature tests.
+        'hobo temperature sensor range': 'ON',
+        'hobo temperature environmental range': 'ON',
+        'hobo temperature spikes': 'ON',
+        'hobo temperature rate of change': 'ON',
+        'hobo temperature flat line': 'ON',
+        'hobo light fouling window': 'ON',
     },
     'tsSettings': {
         #'depth_range': 1.55,
@@ -112,8 +155,16 @@ CONFIG = {
         'sensor_max_chl': 500,
         'sensor_min_tur': 0,
         'sensor_max_tur': 1500,
+        # Both PAR sensors in the archived Seaguard templates declare 0-5000.
+        'sensor_min_PAR': 0,
+        'sensor_max_PAR': 5000,
         'sensor_min_CO2': 0,
         'sensor_max_CO2': 10000,
+        # HOBO Pendant temperature limits are deliberately separate from the
+        # Seaguard sensor limits.  The initial values preserve v12 behavior;
+        # the operator can now tune the supported logger without changing CTD QC.
+        'hobo_sensor_min_temp': -5,
+        'hobo_sensor_max_temp': 40,
         # Environmental ranges (broad climatological envelope - entire Brazilian coast, v3.0)
         'env_min_temp': 8,
         'env_max_temp': 35,
@@ -133,15 +184,23 @@ CONFIG = {
         'env_max_org': 50,
         'env_min_tur': 0,
         'env_max_tur': 50,
+        # Broad corpus envelope: 311/158,815 qualified values (0.20%) exceed
+        # 4000, while all remain inside the sensors' 5000 physical limit.
+        'env_min_PAR': 0,
+        'env_max_PAR': 4000,
         # dissolved CO2 (separate logger): broad coastal envelope, tune per site
         'env_min_CO2': 100,
         'env_max_CO2': 2000,
         # Light range: NOT a QC test (light uses the fouling window);
         # only sets the Y axis of the fixed-scale luminosity plot (HOBO).
         'env_min_lux': 0,
-        'env_max_lux': 20000,
-        'rep_cnt_fail': 20,
-        'rep_cnt_susp': 15,
+        # Covers every one of the 365,811 valid qualified HOBO light values;
+        # archive maximum 198,401.3 lux. Automatic plots remain unconstrained.
+        'env_max_lux': 200000,
+        # Flat-line counts remain sample based in v13.0.  Pressure stays OFF by
+        # default until these are replaced by corpus-validated durations.
+        'seaguard_flat_fail': 20,
+        'seaguard_flat_susp': 15,
         # potential density may decrease with depth up to this
         # tolerance (kg/m3) without flagging inversion (profiles test)
         'dens_inv_tolerance': 0.03,
@@ -158,6 +217,8 @@ CONFIG = {
         # out-of-water readings at the ends of the HOBO file: trim while the
         # temperature deviates more than this (degC) from the neighboring stable segment
         'hobo_edge_temp_tol': 1.5,
+        'hobo_flat_fail': 20,
+        'hobo_flat_susp': 15,
         # ---- Doppler current profiler (DCPS) criteria ----
         # mirror QCS_Tests.DOPPLER_DEFAULTS; run_doppler_qualification maps these
         # onto doppler_qc's settings, so editing them here changes the current QC
@@ -168,20 +229,7 @@ CONFIG = {
         'doppler_tilt_bad': 35.0,
         #'eps': 'AUTO',
     },
-    # Per-variable factors for the spike, rate-of-change and vertical-gradient tests
-    # (fail/susp = std multipliers; window = time window). One row per variable.
-    'tsFactors': {
-        'T':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
-        'S':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
-        'C':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
-        'P':   {'fail': 3, 'susp': 2.5, 'window': '30M'},
-        'pH':  {'fail': 3, 'susp': 2.5, 'window': '30M'},
-        'chl': {'fail': 3, 'susp': 2.5, 'window': '30M'},
-        'O2':  {'fail': 3, 'susp': 2.5, 'window': '30M'},
-        'org': {'fail': 3, 'susp': 2.5, 'window': '30M'},
-        'tur': {'fail': 3, 'susp': 2.5, 'window': '30M'},
-        'CO2': {'fail': 3, 'susp': 2.5, 'window': '30M'},
-    },
+    'tsFactors': _default_statistical_factors(),
     'tsQualityTests_vars': {},
     'tsSettings_entries': {},
     'tsFactors_entries': {}
@@ -196,12 +244,52 @@ DEFAULT_QUALITY_CONFIG = {
     'tsFactors': copy.deepcopy(CONFIG['tsFactors']),
 }
 
-# variables that have per-variable factors, with display names for the Settings table
-FACTOR_VARS = [
-    ('T', 'Temperature'), ('S', 'Salinity'), ('C', 'Conductivity'), ('P', 'Pressure'),
-    ('pH', 'pH'), ('chl', 'Chlorophyll'), ('O2', 'Dissolved oxygen'),
-    ('org', 'Organic matter'), ('tur', 'Turbidity'),
+# Statistical-threshold sections in the required instrument order.  Each row
+# advertises only fields consumed by that algorithm.
+FACTOR_SECTIONS = [
+    ('Seaguard', [
+        ('Spike', [('sg_spike_%s' % key, display, ('fail', 'susp', 'window'))
+                   for key, display in _SEAGUARD_FACTOR_VARIABLES]),
+        ('Rate of change', [
+            ('sg_rate_T', 'Temperature', ('susp', 'window')),
+            ('sg_rate_S', 'Salinity', ('susp', 'window')),
+            ('sg_rate_C', 'Conductivity', ('susp', 'window')),
+            ('sg_rate_P', 'Pressure', ('susp', 'window')),
+        ]),
+        ('Vertical gradient (profiles)', [
+            ('sg_gradient_T', 'Temperature', ('fail', 'susp')),
+            ('sg_gradient_S', 'Salinity', ('fail', 'susp')),
+            ('sg_gradient_C', 'Conductivity', ('fail', 'susp')),
+        ]),
+    ]),
+    ('Seaguard current profiler (Doppler)', []),
+    ('HOBO', [
+        ('Temperature spike', [
+            ('hobo_spike_T', 'Temperature', ('fail', 'susp', 'window')),
+        ]),
+        ('Temperature rate of change', [
+            ('hobo_rate_T', 'Temperature', ('susp', 'window')),
+        ]),
+    ]),
 ]
+
+_FACTOR_TEST_VARIABLE = {
+    'T': 'temperature', 'S': 'salinity', 'C': 'conductivity',
+    'P': 'pressure', 'pH': 'pH', 'chl': 'chlorophyll',
+    'O2': 'dissolved oxygen', 'org': 'dissolved organic matter',
+    'tur': 'turbidity', 'PAR': 'PAR', 'CO2': 'dissolved CO2',
+}
+FACTOR_TEST_SWITCHES = {}
+for _variable, _test_variable in _FACTOR_TEST_VARIABLE.items():
+    FACTOR_TEST_SWITCHES['sg_spike_%s' % _variable] = '%s spikes' % _test_variable
+for _variable in ('T', 'S', 'C', 'P'):
+    FACTOR_TEST_SWITCHES['sg_rate_%s' % _variable] = (
+        '%s rate of change' % _FACTOR_TEST_VARIABLE[_variable])
+for _variable in ('T', 'S', 'C'):
+    FACTOR_TEST_SWITCHES['sg_gradient_%s' % _variable] = (
+        '%s vertical gradient' % _FACTOR_TEST_VARIABLE[_variable])
+FACTOR_TEST_SWITCHES['hobo_spike_T'] = 'hobo temperature spikes'
+FACTOR_TEST_SWITCHES['hobo_rate_T'] = 'hobo temperature rate of change'
 
 # Tooltips dictionary.
 #
@@ -244,28 +332,35 @@ TOOLTIPS = {
 # from the variable table instead of 40 hand-written near-duplicates.
 _RANGE_UNITS = {'temp': ('temperature', '°C'), 'sal': ('salinity', 'PSU'),
                 'cond': ('conductivity', 'mS/cm'), 'pres': ('pressure', 'dbar'),
-                'O2': ('dissolved oxygen', 'μM'), 'pH': ('pH', ''),
+                'O2': ('dissolved O₂', 'μM'), 'pH': ('pH', ''),
                 'chl': ('chlorophyll', 'μg/L'), 'tur': ('turbidity', 'FTU'),
-                'CO2': ('dissolved CO2', 'ppm'), 'org': ('organic matter', 'ppb')}
+                'PAR': ('PAR', 'µmol/m²/s'), 'CO2': ('dissolved CO₂', 'ppm'),
+                'org': ('organic matter', 'ppb')}
 
 TS_SETTINGS_TOOLTIPS = {
     'depth_range': "Depth range test: maximum allowed depth variation (m)",
-    'env_min_lux': "Plot scale only, no QC: lower y-axis limit of the\nfixed-scale light plot (lux, HOBO)",
-    'env_max_lux': "Plot scale only, no QC: upper y-axis limit of the\nfixed-scale light plot (lux, HOBO)",
-    'rep_cnt_fail': "Flat line test: this many identical consecutive values -> BAD (4)",
-    'rep_cnt_susp': "Flat line test: this many identical consecutive values -> SUSPECT (3)",
+    'env_min_lux': "Plot scale only, no QC: lower axis limit of the fixed-scale\nHOBO light product; the automatic companion ignores this value",
+    'env_max_lux': "Plot scale only, no QC: upper axis limit of the fixed-scale\nHOBO light product; the automatic companion ignores this value\n(default 200,000 lux covers the current corpus; UA-002 range: 320,000 lux)",
+    'seaguard_flat_fail': "Seaguard flat-line tests: this many effectively identical\nconsecutive values -> BAD (4)",
+    'seaguard_flat_susp': "Seaguard flat-line tests: this many effectively identical\nconsecutive values -> SUSPECT (3)",
     'dens_inv_tolerance': "Density inversion test: potential density may decrease with\ndepth up to this (kg/m3); beyond it the pair -> SUSPECT (3)",
     'lux_baseline_days': "Light fouling: the clean-sensor baseline is the highest daily\npeak of the first N days after deployment\n(highest, so one cloudy install day cannot lower it)",
     'lux_cutoff_frac': "Light fouling: light -> BAD (4) below this fraction of the\nbaseline (0.5 = 50%)\nThe applied cutoff is drawn on the review plot and saved",
-    'lux_sustain_days': "Light fouling: the daily peak must stay below the threshold\nthis many consecutive days before cutting\n(a cloudy spell does not cut)",
+    'lux_sustain_days': "Adaptive light: minimum number of final consecutive daily peaks\nbelow the threshold before proposing a cutoff\n(the series must not reach the threshold again afterwards)",
     'lux_fixed_days': "Fixed window mode: light -> BAD (4) this many days after\ndeployment, with no data-driven decision\n(the mode is chosen per run in the Qualification tab)",
     'hobo_edge_temp_tol': "Edge trim: leading/trailing samples are dropped while\ntemperature deviates more than this (°C) from the deployment\n(out-of-water readings at launch/recovery)",
+    'hobo_flat_fail': "HOBO temperature flat-line test: this many effectively identical\nconsecutive values -> BAD (4)",
+    'hobo_flat_susp': "HOBO temperature flat-line test: this many effectively identical\nconsecutive values -> SUSPECT (3)",
     'doppler_max_speed': "Speed range test: horizontal speed above this (cm/s) -> BAD (4)\nNegative speed is always BAD",
     'doppler_min_strength': "Signal quality test: return strength below this (dB) -> BAD (4)\nGenuine echoes are negative dB; 0 or above is the instrument's\n'no ping' placeholder, always BAD",
     'doppler_max_stdev': "Speed stdev test: single-ping stdev above this (cm/s)\n-> SUSPECT (3)",
     'doppler_tilt_suspect': "Tilt test: tilt above this (degrees) -> SUSPECT (3)\nTilt compromises the whole record, not one cell",
     'doppler_tilt_bad': "Tilt test: tilt above this (degrees) -> BAD (4)",
 }
+TS_SETTINGS_TOOLTIPS['hobo_sensor_min_temp'] = (
+    "HOBO temperature sensor range: lower valid temperature (°C)\nBelow it -> BAD (4)")
+TS_SETTINGS_TOOLTIPS['hobo_sensor_max_temp'] = (
+    "HOBO temperature sensor range: upper valid temperature (°C)\nAbove it -> BAD (4)")
 for _key, (_var, _unit) in _RANGE_UNITS.items():
     _u = (' (%s)' % _unit) if _unit else ''
     if _key != 'org':                       # the sensor set has no organic matter
@@ -278,7 +373,7 @@ for _key, (_var, _unit) in _RANGE_UNITS.items():
     TS_SETTINGS_TOOLTIPS['env_max_%s' % _key] = (
         "Environmental range test: upper expected %s%s\nAbove it -> SUSPECT (3)" % (_var, _u))
 
-# tooltips for the per-variable factor columns (Factors per Variable tab)
+# tooltips for the Statistical thresholds fields
 TS_FACTORS_TOOLTIPS = {
     'fail': "Spike and vertical-gradient tests: robust-sigma multiplier\nfor BAD (4)\n(rate of change is capped at SUSPECT per QARTOD)",
     'susp': "Spike, rate-of-change and vertical-gradient tests:\nrobust-sigma multiplier for SUSPECT (3)",
@@ -289,18 +384,36 @@ TS_FACTORS_TOOLTIPS = {
 # formula, so the per-variable entries are built from the variable lists.
 TS_QUALITY_TESTS_TOOLTIPS = {
     'density inversion': "Profiles only: potential density decreasing with depth beyond\nthe tolerance -> both rows of the pair SUSPECT (3)",
-    'light fouling window': "HOBO only: light -> BAD (4) after the usable window ends\n(fouling decline, or a fixed number of days)\nParameters in the Parameters tab (lux_*)",
+    'doppler current speed range': "Seaguard current profiler only: horizontal speed outside\nthe physical limit -> BAD (4)",
+    'doppler signal quality': "Seaguard current profiler only: invalid cell state, weak return\nor no-ping strength -> BAD (4)",
+    'doppler speed standard deviation': "Seaguard current profiler only: noisy velocity solution\nabove the limit -> SUSPECT (3)",
+    'doppler instrument tilt': "Seaguard current profiler only: excessive tilt compromises\nthe velocity solution -> SUSPECT (3) or BAD (4)",
+    'hobo temperature sensor range': "HOBO only: temperature outside this logger's valid range\n-> BAD (4)",
+    'hobo temperature environmental range': "HOBO only: temperature outside the expected site range\n-> SUSPECT (3)",
+    'hobo temperature spikes': "HOBO only: isolated temperature spikes (robust sigma)\n-> BAD (4) or SUSPECT (3)",
+    'hobo temperature rate of change': "HOBO only: temperature changing too fast over time\n-> SUSPECT (3)",
+    'hobo temperature flat line': "HOBO only: repeated temperature values (stuck sensor)\n-> SUSPECT (3) or BAD (4) by run length",
+    'hobo light fouling window': "HOBO only: light -> BAD (4) after the usable window ends\n(fouling decline, or a fixed number of days)\nParameters in the Parameters tab",
 }
+def _chemical_text(text):
+    """User-facing chemical notation; internal/persisted keys stay ASCII."""
+    return (text.replace('Dissolved oxygen', 'Dissolved O₂')
+            .replace('dissolved oxygen', 'dissolved O₂')
+            .replace('Dissolved CO2', 'Dissolved CO₂')
+            .replace('dissolved CO2', 'dissolved CO₂'))
+
+
 def _cap(v):
     # str.capitalize() would mangle 'pH' and 'dissolved CO2'
-    return v if v == 'pH' else v[0].upper() + v[1:]
+    value = v if v == 'pH' else v[0].upper() + v[1:]
+    return _chemical_text(value)
 
 _QT_SENSOR = ['temperature', 'salinity', 'conductivity', 'pressure',
               'dissolved oxygen', 'pH', 'chlorophyll', 'turbidity',
-              'dissolved CO2']
+              'PAR', 'dissolved CO2']
 _QT_ENV = ['temperature', 'salinity', 'conductivity', 'pressure', 'pH',
            'chlorophyll', 'dissolved oxygen', 'dissolved organic matter',
-           'turbidity', 'dissolved CO2']
+           'turbidity', 'PAR', 'dissolved CO2']
 for _v in _QT_SENSOR:
     TS_QUALITY_TESTS_TOOLTIPS['%s sensor range' % _v] = (
         "%s outside the sensor's valid range -> BAD (4)" % _cap(_v))
@@ -308,7 +421,11 @@ for _v in _QT_ENV:
     TS_QUALITY_TESTS_TOOLTIPS['%s environmental range' % _v] = (
         "%s outside the expected range for the site -> SUSPECT (3)" % _cap(_v))
     TS_QUALITY_TESTS_TOOLTIPS['%s spikes' % _v] = (
-        "Isolated %s spikes (robust-sigma criterion)\n-> BAD (4) or SUSPECT (3) by the per-variable factors" % _v)
+        "Isolated %s spikes (robust-sigma criterion)\n-> BAD (4) or SUSPECT (3) by the per-variable factors"
+        % _chemical_text(_v))
+TS_QUALITY_TESTS_TOOLTIPS['PAR spikes'] = (
+    "Isolated PAR spikes (three-point robust-sigma criterion)\n"
+    "-> BAD (4) or SUSPECT (3); valid night zeros are excluded from the scale")
 for _v in ['temperature', 'salinity', 'conductivity', 'pressure']:
     TS_QUALITY_TESTS_TOOLTIPS['%s rate of change' % _v] = (
         "%s changing too fast over time -> SUSPECT (3)" % _cap(_v))
@@ -328,7 +445,7 @@ def settings_store_path():
 
 USER_PREFS = {}
 # Set by load_user_prefs when saved QC criteria were DISCARDED because they came
-# from another program version (holds the old version string). QCS_App turns it
+# from another program version (holds the old version string). QCS_QtApp turns it
 # into a visible dialog; None = nothing was reset.
 SETTINGS_RESET_FROM = None
 
@@ -536,14 +653,7 @@ def apply_config_file(config_path):
     try:
         with open(config_path, 'r') as f:
             config_data = json.load(f)
-        if 'tsQualityTests' in config_data:
-            CONFIG['tsQualityTests'].update(config_data['tsQualityTests'])
-        if 'tsSettings' in config_data:
-            CONFIG['tsSettings'].update(config_data['tsSettings'])
-        if 'tsFactors' in config_data:
-            for k, v in config_data['tsFactors'].items():
-                if k in CONFIG['tsFactors']:
-                    CONFIG['tsFactors'][k].update(v)
+        merge_quality_config(config_data)
         return None
     except Exception as e:
         return str(e)
@@ -553,6 +663,82 @@ def apply_config_file(config_path):
 # The selectConfigFile function was removed because it referenced the removed widget;
 # apply_config_file (above) and export_config (below) remain defined for easy
 # reactivation in the future (just recreate the widgets and rewire the commands).
+
+
+def merge_quality_config(payload):
+    """Merges current or pre-v13 quality settings without cross-instrument coupling.
+
+    Old files had one temperature switch/factor and one flat-line sample count
+    for both Seaguard and HOBO.  When those legacy keys are encountered their
+    values seed both new instrument-specific controls; native v13 keys always
+    win.  Unknown keys are ignored instead of silently polluting ``CONFIG``.
+    """
+    tests = dict(payload.get('tsQualityTests') or {})
+    legacy_test_map = {
+        'hobo temperature sensor range': 'temperature sensor range',
+        'hobo temperature environmental range': 'temperature environmental range',
+        'hobo temperature spikes': 'temperature spikes',
+        'hobo temperature rate of change': 'temperature rate of change',
+        'hobo temperature flat line': 'temperature flat line',
+        'hobo light fouling window': 'light fouling window',
+    }
+    for new_key, old_key in legacy_test_map.items():
+        if new_key not in tests and old_key in tests:
+            tests[new_key] = tests[old_key]
+    for key, value in tests.items():
+        if key in CONFIG['tsQualityTests'] and value in ('ON', 'OFF'):
+            CONFIG['tsQualityTests'][key] = value
+
+    settings = dict(payload.get('tsSettings') or {})
+    payload_factors = dict(payload.get('tsFactors') or {})
+    native_v13_factors = any(key.startswith(('sg_', 'hobo_'))
+                             for key in payload_factors)
+    # Migrate both preview defaults for the fixed light plot.  Pre-redesign
+    # files used 20,000 (which clipped valid readings); the next unreleased
+    # preview used the UA-002 hardware ceiling, 320,000.  The corpus-calibrated
+    # v13 default is 200,000.  Preserve 20,000 only when a native-v13 factor
+    # payload proves it may be an intentional custom scale.
+    if (not native_v13_factors and settings.get('env_max_lux') == 20000):
+        settings['env_max_lux'] = 200000
+    elif settings.get('env_max_lux') == 320000:
+        settings['env_max_lux'] = 200000
+    legacy_setting_map = {
+        'seaguard_flat_fail': 'rep_cnt_fail',
+        'seaguard_flat_susp': 'rep_cnt_susp',
+        'hobo_flat_fail': 'rep_cnt_fail',
+        'hobo_flat_susp': 'rep_cnt_susp',
+        'hobo_sensor_min_temp': 'sensor_min_temp',
+        'hobo_sensor_max_temp': 'sensor_max_temp',
+    }
+    for new_key, old_key in legacy_setting_map.items():
+        if new_key not in settings and old_key in settings:
+            settings[new_key] = settings[old_key]
+    for key, value in settings.items():
+        if key in CONFIG['tsSettings']:
+            CONFIG['tsSettings'][key] = value
+
+    factors = payload_factors
+    # Expand one old per-variable row into the algorithm-specific rows.  Only
+    # fields consumed by each destination survive the update.
+    for variable, _display in _SEAGUARD_FACTOR_VARIABLES:
+        legacy = factors.get(variable)
+        if not isinstance(legacy, dict):
+            continue
+        destinations = ['sg_spike_%s' % variable]
+        if variable in ('T', 'S', 'C', 'P'):
+            destinations.append('sg_rate_%s' % variable)
+        if variable in ('T', 'S', 'C'):
+            destinations.append('sg_gradient_%s' % variable)
+        if variable == 'T':
+            destinations += ['hobo_spike_T', 'hobo_rate_T']
+        for destination in destinations:
+            factors.setdefault(destination, legacy)
+    for key, values in factors.items():
+        if key not in CONFIG['tsFactors'] or not isinstance(values, dict):
+            continue
+        for field in CONFIG['tsFactors'][key]:
+            if field in values:
+                CONFIG['tsFactors'][key][field] = values[field]
 
 def export_config():
     # Updates the current settings before exporting
@@ -602,22 +788,24 @@ def apply_settings_values(tests, settings_text, factors_text):
         except ValueError:
             invalid.append(param.replace('_', ' '))
 
-    # per-variable factors (fail/susp numeric, window '2D/3H/30M/45S/WHOLE')
+    # Algorithm-specific factors.  Each row contains only fields that its test
+    # consumes (e.g. rate of change has no BAD factor; gradient has no window).
     window_format = re.compile(r'^\d+\s*[DHMS]$|^WHOLE$', re.IGNORECASE)
     for key, entries in factors_text.items():
-        try:
-            CONFIG['tsFactors'][key]['fail'] = float(entries['fail'])
-        except ValueError:
-            invalid.append('%s fail factor' % key)
-        try:
-            CONFIG['tsFactors'][key]['susp'] = float(entries['susp'])
-        except ValueError:
-            invalid.append('%s susp factor' % key)
-        window_val = entries['window'].strip()
-        if window_format.match(window_val):
-            CONFIG['tsFactors'][key]['window'] = window_val
-        else:
-            invalid.append('%s time window' % key)
+        if key not in CONFIG['tsFactors']:
+            continue
+        for field, widget_value in entries.items():
+            value = widget_value.strip()
+            if field == 'window':
+                if window_format.match(value):
+                    CONFIG['tsFactors'][key][field] = value
+                else:
+                    invalid.append('%s time window' % key)
+            else:
+                try:
+                    CONFIG['tsFactors'][key][field] = float(value)
+                except ValueError:
+                    invalid.append('%s %s factor' % (key, field))
     return invalid
 
 def persist_quality_criteria():
@@ -636,8 +824,7 @@ def save_settings_values():
     toolkit-free core above."""
     tests = {t: var.get() for t, var in CONFIG['tsQualityTests_vars'].items()}
     settings_text = {p: e.get() for p, e in CONFIG['tsSettings_entries'].items()}
-    factors_text = {k: {'fail': es['fail'].get(), 'susp': es['susp'].get(),
-                        'window': es['window'].get()}
+    factors_text = {k: {field: entry.get() for field, entry in es.items()}
                     for k, es in CONFIG['tsFactors_entries'].items()}
     return apply_settings_values(tests, settings_text, factors_text)
 
@@ -1155,7 +1342,7 @@ def start_qualification():
                      % OUTPUT.get('last_output_root', ''))
         # hand the just-qualified file to the Visualization tab so it can
         # pre-select it (Database File + Output Path) on the next switch there.
-        # A module-level handoff (read by the QCS_App shell on tab change) avoids
+        # A module-level handoff (read by the GUI shell on tab change) avoids
         # the two modules' separate in-memory USER_PREFS getting out of sync.
         global PENDING_VIZ_PREFILL
         if OUTPUT.get('last_qualified_file'):
@@ -1263,27 +1450,16 @@ def restore_user_prefs():
         return
     if p.get('qcs_version') != data.QCS_VERSION:
         # The reset is by design, but it used to be only this log line, easy to
-        # miss. QCS_App reads SETTINGS_RESET_FROM after building the window and
+        # miss. The GUI shell reads SETTINGS_RESET_FROM after building the window and
         # shows a one-time dialog (v11.1) - the flag lives here, the DIALOG in
         # the app shell, so the headless/batch paths (which never import
-        # QCS_App) can never block on it.
+        # the GUI shell) can never block on it.
         global SETTINGS_RESET_FROM
         SETTINGS_RESET_FROM = p.get('qcs_version')
         print("Info: saved settings are from a different version (%s != %s); "
               "using the current default quality criteria." % (p.get('qcs_version'), data.QCS_VERSION))
         return
-    if isinstance(p.get('tsQualityTests'), dict):
-        for k, v in p['tsQualityTests'].items():
-            if k in CONFIG['tsQualityTests']:
-                CONFIG['tsQualityTests'][k] = v
-    if isinstance(p.get('tsSettings'), dict):
-        for k, v in p['tsSettings'].items():
-            if k in CONFIG['tsSettings']:
-                CONFIG['tsSettings'][k] = v
-    if isinstance(p.get('tsFactors'), dict):
-        for k, v in p['tsFactors'].items():
-            if k in CONFIG['tsFactors'] and isinstance(v, dict):
-                CONFIG['tsFactors'][k].update(v)
+    merge_quality_config(p)
 
 def show_help():
     help_text = """
@@ -1326,7 +1502,7 @@ def open_settings_window():
 
     # Per-variable factors Tab
     factors_frame = ttk.Frame(notebook)
-    notebook.add(factors_frame, text="Factors per variable")
+    notebook.add(factors_frame, text="Statistical thresholds")
     create_factors_tab(factors_frame)
 
     # remove the dashed focus ring from the selected tab's label
@@ -1359,27 +1535,26 @@ def create_tests_tab(parent):
     scrollbar.pack(side="right", fill="y")
     theme.enable_mousewheel(canvas)
 
-    test_categories = TEST_CATEGORIES
     row = 0
-    for category, tests in test_categories.items():
-        lbl = ttk.Label(scrollable_frame, text=category, font=theme.FONT_BOLD)
-        lbl.grid(row=row, column=0, sticky='w', pady=(10,5), columnspan=2)
+    for instrument, categories in QUALITY_TEST_GROUPS:
+        ttk.Label(scrollable_frame, text=instrument, font=theme.FONT_BOLD).grid(
+            row=row, column=0, sticky='w', pady=(12, 5), columnspan=2)
         row += 1
-
-        for test in tests:
-            var = StringVar(value=CONFIG['tsQualityTests'][test])
-            CONFIG['tsQualityTests_vars'][test] = var
-
-            cb = ttk.Checkbutton(scrollable_frame, text=test, variable=var,
-                               onvalue="ON", offvalue="OFF")
-            cb.grid(row=row, column=0, sticky='w', padx=20, pady=2)
-
-            # Add tooltip for each test
-            ToolTip(cb, TS_QUALITY_TESTS_TOOLTIPS[test])
-
+        for category, tests in categories:
+            ttk.Label(scrollable_frame, text=category, font=theme.FONT_SMALL_BOLD).grid(
+                row=row, column=0, sticky='w', padx=12, pady=(6, 2), columnspan=2)
             row += 1
+            for test, label in tests:
+                var = StringVar(value=CONFIG['tsQualityTests'][test])
+                CONFIG['tsQualityTests_vars'][test] = var
+                cb = ttk.Checkbutton(scrollable_frame, text=label, variable=var,
+                                     onvalue="ON", offvalue="OFF")
+                cb.grid(row=row, column=0, sticky='w', padx=28, pady=2)
+                ToolTip(cb, TS_QUALITY_TESTS_TOOLTIPS[test])
+                row += 1
 
-# tests grouped as the Settings window shows them (shared by both shells)
+# Seaguard scalar tests.  Instrument-level grouping is added immediately below
+# and shared by both GUI shells.
 TEST_CATEGORIES = {
         "Sensor range tests": [
             'temperature sensor range',
@@ -1390,6 +1565,7 @@ TEST_CATEGORIES = {
             'pH sensor range',
             'chlorophyll sensor range',
             'turbidity sensor range',
+            'PAR sensor range',
             'dissolved CO2 sensor range'
         ],
         "Environmental range tests": [
@@ -1402,6 +1578,7 @@ TEST_CATEGORIES = {
             'dissolved oxygen environmental range',
             'dissolved organic matter environmental range',
             'turbidity environmental range',
+            'PAR environmental range',
             'dissolved CO2 environmental range'
         ],
         "Spike tests": [
@@ -1414,6 +1591,7 @@ TEST_CATEGORIES = {
             'dissolved oxygen spikes',
             'dissolved organic matter spikes',
             'turbidity spikes',
+            'PAR spikes',
             'dissolved CO2 spikes'
         ],
         "Rate of change tests": [
@@ -1433,34 +1611,109 @@ TEST_CATEGORIES = {
             'salinity vertical gradient',
             'conductivity vertical gradient',
             'density inversion'
-        ],
-        "Light tests (HOBO)": [
-            'light fouling window'
         ]
 }
+
+
+def _display_test_name(test):
+    return _chemical_text(test[0].upper() + test[1:])
+
+
+QUALITY_TEST_GROUPS = [
+    ('Seaguard', [
+        (category, [(test, _display_test_name(test)) for test in tests])
+        for category, tests in TEST_CATEGORIES.items()
+    ]),
+    ('Seaguard current profiler (Doppler)', [
+        ('Automatic current tests', [
+            ('doppler current speed range', 'Current speed range'),
+            ('doppler signal quality', 'Signal quality'),
+            ('doppler speed standard deviation', 'Speed standard deviation'),
+            ('doppler instrument tilt', 'Instrument tilt'),
+        ]),
+    ]),
+    ('HOBO', [
+        ('Temperature tests', [
+            ('hobo temperature sensor range', 'Temperature sensor range'),
+            ('hobo temperature environmental range', 'Temperature environmental range'),
+            ('hobo temperature spikes', 'Temperature spikes'),
+            ('hobo temperature rate of change', 'Temperature rate of change'),
+            ('hobo temperature flat line', 'Temperature flat line'),
+        ]),
+        ('Light tests', [
+            ('hobo light fouling window', 'Light fouling window'),
+        ]),
+    ]),
+]
 
 # Parameters tab: variable code -> display name and unit (Min/Max share a row)
 _PARAM_NAME = {'temp': 'Temperature', 'sal': 'Salinity', 'cond': 'Conductivity',
                'pres': 'Pressure', 'pH': 'pH', 'chl': 'Chlorophyll',
-               'O2': 'Dissolved oxygen', 'org': 'Organic matter', 'tur': 'Turbidity',
-               'lux': 'Luminosity', 'CO2': 'Dissolved CO2'}
+               'O2': 'Dissolved O₂', 'org': 'Organic matter', 'tur': 'Turbidity',
+               'PAR': 'PAR', 'lux': 'Luminosity', 'CO2': 'Dissolved CO₂'}
 _PARAM_UNIT = {'temp': '°C', 'sal': 'PSU', 'cond': 'mS/cm', 'pres': 'dbar', 'pH': '',
                'chl': 'µg/L', 'O2': 'µM', 'org': 'ppb', 'tur': 'FTU', 'lux': 'lux',
-               'CO2': 'ppm'}
-# units for the single-value 'Other Parameters'
-_OTHER_UNIT = {'rep_cnt_fail': 'samples', 'rep_cnt_susp': 'samples',
-               'dens_inv_tolerance': 'kg/m³', 'hobo_edge_temp_tol': '°C',
-               'lux_baseline_days': 'days', 'lux_sustain_days': 'days',
-               'lux_cutoff_frac': 'fraction', 'lux_fixed_days': 'days'}
-
-# Doppler criteria get their own section in the Parameters tab (label, unit),
-# instead of being scattered among the scalar 'Other parameters'
+               'PAR': 'µmol/m²/s', 'CO2': 'ppm'}
+# Doppler criteria get their own section in the Parameters tab (label, unit).
 _DOPPLER_PARAMS = [
     ('doppler_max_speed', 'Max current speed', 'cm/s'),
     ('doppler_min_strength', 'Min signal strength', 'dB'),
     ('doppler_max_stdev', 'Max speed stdev', 'cm/s'),
     ('doppler_tilt_suspect', 'Tilt - suspect above', '°'),
     ('doppler_tilt_bad', 'Tilt - bad above', '°'),
+]
+
+_SEAGUARD_SENSOR_RANGES = [
+    (var, _PARAM_NAME[var], 'sensor_min_%s' % var, 'sensor_max_%s' % var,
+     _PARAM_UNIT.get(var, ''))
+    for var in ('temp', 'sal', 'cond', 'pres', 'O2', 'pH', 'chl', 'tur', 'PAR', 'CO2')
+]
+_ENVIRONMENTAL_RANGES = [
+    (var, _PARAM_NAME[var], 'env_min_%s' % var, 'env_max_%s' % var,
+     _PARAM_UNIT.get(var, ''))
+    for var in ('temp', 'sal', 'cond', 'pres', 'pH', 'chl', 'O2', 'org', 'tur', 'PAR', 'CO2')
+]
+
+# Parameters follow the same instrument order as the tests and thresholds.
+# ``range`` rows render Min/Max together; ``values`` rows render one criterion.
+PARAMETER_GROUPS = [
+    ('Seaguard', [
+        ('range', 'Sensor limits', _SEAGUARD_SENSOR_RANGES),
+        ('values', 'Flat-line thresholds', [
+            ('seaguard_flat_susp', 'Suspect after', 'samples'),
+            ('seaguard_flat_fail', 'Bad after', 'samples'),
+        ]),
+        ('values', 'Profile tests', [
+            ('dens_inv_tolerance', 'Density inversion tolerance', 'kg/m³'),
+        ]),
+    ]),
+    ('Seaguard current profiler (Doppler)', [
+        ('values', 'Automatic current tests', _DOPPLER_PARAMS),
+    ]),
+    ('HOBO', [
+        ('range', 'Temperature sensor limits', [
+            ('temp', 'Temperature', 'hobo_sensor_min_temp',
+             'hobo_sensor_max_temp', '°C'),
+        ]),
+        ('values', 'Temperature and deployment', [
+            ('hobo_edge_temp_tol', 'Edge trim tolerance', '°C'),
+            ('hobo_flat_susp', 'Flat line - suspect after', 'samples'),
+            ('hobo_flat_fail', 'Flat line - bad after', 'samples'),
+        ]),
+        ('values', 'Light plots', [
+            ('env_min_lux', 'Fixed-scale minimum', 'lux'),
+            ('env_max_lux', 'Fixed-scale maximum', 'lux'),
+        ]),
+        ('values', 'Light fouling', [
+            ('lux_baseline_days', 'Baseline duration', 'days'),
+            ('lux_cutoff_frac', 'Fouling cutoff fraction', 'fraction'),
+            ('lux_sustain_days', 'Minimum final run below threshold', 'days'),
+            ('lux_fixed_days', 'Fixed usable window', 'days'),
+        ]),
+    ]),
+    ('Environmental ranges', [
+        ('range', 'Shared expected site ranges', _ENVIRONMENTAL_RANGES),
+    ]),
 ]
 
 
@@ -1471,6 +1724,18 @@ def doppler_settings():
     the Settings window could not reach the current tests at all."""
     return {k[len('doppler_'):]: v for k, v in CONFIG['tsSettings'].items()
             if k.startswith('doppler_')}
+
+
+def doppler_tests_enabled():
+    """Automatic Doppler switches keyed like ``DOPPLER_TEST_SEQUENCE``."""
+    switches = {
+        'cur_range': 'doppler current speed range',
+        'cur_signal': 'doppler signal quality',
+        'cur_stdev': 'doppler speed standard deviation',
+        'cur_tilt': 'doppler instrument tilt',
+    }
+    return {key: CONFIG['tsQualityTests'].get(setting, 'ON') == 'ON'
+            for key, setting in switches.items()}
 
 def create_params_tab(parent):
     canvas = Canvas(parent, bg=theme.surface_color(), highlightthickness=0)
@@ -1493,59 +1758,38 @@ def create_params_tab(parent):
         CONFIG['tsSettings_entries'][key] = ent
 
     row = 0
-    # Range categories: one row per variable, with Min and Max side by side
-    for prefix, title in (('sensor', 'Sensor Range'), ('env', 'Environmental Range')):
-        ttk.Label(scrollable_frame, text=title, font=theme.FONT_BOLD).grid(
-            row=row, column=0, sticky='w', pady=(10, 3), columnspan=4)
+    for instrument, sections in PARAMETER_GROUPS:
+        ttk.Label(scrollable_frame, text=instrument, font=theme.FONT_BOLD).grid(
+            row=row, column=0, sticky='w', pady=(12, 3), columnspan=5)
         row += 1
-        ttk.Label(scrollable_frame, text='Min', font=theme.FONT_SMALL_BOLD).grid(row=row, column=1, sticky='w', padx=5)
-        ttk.Label(scrollable_frame, text='Max', font=theme.FONT_SMALL_BOLD).grid(row=row, column=2, sticky='w', padx=5)
-        row += 1
-        # variables in order of first appearance for this prefix
-        variables = []
-        for k in CONFIG['tsSettings']:
-            if k.startswith(prefix + '_min_'):
-                var = k[len(prefix + '_min_'):]
-                if var not in variables:
-                    variables.append(var)
-        for var in variables:
-            ttk.Label(scrollable_frame, text=_PARAM_NAME.get(var, var) + ':').grid(
-                row=row, column=0, sticky='e', padx=5, pady=2)
-            add_entry('%s_min_%s' % (prefix, var), row, 1)
-            max_key = '%s_max_%s' % (prefix, var)
-            if max_key in CONFIG['tsSettings']:
-                add_entry(max_key, row, 2)
-            unit = _PARAM_UNIT.get(var, '')
-            if unit:
-                ttk.Label(scrollable_frame, text=unit).grid(row=row, column=3, sticky='w', padx=5)
+        for kind, title, definitions in sections:
+            ttk.Label(scrollable_frame, text=title, font=theme.FONT_SMALL_BOLD).grid(
+                row=row, column=0, sticky='w', padx=12, pady=(5, 2), columnspan=5)
             row += 1
-
-    # Current profiler (Doppler): its own section, so the current criteria are
-    # not scattered among the scalar ones
-    ttk.Label(scrollable_frame, text='Current profiler (Doppler)', font=theme.FONT_BOLD).grid(
-        row=row, column=0, sticky='w', pady=(10, 3), columnspan=4)
-    row += 1
-    for key, label, unit in _DOPPLER_PARAMS:
-        ttk.Label(scrollable_frame, text=label + ':').grid(
-            row=row, column=0, sticky='e', padx=5, pady=2)
-        add_entry(key, row, 1)
-        ttk.Label(scrollable_frame, text=unit).grid(row=row, column=2, sticky='w', padx=5)
-        row += 1
-
-    # Other parameters: a single value each
-    ttk.Label(scrollable_frame, text='Other parameters', font=theme.FONT_BOLD).grid(
-        row=row, column=0, sticky='w', pady=(10, 3), columnspan=4)
-    row += 1
-    for key in CONFIG['tsSettings']:
-        if 'sensor_' in key or 'env_' in key or key.startswith('doppler_'):
-            continue
-        ttk.Label(scrollable_frame, text=key.replace('_', ' ').title() + ':').grid(
-            row=row, column=0, sticky='e', padx=5, pady=2)
-        add_entry(key, row, 1)
-        unit = _OTHER_UNIT.get(key, '')
-        if unit:
-            ttk.Label(scrollable_frame, text=unit).grid(row=row, column=2, sticky='w', padx=5)
-        row += 1
+            if kind == 'range':
+                ttk.Label(scrollable_frame, text='Min', font=theme.FONT_SMALL_BOLD).grid(
+                    row=row, column=1, sticky='w', padx=5)
+                ttk.Label(scrollable_frame, text='Max', font=theme.FONT_SMALL_BOLD).grid(
+                    row=row, column=2, sticky='w', padx=5)
+                row += 1
+                for _variable, label, min_key, max_key, unit in definitions:
+                    ttk.Label(scrollable_frame, text=label + ':').grid(
+                        row=row, column=0, sticky='e', padx=5, pady=2)
+                    add_entry(min_key, row, 1)
+                    add_entry(max_key, row, 2)
+                    if unit:
+                        ttk.Label(scrollable_frame, text=unit).grid(
+                            row=row, column=3, sticky='w', padx=5)
+                    row += 1
+            else:
+                for key, label, unit in definitions:
+                    ttk.Label(scrollable_frame, text=label + ':').grid(
+                        row=row, column=0, sticky='e', padx=5, pady=2)
+                    add_entry(key, row, 1)
+                    if unit:
+                        ttk.Label(scrollable_frame, text=unit).grid(
+                            row=row, column=2, sticky='w', padx=5)
+                    row += 1
 
 def create_factors_tab(parent):
     canvas = Canvas(parent, bg=theme.surface_color(), highlightthickness=0)
@@ -1560,29 +1804,43 @@ def create_factors_tab(parent):
     scrollbar.pack(side="right", fill="y")
     theme.enable_mousewheel(canvas)
 
-    ttk.Label(scrollable_frame, text="Spike / rate of change / vertical gradient thresholds",
-              font=theme.FONT_BOLD).grid(row=0, column=0, columnspan=4, sticky='w', pady=(10, 5), padx=5)
-
-    # header row
-    for col, title in enumerate(["Variable", "Fail factor", "Susp factor", "Time window"]):
-        ttk.Label(scrollable_frame, text=title, font=theme.FONT_SMALL_BOLD).grid(
-            row=1, column=col, sticky='w', padx=5, pady=2)
-
     CONFIG['tsFactors_entries'] = {}
-    for i, (key, display) in enumerate(FACTOR_VARS):
-        r = i + 2
-        ttk.Label(scrollable_frame, text=display).grid(row=r, column=0, sticky='w', padx=5, pady=2)
-        cfg = CONFIG['tsFactors'][key]
-        fail_e = ttk.Entry(scrollable_frame, width=8); fail_e.insert(0, str(cfg['fail']))
-        fail_e.grid(row=r, column=1, sticky='w', padx=5, pady=2)
-        susp_e = ttk.Entry(scrollable_frame, width=8); susp_e.insert(0, str(cfg['susp']))
-        susp_e.grid(row=r, column=2, sticky='w', padx=5, pady=2)
-        win_e = ttk.Entry(scrollable_frame, width=10); win_e.insert(0, str(cfg['window']))
-        win_e.grid(row=r, column=3, sticky='w', padx=5, pady=2)
-        ToolTip(fail_e, TS_FACTORS_TOOLTIPS['fail'])
-        ToolTip(susp_e, TS_FACTORS_TOOLTIPS['susp'])
-        ToolTip(win_e, TS_FACTORS_TOOLTIPS['window'])
-        CONFIG['tsFactors_entries'][key] = {'fail': fail_e, 'susp': susp_e, 'window': win_e}
+    field_labels = {'fail': 'Bad factor', 'susp': 'Suspect factor',
+                    'window': 'Time window'}
+    row = 0
+    for instrument, sections in FACTOR_SECTIONS:
+        ttk.Label(scrollable_frame, text=instrument, font=theme.FONT_BOLD).grid(
+            row=row, column=0, columnspan=5, sticky='w', pady=(12, 4), padx=5)
+        row += 1
+        if not sections:
+            ttk.Label(scrollable_frame,
+                      text='Direct physical thresholds are in the Parameters tab.').grid(
+                          row=row, column=0, columnspan=5, sticky='w', padx=18, pady=2)
+            row += 1
+        for section, definitions in sections:
+            ttk.Label(scrollable_frame, text=section, font=theme.FONT_SMALL_BOLD).grid(
+                row=row, column=0, columnspan=5, sticky='w', padx=12, pady=(5, 2))
+            row += 1
+            fields = definitions[0][2]
+            ttk.Label(scrollable_frame, text='Variable', font=theme.FONT_SMALL_BOLD).grid(
+                row=row, column=0, sticky='w', padx=5)
+            for col, field in enumerate(fields, start=1):
+                ttk.Label(scrollable_frame, text=field_labels[field],
+                          font=theme.FONT_SMALL_BOLD).grid(
+                              row=row, column=col, sticky='w', padx=5)
+            row += 1
+            for key, display, row_fields in definitions:
+                ttk.Label(scrollable_frame, text=display).grid(
+                    row=row, column=0, sticky='w', padx=5, pady=2)
+                entries = {}
+                for col, field in enumerate(row_fields, start=1):
+                    entry = ttk.Entry(scrollable_frame, width=10)
+                    entry.insert(0, str(CONFIG['tsFactors'][key][field]))
+                    entry.grid(row=row, column=col, sticky='w', padx=5, pady=2)
+                    ToolTip(entry, TS_FACTORS_TOOLTIPS[field])
+                    entries[field] = entry
+                CONFIG['tsFactors_entries'][key] = entries
+                row += 1
 
 def save_settings(window):
     invalid = save_settings_values()
@@ -1617,7 +1875,7 @@ def reset_settings_to_defaults():
         entry.delete(0, END)
         entry.insert(0, str(CONFIG['tsSettings'][param]))
     for key, entries in CONFIG['tsFactors_entries'].items():
-        for field in ('fail', 'susp', 'window'):
+        for field in entries:
             entries[field].delete(0, END)
             entries[field].insert(0, str(CONFIG['tsFactors'][key][field]))
 
@@ -1644,6 +1902,17 @@ MANUAL_CUT_COLUMNS = [
     ('Conductivity (mS/cm)', 'C'), ('Pressure (dbar)', 'P'),
     ('O2 level (uM)', 'O2'), ('pH', 'pH'), ('Chlorophyll (ug/L)', 'chl'),
     ('Turbidity (FTU)', 'tur'), ('Dissolved organic matter (ppb)', 'org'),
+    ('PAR (umol/m2/s)', 'PAR'),
+]
+
+# The DCPS has none of the columns above (owner's list, 2026-08-19): its
+# Check-variables chooser offers the per-CELL series of a current profile.
+# TILT is deliberately absent - it is a RECORD-level series and its review
+# always runs first, exactly as the Depth review does for a scalar mooring
+# (see run_doppler_qualification).
+DOPPLER_CUT_COLUMNS = [
+    'Horizontal speed (cm/s)', 'Direction (deg)', 'Vertical speed (cm/s)',
+    'Speed stdev (cm/s)', 'Signal strength (dB)',
 ]
 
 def choose_variables_to_check(candidates, root):
@@ -1720,7 +1989,7 @@ def build_qualification_tab(container, root, shared_log=None):
     """Builds the Data Qualification UI inside `container` (a frame in the
     unified app's notebook). `root` is the shared Tk root used for dialogs,
     the watch cursor and modal reviews. `shared_log` is the app-wide Execution
-    log owned by the QCS_App shell (one log, fixed at the bottom, for every
+    log owned by the host shell (one log, fixed at the bottom, for every
     pipeline stage); without it (standalone dev launch) the tab creates its
     own. All pipeline logic is unchanged."""
     global window, main_frame, input_frame, output_frame, fileNames_entry, browse_file_btn
@@ -2318,11 +2587,11 @@ def build_qualification_tab(container, root, shared_log=None):
     # window stays open and the user can qualify several files in sequence.
     def run_doppler_qualification(bin_path):
         """DCPS / Doppler current-profiler pipeline (v8.0): reads the raw
-        session, runs the 4 current QC tests, writes the qualified sheet and
-        the 4 current panels. Selected automatically when the chosen .bin
-        belongs to a DCPS sensor group."""
+        session, opens the manual review (v13.0), runs the 4 current QC tests,
+        writes the qualified sheet and the 3 current panels. Selected
+        automatically when the chosen .bin belongs to a DCPS sensor group."""
         log_line('DCPS session detected: running the CURRENT-PROFILER qualification.')
-        log_line('Stage 1/4: reading the raw Doppler session...')
+        log_line('Stage 1/5: reading the raw Doppler session...')
         frame = data.read_seaguard_doppler(bin_path)
         if INPUT['correct_gmt3h']:
             frame['Datetime'] = frame['Datetime'] - timedelta(hours=3)
@@ -2331,18 +2600,91 @@ def build_qualification_tab(container, root, shared_log=None):
             log_line("Warning: 'Correct GMT-3' is OFF - the DCPS clock is GMT like "
                      "every Seaguard, so the current timestamps will stay 3 h ahead "
                      "of local time.")
-        log_line('Stage 2/4: running current quality tests (%d cell samples)...' % len(frame))
-        flags, rollup = QC.doppler_qc(frame, doppler_settings())
+        # Stage 2 - the interactive review (v13.0). A current session had no
+        # manual stop at all until now: the pipeline returned before the scalar
+        # one's panels, and none of ITS candidate variables exists in a current
+        # table. Two reviews, in the order the cuts depend on:
+        #   1. TILT, always, one point per RECORD - the DCPS's Depth review. A
+        #      cut there dismisses every cell of that instant, which is how
+        #      deployment and recovery leave a mooring record.
+        #   2. the per-cell series, when 'Check variables' is on; the tilt cuts
+        #      carry over as locked points so they are not offered again.
+        log_line('Stage 2/5: manual review of the current session...')
+        record_dismissed = data.trim_doppler_records(
+            frame, tk_root=window, settings=doppler_settings())
+        cell_dismissed = set()
+        if INPUT['check_variables'] == True:
+            candidates = [name for name in DOPPLER_CUT_COLUMNS if name in frame.columns]
+            chosen = choose_variables_to_check(candidates, window)
+            if chosen is None:            # Cancel/Esc in the chooser -> abort run
+                raise data.ManualCutCanceled()
+            for i, name in enumerate(chosen, start=1):
+                rows = data.trim_doppler_variable(frame, name, tk_root=window,
+                                                  locked=record_dismissed | cell_dismissed,
+                                                  progress=(i, len(chosen)))
+                cell_dismissed |= rows
+        cell_dismissed -= record_dismissed        # a cut record wins over its cells
+        manual_dismissed = record_dismissed | cell_dismissed
+        n_records = (int(frame.iloc[sorted(record_dismissed)]['Datetime'].nunique())
+                     if record_dismissed else 0)
+
+        log_line('Stage 3/5: running current quality tests (%d cell samples)...' % len(frame))
+        # The cur_manual position must never CLAIM a review that did not
+        # happen: the batch drivers replace _show_and_wait with a no-op, so the
+        # panel above is built and answers 'nothing cut' without a human ever
+        # seeing it. The pipeline cannot know whether a window was on screen -
+        # what it does know is that the operator asked for the per-variable
+        # review, or that a cut came back. Anything else stays 'not evaluated'.
+        manual_reviewed = bool(manual_dismissed) or INPUT['check_variables'] == True
+        flags, rollup = QC.doppler_qc(frame, doppler_settings(),
+                                      enabled=doppler_tests_enabled(),
+                                      manual_reviewed=manual_reviewed)
+
+        # The dismissals collected above, written into the flag string and the
+        # values. A DCPS dismissal condemns the whole CELL SAMPLE - speed,
+        # direction and the U/V/W components are one velocity solution per ping
+        # ensemble, with the stdev and the strength as its diagnostics - so
+        # every flag position of the row becomes 5 and every measurement is
+        # blanked. The row itself stays, with its identity columns (Datetime,
+        # Site, Column, Cell, Depth), so the cut is traceable instead of a
+        # silent hole. A cut RECORD also loses its attitude context
+        # (heading/pitch/roll/tilt/pings); a cut CELL keeps it, because the
+        # record it belongs to is still sound for its other cells.
+        if manual_dismissed:
+            cell_cols = [c for c in data.DCPS_CELL_COLUMNS if c in frame.columns]
+            rec_cols = [c for c in data.DCPS_RECORD_COLUMNS if c in frame.columns]
+            for row in manual_dismissed:
+                flags[row] = '%d' % QC.QC_flags.DISMISSED * len(flags[row])
+                rollup[row] = QC.QC_flags.DISMISSED
+            frame.iloc[sorted(manual_dismissed),
+                       [frame.columns.get_loc(c) for c in cell_cols]] = np.nan
+            if record_dismissed:
+                frame.iloc[sorted(record_dismissed),
+                           [frame.columns.get_loc(c) for c in rec_cols]] = np.nan
+            log_line('Manual cut: %d record(s) (%d cell rows) and %d individual '
+                     'cell sample(s) dismissed (flag 5).'
+                     % (n_records, len(record_dismissed), len(cell_dismissed)))
+        else:
+            log_line('Manual review: nothing dismissed.')
+
         # Site right after Datetime: build_database requires Datetime+Site, so
         # the qualified current table is stackable/searchable like the others
         frame.insert(1, 'Site', INPUT.get('site') or _output_base_for(bin_path))
         frame['Flag'] = flags
         frame['Flag_cur'] = rollup
         frame['QCS version'] = data.QCS_VERSION
+        # 'Remove dismissed data' applies here as it does to the Depth review's
+        # whole-row cuts: in a current table EVERY dismissal is a whole-row one
+        if OUTPUT.get('remove_dismissed') and manual_dismissed:
+            keep = [i for i in range(len(frame)) if i not in manual_dismissed]
+            frame = frame.iloc[keep].reset_index(drop=True)
+            log_line("Removed %d dismissed row(s) from the output ('Remove "
+                     "dismissed data')." % len(manual_dismissed))
         counts = frame['Flag_cur'].value_counts().to_dict()
-        log_line('Current QC: good %d, suspect %d, bad %d, missing %d.'
-                 % (counts.get(1, 0), counts.get(3, 0), counts.get(4, 0), counts.get(9, 0)))
-        log_line('Stage 3/4: writing the qualified current table...')
+        log_line('Current QC: good %d, suspect %d, bad %d, dismissed %d, missing %d.'
+                 % (counts.get(1, 0), counts.get(3, 0), counts.get(4, 0),
+                    counts.get(5, 0), counts.get(9, 0)))
+        log_line('Stage 4/5: writing the qualified current table...')
         base = _output_base_for(bin_path)
         root_out = os.path.join(OUTPUT['output_file_path'], base + '_DOPPLER_QLF')
         _claim_output_root(root_out)
@@ -2362,9 +2704,19 @@ def build_qualification_tab(container, root, shared_log=None):
             f.write('QCS Doppler current qualification - flag string positions\n')
             for pos, (key, label) in enumerate(QC.DOPPLER_TEST_SEQUENCE, start=1):
                 f.write('%d. %s (%s)\n' % (pos, label, key))
-            f.write('\nFlag codes: 1 good, 2 not evaluated, 3 suspect, 4 bad, 9 missing.\n')
+            f.write('\nFlag codes: 1 good, 2 not evaluated, 3 suspect, 4 bad, '
+                    '5 dismissed, 9 missing.\n')
             f.write('Flag_cur = worst flag of the row (4 > 3 > 9 > 1).\n')
-        log_line('Stage 4/4: rendering the current panels...')
+            # v13.0: position 5 is the operator's review, and a dismissal is
+            # never partial - the legend has to say so, or a reader meets a
+            # blank row of measurements with no explanation in the sheet
+            f.write('\nA manual dismissal (flag 5) sets EVERY position of the row '
+                    'and blanks its\nmeasurements: the cell values of a current '
+                    'record are ONE velocity solution,\nso a point the operator '
+                    'cannot trust condemns the whole cell sample. The row\n'
+                    'is kept, with its Datetime, Site, Column, Cell and Depth, '
+                    "unless\n'Remove dismissed data' was ticked.\n")
+        log_line('Stage 5/5: rendering the current panels...')
         panel_dir = os.path.join(root_out, 'QCS DataView (current)')
         site = INPUT.get('site') or base
         files = view.plot_doppler_panels(frame, panel_dir, label=site)
@@ -2449,6 +2801,27 @@ def build_qualification_tab(container, root, shared_log=None):
         ms_interval = np.timedelta64(_median_step, 'us')
         INPUT['start_time'] = start_time
         INPUT['end_time'] = end_time
+
+        # Mooring or cast? The session knows (v13.0), and the answer is FREE
+        # here - the frame is already read. The Data type is not overridden:
+        # it decides which tests run (vertical gradient and density inversion
+        # are profile-only), so a disagreement is reported and the operator's
+        # choice is honoured. The Qt shell pre-selects the same answer when the
+        # file is chosen; this line is what a batch driver and the tk shell see.
+        if INPUT['input_type'] == 'Seaguard':
+            _looks_like, _hours, _step = data.detect_seaguard_data_type(
+                times=raw_data['Datetime'])
+            if _looks_like and _looks_like != INPUT.get('data_type'):
+                log_line("Warning: this session spans %.1f h at one record every "
+                         "%.0f s, which looks like a %s, but the Data type says "
+                         "'%s' - qualifying it as chosen. If that is wrong, stop "
+                         "and change the Data type: a profile also runs the "
+                         "vertical-gradient and density-inversion tests."
+                         % (_hours, _step, _looks_like, INPUT.get('data_type')))
+            elif _looks_like:
+                log_line('Info: session spans %.1f h at one record every %.0f s - '
+                         "consistent with the Data type '%s'."
+                         % (_hours, _step, _looks_like))
 
         # timestamp sanity checks (gap/monotonicity): reported, not flagged per sample
         dt_diff = raw_data['Datetime'].diff()
@@ -2671,11 +3044,15 @@ def build_qualification_tab(container, root, shared_log=None):
             'O2':  (r'^(?=.*O2)(?=.*uM).*$', True),
             'org': ('organic matter', True),
             'tur': (r'turbidity \(ftu\)', True),
+            'PAR': (r'\bPAR\b', True),
             'CO2': (r'^(?=.*CO2)(?=.*ppm).*$', True),
         }
 
-        # all runners take (column, flags, param_key); range/flat ignore param_key,
-        # spike/rate/gradient use the per-variable factors from tsFactors[param_key]
+        # Statistical factors are independent by instrument and algorithm.
+        # This prevents (for example) a HOBO temperature edit from changing a
+        # Seaguard profile gradient threshold.
+        factor_instrument = 'hobo' if INPUT['input_type'] == 'HOBO' else 'sg'
+
         def run_range_test(min_key, max_key, fail_flag=QC.QC_flags.BAD_DATA):
             # sensor range -> BAD (physically impossible); environmental range ->
             # SUSPECT (QARTOD: outside the regional envelope is suspect, not bad)
@@ -2685,28 +3062,33 @@ def build_qualification_tab(container, root, shared_log=None):
                                                                   fail_flag=fail_flag)
 
         def run_spike_test(column, flags, param_key):
-            f = tsFactors[param_key]
+            f = tsFactors['%s_spike_%s' % (factor_instrument, param_key)]
             return QC.outlier_test(raw_data, column, n_cel, flags, f['window'],
-                                   ms_interval, f['fail'], f['susp'])
+                                   ms_interval, f['fail'], f['susp'],
+                                   positive_sigma=(param_key == 'PAR'))
 
         def run_rate_of_change_test(column, flags, param_key):
-            f = tsFactors[param_key]
+            f = tsFactors['%s_rate_%s' % (factor_instrument, param_key)]
             # positions of THIS variable's previous flags: keeps the 'previous value
             # was bad/missing' propagation from being contaminated by other variables
             done = len(flags[0]) if flags else 0
             var_positions = [i for i in range(done) if flag_layout[i] == param_key]
             return QC.sigma_rate_of_change_test(n_samples, raw_data[column], n_cel, flags,
                                                 ms_interval=ms_interval, time_window=f['window'],
-                                                rc_fail=f['fail'], rc_susp=f['susp'],
+                                                # QARTOD rate of change only emits
+                                                # SUSPECT; the legacy BAD argument is
+                                                # retained by the test API but unused.
+                                                rc_fail=f['susp'], rc_susp=f['susp'],
                                                 DIR=False, var_positions=var_positions)
 
         def run_flat_line_test(column, flags, param_key):
+            prefix = 'hobo' if INPUT['input_type'] == 'HOBO' else 'seaguard'
             return QC.single_flat_line_test(n_samples, n_cel, raw_data[column], flags,
-                                            rep_cnt_fail=tsSettings['rep_cnt_fail'],
-                                            rep_cnt_suspect=tsSettings['rep_cnt_susp'])
+                                            rep_cnt_fail=tsSettings[prefix + '_flat_fail'],
+                                            rep_cnt_suspect=tsSettings[prefix + '_flat_susp'])
 
         def run_vertical_gradient_test(column, flags, param_key):
-            f = tsFactors[param_key]
+            f = tsFactors['sg_gradient_%s' % param_key]
             if 'Depth (m)' not in raw_data.columns:
                 return [flags[n] + '%d' % QC.QC_flags.UNKNOWN for n in range(n_samples)]
             return QC.vertical_gradient_test(raw_data[column], raw_data['Depth (m)'], flags,
@@ -2764,6 +3146,7 @@ def build_qualification_tab(container, root, shared_log=None):
             ('pH',  'pH sensor range',           'pH sensor range',           run_range_test('sensor_min_pH', 'sensor_max_pH')),
             ('chl', 'Chlorophyll sensor range',  'chlorophyll sensor range',  run_range_test('sensor_min_chl', 'sensor_max_chl')),
             ('tur', 'Turbidity sensor range',    'turbidity sensor range',    run_range_test('sensor_min_tur', 'sensor_max_tur')),
+            ('PAR', 'PAR sensor range',           'PAR sensor range',           run_range_test('sensor_min_PAR', 'sensor_max_PAR')),
             ('CO2', 'Dissolved CO2 sensor range', 'dissolved CO2 sensor range', run_range_test('sensor_min_CO2', 'sensor_max_CO2')),
             ('T',   'Temperature environmental range',  'temperature environmental range',  run_range_test('env_min_temp', 'env_max_temp', QC.QC_flags.SUSPECT)),
             ('S',   'Salinity environmental range',     'salinity environmental range',     run_range_test('env_min_sal', 'env_max_sal', QC.QC_flags.SUSPECT)),
@@ -2774,6 +3157,7 @@ def build_qualification_tab(container, root, shared_log=None):
             ('O2',  'Dissolved oxygen environmental range', 'dissolved oxygen environmental range', run_range_test('env_min_O2', 'env_max_O2', QC.QC_flags.SUSPECT)),
             ('org', 'Dissolved organic matter environmental range', 'dissolved organic matter environmental range', run_range_test('env_min_org', 'env_max_org', QC.QC_flags.SUSPECT)),
             ('tur', 'Turbidity environmental range',    'turbidity environmental range',    run_range_test('env_min_tur', 'env_max_tur', QC.QC_flags.SUSPECT)),
+            ('PAR', 'PAR environmental range',           'PAR environmental range',           run_range_test('env_min_PAR', 'env_max_PAR', QC.QC_flags.SUSPECT)),
             ('CO2', 'Dissolved CO2 environmental range', 'dissolved CO2 environmental range', run_range_test('env_min_CO2', 'env_max_CO2', QC.QC_flags.SUSPECT)),
             ('T',   'Temperature spikes',  'temperature spikes',  run_spike_test),
             ('S',   'Salinity spikes',     'salinity spikes',     run_spike_test),
@@ -2784,6 +3168,7 @@ def build_qualification_tab(container, root, shared_log=None):
             ('O2',  'Dissolved oxygen spikes', 'dissolved oxygen spikes', run_spike_test),
             ('org', 'Dissolved organic matter spikes', 'dissolved organic matter spikes', run_spike_test),
             ('tur', 'Turbidity spikes',    'turbidity spikes',    run_spike_test),
+            ('PAR', 'PAR spikes',           'PAR spikes',           run_spike_test),
             ('CO2', 'Dissolved CO2 spikes', 'dissolved CO2 spikes', run_spike_test),
             ('T',   'Temperature rate of change',  'temperature rate of change',  run_rate_of_change_test),
             ('S',   'Salinity rate of change',     'salinity rate of change',     run_rate_of_change_test),
@@ -2802,11 +3187,24 @@ def build_qualification_tab(container, root, shared_log=None):
                 ('C', 'Conductivity vertical gradient', 'conductivity vertical gradient', run_vertical_gradient_test),
             ]
 
-        # HOBO Pendant only measures temperature (+ light, tested separately below),
-        # so only the temperature tests apply - avoids a flag string full of
-        # 'not evaluated' positions and empty Flag_S/Flag_C/... columns in the output
+        # HOBO gets its own switches, sensor limits and factors.  Before v13 it
+        # merely filtered the Seaguard sequence to T and therefore changing one
+        # instrument silently changed the other.
         if INPUT['input_type'] == 'HOBO':
-            test_sequence = [entry for entry in test_sequence if entry[0] == 'T']
+            test_sequence = [
+                ('T', 'Temperature sensor range',
+                 'hobo temperature sensor range',
+                 run_range_test('hobo_sensor_min_temp', 'hobo_sensor_max_temp')),
+                ('T', 'Temperature environmental range',
+                 'hobo temperature environmental range',
+                 run_range_test('env_min_temp', 'env_max_temp', QC.QC_flags.SUSPECT)),
+                ('T', 'Temperature spikes',
+                 'hobo temperature spikes', run_spike_test),
+                ('T', 'Temperature rate of change',
+                 'hobo temperature rate of change', run_rate_of_change_test),
+                ('T', 'Temperature flat line',
+                 'hobo temperature flat line', run_flat_line_test),
+            ]
 
         # records which variable each appended flag character belongs to, so
         # handle_output_file maps flag positions to variables without hardcoding them
@@ -2837,7 +3235,8 @@ def build_qualification_tab(container, root, shared_log=None):
         if INPUT['input_type'] == 'HOBO':
             ti = time.time()
             lux_col = 'Luminosity (lux)'
-            if tsQualityTests.get('light fouling window', 'OFF') == 'ON' and lux_col in raw_data.columns:
+            if (tsQualityTests.get('hobo light fouling window', 'OFF') == 'ON'
+                    and lux_col in raw_data.columns):
                 # The clock check comes FIRST: a series 12 h out of phase makes
                 # every daily light statistic below meaningless, so the operator
                 # must see that before being asked to approve a cutoff.
@@ -2935,7 +3334,8 @@ def build_qualification_tab(container, root, shared_log=None):
             else:
                 flags = [flags[n] + '%d' % QC.QC_flags.DISMISSED for n in range(n_samples)]
             flag_layout.append('lux')
-            test_sequence.append(('lux', 'Light fouling window', 'light fouling window', None))
+            test_sequence.append(('lux', 'Light fouling window',
+                                  'hobo light fouling window', None))
             report_test('Light fouling window', 'lux', flags, time.time() - ti)
 
         end = time.time()
@@ -3144,7 +3544,7 @@ def build_qualification_tab(container, root, shared_log=None):
     restore_user_prefs()
 
 if __name__ == '__main__':
-    # Standalone dev launch (the shipped entry point is QCS_App.py).
+    # Standalone Tk development launch (the shipped entry point is QCS_QtApp.py).
     theme.enable_high_dpi()
     _root = Tk()
     _root.title("QCS - Data Qualification Tool %s" % data.QCS_VERSION)

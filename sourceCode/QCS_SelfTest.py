@@ -8,9 +8,9 @@ import QCS_Tests as QC
 import QCS_DataHandler as data
 
 # flag layouts (param key per flag position), matching the test sequence order
-MOORING_LAYOUT = (['T', 'S', 'C', 'P', 'O2', 'pH', 'chl', 'tur'] +          # sensor range
-                  ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur'] +   # env range
-                  ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur'] +   # spikes
+MOORING_LAYOUT = (['T', 'S', 'C', 'P', 'O2', 'pH', 'chl', 'tur', 'PAR', 'CO2'] +        # sensor range
+                  ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur', 'PAR', 'CO2'] + # env range
+                  ['T', 'S', 'C', 'P', 'pH', 'chl', 'O2', 'org', 'tur', 'PAR', 'CO2'] + # spikes
                   ['T', 'S', 'C', 'P'] +                                    # rate of change
                   ['T', 'S', 'C', 'P'])                                     # flat line
 PROFILE_LAYOUT = MOORING_LAYOUT + ['T', 'S', 'C'] + ['dens']  # + vertical gradient + inversion
@@ -59,6 +59,27 @@ ok.append('outlier_test (step preserved)')
 # 2c) endpoints have no neighbors: flag 2 (not evaluated), never 1
 assert flags[0] == '2' and flags[-1] == '2', (flags[0], flags[-1])
 ok.append('outlier_test (endpoints not evaluated)')
+
+# 2d) PAR's valid zero-heavy night must not collapse robust sigma to the last
+# decimal and turn a smooth daylight curve into mass spike failures.
+night = np.resize(np.array([0.0, 0.001, 0.003, 0.006]), 40)
+day = np.linspace(1.0, 50.0, 30) + 0.2 * np.sin(np.arange(30))
+par = np.concatenate([day, night])
+par_df = pd.DataFrame({'PAR (umol/m2/s)': par})
+generic = QC.outlier_test(par_df, 'PAR (umol/m2/s)', 1,
+                          ['' for _ in par], 'WHOLE',
+                          np.timedelta64(60, 's'), 3, 2.5)
+par_flags = QC.outlier_test(par_df, 'PAR (umol/m2/s)', 1,
+                            ['' for _ in par], 'WHOLE',
+                            np.timedelta64(60, 's'), 3, 2.5,
+                            positive_sigma=True)
+assert par_flags.count('4') < generic.count('4'), (generic.count('4'), par_flags.count('4'))
+zero_df = pd.DataFrame({'PAR (umol/m2/s)': [0.0] * 8})
+zero_flags = QC.outlier_test(zero_df, 'PAR (umol/m2/s)', 1, [''] * 8,
+                             'WHOLE', np.timedelta64(60, 's'), 3, 2.5,
+                             positive_sigma=True)
+assert zero_flags[1:-1] == ['1'] * 6, zero_flags
+ok.append('outlier_test (PAR night zeros excluded from spike scale)')
 
 # 3) single_flat_line_test
 vals = list(np.arange(30, dtype=float)) + [7.7] * 25
@@ -427,6 +448,20 @@ assert comb['Flag_lux'].iloc[6] == 1 and comb['Luminosity (lux)'].iloc[6] == 550
 assert list(comb['Flag_lux']) == [1, 1, 1, 1, 1, 1, 1, 1, 4, 4], comb['Flag_lux'].tolist()
 assert comb['Site'].iloc[0] == 'PAB3'
 assert any('disagree' in m for m in cmsgs) and any('usable until' in m for m in cmsgs), cmsgs
+# An exactly repeated logger row is safe to condense, but the output grid must
+# remain unique. A conflicting value at the same timestamp is ambiguous (the
+# collapsed 12-hour clock had this shape) and must stop the combination.
+repA_exact = pd.concat([repA, repA.iloc[[2]]], ignore_index=True)
+comb_exact, msgs_exact = data.combine_hobo_replicates([repA_exact, repB])
+assert len(comb_exact) == 10 and not comb_exact['Datetime'].duplicated().any()
+assert any('identical duplicate' in m for m in msgs_exact), msgs_exact
+repA_conflict = pd.concat([repA, repA.iloc[[2]].assign(**{
+    'Temperature (degC)': 30.0})], ignore_index=True)
+try:
+    data.combine_hobo_replicates([repA_conflict, repB])
+    raise AssertionError('conflicting duplicate timestamp was silently combined')
+except ValueError as exc:
+    assert 'collapsed 12-hour clock' in str(exc), exc
 ok.append('combine_hobo_replicates (T mean+spread, light max-of-clean, window extended)')
 
 # 13) read_ctd: Seaguard export with a COMMA decimal separator (locale-dependent)
@@ -598,6 +633,22 @@ assert np.isnan(out17['CO2 Level (ppm)'].iloc[2]), 'bad CO2 value not removed'
 assert not np.isnan(out17['CO2 Level (ppm)'].iloc[1]), 'O2 flags must NOT clear CO2 values'
 ok.append('handle_output_file (CO2 bucket rolls up to Flag_CO2; O2/CO2 removals independent)')
 
+# 17b) PAR qualification (v13.0): the three ordinary optical-sensor tests
+# roll up independently to Flag_PAR, and removal never touches another sensor.
+inp17b = pd.DataFrame({'PAR (umol/m2/s)': [100.0, 4100.0, 5100.0],
+                       'Chlorophyll (ug/L)': [1.0, 2.0, 3.0]})
+flag_layout_17b = ['PAR', 'PAR', 'PAR']  # sensor range, environment, spike
+flags_17b = ['111', '131', '411']
+out17b = data.handle_output_file(inp17b, flags_17b, flag_layout_17b,
+                                 remove_suspect=True, remove_bad=True)[0]
+assert list(out17b['Flag_PAR']) == [1, 3, 4], out17b['Flag_PAR'].tolist()
+assert not np.isnan(out17b['PAR (umol/m2/s)'].iloc[0])
+assert np.isnan(out17b['PAR (umol/m2/s)'].iloc[1])
+assert np.isnan(out17b['PAR (umol/m2/s)'].iloc[2])
+assert out17b['Chlorophyll (ug/L)'].notna().all(), 'PAR flags must not clear chlorophyll'
+assert data.PARAM_FLAG_COLUMN['PAR (umol/m2/s)'] == 'Flag_PAR'
+ok.append('handle_output_file (PAR sensor/environment/spike roll up to Flag_PAR)')
+
 # 18) reader fix (v7.0): a <Point> OUTSIDE the <SensorData> blocks (device
 # housekeeping like 'Input Voltage'/'Memory Used') still owns a Value slot in the
 # tag dictionary. The old reader counted only SensorData points and rejected the
@@ -684,7 +735,10 @@ with _tempfile.TemporaryDirectory() as tmp:
     assert abs(dep['AMT pH#1[pH]'].iloc[3] - 7.3) < 1e-5                                 # interp at +30 s
 ok.append('read_seaguard_deployment (sibling sensor groups merged onto finest axis by time interpolation)')
 
-# 20) Doppler current QC (v8.0): the 4-test flag string and the Flag_cur rollup.
+# 20) Doppler current QC (v8.0): the flag string and the Flag_cur rollup. The
+# string carries FIVE positions since v13.0 - the fifth is the operator's
+# manual review, 2 when no review ran and 1 when it did (a dismissal writes 5
+# there and everywhere else, and is applied by the pipeline).
 # Rows: good | over-speed BAD | dead cell (state!=0) BAD | noisy SUSPECT |
 # tilted SUSPECT | missing.
 import QCS_Tests as _QCT
@@ -696,16 +750,28 @@ dop = pd.DataFrame({
     'Tilt (deg)':              [5.0, 5.0, 5.0, 5.0, 20.0, 5.0],
 })
 dflags, droll = _QCT.doppler_qc(dop)
-assert dflags[0] == '1111' and droll[0] == 1, (dflags[0], droll[0])
+assert dflags[0] == '11112' and droll[0] == 1, (dflags[0], droll[0])
 assert dflags[1][0] == '4' and droll[1] == 4, dflags[1]          # over max_speed
 assert dflags[2][1] == '4' and droll[2] == 4, dflags[2]          # dead cell state
 assert dflags[3][2] == '3' and droll[3] == 3, dflags[3]          # noisy stdev
 assert dflags[4][3] == '3' and droll[4] == 3, dflags[4]          # tilt suspect
-assert dflags[5] == '9999' and droll[5] == 9, dflags[5]          # missing
+assert dflags[5] == '99999' and droll[5] == 9, dflags[5]         # missing
 # tilt BAD threshold
 dflags2, droll2 = _QCT.doppler_qc(dop.assign(**{'Tilt (deg)': [40.0] * 6}))
 assert dflags2[0][3] == '4' and droll2[0] == 4
-ok.append('doppler_qc (speed range / signal quality / stdev / tilt; Flag_cur rollup)')
+# the manual position tells a reviewed session from an unreviewed one, and
+# says nothing else: it must never change what the four tests decided
+dflags4, droll4 = _QCT.doppler_qc(dop, manual_reviewed=True)
+assert dflags4[0] == '11111' and droll4[0] == 1, dflags4[0]
+assert [f[:4] for f in dflags4] == [f[:4] for f in dflags], 'manual position changed a test'
+# each automatic test can now be switched off independently; its fixed flag
+# position becomes DISMISSED (5) without moving the remaining positions
+dflags5, droll5 = _QCT.doppler_qc(dop, enabled={'cur_range': False})
+assert dflags5[1][0] == '5' and droll5[1] == 1, (dflags5[1], droll5[1])
+assert dflags5[2][1] == '4' and droll5[2] == 4, dflags5[2]
+assert len(_QCT.DOPPLER_TEST_SEQUENCE) == 5 and \
+    _QCT.DOPPLER_TEST_SEQUENCE[-1][0] == 'cur_manual', _QCT.DOPPLER_TEST_SEQUENCE
+ok.append('doppler_qc (independent switches / speed / signal / stdev / tilt / manual; Flag_cur rollup)')
 
 # 21) is_seaguard_doppler: detects the DCPS template, rejects the scalar one.
 with _tempfile.TemporaryDirectory() as tmp:
@@ -746,14 +812,82 @@ assert set(_QM.doppler_settings().keys()) == set(_QCT.DOPPLER_DEFAULTS.keys()), 
     (sorted(_QM.doppler_settings()), sorted(_QCT.DOPPLER_DEFAULTS))
 assert _QM.doppler_settings() == _QCT.DOPPLER_DEFAULTS, \
     'Settings defaults diverge from DOPPLER_DEFAULTS'
+assert all(_QM.doppler_tests_enabled().values()), _QM.doppler_tests_enabled()
 _old_max = _QM.CONFIG['tsSettings']['doppler_max_speed']
+_old_switch = _QM.CONFIG['tsQualityTests']['doppler current speed range']
 try:
     _QM.CONFIG['tsSettings']['doppler_max_speed'] = 5.0
     dflags3, droll3 = _QCT.doppler_qc(dop, _QM.doppler_settings())
     assert dflags3[0][0] == '4' and droll3[0] == 4, dflags3[0]   # 10 cm/s > 5 -> BAD
+    _QM.CONFIG['tsQualityTests']['doppler current speed range'] = 'OFF'
+    assert _QM.doppler_tests_enabled()['cur_range'] is False
 finally:
     _QM.CONFIG['tsSettings']['doppler_max_speed'] = _old_max
-ok.append('doppler_settings (Settings keys == DOPPLER_DEFAULTS; edited criterion reaches doppler_qc)')
+    _QM.CONFIG['tsQualityTests']['doppler current speed range'] = _old_switch
+
+# Instrument and algorithm factor rows must be independent objects.  This is
+# the regression guard for the pre-v13 HOBO/Seaguard coupling.
+assert _QM.CONFIG['tsFactors']['sg_spike_T'] is not \
+    _QM.CONFIG['tsFactors']['hobo_spike_T']
+assert set(_QM.CONFIG['tsFactors']['sg_rate_T']) == {'susp', 'window'}
+assert set(_QM.CONFIG['tsFactors']['sg_gradient_T']) == {'fail', 'susp'}
+assert _QM.CONFIG['tsQualityTests']['pressure flat line'] == 'OFF'
+assert _QM.CONFIG['tsQualityTests']['PAR sensor range'] == 'ON'
+assert _QM.CONFIG['tsQualityTests']['PAR environmental range'] == 'ON'
+assert _QM.CONFIG['tsQualityTests']['PAR spikes'] == 'ON'
+assert _QM.CONFIG['tsSettings']['sensor_max_PAR'] == 5000
+assert _QM.CONFIG['tsSettings']['env_max_PAR'] == 4000
+assert set(_QM.CONFIG['tsFactors']['sg_spike_PAR']) == {'fail', 'susp', 'window'}
+assert _QM.CONFIG['tsSettings']['env_max_lux'] == 200000
+
+# A same-version preview or exported JSON may still carry the pre-v13 shared
+# keys.  It must seed both instruments once without leaving obsolete keys.
+import copy as _copy
+_saved_tests = dict(_QM.CONFIG['tsQualityTests'])
+_saved_settings = dict(_QM.CONFIG['tsSettings'])
+_saved_factors = _copy.deepcopy(_QM.CONFIG['tsFactors'])
+try:
+    invalid = _QM.apply_settings_values(
+        {'hobo temperature spikes': 'OFF'}, {},
+        {'sg_rate_T': {'susp': '3.25', 'window': '2H'}})
+    assert invalid == [], invalid
+    assert _QM.CONFIG['tsQualityTests']['temperature spikes'] == 'ON'
+    assert _QM.CONFIG['tsQualityTests']['hobo temperature spikes'] == 'OFF'
+    assert _QM.CONFIG['tsFactors']['sg_rate_T'] == {
+        'susp': 3.25, 'window': '2H'}
+    _QM.merge_quality_config({
+        'tsQualityTests': {'temperature sensor range': 'OFF',
+                           'light fouling window': 'OFF'},
+        'tsSettings': {'rep_cnt_fail': 27, 'sensor_min_temp': -12,
+                       'env_max_lux': 20000},
+        'tsFactors': {'T': {'fail': 4, 'susp': 3, 'window': '2H'}},
+    })
+    assert _QM.CONFIG['tsQualityTests']['hobo temperature sensor range'] == 'OFF'
+    assert _QM.CONFIG['tsQualityTests']['hobo light fouling window'] == 'OFF'
+    assert _QM.CONFIG['tsSettings']['seaguard_flat_fail'] == 27
+    assert _QM.CONFIG['tsSettings']['hobo_flat_fail'] == 27
+    assert _QM.CONFIG['tsSettings']['hobo_sensor_min_temp'] == -12
+    assert _QM.CONFIG['tsSettings']['env_max_lux'] == 200000
+    assert _QM.CONFIG['tsFactors']['sg_gradient_T'] == {'fail': 4, 'susp': 3}
+    assert _QM.CONFIG['tsFactors']['hobo_rate_T'] == {'susp': 3, 'window': '2H'}
+    _QM.merge_quality_config({
+        'tsSettings': {'env_max_lux': 320000},
+        'tsFactors': {'sg_spike_T': {'fail': 3, 'susp': 2.5, 'window': '30M'}},
+    })
+    assert _QM.CONFIG['tsSettings']['env_max_lux'] == 200000
+    _QM.merge_quality_config({
+        'tsSettings': {'env_max_lux': 20000},
+        'tsFactors': {'sg_spike_T': {'fail': 3, 'susp': 2.5, 'window': '30M'}},
+    })
+    assert _QM.CONFIG['tsSettings']['env_max_lux'] == 20000
+finally:
+    _QM.CONFIG['tsQualityTests'].clear()
+    _QM.CONFIG['tsQualityTests'].update(_saved_tests)
+    _QM.CONFIG['tsSettings'].clear()
+    _QM.CONFIG['tsSettings'].update(_saved_settings)
+    _QM.CONFIG['tsFactors'].clear()
+    _QM.CONFIG['tsFactors'].update(_saved_factors)
+ok.append('quality settings (instrument/test scoped; pressure flat OFF; legacy migration)')
 
 # 23) Redundant-replicate referee (v9.0). Three outcomes on synthetic data:
 # (a) sound replicates -> no disagreement, nobody named;
@@ -788,12 +922,23 @@ _r = _QCT.replicate_referee([_rep(_stuck), _rep(_season)], reference=None)
 assert _r['disagrees'] is True and _r['recommended'] is None, _r
 assert any('no independent reference' in w for w in _r['warnings']), _r['warnings']
 
-# (d) duplicated timestamps must not break it: these exports really do carry
-# them (one file has 8833), and reindex refuses a duplicated axis
+# (d) an IDENTICAL duplicate timestamp is condensed with an explicit warning
 _dup = _rep(_stuck)
 _dup = pd.concat([_dup, _dup.iloc[:20]], ignore_index=True)
 _r = _QCT.replicate_referee([_dup, _rep(_season)], reference=_ref)
 assert _r['recommended'] == 1, _r
+assert any('identical duplicate' in w for w in _r['warnings']), _r
+
+# (d2) conflicting readings at the same timestamp can be a collapsed 12-hour
+# clock. The referee must refuse to name a logger instead of keeping the first.
+_dup_conflict = pd.concat([
+    _rep(_stuck),
+    pd.DataFrame({'Datetime': [_days[10]], 'Temperature (degC)': [31.0],
+                  'Flag_T': [1]})], ignore_index=True)
+_r = _QCT.replicate_referee([_dup_conflict, _rep(_season)], reference=_ref)
+assert _r['recommended'] is None, _r
+assert 'duplicate timestamps' in _r['verdict'], _r
+assert any('collapsed 12-hour clock' in w for w in _r['warnings']), _r
 
 # (e) OFFSET DRIFT: replicate 0 keeps the seasonal shape (so the correlation
 # cannot separate them) but its offset walks away mid-record. The site's own
@@ -1205,6 +1350,91 @@ with _tempfile2.TemporaryDirectory() as tmp:
         assert 'does not fit the deciphered layout' in str(e), e
 ok.append('read_hobo (.hobo binary: spec round-trip, timebase launch+1s, light lag, refusal)')
 
+# ------------------------------------------- 34. DCPS manual review (v13.0)
+# The current pipeline gained an interactive stop, and its two cuts reach the
+# tidy frame in different ways: a TILT cut takes the whole RECORD (every cell
+# of that instant) while a per-cell cut takes exactly the cell samples the
+# operator boxed - and those are shown in a different ORDER from the frame's
+# (by depth cell, then time), which is where a silent corruption would hide.
+# The panel is stubbed out: what is under test is the mapping, not matplotlib.
+_dop_frame = pd.DataFrame({
+    'Datetime': pd.to_datetime(['2025-01-01 00:00', '2025-01-01 00:00',
+                                '2025-01-01 00:10', '2025-01-01 00:10',
+                                '2025-01-01 00:20', '2025-01-01 00:20']),
+    'Column': ['A', 'A', 'A', 'A', 'A', 'A'],
+    'Cell': [1, 2, 1, 2, 1, 2],
+    'Depth (m)': [5.0, 10.0, 5.0, 10.0, 5.0, 10.0],
+    'Tilt (deg)': [3.0, 3.0, 40.0, 40.0, 5.0, 5.0],
+    'Horizontal speed (cm/s)': [10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
+})
+_seen = {}
+_real_panel = data.manual_cut_panel
+try:
+    data.manual_cut_panel = lambda x, y, label, *a, **k: (
+        _seen.update({'label': label, 'y': list(y), 'xlabel': k.get('xlabel'),
+                      'locked': k.get('locked')}) or {1})
+    # tilt: ONE point per record (3, not 6), and cutting the second record
+    # dismisses both of its cells
+    _cut = data.trim_doppler_records(_dop_frame)
+    assert _seen['y'] == [3.0, 40.0, 5.0], _seen['y']
+    assert 'Record' in _seen['xlabel'], _seen['xlabel']
+    assert _cut == {2, 3}, _cut
+    # per cell: the panel shows rows 0,2,4 then 1,3,5 (cell 1 in time, then
+    # cell 2), so panel point 1 is frame row 2 - and the locked rows travel
+    # into panel positions the same way
+    _cut2 = data.trim_doppler_variable(_dop_frame, 'Horizontal speed (cm/s)',
+                                       locked={2, 3})
+    assert _seen['y'] == [10.0, 12.0, 14.0, 11.0, 13.0, 15.0], _seen['y']
+    assert _seen['locked'] == {1, 4}, _seen['locked']
+    assert _cut2 == {2}, _cut2
+finally:
+    data.manual_cut_panel = _real_panel
+ok.append('DCPS manual review (tilt cuts whole records; per-cell cuts map back '
+          'through the cell ordering)')
+
+# ------------------------- 35. DCPS tilt context on the review (v13.0)
+# The tilt panel has to SAY when the instrument was lying over, the way the
+# depth panel says when it was being hauled up - an operator cannot read
+# 'this is the recovery' off a bare angle. Two contiguous events must come out
+# as two bands, and the QC thresholds must be the ones drawn.
+import matplotlib.pyplot as _plt2
+_tilt = np.array([3.0, 80.0, 79.0, 4.0, 5.0, 6.0, 50.0, 3.0])
+_fig2, _ax2 = _plt2.subplots()
+_spans = data.draw_tilt_context(_ax2, np.arange(len(_tilt)), _tilt,
+                                suspect=15.0, bad=35.0)
+assert _spans == 2, _spans                       # records 1-2 and record 6
+_lines = [ln.get_ydata()[0] for ln in _ax2.get_lines()]
+assert 15.0 in _lines and 35.0 in _lines, _lines
+_labels = [t.get_text() for t in _ax2.get_legend().get_texts()]
+assert any('Lying over' in t for t in _labels), _labels
+assert len([t for t in _labels if 'Lying over' in t]) == 1, _labels  # one entry, 2 bands
+_plt2.close(_fig2)
+# an upright deployment gets no band at all, and no legend claiming one
+_fig2, _ax2 = _plt2.subplots()
+assert data.draw_tilt_context(_ax2, np.arange(3), np.array([1.0, 2.0, 3.0])) == 0
+_plt2.close(_fig2)
+ok.append('DCPS tilt context (lying-over spans shaded once, QC thresholds drawn)')
+
+# ------------------- 36. mooring or cast, from the session itself (v13.0)
+# Calibrated on 182 labelled archive sessions (see MOORING_MIN_HOURS): long OR
+# slow is a mooring. The three cases that matter are a long deployment, the
+# SHORT mooring that duration alone misses, and a real cast.
+_t0 = pd.Timestamp('2025-01-01 12:00')
+_long = pd.Series(_t0 + pd.to_timedelta(np.arange(50) * 30, unit='m'))    # 24.5 h
+_short_slow = pd.Series(_t0 + pd.to_timedelta(np.arange(19) * 10, unit='m'))  # 3 h @10 min
+_cast = pd.Series(_t0 + pd.to_timedelta(np.arange(300) * 10, unit='s'))   # 49.8 min @10 s
+assert data.detect_seaguard_data_type(times=_long)[0] == 'TSCP Mooring'
+assert data.detect_seaguard_data_type(times=_short_slow)[0] == 'TSCP Mooring'
+assert data.detect_seaguard_data_type(times=_cast)[0] == 'TSCP Profile'
+# it must be able to say 'I do not know' rather than guess: aborted sessions
+# with a single record exist in the archive
+assert data.detect_seaguard_data_type(times=pd.Series([_t0])) == (None, None, None)
+assert data.detect_seaguard_data_type() == (None, None, None)
+_type, _hours, _step = data.detect_seaguard_data_type(times=_cast)
+assert abs(_hours - 299 * 10 / 3600.0) < 1e-6 and abs(_step - 10.0) < 1e-6, (_hours, _step)
+ok.append('mooring/cast detection (long or slow = mooring; fast and short = cast; '
+          'no verdict without two records)')
+
 # --- the manual cut's rectangle keeps following the mouse outside the plot ---
 # This guards a patch over PRIVATE matplotlib API: if an upgrade renames
 # _clean_event or _get_data_coords, the drag silently freezes at the axes edge
@@ -1247,6 +1477,113 @@ assert abs(_frozen[1] - 2.0) < 1e-6, 'unpatched selector unexpectedly moved: %s'
 assert abs(_free[1] - 10.0) < 1e-6, 'patched selector did not reach the edge: %s' % (_free,)
 assert _free[0] <= 2.0 + 1e-6 and _free[3] <= 10.0 + 1e-6, _free
 ok.append('manual cut: the selection rectangle follows the mouse outside the plot')
+
+# The cut happens on mouse release, so the rubber band must not stay as an
+# editable annotation over the next selection. Exercise two consecutive real
+# RectangleSelector gestures through manual_cut_panel; the returned set is the
+# same live set its callback updates after the non-blocking test wait returns.
+_held_panel = {}
+_real_wait = data._show_and_wait
+data._show_and_wait = lambda fig, root: _held_panel.setdefault('fig', fig)
+try:
+    _dismissed = data.manual_cut_panel(np.arange(10), np.arange(10, dtype=float),
+                                       'selector release probe')
+finally:
+    data._show_and_wait = _real_wait
+_fig = _held_panel['fig']
+_ax = _fig.axes[0]
+_selector = _fig._qcs_selector
+
+def _manual_drag(start, end):
+    _fig.canvas.draw()
+    x0, y0 = _ax.transData.transform(start)
+    x1, y1 = _ax.transData.transform(end)
+    _selector.press(_MouseEvent('button_press_event', _fig.canvas, x0, y0,
+                                _MouseButton.LEFT))
+    _selector.onmove(_MouseEvent('motion_notify_event', _fig.canvas, x1, y1,
+                                 _MouseButton.LEFT))
+    _selector.release(_MouseEvent('button_release_event', _fig.canvas, x1, y1,
+                                  _MouseButton.LEFT))
+    return [artist.get_visible() for artist in _selector.artists]
+
+_visible_first = _manual_drag((1, 1), (4, 4))
+_visible_second = _manual_drag((6, 6), (9, 9))
+assert _dismissed == {2, 3, 7, 8}, _dismissed
+assert not any(_visible_first) and not any(_visible_second)
+
+# Help goes through a replaceable plot-dialog facade. This keeps Tk as the
+# standalone fallback while the Qt shell can install a native QMessageBox.
+_help_seen = {}
+_real_show_plot_info = data._show_plot_info
+try:
+    data._show_plot_info = lambda fig, title, message: _help_seen.update(
+        {'fig': fig, 'title': title, 'message': message})
+    dict(_fig._qcs_native_buttons)['Help']()
+finally:
+    data._show_plot_info = _real_show_plot_info
+assert _help_seen['fig'] is _fig
+assert _help_seen['title'] == 'Manual point cut - help'
+assert 'DISMISS' in _help_seen['message']
+_plt.close(_fig)
+ok.append('manual cut: selection rectangle clears after every completed box')
+ok.append('manual cut: Help uses the shell-replaceable plot dialog facade')
+
+# The U/V panel offers both scientifically distinct treatments of a QC hole:
+# interrupt the line at the missing/BAD cell, or connect the surviving points.
+# 'both' must generate two named figures so the operator can compare them.
+import QCS_DataView as _data_view                         # noqa: E402
+_gap_times = pd.date_range('2026-01-01', periods=3, freq='5min')
+_gap_frame = pd.DataFrame({
+    'Datetime': _gap_times,
+    'Depth (m)': [5.0, 5.0, 5.0],
+    'Horizontal speed (cm/s)': [10.0, 99.0, 12.0],
+    'Direction (deg)': [90.0, 180.0, 100.0],
+    'East speed (cm/s)': [10.0, -99.0, 11.8],
+    'North speed (cm/s)': [0.0, 0.0, -2.1],
+    'Flag_cur': [1, 4, 1],
+})
+with _tempfile.TemporaryDirectory() as _gap_out:
+    _gap_figs = []
+    _gap_files = _data_view.plot_doppler_panels(
+        _gap_frame, _gap_out, label='PAB3', settings={'uvGapMode': 'both'},
+        figures=_gap_figs)
+    assert len(_gap_files) == 4 and len(_gap_figs) == 4, _gap_files
+    _broken_y = np.asarray(_gap_figs[1].axes[0].lines[0].get_ydata(), dtype=float)
+    _connected_y = np.asarray(_gap_figs[2].axes[0].lines[0].get_ydata(), dtype=float)
+    assert len(_broken_y) == 3 and np.isnan(_broken_y[1]), _broken_y
+    assert len(_connected_y) == 2 and not np.isnan(_connected_y).any(), _connected_y
+    assert 'lines broken' in _gap_figs[1]._qcs_window_title
+    assert 'connected' in _gap_figs[2]._qcs_window_title
+    assert all(hasattr(fig, '_qcs_reset_view') for fig in _gap_figs), (
+        'Every Doppler panel must install wheel zoom before the browser owns it')
+    _wheel_fig = _gap_figs[0]
+    _wheel_fig.canvas.draw()
+    _wheel_ax = _wheel_fig.axes[0]
+    _xmid = sum(_wheel_ax.get_xlim()) / 2.0
+    _ymid = sum(_wheel_ax.get_ylim()) / 2.0
+    _xpx, _ypx = _wheel_ax.transData.transform((_xmid, _ymid))
+    _span_before = abs(np.diff(_wheel_ax.get_xlim())[0])
+    from matplotlib.backend_bases import MouseEvent as _MouseEvent  # noqa: E402
+    _MouseEvent('scroll_event', _wheel_fig.canvas, _xpx, _ypx,
+                button='up', step=1)._process()
+    _span_after = abs(np.diff(_wheel_ax.get_xlim())[0])
+    assert _span_after < _span_before, (_span_before, _span_after)
+    for _gap_fig in _gap_figs:
+        _plt.close(_gap_fig)
+ok.append('Doppler U/V gaps: break/connect/both produce distinct named panels')
+
+# Step 1 may disable Instrument only for an unmistakable qualified QCS header.
+# The legacy layout helper deliberately defaults unknown tables to TSCP, so the
+# UI gate has its own strict identity check instead of locking a guess.
+assert data.detect_known_qualified_instrument(pd.DataFrame(columns=[
+    'Datetime', 'Site', 'Flag_cur', 'Horizontal speed (cm/s)'])) == 'Doppler'
+assert data.detect_known_qualified_instrument(pd.DataFrame(columns=[
+    'Datetime', 'Site', 'Temperature (degC)', 'Luminosity (lux)'])) == 'HOBO'
+assert data.detect_known_qualified_instrument(pd.DataFrame(columns=[
+    'Datetime', 'Site', 'Flag', 'Salinity (PSU)'])) == 'Seaguard'
+assert data.detect_known_qualified_instrument(pd.DataFrame(columns=[
+    'Datetime', 'Site', 'Flag'])) is None
+ok.append('visualization instrument identity: strict known layouts; unknown stays editable')
 
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

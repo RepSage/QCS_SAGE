@@ -1,6 +1,6 @@
 """Update check against the project's GitHub releases, with one-click install.
 
-Lives behind QCS_App (the GUI shell): the headless and batch paths never import
+Lives behind QCS_QtApp (the shipped GUI shell): headless and batch paths never import
 this module, so no corpus run ever touches the network. The startup check runs
 in a background thread and FAILS SILENTLY on any network problem - a field
 notebook is offline most of its life, and an update notice is exactly the thing

@@ -2,7 +2,7 @@
 
 Tkinter application for qualification and visualization of oceanographic sensor
 data. Two instrument families: Seaguard/TSCP loggers (T, S, C, P, O2, pH,
-chlorophyll, turbidity) and HOBO Pendant loggers (temperature + light).
+chlorophyll, turbidity, PAR) and HOBO Pendant loggers (temperature + light).
 
 **TSCP stays.** It is this project's house term for the four core variables of
 the Seaguard string (temperature, salinity, conductivity, pressure) - AADI does
@@ -78,12 +78,19 @@ archive and diff the counts against the previous `qualified_index.csv`.
 
 - **Flag strings**: each data row gets a flag string with exactly one character
   per test, in `test_sequence` order (built in `QCS_Main.py`). Per-variable
-  columns (`Flag_T`, `Flag_S`, `Flag_lux`, …) are derived via `FLAG_BUCKET_MAP`
+  columns (`Flag_T`, `Flag_S`, `Flag_PAR`, `Flag_lux`, …) are derived via `FLAG_BUCKET_MAP`
   in `QCS_DataHandler.py`. Adding, removing or reordering a test requires keeping
   `FLAG_BUCKET_MAP` in sync. Flag codes: 1=good, 2=not evaluated, 3=suspect,
   4=bad, 5=dismissed, 9=missing.
-- **Values ≤ 0 are discarded by design** for physically positive variables — this
-  is intentional, not a bug.
+- **Nonpositive handling is variable-specific.** Values ≤ 0 are discarded for
+  physically positive non-optical variables. Optical dark-offset noise is
+  clamped near zero, and every negative PAR/light value is clamped to zero;
+  zero PAR/light is valid (night). This happens before quality tests.
+- **PAR spike scale excludes zero.** PAR uses the ordinary three-point spike
+  residual and per-variable factors, but `positive_sigma=True` estimates its
+  robust scale from positive irradiance and treats stable night-zero runs as
+  good. Including night zeros collapses MAD and creates mass false positives;
+  never remove this exception without a full corpus replay.
 - **`build_database()`** (`QCS_DataHandler.py`) is the single unification engine
   for merging qualified files. It detects HOBO vs. Seaguard layouts and refuses
   to mix them; it deduplicates exact rows and warns on Site+Datetime overlaps.
@@ -91,6 +98,40 @@ archive and diff the counts against the previous `qualified_index.csv`.
 - **HOBO vs. Seaguard**: HOBO files run only the temperature tests plus the light
   fouling-window test (`light_cutoff_window`), and have their own output column
   layout. Layout detection: `detect_qualified_layout()` in `QCS_DataHandler.py`.
+- **A DCPS (current profiler) product is TIDY: one row per record x depth
+  CELL**, and three of its columns are traps. `Depth (m)` is the CELL depth - a
+  handful of fixed values repeated on every record - so nothing may treat it as
+  a profile axis or as a deployment depth series; `Site+Datetime` repeats once
+  per cell BY CONSTRUCTION (`build_database` keys its overlap warning on
+  `Site+Datetime+Column+Cell` for this layout); and `Heading/Pitch/Roll/Tilt/
+  Ping count` are RECORD-level (`_DCPS_RECORD_PARAMS`), identical across the
+  cells of one instant. Its flag string has its OWN sequence,
+  `DOPPLER_TEST_SEQUENCE` (`QCS_Tests.py`), five positions since v13.0, with
+  its own legend file - `FLAG_BUCKET_MAP` and the scalar sequence do not apply
+  to it.
+- **A DCPS manual dismissal is never partial** (v13.0): the cell values of one
+  record are a single velocity solution, so a cut writes 5 over EVERY flag
+  position of the row and blanks every measurement; a TILT cut takes the whole
+  record (all its cells) and also blanks the record-level attitude, a per-cell
+  cut takes one row and keeps it. The tilt review always runs (it is the
+  DCPS's Depth review); the per-cell candidates are `DOPPLER_CUT_COLUMNS`
+  (`QCS_Main.py`), NOT `MANUAL_CUT_COLUMNS`, whose nine scalar variables exist
+  in no current table.
+- **The `cur_manual` flag position must never claim a review that did not
+  happen.** The batch drivers no-op `_show_and_wait`, so a review panel is
+  built and answers 'nothing cut' with no window on screen: the pipeline
+  decides the resting value from what it can actually know (a cut came back,
+  or the operator ticked 'Check variables'), never from the fact that it
+  called the panel.
+- **The scalar Data type is a SUGGESTION, the DCPS one is a FACT.**
+  `detect_seaguard_data_type` (`QCS_DataHandler.py`) times a session and
+  pre-selects Mooring or Profile (v13.0), and the pipeline warns when the
+  choice disagrees with the data - but it never overrides: the type decides
+  which tests run (vertical gradient and density inversion are profile-only),
+  so the operator keeps the last word and the combobox stays enabled. Only a
+  DCPS locks the box, because there the binary itself decides. If the rule is
+  ever retuned, recalibrate it against the archive's own FUNDEIO / PERFIL
+  folders - that is the only ground truth there is.
 - **A new input file format has FOUR wiring points**, and the readers are only
   one of them: the extension gate in `collect_input_settings` (`QCS_Main.py`),
   the Browse dialog `filetypes`, `sniff_input_type`, and the reader itself.

@@ -103,7 +103,7 @@ qualified\<YEAR>S<n>\[<bucket>\]<SITE>\
 ```
 
 Panels by product type: FUNDEIO → panel1 + panel2 (per parameter) + T-S;
-PERFIL → panel3 + T-S (when T/S exist); DOPPLER → the 4 current panels;
+PERFIL → panel3 + T-S (when T/S exist); DOPPLER → the 3 current panels;
 HOBO → the temperature/light panel.
 
 ## Known limits
