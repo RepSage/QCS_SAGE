@@ -840,6 +840,43 @@ assert _QM.CONFIG['tsSettings']['env_max_PAR'] == 4000
 assert set(_QM.CONFIG['tsFactors']['sg_spike_PAR']) == {'fail', 'susp', 'window'}
 assert _QM.CONFIG['tsSettings']['env_max_lux'] == 200000
 
+# The three Settings tabs follow the Data Visualization order wherever a
+# variable has controls: routine sensors first, then the available members of
+# Conductivity / Pressure / Density / Soundspeed.  Density has only its profile
+# criterion and Soundspeed is intentionally untested, so neither gets a fake
+# statistical row.
+_settings_order = [
+    'Temperature', 'Salinity', 'Dissolved O₂', 'pH', 'Chlorophyll',
+    'Turbidity', 'PAR', 'Dissolved CO₂', 'Organic matter',
+    'Conductivity', 'Pressure']
+assert [display for _key, display in _QM._SEAGUARD_FACTOR_VARIABLES] == \
+    _settings_order
+assert _QM.TEST_CATEGORIES['Sensor range tests'] == [
+    'temperature sensor range', 'salinity sensor range',
+    'dissolved oxygen sensor range', 'pH sensor range',
+    'chlorophyll sensor range', 'turbidity sensor range',
+    'PAR sensor range', 'dissolved CO2 sensor range',
+    'conductivity sensor range', 'pressure sensor range']
+assert _QM.TEST_CATEGORIES['Environmental range tests'] == [
+    'temperature environmental range', 'salinity environmental range',
+    'dissolved oxygen environmental range', 'pH environmental range',
+    'chlorophyll environmental range', 'turbidity environmental range',
+    'PAR environmental range', 'dissolved CO2 environmental range',
+    'dissolved organic matter environmental range',
+    'conductivity environmental range', 'pressure environmental range']
+assert _QM.TEST_CATEGORIES['Spike tests'] == [
+    'temperature spikes', 'salinity spikes', 'dissolved oxygen spikes',
+    'pH spikes', 'chlorophyll spikes', 'turbidity spikes', 'PAR spikes',
+    'dissolved CO2 spikes', 'dissolved organic matter spikes',
+    'conductivity spikes', 'pressure spikes']
+assert _QM.TEST_CATEGORIES[
+    'Vertical gradient & density inversion tests (profiles)'][-2:] == [
+        'conductivity vertical gradient', 'density inversion']
+assert [row[1] for row in _QM._SEAGUARD_SENSOR_RANGES] == \
+    [name for name in _settings_order if name != 'Organic matter']
+assert [row[1] for row in _QM._ENVIRONMENTAL_RANGES] == _settings_order
+assert _QM.statistical_parameter_label('Temperature') == 'Temperature:'
+
 # A same-version preview or exported JSON may still carry the pre-v13 shared
 # keys.  It must seed both instruments once without leaving obsolete keys.
 import copy as _copy
@@ -887,7 +924,7 @@ finally:
     _QM.CONFIG['tsSettings'].update(_saved_settings)
     _QM.CONFIG['tsFactors'].clear()
     _QM.CONFIG['tsFactors'].update(_saved_factors)
-ok.append('quality settings (instrument/test scoped; pressure flat OFF; legacy migration)')
+ok.append('quality settings (scoped; aligned display order; legacy migration)')
 
 # 23) Redundant-replicate referee (v9.0). Three outcomes on synthetic data:
 # (a) sound replicates -> no disagreement, nobody named;
@@ -1416,15 +1453,16 @@ _plt2.close(_fig2)
 ok.append('DCPS tilt context (lying-over spans shaded once, QC thresholds drawn)')
 
 # ------------------- 36. mooring or cast, from the session itself (v13.0)
-# Calibrated on 182 labelled archive sessions (see MOORING_MIN_HOURS): long OR
-# slow is a mooring. The three cases that matter are a long deployment, the
-# SHORT mooring that duration alone misses, and a real cast.
+# Calibrated on 182 labelled archive sessions (see MOORING_MIN_HOURS): a long
+# deployment and a short/fast cast are conclusive.  Short+slow is deliberately
+# ambiguous because that exact pattern occurs as both Mooring and Profile.
 _t0 = pd.Timestamp('2025-01-01 12:00')
 _long = pd.Series(_t0 + pd.to_timedelta(np.arange(50) * 30, unit='m'))    # 24.5 h
 _short_slow = pd.Series(_t0 + pd.to_timedelta(np.arange(19) * 10, unit='m'))  # 3 h @10 min
 _cast = pd.Series(_t0 + pd.to_timedelta(np.arange(300) * 10, unit='s'))   # 49.8 min @10 s
 assert data.detect_seaguard_data_type(times=_long)[0] == 'TSCP Mooring'
-assert data.detect_seaguard_data_type(times=_short_slow)[0] == 'TSCP Mooring'
+assert data.detect_seaguard_data_type(times=_short_slow) == (
+    None, 3.0, 600.0)
 assert data.detect_seaguard_data_type(times=_cast)[0] == 'TSCP Profile'
 # it must be able to say 'I do not know' rather than guess: aborted sessions
 # with a single record exist in the archive
@@ -1432,8 +1470,8 @@ assert data.detect_seaguard_data_type(times=pd.Series([_t0])) == (None, None, No
 assert data.detect_seaguard_data_type() == (None, None, None)
 _type, _hours, _step = data.detect_seaguard_data_type(times=_cast)
 assert abs(_hours - 299 * 10 / 3600.0) < 1e-6 and abs(_step - 10.0) < 1e-6, (_hours, _step)
-ok.append('mooring/cast detection (long or slow = mooring; fast and short = cast; '
-          'no verdict without two records)')
+ok.append('mooring/cast detection (long = mooring; short+fast = cast; '
+          'short+slow or too few records = no forced verdict)')
 
 # --- the manual cut's rectangle keeps following the mouse outside the plot ---
 # This guards a patch over PRIVATE matplotlib API: if an upgrade renames

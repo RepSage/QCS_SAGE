@@ -72,6 +72,7 @@ class SettingsDialog(QDialog):
         btns.addStretch()
         btns.addWidget(save)
         v.addLayout(btns)
+        qtheme.enable_clear_buttons(self)
 
     # ----- tabs -----
     def _add_row(self, widgets, text):
@@ -259,7 +260,7 @@ class SettingsDialog(QDialog):
                     headers, '%s %s variable %s'
                     % (instrument, section, ' '.join(fields))))
                 for row, (key, display, row_fields) in enumerate(definitions, start=1):
-                    lab = QLabel(display)
+                    lab = QLabel(qm.statistical_parameter_label(display))
                     grid.addWidget(lab, row, 0)
                     cfg = qm.CONFIG['tsFactors'][key]
                     edits = {}

@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v13.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v13.1</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -245,6 +245,13 @@
 
     <h2 id="interface_qcs_main">3. QCS_Main Interface</h2>
     <h3>INPUT SETTINGS Section</h3>
+    <p>The Input settings and Output settings cards keep the same equal-width split
+    when the selected instrument shows or hides optional controls. Editable text fields
+    provide a trailing &times; inside the field whenever they contain text; it clears the
+    value without requiring it to be selected first, uses the pointing-hand cursor and
+    fades smoothly in or out as text appears or disappears.
+    Date/time-window fields deliberately omit this action so their fixed input mask remains
+    unobstructed.</p>
     <table>
         <tr>
             <th>Element</th>
@@ -354,13 +361,14 @@
             <p><strong>Set automatically for a Seaguard raw session (v13.0).</strong>
             A cast is lowered and recovered in minutes and logged fast; a mooring is left
             down for hours to weeks and logged slowly. When a <code>.bin</code> is selected
-            the program times the session and pre-selects <em>TSCP Mooring</em> or
+            the program times the session and detects <em>TSCP Mooring</em> or
             <em>TSCP Profile</em>, writing what it found in the log and in the Selection
-            summary. It is a suggestion, not a lock &mdash; the type decides which tests run,
-            so the box stays editable and you should check it. The qualification itself warns
-            again if the chosen type disagrees with the session it just read. A DCPS session
-            is different: there the file DECIDES, and the box is locked on
-            <em>TSCP Doppler</em>.</p></td>
+            summary. A conclusive detection locks the field, including after a file is
+            cleared and dropped again. If there are too few timestamps to decide, or the
+            session is both short and logged at a slow mooring cadence (a pattern that occurs
+            as both types in the labelled archive), the field remains editable and the log
+            asks you to check it. A DCPS session is identified
+            directly from its binary layout and is locked on <em>TSCP Doppler</em>.</p></td>
 </tr>
         <tr>
             <td>Correct GMT-3</td>
@@ -583,7 +591,9 @@
             qualified-file header proves the same family. An unknown, unreadable or mixed
             selection leaves the field editable instead of locking a guess. The three layouts
             are <strong>never combined with each other</strong> &mdash; build a separate database
-            for each instrument. Both .csv and .xlsx files are read automatically.</td>
+            for each instrument. Both .csv and .xlsx files are read automatically. Clearing
+            <em>Database file(s)</em> also clears this identity and restores the
+            <em>Select instrument</em> placeholder.</td>
         </tr>
         <tr>
             <td>Recent</td>
@@ -676,6 +686,15 @@
             comparison between plots.</td>
         </tr>
         <tr>
+            <td>Scale settings</td>
+            <td>Optional Min/Max bounds for the plotted products, in the same sensor order
+            used by Quality control settings. Defaults cover every value that the selected
+            Site/Year panels will draw, with 20% of the data span added as visual breathing
+            room (and a zero floor for the minimum). These are <strong>plot bounds, not sensor
+            limits</strong>: for example, valid PAR ending near 4910 can produce an automatic
+            plot maximum near 5892 even though the PAR sensor-range test ends at 5000.</td>
+        </tr>
+        <tr>
             <td>Show Data Points</td>
             <td>Checkbox to show individual data points on the plots.</td>
         </tr>
@@ -689,11 +708,17 @@
         </tr>
         <tr>
             <td>Trend Lines</td>
-            <td>Checkbox to add trend lines.</td>
+            <td>Checkbox to add trend lines. This choice and the regression degree are saved
+            as soon as they are edited, so they survive moving between steps and rebuilding
+            the available choices.</td>
         </tr>
         <tr>
             <td>Degree</td>
-            <td>Field for the degree of the trend polynomial.</td>
+            <td>Spin box for the degree of the trend polynomial: type the integer or use the
+            up/down arrows. The supported range is 1&ndash;5; linear and quadratic
+            remain the normal low-order choices, while degrees 3&ndash;5 allow additional
+            curvature when justified by the data. Orders above 5 are excluded because they
+            are increasingly prone to oscillation, overfitting and numerical instability.</td>
         </tr>
         <tr>
             <td>X-Axis Start / X-Axis End (mooring)</td>
@@ -722,8 +747,10 @@
             variables this database actually carries are listed</strong> &mdash; a column that
             is present but empty, such as CO&#8322; when no CO&#8322; logger file was merged
             into the qualification, does not take a row it could never be plotted from. What
-            is left comes in two groups: the main group starts checked, and a
-            "Rarely used" group (Conductivity, Density, Soundspeed, Pressure) &mdash; which
+            is left comes in two groups: the sensor group starts checked in the same order
+            used by Quality control settings, and a "Rarely used" group containing the
+            opt-in Conductivity and Pressure variables followed by the derived Density and
+            Soundspeed products &mdash; which
             heads that block in the parameter list AND in the Scale settings column, so the two
             break at the same variable &mdash; always starts
             unchecked (still selectable manually).<br><br>Both lists write the units the way
@@ -957,10 +984,16 @@
 }</code></pre>
 
     <h2 id="configuration_parameters">7. Detailed Configuration Parameters</h2>
+    <p>Across the three Quality control settings tabs, variable controls use the same
+    display sequence as Data Visualization: Temperature, Salinity, O&#8322;, pH,
+    Chlorophyll, Turbidity, PAR, CO&#8322; and Organic matter first, followed by the
+    available members of the rarely-used tail &mdash; Conductivity, Pressure, Density and
+    Soundspeed. A variable is not given a placeholder control for a test that does not apply:
+    Density has only its profile criterion and Soundspeed has no independent quality test.</p>
     <p>The <strong>Statistical thresholds</strong> tab separates thresholds by instrument,
     test and variable. It shows only fields used by that algorithm: spike has Bad, Suspect and
     Time window; rate of change has Suspect and Time window; vertical gradient has Bad and
-    Suspect. HOBO temperature has its own spike and rate-of-change rows. A row is disabled when
+    Suspect. Each visible parameter name ends in a colon. HOBO temperature has its own spike and rate-of-change rows. A row is disabled when
     its corresponding test checkbox is off. Doppler uses direct physical limits in
     <strong>Parameters</strong>, so its section in this tab contains no statistical fields.</p>
     <h3>time_window</h3>
@@ -1603,8 +1636,12 @@
     or Zoom mode before carrying out that command. <strong>Subplots</strong> adjusts the plot area, gaps and legend
     position; <strong>Customize</strong> edits a selected plot; and <strong>Save</strong>
     writes a separate custom copy. Back/Forward are omitted because their history did not
-    include mouse-wheel zoom or middle-button pan. The live cursor coordinates at the right
-    are bold for easier reading. In a manual cut, the separate <strong>Reset</strong> action
+    include mouse-wheel zoom or middle-button pan. The live cursor readout at the right
+    is bold and reports only an actual plotted point marker under the cursor; a line segment
+    or empty plot area produces no readout. Doppler heatmap cells and vector arrows count as
+    data glyphs and report their current values. If several scalar variables have points
+    there, each value is named. PAR is always written as a complete positional decimal, never
+    in scientific notation, rounded to the nearest whole unit. In a manual cut, the separate <strong>Reset</strong> action
     still restores the dismissed points; it is not the Home command.</p>
     <p>The Subplots window uses the descriptive names <em>Plot top/bottom/left/right
     edge</em>, <em>Horizontal gap</em> and <em>Vertical gap</em>, and carries the same icon
@@ -1633,12 +1670,22 @@
     editable <em>Start</em> and <em>End</em> fields in <code>DD/MM/YYYY HH:MM</code>, matching
     Data Visualization step 2. An invalid or out-of-range value leaves the graph unchanged
     and displays the available interval, which is also shown below the fields. The top of the <em>Axes</em> tab edits the title of the
-    complete figure separately from an individual plot title. Its heatmap tab is named
+    complete figure separately from the shared plot title; editing either from one selected
+    parameter is retained when another parameter from the same figure is selected. Scale
+    choices are displayed as <em>Linear</em>, <em>Log</em>, <em>Symlog</em> and <em>Logit</em>.
+    Its heatmap tab is named
     <em>Graphs</em>; the graph selector is hidden when there is only one editable element and
     retained when it is needed to choose between several. Mappable metadata
-    names that do not change visible text are omitted. A separate <em>Legends</em> tab edits
-    the labels actually drawn in line legends, color scales and the direction compass; line
-    labels follow their curve name unless edited separately. Automatic legend regeneration
+    names that do not change visible text are omitted. Point-only series are not presented
+    as lines: the <em>Lines</em> tab edits only real plotted lines, offers Solid first, and
+    leaves point symbols unchanged. This prevents dashed or dotted styles from connecting
+    independent points. A separate <em>Legends</em> tab edits the labels actually drawn in
+    line legends, color scales and the direction compass; it is omitted when that plot has
+    no legend or key to edit. Applying a style while the
+    non-modal window remains open preserves any newer zoom unless the range itself was
+    edited. The row reset arrow can restore a line width to the original product value just
+    like the other fields; the restored value is committed only by <em>Apply</em> or
+    <em>OK</em>. Automatic legend regeneration
     is not offered. Both the plot selector and Figure options carry the Customize toolbar
     icon.</p>
     <h4>Reading the blanks</h4>

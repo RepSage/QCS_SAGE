@@ -50,7 +50,7 @@ TOOLTIPS = {
     'longitude': "Longitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'ts_params': "Temperature & salinity pair for the T-S diagram:\nConservative T & Absolute S (TEOS-10, uses lat/long) or\nPotential T & Practical S (classic EOS-80)",
     'tendency': "Adds regression lines to the plots",
-    'tendency_degree': "Degree of the regression polynomial (1 = straight line)",
+    'tendency_degree': "Degree of the regression polynomial (1 to 5)\n1 = linear, 2 = quadratic, 3 = cubic\nUse degrees 4-5 only when the data justify the extra curvature",
     'data_points': "Draws the individual data points on the plots",
     'disagreement_bars': "HOBO only: one vertical bar per sample on the temperature\n"
                          "series, showing how far the replicates disagreed\n"
@@ -60,8 +60,8 @@ TOOLTIPS = {
     'param_filter': "Parameters to include in the plots",
     'param_secondary': "Rarely-used variables, always start unchecked\n(check manually when needed)",
     'fixed_scale': "Same y-axis scale on every plot, for direct comparison",
-    'min_scale': "Lower limit of this parameter's fixed scale\nDefault: smallest approved value (flags 1/2) of the current\nSite/Year selection, minus 20% - floored at 0",
-    'max_scale': "Upper limit of this parameter's fixed scale\nDefault: largest approved value (flags 1/2) of the current\nSite/Year selection, plus 20%"
+    'min_scale': "Lower limit of this parameter's fixed plot scale\nDefault: smallest plotted value in the current Site/Year selection,\nminus 20% of the data span and floored at 0\nThis visual margin is independent of the quality-control limits",
+    'max_scale': "Upper limit of this parameter's fixed plot scale\nDefault: largest plotted value in the current Site/Year selection,\nplus 20% of the data span\nThis visual margin is independent of the quality-control limits"
 }
 
 UV_GAP_OPTIONS = {
@@ -69,6 +69,24 @@ UV_GAP_OPTIONS = {
     'connect': 'Connect across data gaps',
     'both': 'Generate both for comparison',
 }
+
+# Global polynomial trends are descriptive overlays, not predictive models.
+# Linear/quadratic are the normal low-order choices. Up to degree 5 remains
+# available for added curvature at the operator's discretion; still-higher
+# orders are excluded because they become increasingly prone to oscillation
+# and numerical instability (NIST/SEMATECH e-Handbook).
+REGRESSION_DEGREE_MIN = 1
+REGRESSION_DEGREE_MAX = 5
+REGRESSION_DEGREE_DEFAULT = 2
+
+
+def normalized_regression_degree(value):
+    try:
+        degree = int(value)
+    except (TypeError, ValueError):
+        degree = REGRESSION_DEGREE_DEFAULT
+    return min(REGRESSION_DEGREE_MAX,
+               max(REGRESSION_DEGREE_MIN, degree))
 
 
 def uv_gap_mode_from_display(text):
@@ -928,7 +946,8 @@ def saveDataViewSettings():
 
         dataViewSettings['tendencyLines'] = tendency.get()
         if dataViewSettings['tendencyLines'] == True:
-            dataViewSettings['linearRegressionDegree'] = int(tendency_entry.get()) if tendency_entry.get() else None
+            dataViewSettings['linearRegressionDegree'] = \
+                normalized_regression_degree(tendency_entry.get())
         else:
             dataViewSettings['linearRegressionDegree'] = None
         dataViewSettings['viewDataPoints'] = dataPoints.get()
@@ -1868,12 +1887,22 @@ def build_step2(parent):
         main_params = ['Horizontal speed (cm/s)', 'Direction (deg)']
         secondary_params = []
     else:
-        # NOTE: 'CO2 Level (ppm)' (capital L) is the qualified sheet's column name
-        main_params = ['Temperature (degC)', 'Salinity (PSU)', 'CO2 Level (ppm)',
-                       'O2 level (uM)', 'PAR (umol/m2/s)', 'Turbidity (FTU)',
-                       'Chlorophyll (ug/L)', 'pH', 'Dissolved organic matter (ppb)']
-        secondary_params = ['Conductivity (mS/cm)', 'Density (kg/m3)',
-                            'Soundspeed (m/s)', 'Pressure (dbar)']
+        # Routine parameters follow the same relative order as Quality control
+        # settings; the opt-in group is deliberately separated below.
+        # NOTE: 'CO2 Level (ppm)' (capital L) is the qualified sheet's column name.
+        main_params = [
+            'Temperature (degC)', 'Salinity (PSU)', 'O2 level (uM)',
+            'pH', 'Chlorophyll (ug/L)', 'Turbidity (FTU)',
+            'PAR (umol/m2/s)', 'CO2 Level (ppm)',
+            'Dissolved organic matter (ppb)',
+        ]
+        # Conductivity/Pressure remain opt-in with the derived products: they
+        # are available for inspection without making already-dense panels the
+        # default (owner review, v13.1).
+        secondary_params = [
+            'Conductivity (mS/cm)', 'Pressure (dbar)',
+            'Density (kg/m3)', 'Soundspeed (m/s)',
+        ]
     parameter_names = main_params + secondary_params
     parameter_vars = {}  # Stores the BooleanVar
     parameter_widgets = {}  # Stores the Checkbutton widgets
@@ -2070,9 +2099,11 @@ def build_step2(parent):
     restore_entry(depth_max_entry, USER_PREFS.get('dbv_depth_max', ''))
     restore_entry(latitude_entry, USER_PREFS.get('dbv_latitude', ''))
     restore_entry(longitude_entry, USER_PREFS.get('dbv_longitude', ''))
-    # 5 is the default for EVERY data type (owner, v12.1); an empty
-    # saved value means 'never chosen', not 'no regression'
-    restore_entry(tendency_entry, USER_PREFS.get('dbv_degree') or '5')
+    # Saved values from older versions may exceed the low-order range now
+    # supported by the interface; normalize them before any plot can use them.
+    restore_entry(
+        tendency_entry,
+        str(normalized_regression_degree(USER_PREFS.get('dbv_degree'))))
     if USER_PREFS.get('dbv_ts_param'):
         tsParam_combobox.set(USER_PREFS['dbv_ts_param'])
     # Data type: if a qualification handed it over, use it and LOCK the field

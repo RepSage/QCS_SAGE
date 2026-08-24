@@ -48,11 +48,14 @@ def set_replicate_reference(series):
 SITE_CODE_MAX = 20
 
 
+# Keep the same user-facing order as Data Visualization: routine products
+# first, then the available members of its Rarely used tail. Density and
+# Soundspeed have no statistical-factor rows of their own.
 _SEAGUARD_FACTOR_VARIABLES = (
-    ('T', 'Temperature'), ('S', 'Salinity'), ('C', 'Conductivity'),
-    ('P', 'Pressure'), ('pH', 'pH'), ('chl', 'Chlorophyll'),
-    ('O2', 'Dissolved O₂'), ('org', 'Organic matter'),
-    ('tur', 'Turbidity'), ('PAR', 'PAR'), ('CO2', 'Dissolved CO₂'),
+    ('T', 'Temperature'), ('S', 'Salinity'), ('O2', 'Dissolved O₂'),
+    ('pH', 'pH'), ('chl', 'Chlorophyll'), ('tur', 'Turbidity'),
+    ('PAR', 'PAR'), ('CO2', 'Dissolved CO₂'), ('org', 'Organic matter'),
+    ('C', 'Conductivity'), ('P', 'Pressure'),
 )
 
 
@@ -408,12 +411,12 @@ def _cap(v):
     value = v if v == 'pH' else v[0].upper() + v[1:]
     return _chemical_text(value)
 
-_QT_SENSOR = ['temperature', 'salinity', 'conductivity', 'pressure',
-              'dissolved oxygen', 'pH', 'chlorophyll', 'turbidity',
-              'PAR', 'dissolved CO2']
-_QT_ENV = ['temperature', 'salinity', 'conductivity', 'pressure', 'pH',
-           'chlorophyll', 'dissolved oxygen', 'dissolved organic matter',
-           'turbidity', 'PAR', 'dissolved CO2']
+_QT_SENSOR = ['temperature', 'salinity', 'dissolved oxygen', 'pH',
+              'chlorophyll', 'turbidity', 'PAR', 'dissolved CO2',
+              'conductivity', 'pressure']
+_QT_ENV = ['temperature', 'salinity', 'dissolved oxygen', 'pH',
+           'chlorophyll', 'turbidity', 'PAR', 'dissolved CO2',
+           'dissolved organic matter', 'conductivity', 'pressure']
 for _v in _QT_SENSOR:
     TS_QUALITY_TESTS_TOOLTIPS['%s sensor range' % _v] = (
         "%s outside the sensor's valid range -> BAD (4)" % _cap(_v))
@@ -1559,40 +1562,40 @@ TEST_CATEGORIES = {
         "Sensor range tests": [
             'temperature sensor range',
             'salinity sensor range',
-            'conductivity sensor range',
-            'pressure sensor range',
             'dissolved oxygen sensor range',
             'pH sensor range',
             'chlorophyll sensor range',
             'turbidity sensor range',
             'PAR sensor range',
-            'dissolved CO2 sensor range'
+            'dissolved CO2 sensor range',
+            'conductivity sensor range',
+            'pressure sensor range'
         ],
         "Environmental range tests": [
             'temperature environmental range',
             'salinity environmental range',
-            'conductivity environmental range',
-            'pressure environmental range',
+            'dissolved oxygen environmental range',
             'pH environmental range',
             'chlorophyll environmental range',
-            'dissolved oxygen environmental range',
-            'dissolved organic matter environmental range',
             'turbidity environmental range',
             'PAR environmental range',
-            'dissolved CO2 environmental range'
+            'dissolved CO2 environmental range',
+            'dissolved organic matter environmental range',
+            'conductivity environmental range',
+            'pressure environmental range'
         ],
         "Spike tests": [
             'temperature spikes',
             'salinity spikes',
-            'conductivity spikes',
-            'pressure spikes',
+            'dissolved oxygen spikes',
             'pH spikes',
             'chlorophyll spikes',
-            'dissolved oxygen spikes',
-            'dissolved organic matter spikes',
             'turbidity spikes',
             'PAR spikes',
-            'dissolved CO2 spikes'
+            'dissolved CO2 spikes',
+            'dissolved organic matter spikes',
+            'conductivity spikes',
+            'pressure spikes'
         ],
         "Rate of change tests": [
             'temperature rate of change',
@@ -1666,13 +1669,20 @@ _DOPPLER_PARAMS = [
 _SEAGUARD_SENSOR_RANGES = [
     (var, _PARAM_NAME[var], 'sensor_min_%s' % var, 'sensor_max_%s' % var,
      _PARAM_UNIT.get(var, ''))
-    for var in ('temp', 'sal', 'cond', 'pres', 'O2', 'pH', 'chl', 'tur', 'PAR', 'CO2')
+    for var in ('temp', 'sal', 'O2', 'pH', 'chl', 'tur', 'PAR', 'CO2',
+                'cond', 'pres')
 ]
 _ENVIRONMENTAL_RANGES = [
     (var, _PARAM_NAME[var], 'env_min_%s' % var, 'env_max_%s' % var,
      _PARAM_UNIT.get(var, ''))
-    for var in ('temp', 'sal', 'cond', 'pres', 'pH', 'chl', 'O2', 'org', 'tur', 'PAR', 'CO2')
+    for var in ('temp', 'sal', 'O2', 'pH', 'chl', 'tur', 'PAR', 'CO2',
+                'org', 'cond', 'pres')
 ]
+
+
+def statistical_parameter_label(display):
+    """Render a Statistical thresholds variable as a parameter label."""
+    return display + ':'
 
 # Parameters follow the same instrument order as the tests and thresholds.
 # ``range`` rows render Min/Max together; ``values`` rows render one criterion.
@@ -1830,7 +1840,8 @@ def create_factors_tab(parent):
                               row=row, column=col, sticky='w', padx=5)
             row += 1
             for key, display, row_fields in definitions:
-                ttk.Label(scrollable_frame, text=display).grid(
+                ttk.Label(scrollable_frame,
+                          text=statistical_parameter_label(display)).grid(
                     row=row, column=0, sticky='w', padx=5, pady=2)
                 entries = {}
                 for col, field in enumerate(row_fields, start=1):
@@ -2822,6 +2833,12 @@ def build_qualification_tab(container, root, shared_log=None):
                 log_line('Info: session spans %.1f h at one record every %.0f s - '
                          "consistent with the Data type '%s'."
                          % (_hours, _step, _looks_like))
+            elif _hours is not None:
+                log_line('Info: session spans %.1f h at one record every %.0f s - '
+                         'short with a slow cadence, a pattern the labelled '
+                         "archive contains as both types. Data type '%s' was "
+                         'therefore not overridden.'
+                         % (_hours, _step, INPUT.get('data_type')))
 
         # timestamp sanity checks (gap/monotonicity): reported, not flagged per sample
         dt_diff = raw_data['Datetime'].diff()
