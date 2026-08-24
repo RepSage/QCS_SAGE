@@ -189,12 +189,10 @@ def _fit_stacked_yticks(fig, spacing=None, pad=4.0, min_pt=4.0):
 def _report_points_outside(fig):
     """Says how many plotted points fall OUTSIDE the view, per axis.
 
-    With 'Fixed scale' on, the scale defaults are computed from APPROVED data
-    only (flags 1/2 - see _param_data_extreme), so suspect or bad values the
-    operator chose to keep in the sheet can sit outside the axis and simply not
-    be drawn. That was silent, and it reads as missing data (owner, v12.3): a
-    HOBO series with 881 suspect points out of 2127 lost 6 of them under the
-    axis, and nothing said so.
+    Fixed-scale defaults span every value the panel draws (see
+    _param_data_extreme).  This remains a guard for a manually narrowed scale:
+    an operator can intentionally choose bounds that leave plotted values out,
+    but the application must say so instead of making them look missing.
     """
     try:
         for ax in fig.axes:
@@ -787,7 +785,9 @@ def plot_database_panel1 (database, dataViewSettings):
                 elif y_list[0].name == 'Pressure (dbar)':
                     ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='--', marker='None', label=rParam[0])
                 else:
-                    ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='None', marker='.', label=rParam[0])
+                    ax1.plot(x, y, color=bcParam[y_list[0].name],
+                             linestyle='None', marker='.', markersize=3,
+                             label=rParam[0])
                 # set y label
                 ax1.set_ylabel(rParam[0], color=bcParam[y_list[0].name], fontsize=10 * fscale)
                 # set title
@@ -830,7 +830,10 @@ def plot_database_panel1 (database, dataViewSettings):
                         if y_list[i-1].name == 'Pressure (dbar)':
                             ax.plot(x, y, linestyle='--', marker='None', c=bcParam[y_list[i-1].name], label=rParam[i-1])
                         else:
-                            ax.plot(x, y, linestyle='None', marker='.', c=bcParam[y_list[i-1].name], label=rParam[i-1])
+                            ax.plot(x, y, linestyle='None', marker='.',
+                                    markersize=3,
+                                    c=bcParam[y_list[i-1].name],
+                                    label=rParam[i-1])
                     # set axis label
                     ax.set_ylabel(rParam[i-1], c=bcParam[y_list[i-1].name], fontsize=10 * fscale)
                     # set y axis position
@@ -863,6 +866,11 @@ def plot_database_panel1 (database, dataViewSettings):
                 # shrink y tick fonts if the widest label would not fit between the
                 # stacked spines, so adjacent axes' numbers never overlap
                 _fit_stacked_yticks(fig, spacing)
+                figure_axes = list(axes.values())
+                fig._qcs_customize_axes = list(
+                    zip(rParam, figure_axes, strict=True))
+                fig._qcs_axes_names = dict(
+                    zip(figure_axes, rParam, strict=True))
                 plt.savefig('panel1_%s_%s_%d.svg'%(site, semester, year), bbox_inches='tight')
                 enable_scroll_zoom(fig)
                 show_panels()
@@ -1000,6 +1008,8 @@ def plot_database_panel2(database, dataViewSettings):
 
             # Strip parentheses from the file name
             parameter_r = re.sub(r'\([^()]*\)', '', parameter).strip()
+            fig._qcs_customize_axes = [(display_param, ax1)]
+            fig._qcs_axes_names = {ax1: display_param}
             plt.savefig(f'panel2_{parameter_r}_{semester}_{year}.svg')
             enable_scroll_zoom(fig)
             show_panels()
@@ -1161,7 +1171,12 @@ def plot_database_panel3(database, dataViewSettings):
                 ax1.legend(handles=legend_handles, labels=legend_labels,
                           loc='upper center', bbox_to_anchor=(1.1, 1.01),
                           ncol=1, fontsize=7)
-                
+
+                figure_axes = list(axes.values())
+                fig._qcs_customize_axes = list(
+                    zip(rParam, figure_axes, strict=True))
+                fig._qcs_axes_names = dict(
+                    zip(figure_axes, rParam, strict=True))
                 plt.savefig('panel3_%s_%s_%d.svg'%(site, semester, year))
                 enable_scroll_zoom(fig)
                 show_panels()

@@ -13,12 +13,14 @@ import math
 import sys
 import traceback
 
-from PySide6.QtCore import QEventLoop, Qt
+from PySide6.QtCore import (QEasingCurve, QEventLoop, QPropertyAnimation, Qt)
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import (QAbstractButton, QApplication, QDockWidget,
+from PySide6.QtWidgets import (QAbstractButton, QAbstractSpinBox, QApplication,
+                               QDockWidget,
+                               QGraphicsOpacityEffect,
                                QHBoxLayout, QMessageBox, QProxyStyle,
-                               QPushButton, QScrollArea, QStyle, QTextEdit,
-                               QVBoxLayout, QWidget)
+                               QLineEdit, QPushButton, QScrollArea, QStyle,
+                               QTextEdit, QToolButton, QVBoxLayout, QWidget)
 
 import QCS_Theme as theme   # writable_app_dir + crash-log path (toolkit-free)
 
@@ -39,6 +41,101 @@ LOG_COLORS = {'light': {'error': '#b30000', 'warning': '#9a6a00',
 # (owner, 2026-08-17: the tk app's blue check marks were missed)
 ACCENT = '#2a6fb5'
 ACCENT_DARK = '#4a90d9'      # lighter, for the dark scheme
+
+
+def _set_clear_button_visible(field, button, action, visible, animate):
+    """Show/hide a trailing clear action, optionally with a short fade."""
+    effect = getattr(button, '_qcs_clear_effect', None)
+    animation = getattr(button, '_qcs_clear_animation', None)
+    if effect is None:
+        effect = QGraphicsOpacityEffect(button)
+        button.setGraphicsEffect(effect)
+        animation = QPropertyAnimation(effect, b'opacity', button)
+        animation.setDuration(140)
+        animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        button._qcs_clear_effect = effect
+        button._qcs_clear_animation = animation
+
+        def hide_if_still_empty():
+            if not button._qcs_clear_target and not field.text():
+                action.setVisible(False)
+                button.setVisible(False)
+
+        animation.finished.connect(hide_if_still_empty)
+    animation.stop()
+    button._qcs_clear_target = visible
+    if not animate:
+        effect.setOpacity(1.0 if visible else 0.0)
+        action.setVisible(visible)
+        button.setVisible(visible)
+        return
+    if visible:
+        if not action.isVisible() or not button.isVisible():
+            effect.setOpacity(0.0)
+        action.setVisible(True)
+        button.setVisible(True)
+        animation.setStartValue(effect.opacity())
+        animation.setEndValue(1.0)
+        animation.start()
+        return
+    if not action.isVisible() and not button.isVisible():
+        effect.setOpacity(0.0)
+        return
+
+    animation.setStartValue(effect.opacity())
+    animation.setEndValue(0.0)
+    animation.start()
+
+
+def enable_clear_buttons(root):
+    """Install the native-style clear icon with QCS-owned behavior."""
+    for field in root.findChildren(QLineEdit):
+        # QSpinBox/QDateTimeEdit own an internal line edit; clearing that
+        # implementation detail leaves a malformed spin control. Masked
+        # date/time ranges also deliberately keep their full typing area.
+        if (isinstance(field.parent(), QAbstractSpinBox) or
+                field.inputMask() or field.property('qcsClearAction')):
+            continue
+        action = field.addAction(
+            field.style().standardIcon(
+                QStyle.StandardPixmap.SP_LineEditClearButton),
+            QLineEdit.ActionPosition.TrailingPosition)
+        action.setObjectName('qcsClearAction')
+        action.setToolTip('Clear field')
+
+        def clear_text(_checked=False, edit=field):
+            edit.clear()
+            # QCS synchronizes typed fields through textEdited so programmatic
+            # refreshes cannot overwrite the hidden pipeline state. A click on
+            # this action is a genuine edit and follows the same path.
+            edit.textEdited.emit('')
+
+        action.triggered.connect(clear_text)
+        field.setProperty('qcsClearAction', True)
+        for button in field.findChildren(QToolButton):
+            if button.defaultAction() is action:
+                button.setCursor(Qt.CursorShape.PointingHandCursor)
+                button.setToolTip('Clear field')
+                button.setAutoRaise(True)
+                _set_clear_button_visible(
+                    field, button, action, bool(field.text()), False)
+                field.textChanged.connect(
+                    lambda text, edit=field, control=button, item=action:
+                    _set_clear_button_visible(
+                        edit, control, item, bool(text), True))
+                break
+
+
+def refresh_clear_buttons(root):
+    """Sync clear visibility after a QSignalBlocker-based form refresh."""
+    for field in root.findChildren(QLineEdit):
+        for button in field.findChildren(QToolButton):
+            action = button.defaultAction()
+            if action is not None and action.objectName() == 'qcsClearAction':
+                visible = bool(field.text())
+                _set_clear_button_visible(
+                    field, button, action, visible, False)
+                break
 
 
 @contextmanager

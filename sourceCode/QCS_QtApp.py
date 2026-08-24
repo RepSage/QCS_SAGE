@@ -37,12 +37,15 @@ matplotlib.use('Agg')              # before any QCS import binds pyplot
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.dates as mdates
+import numpy as np
 from matplotlib._pylab_helpers import Gcf
 from matplotlib.backend_bases import CloseEvent
 from matplotlib.backends.backend_qtagg import (FigureCanvasQTAgg,
                                                NavigationToolbar2QT)
 from matplotlib.backends.backend_qt import SubplotToolQt
 from matplotlib.backends.qt_editor import figureoptions
+from matplotlib.collections import QuadMesh
+from matplotlib.quiver import Quiver
 from matplotlib.transforms import Bbox
 
 from PySide6.QtCore import (QByteArray, QEvent, QEventLoop, QObject, QSize,
@@ -56,8 +59,8 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QMessageBox, QPlainTextEdit, QInputDialog,
                                QProgressBar, QProgressDialog, QPushButton,
                                QRadioButton, QScrollArea, QStackedWidget,
-                               QTableWidget, QTableWidgetItem, QTabWidget,
-                               QToolButton, QVBoxLayout, QWidget)
+                               QSizePolicy, QTableWidget, QTableWidgetItem,
+                               QTabWidget, QToolButton, QVBoxLayout, QWidget)
 
 import QCS_Theme as theme          # writable_app_dir + output redirect (shared)
 _out = theme.install_output_redirect()
@@ -758,6 +761,223 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         self._enforce_zoom_limits()
 
     @staticmethod
+    def _is_editable_line(line):
+        """True for a real line, false for a point-only Line2D artist."""
+        style = str(line.get_linestyle()).strip().lower()
+        return style not in ('', 'none')
+
+    @staticmethod
+    def _coordinate_variable_name(ax, dimension, index):
+        """Human label for one coordinate in a stack of twinned axes."""
+        label = (ax.get_ylabel() if dimension == 'y'
+                 else ax.get_xlabel()).strip()
+        if label:
+            return label
+        custom = getattr(ax.figure, '_qcs_axes_names', {}).get(ax)
+        if custom:
+            return custom
+        for line in ax.get_lines():
+            candidate = line.get_label().strip()
+            if candidate and not candidate.startswith('_'):
+                return candidate
+        return 'Plot %d' % (index + 1)
+
+    @staticmethod
+    def _hovered_line_values(event, axes):
+        """Nearest actual Line2D value under the cursor, once per axes."""
+        nearest = {}
+        for index, ax in enumerate(axes):
+            for line in ax.get_lines():
+                marker = str(line.get_marker()).strip().lower()
+                if (not line.get_visible() or
+                        marker in ('', 'none', 'nothing')):
+                    continue
+                inside, details = line.contains(event)
+                candidates = details.get('ind', ()) if inside else ()
+                if not len(candidates):
+                    continue
+                xy = line.get_xydata()
+                candidates = [int(item) for item in candidates
+                              if 0 <= int(item) < len(xy)]
+                if not candidates:
+                    continue
+                chosen = min(
+                    candidates,
+                    key=lambda item: sum((
+                        ax.transData.transform(xy[item]) -
+                        (event.x, event.y)) ** 2))
+                x_value, y_value = xy[chosen]
+                screen = ax.transData.transform((x_value, y_value))
+                distance = float(sum((screen - (event.x, event.y)) ** 2))
+                record = {
+                    'ax': ax,
+                    'index': index,
+                    'distance': distance,
+                    'x': x_value,
+                    'y': y_value,
+                }
+                if (id(ax) not in nearest or
+                        distance < nearest[id(ax)]['distance']):
+                    nearest[id(ax)] = record
+        return sorted(nearest.values(), key=lambda item: item['distance'])
+
+    @staticmethod
+    def _plain_number(value):
+        """Readable decimal without scientific notation or false tail zeros."""
+        number = float(value)
+        if not math.isfinite(number):
+            return ''
+        if abs(number) < 5e-13:
+            number = 0.0
+        return format(number, '.12f').rstrip('0').rstrip('.')
+
+    @staticmethod
+    def _coordinate_value(ax, dimension, value, variable=''):
+        """Use a full positional value for PAR; retain axes formatting else."""
+        if re.search(r'\bPAR\b', variable, re.IGNORECASE):
+            return format(float(value), '.0f')
+        formatter = ax.format_ydata if dimension == 'y' else ax.format_xdata
+        return formatter(value)
+
+    @staticmethod
+    def _edge_bin(edges, value):
+        """Index of *value* inside monotonic pcolormesh cell edges."""
+        edges = np.asarray(edges, dtype=float)
+        if len(edges) < 2 or not np.isfinite(value):
+            return None
+        ascending = edges[-1] >= edges[0]
+        search_edges = edges if ascending else -edges
+        search_value = value if ascending else -value
+        index = int(np.searchsorted(search_edges, search_value,
+                                    side='right') - 1)
+        if index == len(edges) - 1 and search_value == search_edges[-1]:
+            index -= 1
+        return index if 0 <= index < len(edges) - 1 else None
+
+    @staticmethod
+    def _hovered_doppler_message(event):
+        """Read an actual current heatmap cell or vector under the cursor."""
+        ax = event.inaxes
+        if ax is None or event.xdata is None or event.ydata is None:
+            return ''
+        for item in reversed(ax.collections):
+            if not item.get_visible():
+                continue
+            if isinstance(item, QuadMesh):
+                coordinates = item.get_coordinates()
+                if coordinates.ndim != 3:
+                    continue
+                x_index = QCSNavigationToolbar._edge_bin(
+                    coordinates[0, :, 0], event.xdata)
+                y_index = QCSNavigationToolbar._edge_bin(
+                    coordinates[:, 0, 1], event.ydata)
+                if x_index is None or y_index is None:
+                    continue
+                values = np.ma.asarray(item.get_array())
+                rows = coordinates.shape[0] - 1
+                columns = coordinates.shape[1] - 1
+                if values.size != rows * columns:
+                    continue
+                value = values.reshape(rows, columns)[y_index, x_index]
+                if np.ma.is_masked(value) or not np.isfinite(float(value)):
+                    return ''
+                name = item.get_label().removesuffix(' heatmap')
+                if name == 'Horizontal speed':
+                    name = 'Horizontal speed (cm/s)'
+                elif name == 'Direction':
+                    name = 'Direction (deg)'
+                x_name = ax.get_xlabel().strip() or 'X'
+                y_name = ax.get_ylabel().strip() or 'Y'
+                return '%s: %s | %s: %s | %s: %s' % (
+                    x_name, ax.format_xdata(event.xdata),
+                    y_name, ax.format_ydata(event.ydata),
+                    name, QCSNavigationToolbar._plain_number(value))
+            if isinstance(item, Quiver):
+                inside, details = item.contains(event)
+                anchors = np.column_stack((item.X, item.Y))
+                screen = ax.transData.transform(anchors)
+                distances = np.sum(
+                    (screen - np.array((event.x, event.y))) ** 2, axis=1)
+                indices = details.get('ind', ()) if inside else ()
+                if len(indices):
+                    index = min(
+                        (int(value) for value in indices),
+                        key=lambda value: float(distances[value]))
+                else:
+                    index = int(np.argmin(distances))
+                    if distances[index] > 8.0 ** 2:
+                        continue
+                x_value, y_value = anchors[index]
+                return '%s: %s | %s: %s | East U (cm/s): %s | ' \
+                       'North V (cm/s): %s' % (
+                           ax.get_xlabel().strip() or 'X',
+                           ax.format_xdata(x_value),
+                           ax.get_ylabel().strip() or 'Y',
+                           ax.format_ydata(y_value),
+                           QCSNavigationToolbar._plain_number(item.U[index]),
+                           QCSNavigationToolbar._plain_number(item.V[index]))
+        return ''
+
+    @staticmethod
+    def _mouse_event_to_message(event):
+        """Show only the plotted value(s) actually under the cursor."""
+        ax = event.inaxes
+        if ax is None or not ax.get_navigate():
+            return ''
+        doppler = QCSNavigationToolbar._hovered_doppler_message(event)
+        if doppler:
+            return doppler
+        siblings = [item for item in ax.figure.axes
+                    if item in ax._twinned_axes.get_siblings(ax)]
+        try:
+            shares_x = all(ax.get_shared_x_axes().joined(ax, item)
+                           for item in siblings)
+            shares_y = all(ax.get_shared_y_axes().joined(ax, item)
+                           for item in siblings)
+            hovered = QCSNavigationToolbar._hovered_line_values(
+                event, siblings)
+            if not hovered:
+                return ''
+            if len(siblings) == 1:
+                item = hovered[0]
+                x_name = ax.get_xlabel().strip() or 'X'
+                y_name = QCSNavigationToolbar._coordinate_variable_name(
+                    ax, 'y', 0)
+                return '%s: %s | %s: %s' % (
+                    x_name, ax.format_xdata(item['x']),
+                    y_name, QCSNavigationToolbar._coordinate_value(
+                        ax, 'y', item['y'], y_name))
+            if shares_x:
+                x_value = hovered[0]['x']
+                fields = ['X: %s' % ax.format_xdata(x_value)]
+                fields.extend(
+                    '%s: %s' % (
+                        QCSNavigationToolbar._coordinate_variable_name(
+                            item['ax'], 'y', item['index']),
+                        QCSNavigationToolbar._coordinate_value(
+                            item['ax'], 'y', item['y'],
+                            QCSNavigationToolbar._coordinate_variable_name(
+                                item['ax'], 'y', item['index'])))
+                    for item in hovered)
+                return ' | '.join(fields)
+            if shares_y:
+                y_value = hovered[0]['y']
+                fields = ['Y: %s' % ax.format_ydata(y_value)]
+                fields.extend(
+                    '%s: %s' % (
+                        QCSNavigationToolbar._coordinate_variable_name(
+                            item['ax'], 'x', item['index']),
+                        QCSNavigationToolbar._coordinate_value(
+                            item['ax'], 'x', item['x'],
+                            QCSNavigationToolbar._coordinate_variable_name(
+                                item['ax'], 'x', item['index'])))
+                    for item in hovered)
+                return ' | '.join(fields)
+        except (TypeError, ValueError, OverflowError):
+            return ''
+        return NavigationToolbar2QT._mouse_event_to_message(event)
+
+    @staticmethod
     def _capture_figure_options(ax):
         axes = {}
         for name, axis in ax._axis_map.items():
@@ -770,6 +990,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         for line in ax.get_lines():
             lines.append({
                 'item': line,
+                'editable': QCSNavigationToolbar._is_editable_line(line),
                 'label': line.get_label(),
                 'linestyle': line.get_linestyle(),
                 'drawstyle': line.get_drawstyle(),
@@ -971,11 +1192,38 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
     def _reset_one_figure_option(self, dialog, field, state):
         """Refill one product default; Apply remains the mutation step."""
         self._restore_form_widget_value(field, state)
+        axis_name = getattr(dialog, '_qcs_axis_limit_fields', {}).get(field)
+        if axis_name is not None:
+            dialog._qcs_dirty_axis_limits.add(axis_name)
         for record in getattr(dialog, '_qcs_legend_records', []):
             if record.get('field') is field:
                 record['dirty'] = True
                 break
         dialog.update_buttons()
+
+    @staticmethod
+    def _title_group_axes(ax):
+        """Overlaid parameter axes share one visible plot title."""
+        siblings = ax._twinned_axes.get_siblings(ax)
+        return [item for item in ax.figure.axes
+                if item in siblings and item.get_visible()]
+
+    def _shared_plot_title(self, ax, defaults=False):
+        for item in self._title_group_axes(ax):
+            if defaults:
+                state = self._figure_option_defaults.get(item)
+                title = state['title'].strip() if state is not None else ''
+            else:
+                title = item.get_title().strip()
+            if title:
+                return title
+        return ''
+
+    def _apply_shared_plot_title(self, ax, title):
+        group = self._title_group_axes(ax)
+        owner = group[0] if group else ax
+        for item in group or [ax]:
+            item.set_title(title if item is owner else '')
 
     def _install_figure_option_row_resets(self, dialog, ax):
         """Add the Settings-style reset arrow to every editable visible row."""
@@ -1024,7 +1272,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
     def _reset_figure_options_form(self, dialog, ax):
         """Refill product defaults; Apply remains the only mutation step."""
         state = self._figure_option_defaults[ax]
-        axes_values = [state['title']]
+        axes_values = [self._shared_plot_title(ax, defaults=True)]
         for name in ax._axis_map:
             values = state['axes'][name]
             limits = values['limits']
@@ -1046,9 +1294,9 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
 
         curve_states = [
             values for values in state['lines']
-            if values['label'] != '_nolegend_'
+            if values['editable'] and values['label'] != '_nolegend_'
         ]
-        curves = tab_forms.get('Curves')
+        curves = tab_forms.get('Lines') or tab_forms.get('Curves')
         if curves is not None:
             for form, values in zip(
                     curves.widgetlist, curve_states, strict=True):
@@ -1203,52 +1451,122 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                         hidden_fields.add(form.widgets[row])
                         break
 
+    @staticmethod
+    def _configure_line_options(dialog):
+        """Expose line styling only; points and legend text have other roles."""
+        tabs = dialog.formwidget.tabwidget
+        hidden_fields = getattr(dialog, '_qcs_hidden_option_fields', set())
+        dialog._qcs_hidden_option_fields = hidden_fields
+        for index in range(len(dialog.formwidget.widgetlist)):
+            if tabs.tabText(index) != 'Curves':
+                continue
+            tabs.setTabText(index, 'Lines')
+            curves = dialog.formwidget.widgetlist[index]
+            if len(curves.widgetlist) == 1:
+                curves.combobox.hide()
+            else:
+                curves.combobox.setToolTip(
+                    'Select the plotted line to customize.')
+            for form in curves.widgetlist:
+                marker_section = False
+                for row, (label, value) in enumerate(form.data):
+                    if label is None and value == '<b>Marker</b>':
+                        marker_section = True
+                    hide = (label in ('Label', 'Draw style') or
+                            marker_section)
+                    if hide:
+                        form.formlayout.setRowVisible(row, False)
+                        field = form.widgets[row]
+                        if field is not None:
+                            hidden_fields.add(field)
+                    if label != 'Line style':
+                        continue
+                    field = form.widgets[row]
+                    choices = form.data[row][1]
+                    selected = choices[field.currentIndex()][0]
+                    priority = {
+                        'Solid': 0, 'Dashed': 1, 'Dotted': 2,
+                        'DashDot': 3, 'None': 4,
+                    }
+                    choices.sort(key=lambda choice: (
+                        priority.get(choice[1], 99), choice[1]))
+                    field.clear()
+                    field.addItems([choice[1] for choice in choices])
+                    selected_index = next(
+                        (item for item, choice in enumerate(choices)
+                         if choice[0] == selected), 0)
+                    field.setCurrentIndex(selected_index)
+
+    @staticmethod
+    def _capitalize_scale_options(dialog):
+        """Keep Matplotlib scale keys while presenting sentence-case names."""
+        general = dialog.formwidget.widgetlist[0]
+        for row, (label, choices) in enumerate(general.data):
+            if label != 'Scale':
+                continue
+            field = general.widgets[row]
+            for index, choice in enumerate(choices):
+                shown = choice[1] if isinstance(choice, (tuple, list)) else choice
+                field.setItemText(index, str(shown).capitalize())
+
+    def _track_axis_limit_edits(self, dialog, ax):
+        """Distinguish an edited range from a stale non-modal form value."""
+        general = dialog.formwidget.widgetlist[0]
+        positions = {}
+        fields = {}
+        axis_name = None
+        value_position = 0
+        for row, (label, value) in enumerate(general.data):
+            if label is None and isinstance(value, str):
+                match = re.fullmatch(r'<b>(.+)-Axis</b>', value)
+                if match:
+                    axis_name = match.group(1).lower()
+            elif label is not None:
+                if axis_name in ax._axis_map and label in ('Min', 'Max'):
+                    positions.setdefault(axis_name, {})[label] = value_position
+                    fields.setdefault(axis_name, {})[label] = general.widgets[row]
+                value_position += 1
+        datetime_fields = getattr(dialog, '_qcs_datetime_fields', None)
+        if datetime_fields is not None and 'x' in fields:
+            fields['x'] = {'Min': datetime_fields[0], 'Max': datetime_fields[1]}
+        dialog._qcs_axis_limit_positions = {
+            name: (items['Min'], items['Max'])
+            for name, items in positions.items()
+            if 'Min' in items and 'Max' in items
+        }
+        dialog._qcs_axis_limit_fields = {}
+        dialog._qcs_dirty_axis_limits = set()
+        for name, items in fields.items():
+            for field in items.values():
+                dialog._qcs_axis_limit_fields[field] = name
+                if isinstance(field, QLineEdit):
+                    field.textEdited.connect(
+                        lambda _text, axis=name:
+                        dialog._qcs_dirty_axis_limits.add(axis))
+
     def _add_legends_tab(self, dialog, ax):
         tabs = dialog.formwidget.tabwidget
-        page = QWidget()
-        form = QFormLayout(page)
         records = self._collect_legend_labels(ax)
-        if not records:
-            form.addRow(QLabel('This plot has no editable legend labels.'))
-        for record in records:
-            field = QLineEdit(record['artist'].get_text())
-            record['field'] = field
-            record['dirty'] = False
-            field.textEdited.connect(
-                lambda _text, item=record: item.__setitem__('dirty', True))
-            form.addRow(record['name'], field)
-        tabs.addTab(page, 'Legends')
         dialog._qcs_legend_records = records
+        if records:
+            page = QWidget()
+            form = QFormLayout(page)
+            for record in records:
+                field = QLineEdit(record['artist'].get_text())
+                record['field'] = field
+                record['dirty'] = False
+                field.textEdited.connect(
+                    lambda _text, item=record:
+                    item.__setitem__('dirty', True))
+                form.addRow(record['name'], field)
+            tabs.addTab(page, 'Legends')
 
-        # A visible line legend should track its Graph/Curve label unless the
-        # operator explicitly types a different visible legend text.
-        curve_widget = None
+        # Keep the mappable forms available for the safe color-limit update in
+        # the Apply wrapper below. Visible text belongs to the Legends tab.
         graph_widget = None
         for index in range(len(dialog.formwidget.widgetlist)):
-            if tabs.tabText(index) == 'Curves':
-                curve_widget = dialog.formwidget.widgetlist[index]
-            elif tabs.tabText(index) == 'Graphs':
+            if tabs.tabText(index) == 'Graphs':
                 graph_widget = dialog.formwidget.widgetlist[index]
-        legend_records = [
-            record for record in records if record['kind'] == 'legend'
-        ]
-        labeled_lines = [
-            line for line in ax.get_lines()
-            if line.get_label() != '_nolegend_'
-        ]
-        if curve_widget is not None:
-            eligible_fields = [
-                curve_form.widgets[0]
-                for curve_form, line in zip(
-                    curve_widget.widgetlist, labeled_lines, strict=True)
-                if not line.get_label().startswith('_')
-            ]
-            for source, record in zip(
-                    eligible_fields, legend_records, strict=False):
-                source.textChanged.connect(
-                    lambda text, item=record: (
-                        item['field'].setText(text)
-                        if not item['dirty'] else None))
 
         original_apply = dialog.apply_callback
 
@@ -1264,6 +1582,14 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                     datetime_values[0].to_pydatetime())
                 data[0][max_position] = mdates.date2num(
                     datetime_values[1].to_pydatetime())
+            # Figure options is non-modal.  A wheel/toolbar zoom can therefore
+            # change the live view while the dialog remains open; untouched
+            # Min/Max fields are stale and must not overwrite that newer view.
+            for name, positions in dialog._qcs_axis_limit_positions.items():
+                if name in dialog._qcs_dirty_axis_limits:
+                    continue
+                limits = getattr(ax, 'get_%slim' % name)()
+                data[0][positions[0]], data[0][positions[1]] = limits
             # The upstream Matplotlib callback has one positional boolean at
             # the end of the Axes form. QCS has no automatic-regeneration
             # feature, field or saved state; the adapter always disables it.
@@ -1290,6 +1616,8 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                         norm.vmax = max(current_high, high)
                     item.changed()
             original_apply(data)
+            self._apply_shared_plot_title(
+                ax, dialog._qcs_plot_title.text())
             figure_title = dialog._qcs_figure_title.text()
             if ax.figure._suptitle is None:
                 if figure_title:
@@ -1298,6 +1626,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 ax.figure._suptitle.set_text(figure_title)
             for record in records:
                 record['artist'].set_text(record['field'].text())
+            dialog._qcs_dirty_axis_limits.clear()
             ax.figure.canvas.draw_idle()
 
         dialog.apply_callback = apply_with_legends
@@ -1315,6 +1644,8 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         general = dialog.formwidget.widgetlist[0]
         for row, (label, _value) in enumerate(general.data):
             if label == 'Title':
+                general.widgets[row].setText(self._shared_plot_title(ax))
+                dialog._qcs_plot_title = general.widgets[row]
                 title_label = general.formlayout.labelForField(
                     general.widgets[row])
                 if title_label is not None:
@@ -1329,6 +1660,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             general.widgets.pop(row)
             break
         self._configure_datetime_x_options(dialog, ax)
+        self._capitalize_scale_options(dialog)
         figure_title = QLineEdit(
             ax.figure._suptitle.get_text()
             if ax.figure._suptitle is not None else '')
@@ -1336,8 +1668,10 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             'Edit the title shown above the complete figure.')
         general.formlayout.insertRow(0, 'Figure title', figure_title)
         dialog._qcs_figure_title = figure_title
+        self._configure_line_options(dialog)
         self._hide_graph_names(dialog)
         self._add_legends_tab(dialog, ax)
+        self._track_axis_limit_edits(dialog, ax)
 
         dialog.layout().removeWidget(dialog.bbox)
         dialog.bbox.hide()
@@ -1368,8 +1702,11 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         reset = buttons['reset']
         reset.setToolTip(
             'Refill the original product values; use Apply to confirm them.')
-        reset.clicked.connect(
-            lambda: self._reset_figure_options_form(dialog, ax))
+        def reset_all_values():
+            self._reset_figure_options_form(dialog, ax)
+            dialog._qcs_dirty_axis_limits.update(ax._axis_map)
+
+        reset.clicked.connect(reset_all_values)
 
         def apply_checked():
             if self._datetime_form_values(dialog) is not None:
@@ -1396,6 +1733,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         dialog.update_buttons = update_buttons
         update_buttons()
         self._install_figure_option_row_resets(dialog, ax)
+        qtheme.enable_clear_buttons(dialog)
 
     def _return_to_customize_picker(self, dialog):
         dialog.reject()
@@ -1404,7 +1742,17 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
     def _open_figure_options(self, ax, can_go_back=False, plot_name=None):
         self._figure_option_defaults.setdefault(
             ax, self._capture_figure_options(ax))
-        figureoptions.figure_edit(ax, self)
+        point_labels = []
+        for line in ax.get_lines():
+            if (line.get_label() != '_nolegend_' and
+                    not self._is_editable_line(line)):
+                point_labels.append((line, line.get_label()))
+                line.set_label('_nolegend_')
+        try:
+            figureoptions.figure_edit(ax, self)
+        finally:
+            for line, label in point_labels:
+                line.set_label(label)
         dialog = getattr(self, '_fedit_dialog', None)
         if dialog is not None:
             self._prepare_figure_options_dialog(
@@ -1785,6 +2133,7 @@ class QtShell(QMainWindow):
         self._co2_file = ''
         self._run_scope = None      # 'File k/n' / 'Replicate k/n' progress prefix
         self._doppler_file = False  # the selected .bin is a DCPS session
+        self._detected_type = None  # detected scalar Mooring/Profile identity
         self._advance_viz = False   # 'Go to visualization' asked for Step 2
         self._run_thread = None     # the qualification's worker (v12.3)
         self._cancel = threading.Event()   # read by the worker, set by Cancel
@@ -2039,6 +2388,7 @@ class QtShell(QMainWindow):
         grid = QGridLayout(w)
 
         gin = QGroupBox('Input settings')
+        self._qualification_input_group = gin
         fin = QFormLayout(gin)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -2160,6 +2510,7 @@ class QtShell(QMainWindow):
         fin.addRow(gopt)
 
         gout = QGroupBox('Output settings')
+        self._qualification_output_group = gout
         fout = QFormLayout(gout)
         orow = QHBoxLayout()
         orow.setContentsMargins(0, 0, 0, 0)
@@ -2244,6 +2595,15 @@ class QtShell(QMainWindow):
 
         grid.addWidget(gin, 0, 0)
         grid.addWidget(gout, 0, 1)
+        # Optional instrument-specific rows may change height, never the
+        # horizontal Input/Output split.
+        for group in (gin, gout):
+            group.setSizePolicy(
+                QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        grid.setColumnMinimumWidth(0, 520)
+        grid.setColumnMinimumWidth(1, 520)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
         # while a run is in progress the ONLY live control is Cancel (owner,
         # v12.3): the window stays responsive now, and a form edited mid-run
         # would describe a qualification that is no longer the one running
@@ -2295,6 +2655,7 @@ class QtShell(QMainWindow):
         qtheme.bold_form_labels(fin)
         qtheme.bold_form_labels(fout)
         qtheme.bold_form_labels(fsum)
+        qtheme.enable_clear_buttons(w)
         self._input_type_changed(self.input_type.currentText())
         self._update_run_state()
         return w
@@ -2547,6 +2908,10 @@ class QtShell(QMainWindow):
 
     def apply_selected_files(self, names):
         first = names[0]
+        # A new selection owns a new identity.  In particular, do not let the
+        # detection/lock from the file that was cleared leak into a re-drop.
+        self._doppler_file = False
+        self._detected_type = None
         self.file_edit.setText(';'.join(names))
         qm.remember_data_dir(first)
         detected = data.sniff_input_type(first)
@@ -2577,27 +2942,33 @@ class QtShell(QMainWindow):
                 self._doppler_file = False
                 # A scalar session says whether it is a mooring or a cast: it
                 # is a matter of how long it lasted, and reading that costs one
-                # decode of a file the run will read anyway (v13.0). Unlike the
-                # DCPS lock this is a SUGGESTION - the type decides which tests
-                # run, so the box stays editable and the log says what was
-                # detected and why.
+                # decode of a file the run will read anyway.  Once the rule can
+                # decide, that detected identity is locked just like the family;
+                # an ambiguous/too-short file deliberately remains editable.
                 looks_like, hours, step = data.detect_seaguard_data_type(first)
                 if looks_like:
                     if self.data_type.currentText() != looks_like:
                         self.data_type.setCurrentText(looks_like)
                     print('Info: the session spans %.1f h at one record every '
-                          "%.0f s - Data type set to '%s' (change it if that is "
-                          'not what this file is).' % (hours, step, looks_like))
+                          "%.0f s - Data type detected as '%s' and locked."
+                          % (hours, step, looks_like))
                     self._detected_type = (looks_like, hours)
                 else:
                     self._detected_type = None
                     if self.data_type.currentText() == 'TSCP Doppler':
                         self.data_type.setCurrentText('TSCP Mooring')
-                    print('Info: this session does not say whether it is a mooring '
-                          'or a cast (too few records to time it) - Data type left '
-                          "at '%s'; check it before running."
-                          % self.data_type.currentText())
-            self._apply_doppler_lock()
+                    if hours is not None:
+                        print('Info: the session spans %.1f h at one record every '
+                              '%.0f s; the labelled archive contains both a mooring '
+                              'and a cast with this short/slow pattern. Data type '
+                              "left at '%s' (editable); check it before running."
+                              % (hours, step, self.data_type.currentText()))
+                    else:
+                        print('Info: this session does not say whether it is a '
+                              'mooring or a cast (too few records to time it) - '
+                              "Data type left at '%s' (editable); check it before "
+                              'running.' % self.data_type.currentText())
+        self._apply_data_type_lock()
         self.out_folder.setText(os.path.dirname(first))
         self._apply_output_name()
         self._update_co2_controls()
@@ -2862,7 +3233,7 @@ class QtShell(QMainWindow):
             self.remove_dismissed.setEnabled(True)
             self.remove_dismissed.setChecked(
                 self._last_seaguard.get('remove_dismissed', True))
-            self._apply_doppler_lock()   # a DCPS file re-locks the Data type
+            self._apply_data_type_lock()
         else:
             # no instrument selected ('Select instrument' placeholder): the
             # dependent fields wait for a selection
@@ -2885,18 +3256,31 @@ class QtShell(QMainWindow):
         self._apply_output_name()
         self._update_co2_controls()
 
-    def _apply_doppler_lock(self):
-        """A DCPS session is not a choice: the Data type SHOWS 'TSCP Doppler'
-        and stops being selectable, since the file itself decides it and any
-        other value would only produce errors (owner, v12.2.4). A scalar
-        Seaguard keeps its Profile/Mooring choice."""
-        if self._doppler_file and self.input_type.currentText() == 'Seaguard':
+    def _apply_data_type_lock(self):
+        """Lock every Data type that the selected Seaguard file establishes.
+
+        DCPS is identified by its binary layout.  Scalar Mooring/Profile is
+        identified by the calibrated session-duration/cadence rule.  Only an
+        ambiguous scalar file leaves the operator a choice.
+        """
+        if self.input_type.currentText() != 'Seaguard':
+            self.data_type.setToolTip(TOOLTIPS['data_type'])
+            return
+        if self._doppler_file:
             self.data_type.setCurrentText('TSCP Doppler')
             self.data_type.setEnabled(False)
             self.data_type.setToolTip(
                 'Decided by the file: this .bin is a DCPS current-profiler '
                 'session, so the collection type is not a choice')
+        elif self._detected_type is not None:
+            detected, hours = self._detected_type
+            self.data_type.setCurrentText(detected)
+            self.data_type.setEnabled(False)
+            self.data_type.setToolTip(
+                'Decided from this session (duration %s): the detected '
+                'collection type is not a choice.' % _duration_text(hours))
         else:
+            self.data_type.setEnabled(True)
             self.data_type.setToolTip(TOOLTIPS['data_type'])
 
     def _update_profile_state(self):
@@ -2918,6 +3302,7 @@ class QtShell(QMainWindow):
             # selection cleared: back to 'Select instrument', editable, and
             # the Replicates line and summary go away with it
             self._doppler_file = False
+            self._detected_type = None
             self.input_type.setEnabled(True)
             self.input_type.setCurrentIndex(-1)
             for lab in self.sum_labels.values():

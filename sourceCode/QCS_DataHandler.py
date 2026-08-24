@@ -21,7 +21,7 @@ def _show_plot_info(fig, title, message):
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v13.0'
+QCS_VERSION = 'v13.1'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -452,36 +452,34 @@ def peek_seaguard_session(file_path):
 # last. Either fact alone names the deployment.
 #
 # Measured over the whole archive - 182 labelled scalar sessions, 2019 to 2026,
-# the label taken from the archive's own FUNDEIO / PERFIL folders:
-#   duration >= 4 h ................................ 181/182
-#   cadence >= 5 min ............................... (see below)
-#   duration >= 4 h OR cadence >= 5 min ............ 181/182
-#   duration >= 4 h OR cadence >= 2 min ............ 179/182
-#   cadence alone .................................. 160/182 (87.6%)
-# The first and the third tie, and they fail on DIFFERENT sessions: duration
-# alone misses TIM2/FUNDEIO, a legitimate 3 h mooring logging every 10 min -
-# short moorings are a real category here, the shortest in the archive is 3 h.
-# Adding the cadence catches it, and the rule's only remaining miss is
-# PAB3/PERFIL: 16 records 10 minutes apart over 2.5 h, which is a mooring
-# cadence in a cast folder and ambiguous by every measure available.
+# the label taken from the archive's own FUNDEIO / PERFIL folders. Duration
+# alone classifies 181/182 correctly.  Adding slow cadence also scores 181/182,
+# but it merely trades the miss: TIM2/FUNDEIO is a legitimate 3 h mooring at a
+# 10 min cadence, while PAB3/PERFIL is a 2.5 h profile at the same cadence.
+# Because the UI locks a detected identity, those two short+slow cases must be
+# AMBIGUOUS, not forced to opposite sides by a rule with no evidence to do so.
+# The lock-safe rule therefore gives a verdict on 180/182 labelled sessions,
+# with no known false verdict: >=4 h is Mooring, and short+fast is Profile.
 MOORING_MIN_HOURS = 4.0
 MOORING_MIN_INTERVAL_S = 300.0
 
 
 def detect_seaguard_data_type(file_path=None, times=None):
     """What a scalar Seaguard session looks like:
-    ('TSCP Mooring' or 'TSCP Profile', duration in hours, cadence in seconds),
-    or (None, None, None) when it cannot tell - fewer than two timestamps, or a
-    file that will not decode.
+    ('TSCP Mooring' or 'TSCP Profile', duration in hours, cadence in seconds).
+    A short session at a slow mooring cadence returns (None, duration, cadence)
+    because the labelled archive contains both collection types with that exact
+    pattern.  Fewer than two timestamps or a file that will not decode returns
+    (None, None, None).
 
     Give it `times` when the session is already in memory (the pipeline has the
     frame and pays nothing), or a Data000.bin path to read it - a full decode of
     the largest session in the archive costs 0.71 s over the share.
 
-    It is a SUGGESTION, never a lock: the type decides which tests run (the
-    vertical gradient and the density inversion are profile-only), so the
-    operator keeps the last word. A DCPS session is not its business - that one
-    is decided by the instrument."""
+    A conclusive result is the file's collection identity and the UI locks it;
+    an inconclusive result deliberately leaves the choice editable.  A DCPS
+    session is not this function's business - its binary layout decides that
+    identity directly."""
     if times is None:
         if not file_path:
             return None, None, None
@@ -495,8 +493,11 @@ def detect_seaguard_data_type(file_path=None, times=None):
     hours = (times.max() - times.min()).total_seconds() / 3600.0
     step = times.diff().dropna().median()
     interval_s = float(step.total_seconds()) if pd.notna(step) else 0.0
-    moored = hours >= MOORING_MIN_HOURS or interval_s >= MOORING_MIN_INTERVAL_S
-    return ('TSCP Mooring' if moored else 'TSCP Profile'), hours, interval_s
+    if hours >= MOORING_MIN_HOURS:
+        return 'TSCP Mooring', hours, interval_s
+    if interval_s < MOORING_MIN_INTERVAL_S:
+        return 'TSCP Profile', hours, interval_s
+    return None, hours, interval_s
 
 
 def read_seaguard_deployment(file_path):

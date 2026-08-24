@@ -136,6 +136,7 @@ class VisualizationTab(QWidget):
         grid = QGridLayout(page)
 
         gin = QGroupBox('Input settings')
+        self._input_group = gin
         fin = QFormLayout(gin)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -166,6 +167,8 @@ class VisualizationTab(QWidget):
 
         self.instrument = QComboBox()
         self.instrument.addItems(['Seaguard', 'HOBO', 'Doppler'])
+        self.instrument.setPlaceholderText('Select instrument')
+        self.instrument.setCurrentIndex(-1)
         self.instrument.setToolTip(TOOLTIPS['instrument'])
         self.instrument.currentTextChanged.connect(
             lambda t: dbv.instrument_combobox.set(t))
@@ -177,6 +180,7 @@ class VisualizationTab(QWidget):
         fin.addRow(self.sort)
 
         gout = QGroupBox('Output settings')
+        self._output_group = gout
         fout = QFormLayout(gout)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -217,6 +221,15 @@ class VisualizationTab(QWidget):
         grid.addWidget(gin, 0, 0)
         grid.addWidget(gout, 0, 1)
         grid.addWidget(ah, 1, 0, 1, 2)
+        # Optional single/multi-file controls may change state, never the
+        # horizontal Input/Output split.
+        for group in (gin, gout):
+            group.setSizePolicy(
+                QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        grid.setColumnMinimumWidth(0, 480)
+        grid.setColumnMinimumWidth(1, 480)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
         # the boxes take the height of their CONTENT and 'Next >' sits right
         # under them: the stretch used to be on the boxes' own row, which blew
         # them up to the full page and pushed the button to the bottom edge
@@ -224,6 +237,7 @@ class VisualizationTab(QWidget):
         grid.setRowStretch(2, 1)
         qtheme.bold_form_labels(fin)
         qtheme.bold_form_labels(fout)
+        qtheme.enable_clear_buttons(page)
         return page
 
     def refresh_step1(self):
@@ -244,7 +258,11 @@ class VisualizationTab(QWidget):
             # only meaningful when several files build a database
             self.sort.setEnabled(_tk_enabled(dbv.sort_cb))
         with QSignalBlocker(self.instrument):
-            self.instrument.setCurrentText(dbv.instrument_combobox.get())
+            instrument = dbv.instrument_combobox.get()
+            if instrument in ('Seaguard', 'HOBO', 'Doppler'):
+                self.instrument.setCurrentText(instrument)
+            else:
+                self.instrument.setCurrentIndex(-1)
             self.instrument.setEnabled(_tk_enabled(dbv.instrument_combobox))
         with QSignalBlocker(self.recent):
             self.recent.clear()
@@ -252,6 +270,7 @@ class VisualizationTab(QWidget):
                                   for r in dbv.USER_PREFS.get('dbv_recent', [])])
             self.recent.setCurrentIndex(-1)
         self._sync_recent_state()
+        qtheme.refresh_clear_buttons(self)
 
     def apply_prefill(self, info, advance=False):
         """A qualification just finished: Step 1 shows ITS file (or the whole
@@ -298,6 +317,10 @@ class VisualizationTab(QWidget):
         _tk_set_entry(dbv.fileNames_entry, text)
         dbv.set_instrument_locked(False)
         self.instrument.setEnabled(True)
+        if not text.strip():
+            dbv.instrument_combobox.set('')
+            with QSignalBlocker(self.instrument):
+                self.instrument.setCurrentIndex(-1)
         self._sync_recent_state()
 
     def _apply_recent(self, index):
@@ -493,10 +516,16 @@ class VisualizationTab(QWidget):
         self.tendency.setToolTip(TOOLTIPS['tendency'])
         self._check_pair(self.tendency, dbv.tendency, dbv.tendency_cb,
                          after=(dbv.toggle_panel_dependent_controls,))
-        self.degree = QLineEdit()
-        self.degree.setFixedWidth(60)
+        self.degree = QSpinBox()
+        self.degree.setRange(dbv.REGRESSION_DEGREE_MIN,
+                             dbv.REGRESSION_DEGREE_MAX)
+        self.degree.setFixedWidth(58)
         self.degree.setToolTip(TOOLTIPS['tendency_degree'])
-        self._entry_pair(self.degree, dbv.tendency_entry)
+        self.degree.valueChanged.connect(
+            lambda value: _tk_set_entry(dbv.tendency_entry, str(value)))
+        self.tendency.toggled.connect(self._persist_tendency)
+        self.degree.valueChanged.connect(
+            lambda _value: self._persist_tendency())
         if not dbv.is_doppler_input():
             fv.addRow(self.tendency)
             fv.addRow('Regression degree:', self.degree)
@@ -626,7 +655,16 @@ class VisualizationTab(QWidget):
         gen.clicked.connect(self._generate)
         actions.addWidget(gen, 0, 1, Qt.AlignHCenter)
         outer.addLayout(actions)
+        qtheme.enable_clear_buttons(page)
         return page
+
+    def _persist_tendency(self, _checked=None):
+        """Keep trend choices when Step 2 is rebuilt before generation."""
+        # Read the visible controls themselves. This remains correct even if a
+        # future Qt binding changes the order in which connected slots run.
+        dbv.USER_PREFS['dbv_tendency'] = self.tendency.isChecked()
+        dbv.USER_PREFS['dbv_degree'] = str(self.degree.value())
+        dbv.save_user_prefs()
 
     def _build_param_filter(self, ff, f):
         """The 'Filter by parameter' block of the Filter settings box."""
@@ -734,6 +772,13 @@ class VisualizationTab(QWidget):
             with QSignalBlocker(qt):
                 qt.setText(tk.get())
                 qt.setEnabled(_tk_enabled(tk))
+        with QSignalBlocker(self.degree):
+            try:
+                degree = int(dbv.tendency_entry.get())
+            except (TypeError, ValueError):
+                degree = dbv.REGRESSION_DEGREE_DEFAULT
+            self.degree.setValue(dbv.normalized_regression_degree(degree))
+            self.degree.setEnabled(_tk_enabled(dbv.tendency_entry))
         for qt, var, widget in self._checks:
             with QSignalBlocker(qt):
                 qt.setChecked(bool(var.get()))
@@ -747,6 +792,7 @@ class VisualizationTab(QWidget):
                 self.uv_gap.setCurrentText(dbv.uvGap_combobox.get())
         self.data_available.setText(_coverage_text())
         self.depth_available.setText(_depth_text())
+        qtheme.refresh_clear_buttons(self)
 
     # ---------- plot colors ----------
     def _refresh_color_buttons(self):
