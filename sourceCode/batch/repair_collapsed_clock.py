@@ -68,7 +68,7 @@ import pandas as pd                                                  # noqa: E40
 import QCS_DataHandler as dh                                         # noqa: E402
 import QCS_Tests as QC                                               # noqa: E402
 
-ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE\HOBO"
+ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\HOBO"
 H_RAW = os.path.join(ROOT, 'raw')
 MANIFEST = os.path.join(H_RAW, 'manifest.csv')
 

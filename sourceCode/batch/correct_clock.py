@@ -44,7 +44,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import QCS_DataHandler as dh
 import QCS_Tests as QC
 
-ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE\HOBO"
+ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\HOBO"
 H_RAW = os.path.join(ROOT, 'raw')
 MANIFEST = os.path.join(H_RAW, 'manifest.csv')
 

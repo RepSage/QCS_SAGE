@@ -1,10 +1,10 @@
-# Batch qualification of the CLAUDE corpus
+# Batch qualification of the DATABASE corpus
 
 Reproducible drivers for qualifying the whole staged archive
-(`\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE\{SEAGUARD|HOBO}\raw`) through the
+(`\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\{SEAGUARD|HOBO}\raw`) through the
 REAL QCS pipeline (no GUI), organizing the products under
-`CLAUDE\{SEAGUARD|HOBO}\qualified\<YEAR>S<1|2>\<SITE>\`. These scripts produced
-the 315-product corpus of 2026-07 (v8.0/v8.1 era).
+`DATABASE\{SEAGUARD|HOBO}\qualified\<YEAR>S<1|2>\<SITE>\`. These scripts produced
+the qualified corpus first assembled in 2026-07 (v8.0/v8.1 era).
 
 Run them from this folder's parent (`sourceCode\`), calling Anaconda's Python by
 absolute path — a bare `python` resolves to the Microsoft Store stub and fails:
@@ -12,8 +12,12 @@ absolute path — a bare `python` resolves to the Microsoft Store stub and fails
 ```
 & "C:\Users\LAMB\anaconda3\python.exe" batch\run_semester.py 2019S1        # one whole semester (all sites + buckets)
 & "C:\Users\LAMB\anaconda3\python.exe" batch\qualify_site.py PAB3 --sem 2019S1   # one site of one semester
-& "C:\Users\LAMB\anaconda3\python.exe" batch\build_index.py                # rebuild CLAUDE\qualified_index.csv
+& "C:\Users\LAMB\anaconda3\python.exe" batch\build_index.py                # rebuild DATABASE\qualified_index.csv
 & "C:\Users\LAMB\anaconda3\python.exe" batch\build_data_package.py --sites ESQSUL,SGOM --years 2019-2024   # delivery bundle on the Desktop
+& "C:\Users\LAMB\anaconda3\python.exe" batch\reorganize_raw_semesters.py --verify-existing  # recheck the 2026-08-25 move manifest
+& "C:\Users\LAMB\anaconda3\python.exe" batch\remove_seaguard_pool_sites.py --verify-existing # recheck the pool-site removal
+& "C:\Users\LAMB\anaconda3\python.exe" batch\resolve_sem_sitio.py --verify-existing           # recheck unknown-site removal/reassignment
+& "C:\Users\LAMB\anaconda3\python.exe" batch\normalize_buraca_funda_session.py --verify-existing # recheck the BXML session-name move
 ```
 
 `build_index.py` ends by running **`sweep_value_integrity.py`** over the indexed
@@ -24,7 +28,7 @@ done until that sweep is clean.
 Three of the scripts here repair the RAW archive rather than qualify it —
 `correct_clock.py`, `repair_collapsed_clock.py` and `repair_unset_clock.py` —
 and `drop_stale_products.py` removes superseded products, by MOVING them into
-`CLAUDE\_deleted\<YYYYMMDD>\` (the share has no recycle bin; emptying that
+`DATABASE\_deleted\<YYYYMMDD>\` (the share has no recycle bin; emptying that
 folder is a human decision). Everything they have done to the archive is
 recorded, dated and with its evidence, in **`CORPUS_LOG.md`** beside this file.
 That log is not a `changelog/` entry: the app has its own version and none of
@@ -37,12 +41,18 @@ untouched — used for light-mode reruns.
 
 ## What the drivers encode (the hard-won rules)
 
-- **Both raw trees are campaign-first** (HOBO since 2026-08-13, matching
-  Seaguard): `SEAGUARD\raw\<N - MES ANO>\<SITE>\` and
-  `HOBO\raw\<RRDM Na MES ANO>\<SITE>\{bruto,planilha}`;
-  `_PISCINAS\<campaign>\<pool>\`, `_EXPERIMENTOS\<campaign>\<subpath>\`. The
-  two campaign numberings are DIFFERENT series and must never be merged — only
-  8 of 15 HOBO campaigns have a Seaguard counterpart.
+- **Both raw trees are semester-first** (since 2026-08-25, matching the
+  qualified trees): `SEAGUARD\raw\<YEAR>S<1|2>\<SITE>\` and
+  `HOBO\raw\<YEAR>S<1|2>\<SITE>\{bruto,planilha}`. Multiple field campaigns
+  in one semester share that semester folder; their files were proven
+  collision-free before the merge. The previous campaign-to-semester mapping
+  and every moved file's SHA-256 are recorded by
+  `reorganize_raw_semesters.py` and in `CORPUS_LOG.md`.
+- **`_PISCINAS`, `_EXPERIMENTOS`, `_SEM_SITIO`, and direct `PISCINA_*` sites are
+  excluded**,
+  not monitoring corpus inputs. Their raw and qualified trees were removed
+  from the active lanes on 2026-08-25, and the batch and catalog code explicitly
+  refuse to ingest those folders if they are restored later.
 
 - **Semester naming** `<SITE>_<YEAR>S<n>_<INSTRUMENT>[_<TIPO>][_k]_QLF` — the
   semester tag unifies the two corpora (the same expedition is labeled
@@ -86,7 +96,8 @@ untouched — used for light-mode reruns.
   pool exports twice, in per-person folders): MD5 over each product's inputs,
   the explicit DENTRO/FORA copy wins over `_NA`.
 - **Provenance**: every product appends an idempotent block to its folder's
-  `provenance.txt` — campaign label (the semester tag drops it), cast start,
+  `provenance.txt` — raw semester (legacy products retain their original field
+  campaign label), cast start,
   exact input sessions, CO2 file, and (C/D transect legs) the per-station
   time slices from `FASE_1_PLANILHA_SEAGUARD_PERFIS.xlsx`.
 

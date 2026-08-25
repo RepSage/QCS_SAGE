@@ -35,7 +35,7 @@ import warnings
 warnings.filterwarnings('ignore')
 import pandas as pd
 
-RAW = r'\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE\HOBO\raw'
+RAW = r'\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\HOBO\raw'
 MANIFEST = os.path.join(RAW, 'manifest.csv')
 BUCKETS = ('_PISCINAS', '_EXPERIMENTOS')
 

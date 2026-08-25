@@ -364,6 +364,10 @@ with _tempfile.TemporaryDirectory() as tmp:
                        'Site': ['PAB3'] * 3, 'Flag_T': [1, 1, 1], 'Flag_lux': [1, 1, 1]})
     h1.to_csv(_os.path.join(sub1, 'PAB3_qlf.csv'), index=False)
     h2 = h1.copy(); h2['Site'] = 'RH30'
+    # Different qualified writer rounds emitted whole versus fractional
+    # seconds. Pandas 2's single-format inference must not discard one file
+    # when those variants meet in a unified database.
+    h2['Datetime'] = h2['Datetime'].dt.strftime('%Y-%m-%d %H:%M:%S.%f')
     h2.to_csv(_os.path.join(sub2, 'RH30_qlf.csv'), index=False)
     pd.DataFrame({'x': [1]}).to_csv(_os.path.join(sub1, 'QCS_report.csv'), index=False)  # report file: ignore
     h1.to_csv(_os.path.join(sub2, 'PAB3_copia.csv'), index=False)  # exact duplicates: dedup
@@ -1570,6 +1574,56 @@ ok.append('manual cut: Help uses the shell-replaceable plot dialog facade')
 # interrupt the line at the missing/BAD cell, or connect the surviving points.
 # 'both' must generate two named figures so the operator can compare them.
 import QCS_DataView as _data_view                         # noqa: E402
+
+# Curated/multi-deployment HOBO plots must not turn the first BAD light flag
+# into one site-wide fouling window. Spans remain source-aware, while the
+# across-sites comparison needs no matching datetimes: each selected series
+# starts at elapsed day zero after the absolute Time window is applied.
+_fouling_frame = pd.DataFrame({
+    'Datetime': pd.to_datetime([
+        '2025-01-01', '2025-01-02', '2025-01-03',
+        '2025-06-01', '2025-06-02', '2025-06-03', '2025-06-04']),
+    'Source file': ['old.csv'] * 3 + ['new.csv'] * 4,
+    'Flag_lux': [4, 4, 4, 1, 1, 4, 4],
+})
+assert _data_view._hobo_light_bad_spans(_fouling_frame) == [
+    (pd.Timestamp('2025-01-01'), pd.Timestamp('2025-01-03')),
+    (pd.Timestamp('2025-06-03'), pd.Timestamp('2025-06-04')),
+]
+ok.append('HOBO fouling spans: separate qualified deployments stay separate')
+
+_across_frame = pd.DataFrame({
+    'Datetime': pd.to_datetime([
+        '2025-01-01', '2025-01-02', '2025-06-01', '2025-06-02']),
+    'Site': ['A', 'A', 'B', 'B'],
+    'Temperature (degC)': [25.0, 26.0, 27.0, 28.0],
+})
+_across_settings = {
+    'siteList': ['A', 'B'], 'parameterList': ['Temperature (degC)'],
+    'filterByYears': [2025], 'xAxisStart': pd.Timestamp('2025-01-01'),
+    'xAxisEnd': pd.Timestamp('2025-12-31 23:59'),
+    'tendencyLines': False, 'linearRegressionDegree': None,
+    'viewDataPoints': True, 'fixedScale': False, 'scaleSettings': {},
+}
+_real_savefig = _data_view.plt.savefig
+_real_show_panels = _data_view.show_panels
+try:
+    _data_view.plt.savefig = lambda *args, **kwargs: None
+    _data_view.show_panels = lambda *args, **kwargs: None
+    assert _data_view.plot_hobo_params_across_sites(
+        _across_frame, _across_settings) == 1
+    _across_ax = _data_view.plt.gcf().axes[0]
+    _site_lines = {line.get_label(): np.asarray(line.get_xdata(), dtype=float)
+                   for line in _across_ax.lines if line.get_label().endswith(' data')}
+    assert np.allclose(_site_lines['A data'], [0.0, 1.0])
+    assert np.allclose(_site_lines['B data'], [0.0, 1.0])
+    assert 'Elapsed days' in _across_ax.get_xlabel()
+finally:
+    _data_view.plt.savefig = _real_savefig
+    _data_view.show_panels = _real_show_panels
+    _data_view.plt.close('all')
+ok.append('parameters across sites: unmatched dates align by elapsed time')
+
 _gap_times = pd.date_range('2026-01-01', periods=3, freq='5min')
 _gap_frame = pd.DataFrame({
     'Datetime': _gap_times,
@@ -1622,6 +1676,150 @@ assert data.detect_known_qualified_instrument(pd.DataFrame(columns=[
 assert data.detect_known_qualified_instrument(pd.DataFrame(columns=[
     'Datetime', 'Site', 'Flag'])) is None
 ok.append('visualization instrument identity: strict known layouts; unknown stays editable')
+
+# A curated database is one workbook, not one scientifically invalid stacked
+# table: each instrument keeps its own layout and Included products preserves
+# the source-product trail.  Calendar years come from Datetime rather than the
+# campaign-semester folder because deployments can cross New Year.
+import QCS_Curated as _curated                         # noqa: E402
+with _tempfile.TemporaryDirectory() as _curated_root:
+    _sg_dir = _os.path.join(_curated_root, 'SEAGUARD', 'qualified',
+                            '2026S1', 'PAB3')
+    _dcps_dir = _os.path.join(_curated_root, 'SEAGUARD', 'qualified',
+                              '2026S1', 'RH30')
+    _hobo_dir = _os.path.join(_curated_root, 'HOBO', 'qualified',
+                              '2026S1', 'PAB3')
+    _raw_dir = _os.path.join(_curated_root, 'HOBO', 'raw',
+                             '2026S1', 'SHOULD_NOT_APPEAR')
+    _special_dir = _os.path.join(
+        _curated_root, 'HOBO', 'qualified', '2026S1',
+        '_PISCINAS', 'SGOM_NA')
+    _pool_site_dir = _os.path.join(
+        _curated_root, 'SEAGUARD', 'qualified', '2026S1',
+        'PISCINA_SGOM_FORA')
+    _unknown_site_dir = _os.path.join(
+        _curated_root, 'SEAGUARD', 'qualified', '2026S1',
+        '_SEM_SITIO')
+    for _folder in (_sg_dir, _dcps_dir, _hobo_dir):
+        _os.makedirs(_folder)
+    _os.makedirs(_raw_dir)
+    _os.makedirs(_special_dir)
+    _os.makedirs(_pool_site_dir)
+    _os.makedirs(_unknown_site_dir)
+    pd.DataFrame({
+        'Datetime': ['2026-01-01 00:00'], 'Site': ['SHOULD_NOT_APPEAR'],
+    }).to_csv(_os.path.join(_raw_dir, 'RAW_BUT_NAMED_QLF.csv'), index=False)
+    pd.DataFrame({
+        'Datetime': ['2026-01-01 00:00'], 'Site': ['SGOM_NA'],
+        'Temperature (degC)': [30.0], 'Luminosity (lux)': [100.0],
+        'Flag_T': [1], 'Flag_lux': [1],
+    }).to_csv(_os.path.join(
+        _special_dir, 'SGOM_NA_2026S1_HOBO_QLF.csv'), index=False)
+    pd.DataFrame({
+        'Datetime': ['2026-01-01 00:00'], 'Site': ['PISCINA_SGOM_FORA'],
+        'Temperature (degC)': [30.0], 'Salinity (PSU)': [36.0],
+        'Flag': ['1'],
+    }).to_csv(_os.path.join(
+        _pool_site_dir,
+        'PISCINA_SGOM_FORA_2026S1_SEAGUARD_FUNDEIO_QLF.csv'), index=False)
+    pd.DataFrame({
+        'Datetime': ['2026-01-01 00:00'], 'Site': ['_SEM_SITIO'],
+        'Temperature (degC)': [30.0], 'Salinity (PSU)': [36.0],
+        'Flag': ['1'],
+    }).to_csv(_os.path.join(
+        _unknown_site_dir,
+        '_SEM_SITIO_2026S1_SEAGUARD_PERFIL_QLF.csv'), index=False)
+    _sg_name = 'PAB3_2026S1_SEAGUARD_FUNDEIO_QLF.csv'
+    pd.DataFrame({
+        'Datetime': ['2025-12-31 23:00', '2026-01-01 00:00'],
+        'Site': ['PAB3', 'PAB4'], 'Temperature (degC)': [26.0, 26.1],
+        'Salinity (PSU)': [36.0, 36.1], 'Flag': ['1', '1'],
+    }).to_csv(_os.path.join(_sg_dir, _sg_name), index=False)
+    _dcps_name = 'RH30_2026S1_DOPPLER_FUNDEIO_QLF.csv'
+    pd.DataFrame({
+        'Datetime': ['2026-02-01 00:00'] * 2, 'Site': ['RH30'] * 2,
+        'Column': ['C1'] * 2, 'Cell': [1, 2], 'Depth (m)': [5.0, 10.0],
+        'Horizontal speed (cm/s)': [10.0, 11.0], 'Flag_cur': [1, 1],
+    }).to_csv(_os.path.join(_dcps_dir, _dcps_name), index=False)
+    _hobo_name = 'PAB3_2026S1_HOBO_QLF.csv'
+    pd.DataFrame({
+        'Datetime': ['2026-03-01 00:00', '2026-03-01 01:00'],
+        'Site': ['PAB3', 'PAB3'], 'Temperature (degC)': [27.0, 27.1],
+        'Luminosity (lux)': [0.0, 100.0], 'Flag_T': [1, 1], 'Flag_lux': [1, 1],
+    }).to_csv(_os.path.join(_hobo_dir, _hobo_name), index=False)
+
+    _catalog, _catalog_messages = _curated.discover_qualified_corpus(_curated_root)
+    assert len(_catalog) == 3 and int(_catalog['n_rows'].sum()) == 6, _catalog
+    _filters = _curated.available_filters(_catalog)
+    assert _filters['instruments'] == ['Seaguard', 'Doppler', 'HOBO'], _filters
+    assert _filters['sites'] == ['PAB3', 'PAB4', 'RH30']
+    assert _filters['years'] == [2025, 2026], _filters['years']
+    _pab3_filters = _curated.available_filters(
+        _catalog, sites=['PAB3'])
+    assert _pab3_filters == {
+        'instruments': ['Seaguard', 'HOBO'],
+        'sites': ['PAB3', 'PAB4', 'RH30'],
+        'years': [2025, 2026],
+    }, _pab3_filters
+    _year_2025_filters = _curated.available_filters(
+        _catalog, years=[2025])
+    assert _year_2025_filters == {
+        'instruments': ['Seaguard'], 'sites': ['PAB3'],
+        'years': [2025, 2026],
+    }, _year_2025_filters
+    _doppler_filters = _curated.available_filters(
+        _catalog, instruments=['Doppler'])
+    assert _doppler_filters == {
+        'instruments': ['Seaguard', 'Doppler', 'HOBO'],
+        'sites': ['RH30'], 'years': [2026],
+    }, _doppler_filters
+    assert _curated.select_catalog(
+        _catalog, ['Seaguard'], ['PAB3'], [2026]).empty
+    _tables, _included, _summary, _curated_messages = _curated.build_curated_tables(
+        _catalog, _filters['instruments'], _filters['sites'], [2026])
+    assert list(_tables) == ['Seaguard', 'Doppler', 'HOBO'], list(_tables)
+    assert {name: len(frame) for name, frame in _tables.items()} == {
+        'Seaguard': 1, 'Doppler': 2, 'HOBO': 2,
+    }
+    assert (_summary['products'] == 3
+            and _summary['contributing_products'] == 3
+            and _summary['rows'] == 5), _summary
+    assert int(_included['Selected rows'].sum()) == 5
+    _workbook = _os.path.join(_curated_root, 'QCS_curated.xlsx')
+    _curated.write_curated_workbook(
+        _workbook, _curated_root, _tables, _included, _summary)
+    with pd.ExcelFile(_workbook) as _xls:
+        assert _xls.sheet_names == [
+            'Seaguard', 'Doppler', 'HOBO', 'Included products', 'Read me'], \
+            _xls.sheet_names
+    _cancel_calls = [0]
+    def _cancel_during_write():
+        _cancel_calls[0] += 1
+        return _cancel_calls[0] >= 3
+    try:
+        _curated.write_curated_workbook(
+            _workbook, _curated_root, _tables, _included, _summary,
+            should_cancel=_cancel_during_write)
+        raise AssertionError('curated write did not honor cancellation')
+    except (_curated.CuratedOperationCancelled, InterruptedError):
+        pass
+    with pd.ExcelFile(_workbook) as _xls:
+        assert _xls.sheet_names[:3] == ['Seaguard', 'Doppler', 'HOBO']
+    assert not any(name.startswith('.QCS_curated-')
+                   for name in _os.listdir(_curated_root))
+    try:
+        _curated.discover_qualified_corpus(
+            _curated_root, should_cancel=lambda: True)
+        raise AssertionError('catalog discovery did not honor cancellation')
+    except _curated.CuratedOperationCancelled:
+        pass
+    assert data.curated_workbook_instruments(_workbook) == [
+        'Seaguard', 'Doppler', 'HOBO']
+    _curated_hobo, _curated_hobo_messages = data.build_database(
+        'HOBO', file_list=[_workbook])
+    assert len(_curated_hobo) == 2
+    assert set(_curated_hobo['Source file']) == {_hobo_name}
+ok.append('curated database (dynamic filters / cancellation / visualization handoff)')
 
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

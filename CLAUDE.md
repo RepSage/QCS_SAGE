@@ -25,7 +25,8 @@ and the code calls `zip(..., strict=True)`, which needs ≥ 3.10 — the suite d
 on it (verified 2026-08-06).
 
 - **`QCS.bat`** at the repo root is the launcher: a single window with the Data
-  Qualification and Data Visualization tabs. It starts **`QCS_QtApp.py`** (the
+  Qualification, Curated Database and Data Visualization tabs. It starts
+  **`QCS_QtApp.py`** (the
   Qt shell) through `packaging/v12_env/Scripts/pythonw.exe`, so there is no
   console - the Anaconda base cannot host PySide6 on this machine. The tk shell
   `sourceCode/QCS_App.py` is still in the tree and still runs, but it is not
@@ -94,7 +95,9 @@ archive and diff the counts against the previous `qualified_index.csv`.
 - **`build_database()`** (`QCS_DataHandler.py`) is the single unification engine
   for merging qualified files. It detects HOBO vs. Seaguard layouts and refuses
   to mix them; it deduplicates exact rows and warns on Site+Datetime overlaps.
-  Do not write ad-hoc merge logic elsewhere.
+  Do not write ad-hoc merge logic elsewhere. The Curated Database may package
+  several instruments into one workbook, but it must call this engine once per
+  layout and keep those layouts in separate sheets.
 - **HOBO vs. Seaguard**: HOBO files run only the temperature tests plus the light
   fouling-window test (`light_cutoff_window`), and have their own output column
   layout. Layout detection: `detect_qualified_layout()` in `QCS_DataHandler.py`.

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Batch-qualify one SITE for one SEMESTER (HOBO first, then SEAGUARD sensors,
-   then DOPPLER), organizing the results under CLAUDE\\<inst>\\qualified with a
+   then DOPPLER), organizing the results under DATABASE\\<inst>\\qualified with a
    uniform semester-based name and every applicable DataView panel.
 
    The semester tag unifies the two corpora: the same expedition is labeled
@@ -33,7 +33,7 @@ import QCS_DataHandler as dh
 import QCS_DataView as view
 import pandas as pd
 
-ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE"
+ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE"
 SG_RAW, SG_QLF = os.path.join(ROOT, 'SEAGUARD', 'raw'), os.path.join(ROOT, 'SEAGUARD', 'qualified')
 H_RAW, H_QLF = os.path.join(ROOT, 'HOBO', 'raw'), os.path.join(ROOT, 'HOBO', 'qualified')
 # HOBO light cutoff mode for the corpus: 'fixed' (BAD from lux_fixed_days = 60
@@ -51,7 +51,15 @@ def log(m):
 
 def campaign_date(campaign):
     """The campaign's own month as a date ('RRDM 6a MAI 2019' -> 2019-05-01),
-    or None when the label does not carry both a month and a year."""
+    or the semester end for the canonical raw layout ('2019S1' -> 2019-06-30).
+
+    The semester end preserves the re-file ownership rule: a deployment belongs
+    to the earliest semester whose end covers its recovery date.
+    """
+    canonical = re.fullmatch(r'((?:19|20)\d\d)S([12])', campaign)
+    if canonical:
+        year, half = (int(value) for value in canonical.groups())
+        return _dt.date(year, 6, 30) if half == 1 else _dt.date(year, 12, 31)
     yr = re.search(r'(19|20)\d\d', campaign)
     mon = next((PT2NUM[w] for w in re.findall(r'[A-Za-zÇÃÁÉÍÓÚçãáéíóú]+', campaign.upper())
                 if w in PT2NUM), None)
@@ -102,6 +110,8 @@ def _owning_campaign(site):
 
 def sem_tag(campaign):
     """'1 - ABRIL 2019' -> '2019S1'; 'RRDM 6a MAI 2019' -> '2019S1'."""
+    if re.fullmatch(r'(?:19|20)\d\dS[12]', campaign):
+        return campaign
     yr = re.search(r'(19|20)\d\d', campaign)
     mon = None
     for w in re.findall(r'[A-Za-zÇÃÁÉÍÓÚçãáéíóú]+', campaign.upper()):
@@ -336,9 +346,10 @@ def pick_co2(co2s, cast_start_gmt):
 def plan(site, sem):
     """[{kind, tipo, campaign, start, files, co2}] across EVERY campaign of the
     semester (a semester can hold two expeditions)."""
+    if site.upper() == '_SEM_SITIO' or site.upper().startswith('PISCINA_'):
+        return []
     items = []
-    # HOBO - campaign-first (like SG_RAW below) since the 2026-08-13
-    # reorganization: HOBO\raw\<RRDM campaign>\<site>\planilha
+    # Both raw trees are semester-first: raw\<YEAR>S<n>\<site>.
     for camp in sorted(os.listdir(H_RAW)):
         cdir = os.path.join(H_RAW, camp, site)
         if os.path.isdir(cdir) and sem_tag(camp) == sem:
@@ -395,7 +406,7 @@ def plan(site, sem):
     return items
 
 
-# ---------------- the two HOBO-only buckets (_PISCINAS / _EXPERIMENTOS) -------
+# ---------------- HOBO exports excluded from ordinary site qualification -------
 # Exports excluded from qualification, dropped in _sheets so every path that
 # lists sheets honours it. Each entry must carry the evidence. Two kinds:
 #
@@ -480,13 +491,7 @@ def _fail_on_wrong_clock(name):
     12 h phase error. In the GUI the accusation pops a dialog; in batch the
     log is a no-op and dialogs are only read on failure, so without this check
     the wrong-clock product would land in the corpus with only a provenance
-    line to show for it.
-
-    NOT applied to the _EXPERIMENTOS bucket: the accusation rests on 'a
-    submerged sensor must peak at local noon', which is true for a moored
-    logger and false for a short macroalgae incubation in a tank, where the
-    lighting is whatever the experiment imposed. Those products keep the
-    `clock :` provenance line and the operator judges it."""
+    line to show for it."""
     for fname, c in qm.OUTPUT.get('clock_checks', []):
         if c.get('suspect_shift_h') is not None:
             raise RuntimeError(
@@ -678,7 +683,13 @@ def _bucket_order(name):
 
 
 def plan_buckets(sem):
-    """Products of the HOBO-only buckets for this semester."""
+    """Special experiments/pools are not part of the monitoring corpus."""
+    return []
+
+    # Historical implementation retained below only to document how the
+    # pre-2026-08-25 archive was interpreted. This function deliberately
+    # returns before reaching it, so restored special files cannot silently
+    # re-enter a batch qualification.
     items = []
     # _PISCINAS: <campaign>\<bucket>\planilha (campaign-first since the
     # 2026-08-13 reorganization) - the bucket IS the site, and the sheets in

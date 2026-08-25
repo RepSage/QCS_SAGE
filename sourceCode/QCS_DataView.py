@@ -101,6 +101,14 @@ def _time_of_day_axis(ax, h0, h1):
     ax.set_xlabel("Time of day (00:00 = midnight of each site's first day; dashed lines = day boundaries)")
 
 
+def _elapsed_days_axis(ax, max_day):
+    """Common deployment-relative axis for sites sampled on different dates."""
+    upper = max(float(max_day), 1.0)
+    ax.set_xlim(0.0, upper)
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=9, min_n_ticks=3))
+    ax.set_xlabel("Elapsed days since each site's first selected sample")
+
+
 # display labels for the internal semester keys (titles/log lines only; file
 # names keep the compact space-less key)
 _SEM_LABEL = {'1stSemester': '1st semester', '2ndSemester': '2nd semester'}
@@ -877,7 +885,8 @@ def plot_database_panel1 (database, dataViewSettings):
 
 def plot_database_panel2(database, dataViewSettings):
     """
-    Generates time series plots for multiple parameters and sites, adapted for deployments of up to 48 hours.
+    Compare each parameter across sites on elapsed time from each site's first
+    selected sample; timestamps do not need to coincide.
 
     Parameters:
         database (DataFrame): DataFrame containing the data to be plotted
@@ -905,6 +914,10 @@ def plot_database_panel2(database, dataViewSettings):
     # Data pre-processing
     db_raw = database.copy()
     db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
+    # The absolute window first selects the calendar rows. Each site's
+    # surviving series is then overlaid on elapsed time, so no timestamp match
+    # between deployments is required.
+    db_raw = _apply_time_window(db_raw, dataViewSettings)
     db_raw.index = db_raw['Datetime']
     db_raw = db_raw.rename_axis('dt_index')
     db_raw = db_raw.sort_values(by='dt_index')
@@ -921,11 +934,6 @@ def plot_database_panel2(database, dataViewSettings):
 
     # Main plotting loop
     for semester in db.keys():
-        # window anchor: midnight of the FIRST day of the selected sites' data in
-        # this semester (see _window_day_hours - keeps the window's day offset)
-        sem_sel = db[semester][db[semester]['Site'].isin(site_names)]
-        window_anchor = sem_sel['Datetime'].min().normalize() if not sem_sel.empty else None
-        win = _window_day_hours(dataViewSettings, window_anchor)
         for parameter in parameter_names:
             display_param = rParam[parameter_names.index(parameter)]
             fig, ax1 = plt.subplots(figsize=(980/100, 500/100))
@@ -934,7 +942,7 @@ def plot_database_panel2(database, dataViewSettings):
             plt.grid(True, linestyle='dotted', linewidth=0.5)
             ax1.set_ylabel(display_param)
             control = 0
-            max_hour = 0.0
+            max_day = 0.0
 
             for site in site_names:
                 # Extract data for the specific site
@@ -942,15 +950,8 @@ def plot_database_panel2(database, dataViewSettings):
                 y = y[parameter][(y.loc[:,'Site'] == site)]
                 y = y.loc[~(y.index.duplicated(keep=False) & y.isna())]
 
-                # X axis standardized by TIME OF DAY (B6): hours since midnight of
-                # each site's OWN first sampled day, so x=15 is 15:00 of day 1 for
-                # every site and sites sampled on different dates overlay by clock
-                # time. The time window filters in the same day-offset+clock terms.
                 if not y.empty:
-                    site_origin = y.index.min().normalize()
-                    if win is not None:
-                        x_all = (y.index - site_origin).total_seconds() / 3600
-                        y = y[(x_all >= win[0]) & (x_all <= win[1])]
+                    site_origin = y.index.min()
 
                 if y.empty:
                     if not db[semester].empty:   # skip the noise for an empty semester
@@ -959,30 +960,30 @@ def plot_database_panel2(database, dataViewSettings):
 
                 control += 1
                 y, gap_ids = fill_NaT_gap(y)  # Fill gaps
-                x_hours = (y.index - site_origin).total_seconds() / 3600
-                max_hour = max(max_hour, float(np.nanmax(x_hours)))
+                x_days = (y.index - site_origin).total_seconds() / 86400
+                max_day = max(max_day, float(np.nanmax(x_days)))
 
                 # Plotting the data. Pressure is NEVER fitted (tidal signal: a
                 # polynomial through it is meaningless) - its raw series is drawn
                 # as a dashed line instead, the same rule used in Panel 1.
                 if fit_lin_regression and parameter == 'Pressure (dbar)':
-                    ax1.plot(x_hours, y, linestyle='--', marker='None',
+                    ax1.plot(x_days, y, linestyle='--', marker='None',
                             color=colors[site], label=f'{site} data')
                 elif fit_lin_regression:
                     xp, yp = linear_regression(y, degree=deg)
                     yp = _floor_fit(yp)
-                    xp_hours = (xp - site_origin).total_seconds() / 3600
+                    xp_days = (xp - site_origin).total_seconds() / 86400
 
                     if points:
-                        ax1.plot(x_hours, y, linestyle='none', marker='.',
+                        ax1.plot(x_days, y, linestyle='none', marker='.',
                                 color=colors[site], markersize=3, label=f'{site} data')
-                        ax1.plot(xp_hours, yp, linestyle='-',
+                        ax1.plot(xp_days, yp, linestyle='-',
                                 color=colors[site], label=f'{site} tendency')
                     else:
-                        ax1.plot(xp_hours, yp, linestyle='-',
+                        ax1.plot(xp_days, yp, linestyle='-',
                                 color=colors[site], label=f'{site} tendency')
                 else:
-                        ax1.plot(x_hours, y, linestyle='none', marker='.',
+                        ax1.plot(x_days, y, linestyle='none', marker='.',
                                 color=colors[site], markersize=3, label=f'{site} data')
 
             # Plot settings
@@ -990,12 +991,7 @@ def plot_database_panel2(database, dataViewSettings):
                 plt.close(fig)
                 continue
 
-            # midnight-anchored clock axis; the window (when set) fixes the same
-            # day-offset + clock range in every plot so sites/files compare 1:1
-            if win is not None:
-                _time_of_day_axis(ax1, win[0], win[1])
-            else:
-                _time_of_day_axis(ax1, 0.0, max(np.ceil(max_hour / 6.0) * 6.0, 24.0))
+            _elapsed_days_axis(ax1, max_day)
 
             # Legend and layout
             ax1.legend(loc='upper left', bbox_to_anchor=(1, 1.01), fontsize=7)
@@ -1286,14 +1282,55 @@ def _lux_daily_peak (db):
     return s.resample('D').max().dropna()
 
 
-def _hobo_light_cutoff_start (db):
-    """First instant with Flag_lux == 4 (start of the fouling window),
-    or None if the light is usable for the entire plotted period."""
-    flag_lux = pd.to_numeric(db['Flag_lux'], errors='coerce')
-    flagged_times = db.loc[flag_lux == 4, 'Datetime']
-    if flagged_times.empty:
-        return None
-    return flagged_times.iloc[0]
+def _hobo_light_bad_spans(db):
+    """Contiguous Flag_lux=4 spans, kept separate across source deployments.
+
+    A curated site can contain several qualified products. Taking the first
+    BAD row and shading through the end incorrectly covered later clean
+    deployments; source-aware spans represent the flags that are actually in
+    each product. Overlapping spans are merged only for a clean visual.
+    """
+    if 'Flag_lux' not in db.columns or db.empty:
+        return []
+    groups = (db.groupby('Source file', dropna=False, sort=False)
+              if 'Source file' in db.columns else [(None, db)])
+    spans = []
+    for _source, group in groups:
+        group = group.sort_values('Datetime')
+        times = pd.to_datetime(group['Datetime'], errors='coerce')
+        flags = pd.to_numeric(group['Flag_lux'], errors='coerce').eq(4)
+        valid_times = times.dropna().sort_values()
+        diffs = valid_times.diff().dropna()
+        positive = diffs[diffs > pd.Timedelta(0)]
+        gap_limit = (max(positive.median() * 3, pd.Timedelta(hours=6))
+                     if not positive.empty else pd.Timedelta(hours=6))
+        start = end = previous = None
+        for timestamp, is_bad in zip(times, flags, strict=True):
+            if pd.isna(timestamp):
+                continue
+            timestamp = pd.Timestamp(timestamp)
+            split = (previous is not None
+                     and timestamp - previous > gap_limit)
+            if is_bad:
+                if start is None or split:
+                    if start is not None:
+                        spans.append((start, end))
+                    start = timestamp
+                end = timestamp
+            elif start is not None:
+                spans.append((start, end))
+                start = end = None
+            previous = timestamp
+        if start is not None:
+            spans.append((start, end))
+
+    merged = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
 
 
 def plot_hobo_params_at_site (database, dataViewSettings, site):
@@ -1375,12 +1412,14 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
                          label='Daily light peak')
             handles.append(h)
             if 'Flag_lux' in db.columns:
-                cutoff = _hobo_light_cutoff_start(db)
-                if cutoff is not None:
-                    ax.axvline(cutoff, color='#b30000', lw=1.6)
-                    handles.append(ax.axvspan(cutoff, db['Datetime'].iloc[-1],
-                                              color='#b30000', alpha=0.10,
-                                              label='Fouling window (light unusable)'))
+                for span_index, (start, end) in enumerate(
+                        _hobo_light_bad_spans(db)):
+                    ax.axvline(start, color='#b30000', lw=1.2)
+                    span = ax.axvspan(
+                        start, end, color='#b30000', alpha=0.10,
+                        label='Fouling/BAD light window')
+                    if span_index == 0:
+                        handles.append(span)
         ax.set_ylabel(display, color=bcParam[param])
         ax.tick_params(axis='y', colors=bcParam[param])
         if i == 1:
@@ -1401,8 +1440,9 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
 
 def plot_hobo_params_across_sites (database, dataViewSettings):
     """HOBO 'Parameters across sites': ONE figure per selected parameter with
-    every selected site overlaid on the TIME-OF-DAY axis (hours since each
-    site's own first midnight - B6), spanning every selected year in one plot.
+    every selected site overlaid by elapsed time from its first selected sample,
+    spanning every selected year in one plot. Absolute Time window filtering is
+    applied first; no timestamp match between deployments is required.
     Temperature: dots + optional per-site tendency (floored at 0). Light: the
     daily-peak envelope per site (linear scale) with each site's fouling cutoff
     marked. Returns the number of figures generated."""
@@ -1414,15 +1454,6 @@ def plot_hobo_params_across_sites (database, dataViewSettings):
     deg = dataViewSettings['linearRegressionDegree']
     points = dataViewSettings['viewDataPoints']
 
-    # window anchor: midnight of the first day over the SELECTED sites/years
-    # (see _window_day_hours - keeps the window's day offset + clock time)
-    years = dataViewSettings.get('filterByYears') or []
-    sel = database[database['Site'].isin(site_names)]
-    if years:
-        sel = sel[sel['Datetime'].dt.year.isin(years)]
-    window_anchor = sel['Datetime'].min().normalize() if not sel.empty else None
-    win = _window_day_hours(dataViewSettings, window_anchor)
-
     n_figs = 0
     for param in params:
         display = renameParameters([param])[0]
@@ -1430,9 +1461,9 @@ def plot_hobo_params_across_sites (database, dataViewSettings):
         plt.subplots_adjust(bottom=0.14)
         ax.grid(True, linestyle='dotted', linewidth=0.5)
         plotted = 0
-        max_hour = 0.0
+        max_day = 0.0
         for site in site_names:
-            db = _hobo_slice_years(database, dataViewSettings, site, time_window=False)
+            db = _hobo_slice_years(database, dataViewSettings, site)
             if db.empty or param not in db.columns:
                 print('\nNo %s data for %s.' % (param, site))
                 continue
@@ -1440,56 +1471,50 @@ def plot_hobo_params_across_sites (database, dataViewSettings):
             if not values.notna().any():
                 print('\nNo %s data for %s.' % (param, site))
                 continue
-            site_origin = db['Datetime'].min().normalize()
-            x_hours = (pd.DatetimeIndex(db['Datetime']) - site_origin).total_seconds() / 3600
-            if win is not None:
-                # x_hours is an Index, so the comparison already yields a
-                # plain numpy bool array - '.values' on it crashed the panel
-                # whenever a time window was set (latent since the B6 window)
-                keep = (x_hours >= win[0]) & (x_hours <= win[1])
-                db, values, x_hours = db[keep], values[keep], x_hours[keep]
-                if db.empty:
-                    print('\nNo %s data for %s inside the X-axis window.' % (param, site))
-                    continue
-            max_hour = max(max_hour, float(x_hours.max()))
+            site_origin = db['Datetime'].min()
+            x_days = ((pd.DatetimeIndex(db['Datetime']) - site_origin)
+                      .total_seconds() / 86400)
+            max_day = max(max_day, float(x_days.max()))
             if param == 'Luminosity (lux)':
                 peak = _lux_daily_peak(db)
-                peak_h = (peak.index - site_origin).total_seconds() / 3600
+                peak_days = (peak.index - site_origin).total_seconds() / 86400
                 if points:
-                    ax.plot(x_hours, values, linestyle='None', marker='.',
+                    ax.plot(x_days, values, linestyle='None', marker='.',
                             markersize=2, alpha=0.30, color=colors[site])
-                ax.plot(peak_h, peak.values, linestyle='-', marker='.', markersize=4,
+                ax.plot(peak_days, peak.values, linestyle='-', marker='.', markersize=4,
                         lw=1.2, color=colors[site], label='%s daily peak' % site)
                 if 'Flag_lux' in db.columns:
-                    cutoff = _hobo_light_cutoff_start(db)
-                    if cutoff is not None:
-                        cutoff_h = (pd.Timestamp(cutoff) - site_origin).total_seconds() / 3600
-                        ax.axvline(cutoff_h, color=colors[site], lw=1.4, linestyle='--',
-                                   label='%s cutoff (%s)' % (site, pd.Timestamp(cutoff).date()))
+                    for span_index, (start, end) in enumerate(
+                            _hobo_light_bad_spans(db)):
+                        start_day = ((start - site_origin).total_seconds()
+                                     / 86400)
+                        end_day = ((end - site_origin).total_seconds()
+                                   / 86400)
+                        ax.axvspan(
+                            start_day, end_day, color=colors[site], alpha=0.08,
+                            label=('%s Fouling/BAD window' % site
+                                   if span_index == 0 else None))
             else:
                 if fit:
                     s = pd.Series(values.values, index=pd.DatetimeIndex(db['Datetime'])).dropna()
                     if points:
-                        ax.plot(x_hours, values, linestyle='None', marker='.',
+                        ax.plot(x_days, values, linestyle='None', marker='.',
                                 markersize=3, color=colors[site], label='%s data' % site)
                     if len(s) > 3:
                         xp, yp = linear_regression(s, degree=deg)
                         yp = _floor_fit(yp)
-                        xp_hours = (xp - site_origin).total_seconds() / 3600
-                        ax.plot(xp_hours, yp, linestyle='-', color=colors[site],
+                        xp_days = (xp - site_origin).total_seconds() / 86400
+                        ax.plot(xp_days, yp, linestyle='-', color=colors[site],
                                 label='%s tendency' % site)
                 else:
-                    ax.plot(x_hours, values, linestyle='None', marker='.',
+                    ax.plot(x_days, values, linestyle='None', marker='.',
                             markersize=3, color=colors[site], label='%s data' % site)
             plotted += 1
         if plotted == 0:
             plt.close(fig)
             print('\nNo %s data for any selected site.' % param)
             continue
-        if win is not None:
-            _time_of_day_axis(ax, win[0], win[1])
-        else:
-            _time_of_day_axis(ax, 0.0, max(np.ceil(max_hour / 6.0) * 6.0, 24.0))
+        _elapsed_days_axis(ax, max_day)
         ax.set_ylabel(display)
         ax.set_title('HOBO %s across sites' % display)
         if dataViewSettings.get('fixedScale') and param in dataViewSettings.get('scaleSettings', {}):

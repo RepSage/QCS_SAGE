@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v13.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v13.2</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -168,9 +168,10 @@
             <li><a href="#hobo_data">9. HOBO Data (Temperature and Light)</a></li>
             <li><a href="#generated_outputs">10. Generated Outputs</a></li>
             <li><a href="#data_visualization">11. Data Visualization</a></li>
-            <li><a href="#best_practices">12. Best Practices</a></li>
-            <li><a href="#running_from_source">13. Running from Source Code</a></li>
-            <li><a href="#troubleshooting">14. Troubleshooting</a></li>
+            <li><a href="#curated_database">12. Curated Database</a></li>
+            <li><a href="#best_practices">13. Best Practices</a></li>
+            <li><a href="#running_from_source">14. Running from Source Code</a></li>
+            <li><a href="#troubleshooting">15. Troubleshooting</a></li>
         </ul>
     </div>
 
@@ -187,7 +188,7 @@
         <li>Windows 10 or later (64-bit)</li>
         <li>Nothing else for the installed program — the installer is self-contained (no Python
             and no libraries to install). Running from source instead requires Python and the
-            project dependencies (see section 13).</li>
+            project dependencies (see section 14).</li>
     </ul>
 
     <h3>Installing (recommended)</h3>
@@ -208,23 +209,27 @@
     </div>
 
     <h3>The interface at a glance</h3>
-    <p>Both tools live in a <strong>single window</strong> (Qt, Fusion style): a menu bar
-    plus two tabs,
-    <strong>Data Qualification</strong> and <strong>Data Visualization</strong>.
+    <p>The three workflows live in a <strong>single window</strong> (Qt, Fusion style): a
+    menu bar plus the <strong>Data Qualification</strong>, <strong>Curated Database</strong>
+    and <strong>Data Visualization</strong> tabs.
     <strong>File</strong> carries the file-level actions of the tab (select data file(s),
     <code>Ctrl+O</code>; add CO&#8322; data; select or open the output folder; quality
-    control settings; exit, <code>Ctrl+Q</code>), <strong>View</strong> the dark mode and the
-    Execution log / Batch status panels, and <strong>Help</strong> the user manual,
+    control settings; exit, <code>Ctrl+Q</code>), <strong>View</strong> the dark and Field modes
+    and the Execution log / Batch status panels, and <strong>Help</strong> the user manual,
     <strong>Check for updates</strong> and About. The interface
-    offers a <strong>dark mode</strong> (View menu, remembered across sessions) and crisp text
+    offers a <strong>dark mode</strong> and a <strong>Field mode</strong> (both in the View menu
+    and remembered across sessions). Field mode disables only the <strong>Curated Database</strong>
+    tab, preventing accidental corpus work during field collection; turn it off to restore the
+    tab. Hovering the menu action or disabled tab explains the restriction. Text remains crisp
     on high-resolution displays. The <strong>Run qualification</strong> button enables only when
     everything required is filled &mdash; the hint under it names the next missing step &mdash;
     and a <strong>progress bar</strong> (bottom right) follows the pipeline stages, prefixed
     with the batch/replicate scope (e.g. <em>Replicate 2/2 - Stage 3/5</em>).</p>
     <p>The app runs with <strong>no terminal window</strong>: all progress, warnings and errors
     appear in the <strong>Execution log</strong> — one single panel at the bottom of the
-    window, the same log for every pipeline stage (qualification, database building/preview and
-    panel generation), color-coded by severity. The log is a <strong>dockable panel</strong>:
+    window, the same log for every pipeline stage (qualification, database building/preview,
+    panel generation and curated-corpus export), color-coded by severity. The log is a
+    <strong>dockable panel</strong>:
     drag it, detach it into its own window, or close it — <em>View &gt; Execution log</em>
     brings it back; messages keep accumulating while hidden. During a
     <strong>batch</strong> a <em>Batch status</em> panel lists one row per file with its state
@@ -591,7 +596,9 @@
             qualified-file header proves the same family. An unknown, unreadable or mixed
             selection leaves the field editable instead of locking a guess. The three layouts
             are <strong>never combined with each other</strong> &mdash; build a separate database
-            for each instrument. Both .csv and .xlsx files are read automatically. Clearing
+            for each instrument in Data Visualization. Curated Database can deliver those
+            separate layouts as sheets of one workbook. Both .csv and .xlsx files are read
+            automatically. Clearing
             <em>Database file(s)</em> also clears this identity and restores the
             <em>Select instrument</em> placeholder.</td>
         </tr>
@@ -646,7 +653,9 @@
             <td>Filter by Year</td>
             <td>Checkboxes for the years actually present in the loaded spreadsheet (detected
             automatically). You can check more than one year — panels are generated for each
-            checked year. If none is checked, a warning lists the available years.</td>
+            checked year. Changing this selection automatically fits X-Axis Start/End to the
+            exact interval available in the newly selected year(s). If none is checked, a warning
+            lists the available years.</td>
         </tr>
         <tr>
             <td>Panel 1</td>
@@ -658,7 +667,9 @@
             <td>Panel 2</td>
             <td>Checkbox to enable the panel comparing the same parameter between sites.
             <strong>With Instrument = HOBO</strong> it reads <em>"Parameters across sites"</em>.
-            Unavailable when the database has a single site.</td>
+            Sites do not need coincident timestamps: the actual Time window is applied first,
+            then each series starts at elapsed day zero. Unavailable when the database has a
+            single site.</td>
         </tr>
         <tr>
             <td>Panel 3</td>
@@ -723,9 +734,10 @@
         <tr>
             <td>X-Axis Start / X-Axis End (mooring)</td>
             <td>(Optional) Start and end of the time axis in mooring plots, in the format
-            <code>DD/MM/YYYY HH:MM</code>. Standardizes the time scale across plots, even where there
-            is no data (e.g. from 09:00 one day to 09:00 the next). Grayed out when the type is profile.
-            A label below follows the Site/Year filters and shows their available interval.
+            <code>DD/MM/YYYY HH:MM</code>. These are actual calendar limits; a cross-site panel
+            applies them before aligning each site's surviving series by elapsed days. Grayed out
+            when the type is profile. A label below follows the Site/Year filters and shows their
+            available interval; changing the Year filter resets both fields to that interval.
             An invalid date, reversed interval or value outside that interval stops generation
             and asks you to use the displayed <em>Data available</em> range.</td>
         </tr>
@@ -921,8 +933,9 @@
       was never started;</li>
       <li>the <strong>visualization choices</strong>: the database and output fields, the
       instrument, the panels and the plot colors set per parameter;</li>
-      <li>the <strong>recent selections</strong> of both tabs, the dark mode, and the folders
-      each Browse dialog should open at.</li>
+      <li>the <strong>recent selections</strong> of Qualification and Visualization, the
+      Curated Database corpus/output folders and output name, the dark and Field modes, and the
+      folders each Browse dialog should open at.</li>
     </ul>
     <p>The quality criteria are the one exception, by design: see the note below.</p>
     <div class="note">
@@ -1187,7 +1200,7 @@
     <h3>Section: Joining Files in QCS_DatabaseView (the build_database engine)</h3>
     <h4>Two ways to build the database</h4>
     <p>In the Database Input Settings window, first choose the <strong>Instrument</strong>
-    (Seaguard or HOBO — the two are never mixed in the same database) and then:</p>
+    (Seaguard, Doppler or HOBO &mdash; layouts are never mixed in the same table) and then:</p>
     <ol>
         <li><strong>Manual selection:</strong> in "Database File(s)", select one or several
             qualified files (.csv or .xlsx, in any combination) — they are combined, validated
@@ -1196,7 +1209,8 @@
             point "Input Path" to the folder that contains the QCS outputs. The scan is
             <strong>recursive</strong>: any subfolder named exactly
             <code>QCS qualified tscp data</code> (Seaguard) or
-            <code>QCS qualified hobo data</code> (HOBO) is found, at any level.</li>
+            <code>QCS qualified hobo data</code> (HOBO), and the corresponding Doppler current
+            folder, is found at any level.</li>
     </ol>
 
     <h4>Folder structure (example for Join mode)</h4>
@@ -1549,15 +1563,18 @@
                 one vertical bar per sample showing the replicate disagreement
                 (bar length = max &minus; min). Light: <strong>daily-peak envelope on a linear
                 scale</strong> (the fouling-review visual), optional raw points, and the fouling
-                window (<code>Flag_lux == 4</code>) shaded</td>
+                source-aware Fouling/BAD windows (<code>Flag_lux == 4</code>) shaded. Products
+                from separate deployments never turn the first BAD row into one continuous window
+                across later clean products</td>
             <td><code>hobo_params_&lt;site&gt;.svg</code></td>
         </tr>
         <tr>
             <td>Parameters across sites</td>
             <td>One figure per selected parameter with all sites overlaid on the
-                <strong>time-of-day axis</strong> (hours since each site's first midnight).
-                Light uses the per-site daily-peak envelope with each site's fouling cutoff
-                marked; temperature gains per-site tendency lines</td>
+                <strong>elapsed-days axis</strong> from each site's first selected sample, so
+                their timestamps do not need to coincide. The actual Time window filters rows
+                before this alignment. Light uses the per-site daily-peak envelope with each
+                source-aware Fouling/BAD window marked; temperature gains per-site tendency lines</td>
             <td><code>hobo_&lt;parameter&gt;_across_sites.svg</code></td>
         </tr>
     </table>
@@ -1837,7 +1854,74 @@
         <li>Save useful settings for reuse</li>
     </ol>
 
-    <h2 id="best_practices">12. Best Practices</h2>
+    <h2 id="curated_database">12. Curated Database</h2>
+    <p>The <strong>Curated Database</strong> tab builds a traceable subset directly from the
+    qualified corpus. It does not run quality tests again and never writes into the corpus.
+    On a field computer, enable <strong>View &gt; Field mode</strong> to disable this tab while
+    leaving Data Qualification and Data Visualization available; the choice persists until it
+    is turned off.
+    Select the folder that contains <code>SEAGUARD\qualified</code> and
+    <code>HOBO\qualified</code>, then choose <strong>Load catalog</strong>. The scan reads each
+    <code>*_QLF.csv</code>/<code>*_QLF.xlsx</code> product below those two
+    <code>qualified</code> trees; raw files and report spreadsheets are not cataloged. It reads
+    neither <code>_EXPERIMENTOS</code>, <code>_PISCINAS</code>, nor direct site folders whose
+    names begin with <code>PISCINA_</code>: those experiment and pool deployments are outside
+    the monitoring corpus and are ignored even if such a folder is restored later. It reads
+    each qualified product's Site and Datetime columns so the filters describe the data itself;
+    a prebuilt <code>qualified_index.csv</code> is not required.</p>
+
+    <h3>Selection</h3>
+    <p>Any combination of <strong>site</strong>, <strong>calendar year</strong> and
+    <strong>instrument</strong> can be selected. Each list has <em>All</em> and <em>None</em>
+    shortcuts. The three lists are dynamic: selecting one or more values in any list leaves only
+    the site/year/instrument options that occur with that combination in qualified data rows.
+    Broadening a selection restores compatible options without discarding choices that are still
+    valid. Instruments are ordered as Seaguard, Seaguard current profiler (Doppler), then HOBO.
+    The matching-product line is a quick catalog estimate; exact row counts are reported after the
+    workbook is built.</p>
+    <div class="note">
+      <p><strong>Year means the Datetime year.</strong> It is not inferred from the campaign
+      semester in the folder or product name. If a deployment crosses New Year, selecting one
+      year includes that product but writes only the rows whose Datetime belongs to the selected
+      year.</p>
+    </div>
+
+    <h3>Workbook structure</h3>
+    <p>The output is one <code>.xlsx</code> workbook. Its data remain scientifically explicit:</p>
+    <ul>
+      <li><strong>Seaguard</strong>, <strong>Doppler</strong> and <strong>HOBO</strong> each get
+      their own data sheet when selected. Their column sets and flag layouts are incompatible,
+      so they are never stacked into one ambiguous table.</li>
+      <li><strong>Included products</strong> records the campaign semester, corpus path, full
+      data interval, source-row count and selected-row contribution of every product.</li>
+      <li><strong>Read me</strong> records the QCS version, generation time, selected filters,
+      output counts, structure and flag-code legend.</li>
+    </ul>
+    <p>Within each instrument sheet, products are merged by the same
+    <code>build_database()</code> engine used by Data Visualization. Exact duplicate rows are
+    removed with a warning; rows sharing Site and Datetime but carrying different values are
+    kept and listed as a possible overlap. The output folder and name are remembered for the
+    next session. If that filename already exists, the app asks before replacing it. A selection
+    representing at least 250,000 source rows is identified as large in the Selection summary;
+    before building it, the app reports its product and source-row counts and asks whether to
+    continue because processing may take several minutes and the interface may respond slowly.
+    Until every requirement is met, a
+    short message below <strong>Build curated database</strong> states the next required action.
+    During the build, the standard status-bar indicator reports selection, one unification stage
+    per included instrument, and workbook writing. <strong>Cancel</strong> is available while
+    loading/refreshing the catalog and while building; it replaces the prerequisite hint while
+    work is active and stops at the next safe checkpoint.
+    The other workflows and window close action stay locked until the worker finishes. A canceled
+    write deletes its temporary file and never replaces an existing workbook, so no partial output
+    is presented as complete.</p>
+    <p>After a successful build, <strong>Open output folder</strong> and
+    <strong>Go to visualization</strong> appear below the build button. A workbook containing more
+    than one instrument asks which instrument sheet to visualize; Data Visualization then opens
+    that exact sheet directly on Step 2 while retaining the original product provenance. Loading
+    or refreshing the catalog hides shortcuts left by the preceding build because that workbook
+    belongs to the previous catalog state.</p>
+
+    <h2 id="best_practices">13. Best Practices</h2>
     <h3>For Data Qualification</h3>
     <ul>
         <li>Always check the console logs after processing</li>
@@ -1854,7 +1938,16 @@
         <li>Save frequently used visualization settings</li>
     </ul>
 
-    <h2 id="running_from_source">13. Running from Source Code</h2>
+    <h3>For Curated Databases</h3>
+    <ul>
+        <li>Reload the catalog after the qualified corpus changes.</li>
+        <li>Check the selected and contributing product counts in the completed workbook.</li>
+        <li>Keep the <em>Included products</em> and <em>Read me</em> sheets with every delivery.</li>
+        <li>Review overlap warnings in the Execution log before treating repeated timestamps as
+        independent observations.</li>
+    </ul>
+
+    <h2 id="running_from_source">14. Running from Source Code</h2>
 
     <p>Besides the installed program (section 2), QCS runs directly from the Python scripts —
     the development workflow: any change in the scripts takes effect immediately, with no need
@@ -1879,7 +1972,7 @@
     <div class="code-container">
         <button class="copy-btn" onclick="copyToClipboard('qcs-run-code')">Copy</button>
         <div class="code-block" id="qcs-run-code">
-	        <pre><code class="language-bash">python QCS_QtApp.py         # unified app (both tabs) - the normal entry point
+	        <pre><code class="language-bash">python QCS_QtApp.py         # unified app (three tabs) - the normal entry point
 python QCS_Main.py          # qualification tool only (development)
 python QCS_DatabaseView.py  # visualization tool only (development)</code></pre>
         </div>
@@ -1895,7 +1988,7 @@ python QCS_DatabaseView.py  # visualization tool only (development)</code></pre>
         </div>
     </div>
 
-    <h2 id="troubleshooting">14. Troubleshooting</h2>
+    <h2 id="troubleshooting">15. Troubleshooting</h2>
     <h3>Common Problems and Solutions</h3>
     <table>
         <tr>
@@ -1934,6 +2027,17 @@ python QCS_DatabaseView.py  # visualization tool only (development)</code></pre>
             <td>The message points to the file and the exact problem (missing column, mixing of
             Seaguard/HOBO layouts, etc.). Check that the selected Instrument matches the files and
             that all of them are qualified QCS outputs</td>
+        </tr>
+        <tr>
+            <td>Curated Database catalog does not load</td>
+            <td>Check that the network share is connected and that the selected root contains
+            <code>SEAGUARD\qualified</code> and/or <code>HOBO\qualified</code>. Loading is
+            read-only and does not require <code>qualified_index.csv</code>.</td>
+        </tr>
+        <tr>
+            <td>No products match a Curated Database selection</td>
+            <td>Select at least one site, calendar year and instrument. Remember that year is
+            read from each row's Datetime, not from the campaign-semester name.</td>
         </tr>
         <tr>
             <td>T-S diagram skipped</td>

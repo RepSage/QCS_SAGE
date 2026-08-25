@@ -44,7 +44,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 import QCS_DataHandler as dh
 
-ROOT = r'\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE'
+ROOT = r'\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE'
 
 # (sensor limit, environmental envelope) - QCS_Main.py defaultSettings
 LIMITS = {

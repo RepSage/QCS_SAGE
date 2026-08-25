@@ -17,16 +17,15 @@ sys.argv = ['qualify_site.py']          # keep its __main__ guard quiet
 spec.loader.exec_module(qs)
 
 sites = set()
-for camp in os.listdir(qs.SG_RAW):
-    p = os.path.join(qs.SG_RAW, camp)
-    if os.path.isdir(p) and qs.sem_tag(camp) == sem:
-        sites.update(d for d in os.listdir(p) if os.path.isdir(os.path.join(p, d)))
-# HOBO is campaign-first (like Seaguard) since the 2026-08-13 reorganization:
-# HOBO\raw\<RRDM campaign>\<site>. The _ buckets never match sem_tag.
-for camp in os.listdir(qs.H_RAW):
-    p = os.path.join(qs.H_RAW, camp)
-    if os.path.isdir(p) and qs.sem_tag(camp) == sem:
-        sites.update(d for d in os.listdir(p) if os.path.isdir(os.path.join(p, d)))
+for raw in (qs.SG_RAW, qs.H_RAW):
+    p = os.path.join(raw, sem)
+    if os.path.isdir(p):
+        sites.update(
+            d for d in os.listdir(p)
+            if os.path.isdir(os.path.join(p, d))
+            and d.upper() != '_SEM_SITIO'
+            and not d.upper().startswith('PISCINA_')
+        )
 
 sites = sorted(sites)
 print("=== SEMESTER %s : %d site(s) ===" % (sem, len(sites)))
@@ -40,17 +39,6 @@ for i, site in enumerate(sites, 1):
         import traceback; traceback.print_exc(); failed.append((site, str(e)[:80])); continue
     for name, fc, n, err in res:
         (total if fc else failed).append((name, n if fc else err))
-
-# the two HOBO-only buckets (_PISCINAS / _EXPERIMENTOS) sit outside the site tree
-if os.environ.get('QCS_SG_ONLY'):
-    print("\n(QCS_SG_ONLY: HOBO buckets skipped)")
-else:
-    print("\n----- buckets (_PISCINAS / _EXPERIMENTOS) -----")
-    try:
-        for name, fc, n, err in qs.do_buckets(sem):
-            (total if fc else failed).append((name, n if fc else err))
-    except Exception as e:
-        import traceback; traceback.print_exc(); failed.append(('BUCKETS', str(e)[:80]))
 
 print("\n\n================ SEMESTER %s SUMMARY ================" % sem)
 print("products OK : %d" % len(total))

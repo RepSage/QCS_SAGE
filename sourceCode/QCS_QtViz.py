@@ -342,6 +342,22 @@ class VisualizationTab(QWidget):
         dbv.apply_selected_files(names)   # fills tk fields + autodetects
         self.refresh_step1()
 
+    def apply_curated_workbook(self, path, instrument, advance=False):
+        """Open a specific instrument sheet from a curated multi-sheet file.
+
+        ``advance`` gives the curated tab's explicit shortcut the same meaning
+        as Qualification's Go to visualization button: load the new workbook
+        and land on Step 2, never on an older database's settings.
+        """
+        dbv.apply_selected_files([path])
+        dbv.instrument_combobox.set(instrument)
+        dbv.set_instrument_locked(True)
+        self.stack.setCurrentIndex(0)
+        self.refresh_step1()
+        qtheme.scroll_to_top(self)
+        if advance:
+            self._next()
+
     def _browse_output_folder(self):
         # same start folder and same save point as the tk selectOutputFolder:
         # the picker opens where the last one did instead of scanning the
@@ -571,7 +587,7 @@ class VisualizationTab(QWidget):
             cb = QCheckBox(str(site))
             cb.setToolTip(TOOLTIPS['site_filter'])
             self._check_pair(cb, dbv.site_vars[site], dbv.site_widgets.get(site),
-                             after=(dbv.toggle_scale_controls,))
+                             after=(dbv._refresh_scale_defaults,))
             self.site_checks[site] = cb
             ff.addWidget(cb)
         ff.addLayout(self._all_none_row(lambda: self.site_checks.values()))
@@ -587,7 +603,7 @@ class VisualizationTab(QWidget):
             cb = QCheckBox(str(y))
             cb.setToolTip(TOOLTIPS['filter_year'])
             self._check_pair(cb, dbv.year_vars[y], dbv.year_widgets.get(y),
-                             after=(dbv.toggle_scale_controls,))
+                             after=(dbv.year_filter_changed,))
             self.year_checks[y] = cb
             ygrid.addWidget(cb, i // 2, i % 2)
         yh = QWidget()

@@ -33,18 +33,18 @@ TOOLTIPS = {
     'output_path': "Folder for the outputs",
     'data_type': "Collection type: TSCP Mooring, TSCP Profile or TSCP Doppler\n(same naming as the qualification Data type)\nA HOBO database is shown as HOBO",
     'filter_year': "Year(s) to visualize\nPanels are generated once per selected year",
-    'time_start': "Optional: start of the time axis in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 15/04/2019 09:00); empty = fit the data\nCross-site panels keep the time of day: day offset + clock time\napply to each site's own days",
-    'time_end': "Optional: end of the time axis in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 16/04/2019 09:00); empty = fit the data\nCross-site panels keep the time of day: day offset + clock time\napply to each site's own days",
+    'time_start': "Optional: first actual date/time included in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 15/04/2019 09:00); changing the year fits this to the new available interval\nCross-site panels filter these dates first, then compare sites by elapsed time",
+    'time_end': "Optional: last actual date/time included in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 16/04/2019 09:00); changing the year fits this to the new available interval\nCross-site panels filter these dates first, then compare sites by elapsed time",
     'depth_min': "Optional: upper limit of the depth axis in profile/current plots (m)\nEmpty = fit the data",
     'depth_max': "Optional: lower limit of the depth axis in profile/current plots (m)\nEmpty = fit the data",
     'uv_gap_mode': "How the U/V component lines treat missing or BAD current cells\n"
                    "Break = show the discontinuity; Connect = join the surviving points;\n"
                    "Both = generate the two versions for direct comparison",
     'panel1': "Panel 1: parameters compared at the same site",
-    'panel2': "Panel 2: one parameter compared between sites",
+    'panel2': "Panel 2: one parameter compared between sites\nSites do not need matching timestamps: each starts at elapsed day 0",
     'panel3': "Panel 3: parameters compared at the same site (vertical profile)",
     'hobo_params_site': "Temperature/light at one site, one figure per site,\nall selected years in a single plot\nLight is drawn as its daily-peak envelope with the fouling window\nshaded; SUSPECT/BAD temperature is highlighted",
-    'hobo_params_across': "One figure per parameter, all sites together,\naligned by time of day (hours since each site's first midnight)\nLight uses the daily-peak envelope; each site's fouling cutoff\nis marked",
+    'hobo_params_across': "One figure per parameter, all sites together,\naligned by elapsed days from each site's first selected sample\nLight uses the daily-peak envelope; each source-aware Fouling/BAD\nwindow is marked",
     'ts_diagram': "Temperature-Salinity (T-S) diagram: temperature vs salinity with\ndepth as the color, to identify water masses",
     'latitude': "Latitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'longitude': "Longitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
@@ -363,6 +363,28 @@ def refresh_time_availability():
     label = globals().get('time_avail_lbl')
     if label is not None:
         label.config(text=time_availability_text(selected_database()))
+
+
+def reset_time_window_to_selection():
+    """Fit the editable X-axis window to the current Site/Year selection."""
+    entries = (globals().get('time_start_entry'),
+               globals().get('time_end_entry'))
+    if any(entry is None for entry in entries):
+        return
+    start, end = normalized_time_bounds(
+        *time_availability(selected_database()))
+    for entry, value in zip(entries, (start, end), strict=True):
+        if str(entry.cget('state')) == 'disabled':
+            continue
+        entry.delete(0, END)
+        if value is not None:
+            entry.insert(0, value.strftime(TIME_TEXT_FORMAT))
+
+
+def year_filter_changed():
+    """Refresh dependent values and fit Time window to the selected year(s)."""
+    _refresh_scale_defaults()
+    reset_time_window_to_selection()
 
 def toggle_all_controls(enabled=False):
     """Enables or disables all controls depending on the selected Data Type"""
@@ -808,8 +830,20 @@ def autodetect_instrument(paths):
     detected = []
     for path in paths:
         try:
-            head = (pd.read_csv(path, nrows=0) if path.lower().endswith('.csv')
-                    else pd.read_excel(path, nrows=0))
+            curated_instruments = data.curated_workbook_instruments(path)
+            if len(curated_instruments) > 1:
+                instrument_combobox.set('')
+                set_instrument_locked(False)
+                print(
+                    'Info: curated workbook contains multiple instrument sheets; '
+                    'select the one to visualize.')
+                return False
+            head = (
+                pd.read_csv(path, nrows=0)
+                if path.lower().endswith('.csv')
+                else pd.read_excel(
+                    path, sheet_name=(curated_instruments[0]
+                                      if curated_instruments else 0), nrows=0))
             instrument = data.detect_known_qualified_instrument(head)
             if instrument is None:
                 raise ValueError('header is not a recognized qualified QCS layout')
@@ -1450,7 +1484,12 @@ def load_database():
                 if file_paths[0].lower().endswith('.csv'):
                     head = pd.read_csv(file_paths[0], nrows=1)
                 else:
-                    head = pd.read_excel(file_paths[0], nrows=1)
+                    curated_instruments = data.curated_workbook_instruments(
+                        file_paths[0])
+                    sheet_name = (instrument if instrument in curated_instruments
+                                  else 0)
+                    head = pd.read_excel(
+                        file_paths[0], sheet_name=sheet_name, nrows=1)
                 lay = data.detect_qualified_layout(head)
                 inst_for_layout = {'hobo': 'HOBO', 'doppler': 'Doppler', 'tscp': 'Seaguard'}[lay]
                 if inst_for_layout != instrument:
@@ -1834,7 +1873,7 @@ def build_step2(parent):
         # changing the Year filter re-computes the auto scale defaults (their
         # range spans the selected years)
         cb = ttk.Checkbutton(filter_frame, text=str(db_year), variable=var,
-                             command=_refresh_scale_defaults)
+                             command=year_filter_changed)
         cb.grid(row=row_n, column=0, sticky='w', pady=2)
         ToolTip(cb, TOOLTIPS['filter_year'])
         year_vars[db_year] = var
@@ -2156,8 +2195,9 @@ def build_step2(parent):
             entry.delete(0, END)
             entry.insert(0, default_dt.strftime(TIME_TEXT_FORMAT))
 
-    _default_time(time_start_entry, data_start)
-    _default_time(time_end_entry, data_end)
+    default_start, default_end = normalized_time_bounds(data_start, data_end)
+    _default_time(time_start_entry, default_start)
+    _default_time(time_end_entry, default_end)
 
     _pending_step2 = {}  # consumed
 
