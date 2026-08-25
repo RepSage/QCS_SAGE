@@ -41,15 +41,15 @@ TOOLTIPS = {
                    "Break = show the discontinuity; Connect = join the surviving points;\n"
                    "Both = generate the two versions for direct comparison",
     'panel1': "Panel 1: parameters compared at the same site",
-    'panel2': "Panel 2: one parameter compared between sites\nSites do not need matching timestamps: each starts at elapsed day 0",
+    'panel2': "Panel 2: one parameter compared between sites\nSites do not need matching timestamps: each deployment starts at elapsed day 0",
     'panel3': "Panel 3: parameters compared at the same site (vertical profile)",
-    'hobo_params_site': "Temperature/light at one site, one figure per site,\nall selected years in a single plot\nLight is drawn as its daily-peak envelope with the fouling window\nshaded; SUSPECT/BAD temperature is highlighted",
-    'hobo_params_across': "One figure per parameter, all sites together,\naligned by elapsed days from each site's first selected sample\nLight uses the daily-peak envelope; each source-aware Fouling/BAD\nwindow is marked",
+    'hobo_params_site': "Temperature/light at one site, one figure per site,\nall selected years in a single plot\nEach deployment keeps its own tendency and gap-aware daily light peak;\nrecorded BAD light windows are shaded",
+    'hobo_params_across': "One figure per parameter, all sites together,\neach deployment aligned from its own elapsed day 0\nLight peaks never bridge unsampled days; recorded BAD light is\ndotted and faded",
     'ts_diagram': "Temperature-Salinity (T-S) diagram: temperature vs salinity with\ndepth as the color, to identify water masses",
     'latitude': "Latitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'longitude': "Longitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'ts_params': "Temperature & salinity pair for the T-S diagram:\nConservative T & Absolute S (TEOS-10, uses lat/long) or\nPotential T & Practical S (classic EOS-80)",
-    'tendency': "Adds regression lines to the plots",
+    'tendency': "Adds regression lines against real elapsed time\nHOBO deployments are fitted separately",
     'tendency_degree': "Degree of the regression polynomial (1 to 5)\n1 = linear, 2 = quadratic, 3 = cubic\nUse degrees 4-5 only when the data justify the extra curvature",
     'data_points': "Draws the individual data points on the plots",
     'disagreement_bars': "HOBO only: one vertical bar per sample on the temperature\n"
@@ -1124,6 +1124,7 @@ def generatePanels():
         # end reports how many panels were produced (no per-panel green lines, so
         # the log is not a wall of redundant "generated successfully" messages)
         n_ok = 0
+        scalar_figs = []
         if is_hobo_input():
             # HOBO: two panels, each spanning EVERY selected year in one figure
             # (a deployment crossing the new year is never split into truncated
@@ -1138,7 +1139,9 @@ def generatePanels():
                 if dataViewSettings.get('panel1', False):
                     for site in selected_sites:
                         try:
-                            n = view.plot_hobo_params_at_site(database, dataViewSettings, site)
+                            n = view.plot_hobo_params_at_site(
+                                database, dataViewSettings, site,
+                                figures=scalar_figs, show=False)
                             if n:
                                 error_logger.log("Info: HOBO parameters panel for %s generated." % site)
                                 n_ok += n
@@ -1147,7 +1150,9 @@ def generatePanels():
 
                 if dataViewSettings.get('panel2', False):
                     try:
-                        n = view.plot_hobo_params_across_sites(database, dataViewSettings)
+                        n = view.plot_hobo_params_across_sites(
+                            database, dataViewSettings,
+                            figures=scalar_figs, show=False)
                         if n:
                             error_logger.log("Info: HOBO across-sites panel(s) generated (%d figure(s))." % n)
                             n_ok += n
@@ -1220,6 +1225,9 @@ def generatePanels():
                         error_logger.log("Error generating cross-site current panel: %s" % e)
                 if dop_figs:
                     view.show_panels(dop_figs, browse=True)
+
+        if scalar_figs:
+            view.show_panels(scalar_figs, browse=len(scalar_figs) > 1)
 
         # Seaguard panels are generated once for each selected year
         for year in (selected_years if not (is_hobo_input() or is_doppler_input()) else []):
