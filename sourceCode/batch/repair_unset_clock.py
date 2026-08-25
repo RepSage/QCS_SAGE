@@ -60,7 +60,7 @@ import QCS_Tests as QC                                               # noqa: E40
 from repair_collapsed_clock import (_STAMP, parse_stamps,            # noqa: E402
                                     reconstruct, rewrite)
 
-ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE\HOBO"
+ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\HOBO"
 H_RAW = os.path.join(ROOT, 'raw')
 H_QLF = os.path.join(ROOT, 'qualified')
 

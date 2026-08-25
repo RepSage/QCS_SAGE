@@ -11,9 +11,9 @@ loop runs - every in-run interaction goes through the Qt overrides below.
 It hosts the whole program: the qualification workflow (Seaguard
 single/batch/Doppler/Profile with phase picking, CO2 merge, HOBO single and
 replicates in both light modes with the replicate review, Depth review,
-'Check variables' manual cut), the Settings window, and the Data visualization
-tab (QCS_QtViz remote-controls the real DatabaseView wizard). The review
-windows are pure matplotlib and open as Qt windows.
+'Check variables' manual cut), the Settings window, the Curated database tab,
+and the Data visualization tab (QCS_QtViz remote-controls the real DatabaseView
+wizard). The review windows are pure matplotlib and open as Qt windows.
 
 Run with:  QCS.bat  (packaging/v12_env venv, PySide6 6.8.3).
 """
@@ -71,6 +71,7 @@ import QCS_DataHandler as data
 import QCS_DataView as view      # the panel plots (show_panels hook)
 import QCS_DatabaseView as dbv
 import QCS_Update as upd
+from QCS_QtCurated import CuratedDatabaseTab
 from QCS_QtViz import VisualizationTab
 
 # Both tools share ONE preferences dict, so saving from either tab writes the
@@ -105,6 +106,16 @@ RECENT_HINTS = {
     True: 'Select a recent file to open',
     False: 'Clear data file(s) to select a recent file',
 }
+
+# Field mode is intentionally narrow: it only prevents access to the corpus
+# workflow, which is not used while collecting data away from the office.
+FIELD_MODE_TOOLTIP = (
+    'Disable the Curated database tab while collecting data in the field.')
+CURATED_TAB_TOOLTIP = (
+    'Build a filtered, traceable workbook from the qualified corpus.')
+CURATED_TAB_FIELD_TOOLTIP = (
+    'Disabled by Field mode. Turn it off in View > Field mode to use '
+    'Curated database.')
 
 
 class _UpdateBridge(QObject):
@@ -2139,12 +2150,20 @@ class QtShell(QMainWindow):
         self._cancel = threading.Event()   # read by the worker, set by Cancel
         self._cancel_raised = False        # RunCanceled already thrown once
         self._stage_total = 5       # stages the running pipeline logs (Doppler has 4)
+        self._qualification_busy = False
+        self._curated_busy = False
 
         tabs = QTabWidget()
         # every page is wrapped: a page that cannot shrink caps how far the
         # Execution log can be dragged open (see qtheme.scrollable)
-        tabs.addTab(qtheme.scrollable(self._qualification_tab()),
-                    'Data qualification')
+        self._qualification_page = qtheme.scrollable(self._qualification_tab())
+        tabs.addTab(self._qualification_page, 'Data qualification')
+        self.curated_tab = None
+        self._curated_page = None
+        self._curated_placeholder = QWidget()
+        tabs.addTab(self._curated_placeholder, 'Curated database')
+        tabs.setTabToolTip(tabs.indexOf(self._curated_placeholder),
+                           CURATED_TAB_TOOLTIP)
         self.viz_tab = None               # attached by main() after the bootstrap
         self._viz_page = None             # the scroll area that holds viz_tab
         self._viz_placeholder = QWidget()
@@ -2284,6 +2303,12 @@ class QtShell(QMainWindow):
         shell saved on exit (QCS_App.remember_window_state) and the port had no
         closeEvent at all, so every session reopened at the default size
         (v12.2)."""
+        if self.curated_tab is not None and self.curated_tab.is_busy():
+            QMessageBox.warning(
+                self, 'Curated database in progress',
+                'Wait for the curated database operation to finish before closing QCS.')
+            event.ignore()
+            return
         try:
             self.remember_window_state()
         except Exception as e:
@@ -2661,21 +2686,39 @@ class QtShell(QMainWindow):
         return w
 
     def attach_visualization_tab(self):
-        """Called by main() once the hidden tk pipeline (which the tab remote-
-        controls) exists."""
+        """Attach the post-bootstrap visualization and curated-data tabs."""
+        self.curated_tab = CuratedDatabaseTab(self)
+        self._curated_page = qtheme.scrollable(self.curated_tab)
+        idx = self.tabs.indexOf(self._curated_placeholder)
+        self.tabs.removeTab(idx)
+        self.tabs.insertTab(idx, self._curated_page, 'Curated database')
         self.viz_tab = VisualizationTab(self)
         self._viz_page = qtheme.scrollable(self.viz_tab)
         idx = self.tabs.indexOf(self._viz_placeholder)
         self.tabs.removeTab(idx)
         self.tabs.insertTab(idx, self._viz_page, 'Data visualization')
+        self._sync_workflow_tabs()
 
     def _go_to_visualization(self):
         """The post-run shortcut: unlike the tab bar, it goes all the way to
         the panels of the run that just finished (owner, v12.3)."""
         self._advance_viz = True
-        self.tabs.setCurrentIndex(self.tabs.count() - 1)
+        self.tabs.setCurrentIndex(self.tabs.indexOf(self._viz_page))
+
+    def open_curated_visualization(self, path, instrument):
+        """Hand one curated sheet to Visualization and land on Step 2."""
+        self.viz_tab.apply_curated_workbook(path, instrument, advance=True)
+        self.tabs.setCurrentWidget(self._viz_page)
 
     def _tab_changed(self, _index):
+        page = self.tabs.currentWidget()
+        if (self._field_mode_enabled()
+                and page in (self._curated_placeholder, self._curated_page)):
+            # setCurrentWidget can target a disabled tab programmatically. Keep
+            # the field guarantee true for every navigation path, not only a
+            # mouse click on the tab bar.
+            self.tabs.setCurrentWidget(self._qualification_page)
+            return
         # hand a just-qualified file to the Visualization tab, exactly like
         # the tk shell does on its tab switch
         advance, self._advance_viz = self._advance_viz, False
@@ -2689,6 +2732,47 @@ class QtShell(QMainWindow):
         page = self.tabs.currentWidget()
         if isinstance(page, QScrollArea):
             qtheme.scroll_to_top(page.widget() or page)
+        if hasattr(self, 'open_input_action'):
+            if page is self._curated_page:
+                self.open_input_action.setText('Select corpus folder...')
+            elif page is self._viz_page:
+                self.open_input_action.setText('Select database file(s)...')
+            else:
+                self.open_input_action.setText('Select data file(s)...')
+
+    def _browse_active_input(self):
+        page = self.tabs.currentWidget()
+        if self.curated_tab is not None and page is self._curated_page:
+            self.curated_tab._browse_corpus()
+        elif self.viz_tab is not None and page is self._viz_page:
+            self.viz_tab._browse_files()
+        else:
+            self._browse()
+
+    def _browse_active_output(self):
+        page = self.tabs.currentWidget()
+        if self.curated_tab is not None and page is self._curated_page:
+            self.curated_tab._browse_output()
+        elif self.viz_tab is not None and page is self._viz_page:
+            self.viz_tab._browse_output_folder()
+        else:
+            self._browse_output()
+
+    def _open_active_output(self):
+        page = self.tabs.currentWidget()
+        if self.curated_tab is not None and page is self._curated_page:
+            root = self.curated_tab.output_folder.text().strip()
+        elif self.viz_tab is not None and page is self._viz_page:
+            root = self.viz_tab.out_path.text().strip()
+        else:
+            self._open_output_folder()
+            return
+        if root and os.path.isdir(root):
+            os.startfile(root)
+        else:
+            QMessageBox.warning(
+                self, 'Output folder',
+                'The output folder no longer exists:\n%s' % root)
 
     def _menus(self):
         # File carries the file-level actions of the active workflow, so the
@@ -2696,19 +2780,19 @@ class QtShell(QMainWindow):
         # selection, output folder, settings, exit)
         mb = self.menuBar()
         filem = mb.addMenu('File')
-        act_open = QAction('Select data file(s)...', self)
-        act_open.setShortcut('Ctrl+O')
-        act_open.triggered.connect(self._browse)
-        filem.addAction(act_open)
+        self.open_input_action = QAction('Select data file(s)...', self)
+        self.open_input_action.setShortcut('Ctrl+O')
+        self.open_input_action.triggered.connect(self._browse_active_input)
+        filem.addAction(self.open_input_action)
         act_co2 = QAction('Add CO₂ data...', self)
         act_co2.triggered.connect(self._select_co2)
         filem.addAction(act_co2)
         act_outdir = QAction('Select output folder...', self)
-        act_outdir.triggered.connect(self._browse_output)
+        act_outdir.triggered.connect(self._browse_active_output)
         filem.addAction(act_outdir)
         filem.addSeparator()
         act_showout = QAction('Open output folder', self)
-        act_showout.triggered.connect(self._open_output_folder)
+        act_showout.triggered.connect(self._open_active_output)
         filem.addAction(act_showout)
         act_settings = QAction('Quality control settings...', self)
         act_settings.triggered.connect(self._open_settings)
@@ -2720,9 +2804,15 @@ class QtShell(QMainWindow):
         filem.addAction(act_exit)
 
         view = mb.addMenu('View')
+        view.setToolTipsVisible(True)
         self.dark_action = QAction('Dark mode', self, checkable=True)
         self.dark_action.triggered.connect(self._toggle_dark)
         view.addAction(self.dark_action)
+        self.field_mode_action = QAction('Field mode', self, checkable=True)
+        self.field_mode_action.setToolTip(FIELD_MODE_TOOLTIP)
+        self.field_mode_action.setStatusTip(FIELD_MODE_TOOLTIP)
+        self.field_mode_action.triggered.connect(self._toggle_field_mode)
+        view.addAction(self.field_mode_action)
         view.addSeparator()
         view.addAction(self.log_dock.toggleViewAction())
         view.addAction(self.batch_dock.toggleViewAction())
@@ -2841,6 +2931,42 @@ class QtShell(QMainWindow):
         qm.USER_PREFS['ui_theme'] = 'dark' if on else 'light'
         qm.save_user_prefs()
 
+    def _field_mode_enabled(self):
+        return (hasattr(self, 'field_mode_action')
+                and self.field_mode_action.isChecked())
+
+    def _sync_workflow_tabs(self):
+        """Apply the two job locks and the independent Field mode lock."""
+        curated_page = self._curated_page or self._curated_placeholder
+        states = (
+            (self._qualification_page, not self._curated_busy),
+            (curated_page,
+             not self._qualification_busy and not self._field_mode_enabled()),
+            (self._viz_page or self._viz_placeholder,
+             not self._qualification_busy and not self._curated_busy),
+        )
+        for page, enabled in states:
+            index = self.tabs.indexOf(page)
+            if index >= 0:
+                self.tabs.setTabEnabled(index, enabled)
+        curated_index = self.tabs.indexOf(curated_page)
+        if curated_index >= 0:
+            tooltip = (CURATED_TAB_FIELD_TOOLTIP if self._field_mode_enabled()
+                       else CURATED_TAB_TOOLTIP)
+            self.tabs.setTabToolTip(curated_index, tooltip)
+
+    def _apply_field_mode(self):
+        if (self._field_mode_enabled()
+                and self.tabs.currentWidget()
+                in (self._curated_placeholder, self._curated_page)):
+            self.tabs.setCurrentWidget(self._qualification_page)
+        self._sync_workflow_tabs()
+
+    def _toggle_field_mode(self, on):
+        qm.USER_PREFS['field_mode'] = bool(on)
+        qm.save_user_prefs()
+        self._apply_field_mode()
+
     def _open_manual(self):
         path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             'Quality Control System (SAGE) - User Manual.html')
@@ -2877,6 +3003,9 @@ class QtShell(QMainWindow):
         # drops land in the ACTIVE tab's file field, like the tk shell
         if self.viz_tab is not None and self.tabs.currentWidget() is self._viz_page:
             self.viz_tab.apply_selected_files(paths)
+        elif (self.curated_tab is not None
+              and self.tabs.currentWidget() is self._curated_page):
+            self.curated_tab.apply_dropped_paths(paths)
         else:
             self.apply_selected_files(paths)
 
@@ -3378,16 +3507,16 @@ class QtShell(QMainWindow):
                 self.batch_table.setItem(row, 1, QTableWidgetItem('ok'))
 
     def set_busy(self, busy):
+        self._qualification_busy = bool(busy)
         self.run_btn.setEnabled(not busy)
         self.progress.setVisible(busy)
         # everything but Cancel goes dead for the duration: the form, the
-        # settings button, the menus and the Visualization tab (its Generate
-        # panels would run heavy work on the interface thread, beside the run)
+        # settings button, the menus and the data tabs (their panel/database
+        # work must not compete with a qualification run)
         for widget in getattr(self, '_busy_freeze', ()):
             widget.setEnabled(not busy)
         self.menuBar().setEnabled(not busy)
-        if self.viz_tab is not None:
-            self.tabs.setTabEnabled(self.tabs.count() - 1, not busy)
+        self._sync_workflow_tabs()
         self.cancel_btn.setVisible(busy)
         if busy:
             self.cancel_btn.setEnabled(True)
@@ -3413,6 +3542,47 @@ class QtShell(QMainWindow):
             self._update_run_state()
             # a run that produced an output offers the two next steps
             self.postrun_bar.setVisible(bool(qm.OUTPUT.get('last_output_root')))
+
+    def set_curated_busy(self, busy):
+        """Prevent another workflow from starting while a corpus job is active."""
+        self._curated_busy = bool(busy)
+        self._sync_workflow_tabs()
+        self.menuBar().setEnabled(not busy)
+        self.progress.setVisible(busy)
+        if busy:
+            self.progress.setRange(0, 0)
+            self.progress.setFormat('Preparing curated database...')
+        else:
+            self.progress.reset()
+
+    def update_curated_progress(self, message):
+        """Show curated-corpus work in the shell's standard status-bar progress."""
+        stage_match = re.match(r'Stage (\d+)/(\d+)(?: - (.*))?', message)
+        catalog_match = re.match(
+            r'Reading qualified product (\d+)/(\d+)\.\.\.', message)
+        if stage_match:
+            stage, total = (int(value) for value in stage_match.groups()[:2])
+            detail = stage_match.group(3) or ''
+            self.progress.setRange(0, total)
+            self.progress.setValue(stage)
+            self.progress.setFormat(
+                'S%d/%d%s' %
+                (stage, total, ' ' + detail if detail else ''))
+        elif catalog_match:
+            current, total = (int(value) for value in catalog_match.groups())
+            self.progress.setRange(0, total)
+            self.progress.setValue(current)
+            self.progress.setFormat('Catalog %d/%d' % (current, total))
+        else:
+            self.progress.setRange(0, 0)
+            if message.startswith('Unifying '):
+                label = 'Building database...'
+            elif message == 'Writing curated workbook...':
+                label = 'Writing workbook...'
+            else:
+                label = message
+            self.progress.setFormat(label)
+        self.progress.setToolTip(message)
 
     def _update_regions(self, _macro=None):
         macro = self.macroregion.currentText()
@@ -3462,6 +3632,8 @@ class QtShell(QMainWindow):
         """Mirrors restore_user_prefs onto the Qt widgets (the criteria/version
         gate already ran inside the tk bootstrap's restore)."""
         p = qm.USER_PREFS
+        self.field_mode_action.setChecked(bool(p.get('field_mode', False)))
+        self._apply_field_mode()
         if p.get('input_type') in ('Seaguard', 'HOBO'):
             self.input_type.setCurrentText(p['input_type'])
         if p.get('data_type') and self.input_type.currentText() != 'HOBO':

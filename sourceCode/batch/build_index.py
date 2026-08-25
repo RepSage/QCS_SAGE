@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 r"""Builds the master index of the qualified corpus.
 
-Walks CLAUDE\{SEAGUARD|HOBO}\qualified\, reads every <NAME>_QLF.csv and its
+Walks DATABASE\{SEAGUARD|HOBO}\qualified\, reads every <NAME>_QLF.csv and its
 provenance.txt entry, and writes ONE row per product to
-CLAUDE\qualified_index.csv: what it is (instrument/semester/site/tipo), where
+DATABASE\qualified_index.csv: what it is (instrument/semester/site/tipo), where
 it came from (campaign, cast, input sessions, CO2 file, C/D stations), what it
 holds (rows, time span, CO2 points, panel count) and where it lives.
 
-Usage:  python build_index.py            (writes CLAUDE\qualified_index.csv)
+Usage:  python build_index.py            (writes DATABASE\qualified_index.csv)
         python build_index.py <out.csv>  (writes elsewhere)
 Read-only over the products; safe to re-run at any time.
 """
@@ -19,7 +19,9 @@ import warnings
 warnings.filterwarnings('ignore')
 import pandas as pd
 
-ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE"
+ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE"
+EXCLUDED_COLLECTIONS = {'_EXPERIMENTOS', '_PISCINAS', '_SEM_SITIO'}
+EXCLUDED_SITE_PREFIXES = ('PISCINA_',)
 
 
 def parse_provenance(path):
@@ -46,6 +48,11 @@ def main(out_csv):
     for p in sorted(glob.glob(pattern, recursive=True)):
         name = os.path.basename(p)[:-4]
         parts = os.path.relpath(p, ROOT).split(os.sep)
+        upper_parts = tuple(part.upper() for part in parts)
+        if (EXCLUDED_COLLECTIONS.intersection(upper_parts)
+                or any(part.startswith(EXCLUDED_SITE_PREFIXES)
+                       for part in upper_parts)):
+            continue
         semester = parts[2]
         bucket = parts[3] if parts[3].startswith('_') and len(parts) > 5 else ''
         site = parts[4] if bucket else parts[3]

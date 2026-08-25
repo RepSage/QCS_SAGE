@@ -39,7 +39,7 @@ import pandas as pd
 
 import QCS_DataHandler as dh
 
-ROOT = r'\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE'
+ROOT = r'\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE'
 DESKTOP = os.path.join(os.path.expanduser('~'), 'Desktop')
 RAR = r'C:\Program Files\WinRAR\Rar.exe'
 

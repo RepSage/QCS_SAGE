@@ -9,8 +9,10 @@ The program runs directly from the Python scripts, using Anaconda's Python.
 Since v5.0 both tools live in a single window; double-click one shortcut in the
 main folder:
 
-- **`QCS.bat`** — the unified Qt app (`sourceCode/QCS_QtApp.py`): a menu bar plus two
-  tabs, **Data Qualification** and **Data Visualization**.
+- **`QCS.bat`** — the unified Qt app (`sourceCode/QCS_QtApp.py`): a menu bar plus
+  three tabs, **Data Qualification**, **Curated Database** and
+  **Data Visualization**. **View > Field mode** disables only Curated Database
+  and remembers that field-safe choice across sessions.
 
 The app runs with no terminal window; progress and any errors are shown in the
 in-app Execution log. (The two tool modules `QCS_Main.py` and
@@ -28,7 +30,9 @@ python -m pip install -r sourceCode/requirements.txt
 ## Structure
 
 - `sourceCode/` — source code:
-  - `QCS_QtApp.py` — shipped Qt shell and entry point (Qualification/Visualization tabs).
+  - `QCS_QtApp.py` — shipped Qt shell and entry point (the three main tabs).
+  - `QCS_QtCurated.py` — Curated Database tab.
+  - `QCS_Curated.py` — read-only corpus catalog, filters and workbook export.
   - `QCS_App.py` — retired Tk shell, kept only as a legacy development fallback.
   - `QCS_Main.py` — qualification tool (interface + QC test pipeline).
   - `QCS_DatabaseView.py` — database visualization tool.

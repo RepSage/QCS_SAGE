@@ -4,7 +4,7 @@ r"""Removes the qualified products superseded by the replicate regrouping.
 Each product is removed in full - the CSV, its DataView panel folder, its
 reports files and its provenance block - so nothing is left half-removed and
 the index cannot pick up an orphan. Removal MOVES everything into a dated
-trash folder (`CLAUDE\_deleted\<YYYYMMDD>\<product>\`) rather than deleting:
+trash folder (`DATABASE\_deleted\<YYYYMMDD>\<product>\`) rather than deleting:
 the share has no recycle bin, so this keeps the one irreversible step of the
 pipeline reversible. Emptying the trash is a human decision.
 
@@ -45,7 +45,7 @@ def excluded_raw_files():
             return {k.value for k in node.value.keys if isinstance(k, ast.Constant)}
     raise RuntimeError('EXCLUDED_REPLICATES not found in qualify_site.py')
 
-ROOT = r'\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE'
+ROOT = r'\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE'
 INDEX = os.path.join(ROOT, 'qualified_index.csv')
 
 # Two kinds of removal, with different evidence behind them.

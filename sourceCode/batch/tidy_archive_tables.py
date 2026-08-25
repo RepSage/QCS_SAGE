@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-r"""Collects the archive's one-off and historical tables into CLAUDE\_registros\,
+r"""Collects the archive's one-off and historical tables into DATABASE\_registros\,
 leaving in place only the files the pipeline actually reads.
 
 WHAT STAYS, and why it must:
@@ -26,7 +26,7 @@ import os
 import shutil
 import sys
 
-ROOT = r'\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE'
+ROOT = r'\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE'
 DEST = os.path.join(ROOT, '_registros')
 
 # relative path -> why it is being filed away

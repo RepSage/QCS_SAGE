@@ -14,10 +14,11 @@ pruning is in git (`git show a0994bf:STATUS.md`).
 **Program and release**
 
 - **Pre-v13 Doppler and PAR products still need explicit requalification before
-  direct comparison** (deferred 2026-08-20). The archive contains 54 DCPS
-  products with four-character flags and 123 Seaguard products containing PAR
-  but no `Flag_PAR`. The v13.0 validation was read-only and the publication did
-  not rewrite them.
+  direct comparison** (deferred 2026-08-20). The current archive contains 53
+  DCPS products with four-character flags and 112 Seaguard products containing
+  PAR but no `Flag_PAR`; `BURACA_FUNDA_2021S2` is the only current product with
+  PAR and `Flag_PAR`. The v13.0 validation was read-only and the publication did
+  not rewrite the older products.
 - **v12.3 shipped four paths that were never run in the app** (2026-08-19).
   None of them blocks anything; each is one run away from being closed:
   the manual point cut and the replicate review through the worker thread
@@ -39,12 +40,11 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   qualified from the exports.
 
 **Data** - the authoritative list is "Still open on the data" in
-`sourceCode/batch/CORPUS_LOG.md`; do not duplicate it here. As of 2026-08-13 it
-held four files needing a HOBOware re-export with a 24-hour clock, and 84 files
-under `HOBO\raw` with no manifest row. The share's `qualified_index.csv` is the
-intended authority for corpus counts, but it was absent when checked on
-2026-08-21; `build_index.py` rebuilds it. Read-only validation therefore used
-direct discovery and did not recreate or write the index.
+`sourceCode/batch/CORPUS_LOG.md`; do not duplicate it here. The root-level
+`qualified_index.csv` was rebuilt on 2026-08-25 and matches direct discovery.
+The former missing-manifest count is no longer actionable:
+the owner deleted both raw manifests on 2026-08-13, and the special collections
+that made up almost all of that count left the active corpus on 2026-08-25.
 
 ## Environment
 

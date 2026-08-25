@@ -19,7 +19,7 @@ import pandas as pd
 import QCS_DataHandler as dh
 import QCS_Tests as QC
 
-RAW = r'\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE\HOBO\raw'
+RAW = r'\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\HOBO\raw'
 SUSPECT = [
     'Hobo1_RRDM_RecEsqSul2_050320_210221.csv',
     'Hobo_RRDM_RecEsqSul2(B5)_050320_230221.csv',

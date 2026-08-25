@@ -1,15 +1,148 @@
 # CORPUS LOG — operations performed on the archive itself
 
-What was done to the DATA under `CLAUDE\HOBO\raw` and `\qualified`, when, and
-why. This is not a `changelog/` entry: the app has its own version and its own
-release notes, and nothing here changes the program. It is kept beside the
-scripts that did the work, because re-running them is how any of it is
-reproduced.
+What was done to the DATA under the `DATABASE\HOBO` and `DATABASE\SEAGUARD` raw
+and qualified lanes, when, and why. This is not a `changelog/` entry: the app
+has its own version and its own release notes, and nothing here changes the
+program. It is kept beside the scripts that did the work, because re-running
+them is how any of it is reproduced.
 
 Lane check, so this file does not compete with the other three: `CLAUDE.md`
 holds durable rules, `STATUS.md` volatile dated state, `DECISIONS.md` the
 numbers behind a parameter choice, and `changelog/` the app releases. This file
 holds **irreversible operations on the archive** — dated, with their evidence.
+
+---
+
+## 2026-08-25 — `_SEM_SITIO` resolved; BURACA_FUNDA 2021S2 qualified
+
+Owner decision: the anonymous raw 2021S2 deployment belongs to
+`BURACA_FUNDA`; the 2019S1, 2019S2 and 2020S1 `_SEM_SITIO` raw/qualified trees
+have no recoverable site identity and must leave the monitoring corpus.
+
+`resolve_sem_sitio.py` fingerprinted all **7 active `_SEM_SITIO` directories,
+110 files and 7,425,270 bytes** before moving anything. The 2021S2 raw
+directory (**2 files / 150,438 bytes**) moved to
+`SEAGUARD\raw\2021S2\BURACA_FUNDA`; the other **6 directories, 108 files and
+7,274,832 bytes** moved intact to
+`DATABASE\_deleted\20260825\sem_sitio_unknown_origin\<original relative path>`.
+Those removed trees held **7 qualified products / 8,428 source rows** (6
+Seaguard and 1 Doppler). `sem_sitio_resolution.csv` records every original and
+destination path, size and SHA-256. All **110/110** final destinations passed
+the chained verifier after the session normalization below.
+
+The recovered binary had been archived under the anonymous folder `Sensores`.
+Its own BXML template identifies it as
+`5650-2097-0-2021-10-01T18-35-10.047Z`; the **253 records** run from
+2021-10-01 18:35:20 to 19:17:20 GMT at a 10 s interval, with no missing or
+duplicated timestamp. `normalize_buraca_funda_session.py` moved the 44,902-byte
+binary to that canonical session folder and independently verified its size,
+SHA-256 and BXML SessionID through
+`buraca_funda_session_normalization.csv`. The calibrated scalar detector returns
+`TSCP Profile` (0.7 h at 10 s), agreeing with the archived `PERFIL` lane even
+though the instrument template's generic `GroupDescr` says `FUNDEIO`.
+
+The paired `BURACA FUNDA MINI CO2.txt` has 1,369 complete rows, no invalid or
+duplicated timestamp, and spans 15:23:50 to 16:11:54 local time, covering the
+cast start after the mandatory GMT-3 correction. The real batch pipeline wrote
+`BURACA_FUNDA_2021S2_SEAGUARD_PERFIL_QLF`: **253 rows**, `Site=BURACA_FUNDA`,
+15:35:20 to 16:17:20 local, **165 CO2 values**, no invalid/duplicated timestamp
+or duplicated row, plus two panels, four reports and a complete provenance
+block. No input row was dropped; QC blanked values in dismissed/not-evaluable
+rows as encoded by their flags.
+
+The rebuilt `qualified_index.csv` and an independent direct Curated Database
+scan agree on the current corpus: **282 products, 644,411 source rows, 34 sites,
+zero invalid timestamps and zero `_SEM_SITIO` product**, split as **113
+Seaguard, 53 Doppler and 116 HOBO**. The index has no duplicate product/path and
+all 282 paths exist. Its value-integrity sweep found 3,354 out-of-sensor-limit
+values across five products and confirmed that all 3,354 carry BAD flag 4;
+there is no unmarked violation. Self-test 66/66, full ruff/compile and
+`git diff --check` passed. The full curated workbook was not regenerated; the
+previous 288-product workbook is now explicitly stale.
+
+---
+
+## 2026-08-25 — pool/experiment data removed; raw trees normalized by semester
+
+Owner decision: `_EXPERIMENTOS` and `_PISCINAS` are experiment/pool-specific
+collections, not the long-term monitoring corpus. They must not contribute to a
+curated database. Both their raw source trees and every qualified subtree were
+removed from the active `HOBO` lanes. No such directory existed on the
+Seaguard side.
+
+The share has no recycle bin, so removal followed the corpus's established
+recoverable-delete rule: **9 directories, 320 files and 23,386,788 bytes** were
+moved intact to
+`CLAUDE\_deleted\20260825\special_collections\<original relative path>`.
+They include **21 qualified products**: 1 in 2024S1, 4 in 2024S2, 7 in 2025S1,
+3 in 2025S2 and 6 in 2026S1. `SGOM_NA_2024S1_HOBO_QLF` was among them.
+The active corpus consequently changed as follows:
+
+| | before | after | difference |
+|---|---:|---:|---:|
+| qualified products | 314 | **293** | -21 |
+| source rows | 694,803 | **659,261** | -35,542 |
+| sites represented | 44 | **38** | -6 |
+| Seaguard / Doppler / HOBO products | 123 / 54 / 137 | **123 / 54 / 116** | 0 / 0 / -21 |
+
+The owner then confirmed that five ordinary Seaguard site folders beginning
+with `PISCINA_` were also pool-specific and must leave the monitoring corpus.
+They comprised one product in 2024S2 and four in 2026S1: **10 raw/qualified
+directories, 120 files, 25,297,340 bytes, 5 qualified products and 6,675 source
+rows**. They were moved intact to
+`CLAUDE\_deleted\20260825\seaguard_pool_sites\<original relative path>`.
+`seaguard_pool_sites_removal.csv` records every original/recovery path, size
+and SHA-256, and all **120/120** recovery files passed the post-move check.
+
+After both owner decisions, the active monitoring corpus contains **288
+products, 652,586 source rows and 34 sites**, split as 118 Seaguard, 54 Doppler
+and 116 HOBO products. Fourteen pool products left the active corpus in total:
+the nine HOBO products formerly below `_PISCINAS` and these five Seaguard
+products.
+
+The raw layout was normalized in the same operation. The 18 Seaguard campaign
+folders merged without collision into 10 semester folders; the 15 HOBO
+campaign folders merged into 14. Both active trees now have the same shape as
+the qualified tree:
+
+```
+<FAMILY>\raw\<YEAR>S<1|2>\<SITE>\...
+```
+
+This was a path-only operation: **1,177 active raw files / 137,944,422 bytes**
+remain (Seaguard 797 / 114,295,531 bytes; HOBO 380 / 23,648,891 bytes). Before
+the first move, `reorganize_raw_semesters.py` wrote source path, destination,
+size and SHA-256 for every active and excluded file to
+`CLAUDE\_deleted\20260825\semester_raw_reorganization.csv`. After the move,
+all **1,497/1,497** destinations matched that record byte-for-byte. The first
+verification pass stopped at a 260-character recovery path because Python used
+the legacy Windows path form; the file was present, the verifier was changed to
+the extended UNC form, and the manifest audit then completed in full. No move
+was repeated.
+
+The batch drivers now read semester-first raw folders and no longer run the
+special-collection branch. `build_index.py` and the Curated Database catalog
+also reject those two folder names and direct `PISCINA_*` sites defensively.
+Real-corpus discovery through the updated planner covered 151 semester/site
+combinations and rediscovered **288/288 current qualified products** from the
+reorganized raw inputs. It also listed 14 raw deployment plans with no
+qualified product; all remain explicit raw-only/nonqualifying cases rather
+than fabricated outputs. The Curated Database catalog independently reopened
+all 288 products, found 652,586 source rows, and contained neither a special
+path nor a `PISCINA_*` site.
+
+The full active-corpus build was then executed, not inferred from the catalog:
+all **288/288 products contributed**, producing **652,496 selected rows**
+(Seaguard 171,282; Doppler 129,427; HOBO 351,787). The 90-row difference from
+the source total is exactly the engine's known identical-HOBO-row
+deduplication; 10,654 rows that share Site+Datetime but carry different values
+were retained. The workbook reopened with all five expected sheets at
+`packaging\Output\QCS_curated_monitoring_corpus_test.xlsx` (60,481,487 bytes;
+SHA-256
+`D926F5E239828CA81846C10CFA8C5FB442AC411B9797FB4C3720001FD5A70D75`).
+An independent `build_index.py` run also returned 288 products and the same
+118/54/116 instrument split; its integrity sweep found no unflagged value
+outside a sensor limit.
 
 ---
 

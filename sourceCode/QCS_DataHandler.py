@@ -21,7 +21,7 @@ def _show_plot_info(fig, title, message):
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v13.1'
+QCS_VERSION = 'v13.2'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -2267,11 +2267,13 @@ def order_var (qualified_data, n_cel, data_type):
                     qualified_data = qualified_data.drop(columns=[var])
     return qualified_data
 
-def _autofit_worksheet(ws, dataframe, index=False):
+def _autofit_worksheet(ws, dataframe, index=False, should_cancel=None):
     """Widens each column of an openpyxl worksheet to fit its content."""
     from openpyxl.utils import get_column_letter
     offset = 1 if index else 0  # column A is the index when index=True
     for i, col in enumerate(dataframe.columns):
+        if should_cancel and should_cancel():
+            raise InterruptedError('Spreadsheet writing canceled.')
         value_len = int(dataframe[col].astype(str).map(len).max()) if len(dataframe) else 0
         width = min(max(len(str(col)), value_len) + 2, 60)  # +padding, capped so it stays sane
         ws.column_dimensions[get_column_letter(i + 1 + offset)].width = width
@@ -2284,12 +2286,17 @@ def save_excel_autofit(dataframe, path, index=False):
         dataframe.to_excel(writer, index=index)
         _autofit_worksheet(writer.sheets[next(iter(writer.sheets))], dataframe, index)
 
-def save_excel_sheets(sheets, path, index=False):
+def save_excel_sheets(sheets, path, index=False, should_cancel=None):
     """Writes {sheet_name: DataFrame} to a single .xlsx, each column auto-fitted."""
     with pd.ExcelWriter(path, engine='openpyxl') as writer:
         for name, df in sheets.items():
+            if should_cancel and should_cancel():
+                raise InterruptedError('Spreadsheet writing canceled.')
             df.to_excel(writer, sheet_name=name, index=index)
-            _autofit_worksheet(writer.sheets[name], df, index)
+            if should_cancel and should_cancel():
+                raise InterruptedError('Spreadsheet writing canceled.')
+            _autofit_worksheet(
+                writer.sheets[name], df, index, should_cancel=should_cancel)
 
 def tscp_stats_table (qualified_data):
     # builds the statistics table with whichever of the main variables
@@ -2933,7 +2940,37 @@ def detect_known_qualified_instrument(df):
     return None
 
 
-def build_database(instrument, file_list=None, input_path=None):
+def parse_qualified_datetimes(values):
+    """Parse the ISO-like timestamp variants written by qualified products.
+
+    Qualified CSVs from different writer rounds legitimately mix whole seconds
+    and fractional seconds.  Pandas 2 infers one strict format for a whole
+    Series by default, so concatenating those files made every row in the other
+    variant become NaT.  ``format='mixed'`` asks for per-value inference; the
+    fallback keeps source compatibility with older pandas installations.
+    """
+    try:
+        return pd.to_datetime(values, errors='coerce', format='mixed')
+    except TypeError:
+        return values.map(lambda value: pd.to_datetime(value, errors='coerce'))
+
+
+def curated_workbook_instruments(file_path):
+    """Return QCS instrument sheets when *file_path* is a curated workbook."""
+    if not str(file_path).lower().endswith('.xlsx'):
+        return []
+    try:
+        with pd.ExcelFile(file_path) as workbook:
+            sheets = set(workbook.sheet_names)
+    except Exception:
+        return []
+    if not {'Included products', 'Read me'}.issubset(sheets):
+        return []
+    return [name for name in ('Seaguard', 'Doppler', 'HOBO') if name in sheets]
+
+
+def build_database(instrument, file_list=None, input_path=None,
+                   should_cancel=None):
     """Single unification engine for qualified spreadsheets (Seaguard and HOBO).
 
     Input (one of the two):
@@ -2977,17 +3014,28 @@ def build_database(instrument, file_list=None, input_path=None):
 
     frames = []
     for file_path in files:
+        if should_cancel and should_cancel():
+            raise InterruptedError('build_database: operation canceled.')
         base = os.path.basename(file_path)
-        if base.startswith('QCS_'):
+        curated_instruments = curated_workbook_instruments(file_path)
+        if base.startswith('QCS_') and not curated_instruments:
             messages.append('Info: report file skipped: %s' % base)
             continue
+        if curated_instruments and instrument not in curated_instruments:
+            raise ValueError(
+                'build_database: curated workbook %s has no %s sheet. '
+                'Available instrument sheets: %s.'
+                % (base, instrument, ', '.join(curated_instruments)))
         try:
             if file_path.lower().endswith('.xlsx'):
-                df = pd.read_excel(file_path, header=0)
+                sheet_name = instrument if curated_instruments else 0
+                df = pd.read_excel(file_path, sheet_name=sheet_name, header=0)
             else:
                 df = pd.read_csv(file_path, header=0)
         except Exception as e:
             raise ValueError('build_database: could not read %s:\n%s' % (file_path, e)) from e
+        if should_cancel and should_cancel():
+            raise InterruptedError('build_database: operation canceled.')
         missing = [c for c in ('Datetime', 'Site') if c not in df.columns]
         if missing:
             raise ValueError("build_database: %s does not look like a QCS qualified file "
@@ -2999,7 +3047,8 @@ def build_database(instrument, file_list=None, input_path=None):
                              "instrument is %s. HOBO, Seaguard and Doppler qualified files are "
                              "never stackable - unify them into separate databases."
                              % (base, layout.upper(), instrument))
-        df['Source file'] = base
+        if 'Source file' not in df.columns:
+            df['Source file'] = base
         frames.append(df)
         messages.append('Info: %s: %d rows' % (base, len(df)))
 
@@ -3007,7 +3056,7 @@ def build_database(instrument, file_list=None, input_path=None):
         raise ValueError('build_database: no readable qualified files in the selection.')
 
     database = pd.concat(frames, ignore_index=True)
-    database['Datetime'] = pd.to_datetime(database['Datetime'], errors='coerce')
+    database['Datetime'] = parse_qualified_datetimes(database['Datetime'])
     n_bad_ts = int(database['Datetime'].isna().sum())
     if n_bad_ts:
         messages.append('Warning: %d row(s) without a valid timestamp discarded.' % n_bad_ts)

@@ -1,6 +1,6 @@
 @echo off
-rem Unified QCS launcher (v12.0, Qt shell): one window with the Data
-rem Qualification and Data Visualization tabs (sourceCode\QCS_QtApp.py).
+rem Unified QCS launcher (Qt shell): one window with Data Qualification,
+rem Curated Database and Data Visualization tabs (sourceCode\QCS_QtApp.py).
 rem Progress/warnings/errors show in the app's Execution log; a fatal crash
 rem writes QCS_crash.log and pops a message box.
 rem

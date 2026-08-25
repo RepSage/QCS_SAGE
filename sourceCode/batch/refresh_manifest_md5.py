@@ -26,7 +26,7 @@ import os
 import shutil
 import sys
 
-RAW = r'\\Abrolhos\Projetos\Seaguard & HOBO\CLAUDE\HOBO\raw'
+RAW = r'\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\HOBO\raw'
 MANIFEST = os.path.join(RAW, 'manifest.csv')
 # the manifest's dest carries a legacy prefix from before the HOBO/SEAGUARD
 # split; map it onto the real tree rather than rewriting 407 rows for cosmetics
