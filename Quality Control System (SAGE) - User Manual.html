@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v13.2</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v13.2.1</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -1559,25 +1559,32 @@
             <td>Parameters at a site</td>
             <td>The selected parameters (temperature and/or light) for one site in a single
                 figure with twin axes, spanning <strong>every selected year in one plot</strong>.
-                Temperature: dots, optional tendency line and, for combined-replicates files,
+                Temperature: dots, one optional tendency line per source deployment and, for combined-replicates files,
                 one vertical bar per sample showing the replicate disagreement
                 (bar length = max &minus; min). Light: <strong>daily-peak envelope on a linear
-                scale</strong> (the fouling-review visual), optional raw points, and the fouling
-                source-aware Fouling/BAD windows (<code>Flag_lux == 4</code>) shaded. Products
-                from separate deployments never turn the first BAD row into one continuous window
-                across later clean products</td>
+                scale for each source deployment</strong> (the fouling-review visual), optional raw
+                points, and source-aware BAD windows (<code>Flag_lux == 4</code>) shaded. An
+                unsampled day breaks the light line, and a sampling gap inside one BAD window does
+                not create another BAD span. Products from separate deployments never
+                pool their daily maxima or tendencies</td>
             <td><code>hobo_params_&lt;site&gt;.svg</code></td>
         </tr>
         <tr>
             <td>Parameters across sites</td>
             <td>One figure per selected parameter with all sites overlaid on the
-                <strong>elapsed-days axis</strong> from each site's first selected sample, so
-                their timestamps do not need to coincide. The actual Time window filters rows
-                before this alignment. Light uses the per-site daily-peak envelope with each
-                source-aware Fouling/BAD window marked; temperature gains per-site tendency lines</td>
+                <strong>elapsed-days axis</strong> from each source deployment's first selected
+                sample, so campaigns and sites do not need coincident timestamps. The actual Time
+                window filters rows before this alignment. Light uses a separate gap-aware daily
+                peak for each deployment; recorded BAD light is dotted and faded instead of
+                becoming an ambiguous background span. Temperature gains per-deployment tendency
+                lines calculated against real elapsed time</td>
             <td><code>hobo_&lt;parameter&gt;_across_sites.svg</code></td>
         </tr>
     </table>
+    <p>When a HOBO selection produces more than one figure, every at-site and across-site panel
+    opens in one paged window with <em>&lt; Previous</em>, <em>Next &gt;</em> and a direct panel picker.
+    This keeps broad site/year selections browsable without opening and rebuilding many separate
+    windows.</p>
 
     <h3>Visualization Panels (Doppler / current-profiler databases)</h3>
     <p>With <strong>Instrument = Doppler</strong> the panel content is fixed: a current
@@ -1818,7 +1825,8 @@
         </tr>
         <tr>
             <td>Trend Lines</td>
-            <td>Adds polynomial trend lines</td>
+            <td>Adds polynomial trend lines against real elapsed time; separate HOBO deployments
+                are never fitted as one historical series</td>
             <td>Identify temporal patterns</td>
         </tr>
         <tr>
@@ -1873,10 +1881,10 @@
     <h3>Selection</h3>
     <p>Any combination of <strong>site</strong>, <strong>calendar year</strong> and
     <strong>instrument</strong> can be selected. Each list has <em>All</em> and <em>None</em>
-    shortcuts. The three lists are dynamic: selecting one or more values in any list leaves only
-    the site/year/instrument options that occur with that combination in qualified data rows.
-    Broadening a selection restores compatible options without discarding choices that are still
-    valid. Instruments are ordered as Seaguard, Seaguard current profiler (Doppler), then HOBO.
+    shortcuts. The three lists are dynamic: options that do not occur with the current combination
+    remain visible but turn gray and are automatically unchecked. Broadening another filter makes
+    compatible options selectable again, but never silently restores a previously hidden check.
+    Instruments are ordered as Seaguard, Seaguard current profiler (Doppler), then HOBO.
     The matching-product line is a quick catalog estimate; exact row counts are reported after the
     workbook is built.</p>
     <div class="note">

@@ -1963,10 +1963,10 @@ class PlotWindow(QWidget):
 class PanelBrowserWindow(QWidget):
     """One window holding several panels, paged with Previous / Next.
 
-    The current panels opened as separate windows: fine for a first
-    look, noise for a comparison (owner, v13.0). Here they share a window and
-    the operator walks through them at their own pace, each page keeping its
-    own navigation toolbar so a panel can still be zoomed, panned and saved.
+    Current panels and broad HOBO selections would otherwise open many separate
+    windows. Here they share a window and the operator walks through them at
+    their own pace, each page keeping its own navigation toolbar so a panel can
+    still be zoomed, panned and saved.
 
     Only a REQUEST from the plotting code is honoured (`show_panels(browse=
     True)`); everything else still gets one window per figure, because the

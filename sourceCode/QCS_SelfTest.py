@@ -1581,22 +1581,36 @@ import QCS_DataView as _data_view                         # noqa: E402
 # starts at elapsed day zero after the absolute Time window is applied.
 _fouling_frame = pd.DataFrame({
     'Datetime': pd.to_datetime([
-        '2025-01-01', '2025-01-02', '2025-01-03',
+        '2025-01-01', '2025-01-02', '2025-01-10',
         '2025-06-01', '2025-06-02', '2025-06-03', '2025-06-04']),
     'Source file': ['old.csv'] * 3 + ['new.csv'] * 4,
     'Flag_lux': [4, 4, 4, 1, 1, 4, 4],
 })
 assert _data_view._hobo_light_bad_spans(_fouling_frame) == [
-    (pd.Timestamp('2025-01-01'), pd.Timestamp('2025-01-03')),
+    (pd.Timestamp('2025-01-01'), pd.Timestamp('2025-01-10')),
     (pd.Timestamp('2025-06-03'), pd.Timestamp('2025-06-04')),
 ]
-ok.append('HOBO fouling spans: separate qualified deployments stay separate')
+ok.append('HOBO fouling spans: deployments stay separate; data gaps do not restart fouling')
+
+_trend_index = pd.to_datetime(['2025-01-01', '2025-01-02', '2025-01-10'])
+_trend_x, _trend_y = _data_view.linear_regression(
+    pd.Series([10.0, 11.0, 19.0], index=_trend_index), degree=1)
+assert _trend_x.equals(pd.DatetimeIndex(_trend_index))
+assert np.allclose(_trend_y, [10.0, 11.0, 19.0])
+_peak_gap = _data_view._lux_daily_peak(pd.DataFrame({
+    'Datetime': pd.to_datetime(['2025-01-01', '2025-01-03']),
+    'Luminosity (lux)': [100.0, 80.0],
+}))
+assert len(_peak_gap) == 3 and pd.isna(_peak_gap.iloc[1])
+ok.append('time tendencies use elapsed time; daily light lines retain gaps')
 
 _across_frame = pd.DataFrame({
     'Datetime': pd.to_datetime([
-        '2025-01-01', '2025-01-02', '2025-06-01', '2025-06-02']),
-    'Site': ['A', 'A', 'B', 'B'],
-    'Temperature (degC)': [25.0, 26.0, 27.0, 28.0],
+        '2025-01-01', '2025-01-02', '2025-06-01', '2025-06-02',
+        '2025-09-01', '2025-09-02']),
+    'Site': ['A', 'A', 'A', 'A', 'B', 'B'],
+    'Source file': ['A-old.csv'] * 2 + ['A-new.csv'] * 2 + ['B.csv'] * 2,
+    'Temperature (degC)': [25.0, 26.0, 26.0, 27.0, 27.0, 28.0],
 })
 _across_settings = {
     'siteList': ['A', 'B'], 'parameterList': ['Temperature (degC)'],
@@ -1610,19 +1624,56 @@ _real_show_panels = _data_view.show_panels
 try:
     _data_view.plt.savefig = lambda *args, **kwargs: None
     _data_view.show_panels = lambda *args, **kwargs: None
+    _across_figs = []
     assert _data_view.plot_hobo_params_across_sites(
-        _across_frame, _across_settings) == 1
+        _across_frame, _across_settings,
+        figures=_across_figs, show=False) == 1
+    assert len(_across_figs) == 1
     _across_ax = _data_view.plt.gcf().axes[0]
-    _site_lines = {line.get_label(): np.asarray(line.get_xdata(), dtype=float)
-                   for line in _across_ax.lines if line.get_label().endswith(' data')}
-    assert np.allclose(_site_lines['A data'], [0.0, 1.0])
-    assert np.allclose(_site_lines['B data'], [0.0, 1.0])
+    _deployment_x = [np.asarray(line.get_xdata(), dtype=float)
+                     for line in _across_ax.lines]
+    assert len(_deployment_x) == 3
+    assert all(np.allclose(values, [0.0, 1.0]) for values in _deployment_x)
+    assert set(_across_ax.get_legend_handles_labels()[1]) == {'A', 'B'}
     assert 'Elapsed days' in _across_ax.get_xlabel()
+    assert 'deployment' in _across_ax.get_xlabel()
+
+    _light_frame = pd.DataFrame({
+        'Datetime': pd.to_datetime([
+            '2025-01-01', '2025-01-02', '2025-01-03',
+            '2025-06-01', '2025-06-02', '2025-06-03']),
+        'Site': ['A'] * 6,
+        'Source file': ['A-old.csv'] * 3 + ['A-new.csv'] * 3,
+        'Luminosity (lux)': [100.0, 80.0, 60.0, 110.0, 90.0, 70.0],
+        'Flag_lux': [1, 4, 4, 1, 4, 4],
+    })
+    _light_settings = dict(_across_settings)
+    _light_settings['siteList'] = ['A']
+    _light_settings['parameterList'] = ['Luminosity (lux)']
+    _light_settings['viewDataPoints'] = False
+    _site_figs = []
+    assert _data_view.plot_hobo_params_at_site(
+        _light_frame, _light_settings, 'A',
+        figures=_site_figs, show=False) == 1
+    _site_ax = _site_figs[0].axes[0]
+    assert all(line.get_color() != '#b30000' for line in _site_ax.lines)
+    assert len(_site_ax.patches) == 2
+    _data_view.plt.close(_site_figs[0])
+
+    _light_figs = []
+    assert _data_view.plot_hobo_params_across_sites(
+        _light_frame, _light_settings,
+        figures=_light_figs, show=False) == 1
+    _light_ax = _light_figs[0].axes[0]
+    assert len(_light_ax.lines) == 4
+    assert len(_light_ax.patches) == 0
+    assert sum(line.get_linestyle() == ':' for line in _light_ax.lines) == 2
+    assert _light_ax.get_legend_handles_labels()[1] == ['A']
 finally:
     _data_view.plt.savefig = _real_savefig
     _data_view.show_panels = _real_show_panels
     _data_view.plt.close('all')
-ok.append('parameters across sites: unmatched dates align by elapsed time')
+ok.append('HOBO panels: deployments align independently; BAD is shaded at-site and dotted across sites')
 
 _gap_times = pd.date_range('2026-01-01', periods=3, freq='5min')
 _gap_frame = pd.DataFrame({

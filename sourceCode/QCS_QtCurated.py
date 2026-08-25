@@ -293,9 +293,10 @@ class CuratedDatabaseTab(QWidget):
             for index in range(widget.count()):
                 item = widget.item(index)
                 # None means none in the whole dimension. All applies to the
-                # currently available facet; compatible hidden selections are
-                # retained so broadening another facet can restore them.
-                if state == Qt.CheckState.Unchecked or not item.isHidden():
+                # currently compatible facet; incompatible values stay visible
+                # but disabled and unchecked.
+                enabled = bool(item.flags() & Qt.ItemFlag.ItemIsEnabled)
+                if state == Qt.CheckState.Unchecked or enabled:
                     item.setCheckState(state)
         self._selection_changed(dimension)
 
@@ -375,25 +376,47 @@ class CuratedDatabaseTab(QWidget):
         self.postbuild_bar.setVisible(False)
 
     def _apply_filter_facets(self):
-        """Hide impossible choices and clear any that just became impossible."""
+        """Disable impossible choices and clear any that became impossible."""
         if self.catalog is None or self._filter_updating:
             return
         self._filter_updating = True
         try:
-            current = {
-                name: self._checked_values(widget)
-                for name, widget in self._filter_widgets.items()
-            }
-            available = curated.available_filters(
-                self.catalog, current["instruments"], current["sites"],
-                current["years"])
-            for name, widget in self._filter_widgets.items():
-                allowed = set(available[name])
-                with QSignalBlocker(widget):
-                    for index in range(widget.count()):
-                        item = widget.item(index)
-                        visible = item.data(Qt.ItemDataRole.UserRole) in allowed
-                        item.setHidden(not visible)
+            # Convergence is monotonic: an impossible checked value is cleared,
+            # then availability is recomputed because that removal can broaden
+            # another facet. Values stay visible, so the operator never has an
+            # invisible selection or a list that appears to lose entries.
+            while True:
+                current = {
+                    name: self._checked_values(widget)
+                    for name, widget in self._filter_widgets.items()
+                }
+                available = curated.available_filters(
+                    self.catalog, current["instruments"], current["sites"],
+                    current["years"])
+                cleared = False
+                for name, widget in self._filter_widgets.items():
+                    allowed = set(available[name])
+                    with QSignalBlocker(widget):
+                        for index in range(widget.count()):
+                            item = widget.item(index)
+                            compatible = (item.data(Qt.ItemDataRole.UserRole)
+                                          in allowed)
+                            flags = item.flags()
+                            if compatible:
+                                flags |= Qt.ItemFlag.ItemIsEnabled
+                                item.setToolTip("")
+                            else:
+                                flags &= ~Qt.ItemFlag.ItemIsEnabled
+                                item.setToolTip(
+                                    "Unavailable with the other selected filters")
+                            item.setFlags(flags)
+                            item.setHidden(False)
+                            if (not compatible and item.checkState()
+                                    == Qt.CheckState.Checked):
+                                item.setCheckState(Qt.CheckState.Unchecked)
+                                cleared = True
+                if not cleared:
+                    break
         finally:
             self._filter_updating = False
 

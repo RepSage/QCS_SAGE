@@ -20,8 +20,7 @@ def show_panels(figures=None, browse=False):
     batch drivers leave it alone: with no display, `plt.show()` is already a
     no-op there.
 
-    figures: the exact figures to show. None means 'every figure pyplot holds',
-             which is what the scalar and HOBO panels rely on.
+    figures: the exact figures to show. None means 'every figure pyplot holds'.
     browse:  ask the shell for ONE window paging through the figures instead of
              one window per figure (owner, v13.0: the current panels opened as
              separate windows, which is noise for a comparison). Only a
@@ -102,11 +101,11 @@ def _time_of_day_axis(ax, h0, h1):
 
 
 def _elapsed_days_axis(ax, max_day):
-    """Common deployment-relative axis for sites sampled on different dates."""
+    """Common deployment-relative axis for campaigns sampled on different dates."""
     upper = max(float(max_day), 1.0)
     ax.set_xlim(0.0, upper)
     ax.xaxis.set_major_locator(MaxNLocator(nbins=9, min_n_ticks=3))
-    ax.set_xlabel("Elapsed days since each site's first selected sample")
+    ax.set_xlabel("Elapsed days since each deployment's first selected sample")
 
 
 # display labels for the internal semester keys (titles/log lines only; file
@@ -668,24 +667,34 @@ def identify_valid_interval_profile (x, y):
     return xi, yi
 
 def linear_regression (y, degree):
-    xi, yi = identify_valid_interval(y)
-    yi = np.asarray(yi)
-    idx = np.where(np.isnan(yi))[0]
-    if len(idx) > 0.25 * len(yi):
-        yi = np.delete(yi, idx)
-        xi = np.delete(xi, idx)
-    else:
-        yi[np.where(np.isnan(yi))] = np.nanmean(yi)
-    # adjust linear regression
-    coefficients = np.polyfit(np.arange(len(yi)), yi, degree)
+    """Polynomial tendency against real elapsed time, not sample position.
 
-    # predict values
-    y_pred = np.polyval(coefficients, np.arange(len(yi)))
-    #if len(idx) > 0.25 * len(yi):
-    #    pass
-    #else:
-    #    y_pred[idx] = np.nan
-    return xi, y_pred
+    Uneven sampling and multi-year selections made the old ordinal fit treat
+    two adjacent rows as equally separated even when they were months apart.
+    Duplicate timestamps are averaged for the fit, missing values are omitted,
+    and the time coordinate is normalized before ``polyfit`` for stability.
+    """
+    values = pd.to_numeric(pd.Series(y, copy=False), errors='coerce')
+    times = pd.to_datetime(values.index, errors='coerce')
+    fit_frame = pd.DataFrame({
+        'Datetime': times,
+        'Value': values.to_numpy(),
+    }).dropna(subset=['Datetime', 'Value'])
+    if fit_frame.empty:
+        return pd.DatetimeIndex([]), np.asarray([], dtype=float)
+    fit_frame = (fit_frame.groupby('Datetime', as_index=False, sort=True)['Value']
+                 .mean())
+    xi = pd.DatetimeIndex(fit_frame['Datetime'])
+    yi = fit_frame['Value'].to_numpy(dtype=float)
+    fit_degree = min(max(int(degree), 0), len(yi) - 1)
+    if fit_degree == 0:
+        return xi, np.full(len(yi), float(np.mean(yi)))
+    elapsed = (xi - xi.min()).total_seconds().to_numpy(dtype=float) / 86400.0
+    center = float(np.mean(elapsed))
+    scale = float(np.max(np.abs(elapsed - center)))
+    normalized = (elapsed - center) / scale if scale else elapsed
+    coefficients = np.polyfit(normalized, yi, fit_degree)
+    return xi, np.polyval(coefficients, normalized)
 
 def linear_regression_profile (x, y, degree):
     xi, yi = identify_valid_interval_profile(x, y)
@@ -1276,51 +1285,74 @@ def _hobo_slice_years (database, dataViewSettings, site, time_window=True):
 
 def _lux_daily_peak (db):
     """Daily maximum of the light series - the envelope used by the fouling
-    review plot - as a Series indexed by day."""
+    review plot - as a Series indexed by day. Empty days stay NaN so a plotted
+    line visibly breaks instead of bridging an unsampled interval."""
     lux = pd.to_numeric(db['Luminosity (lux)'], errors='coerce')
     s = pd.Series(lux.values, index=pd.DatetimeIndex(db['Datetime']))
-    return s.resample('D').max().dropna()
+    return s.resample('D').max()
+
+
+def _lux_daily_bad(db, index):
+    """Whether each plotted light day contains a recorded BAD measurement."""
+    if 'Flag_lux' not in db.columns:
+        return pd.Series(False, index=index, dtype=bool)
+    flags = pd.to_numeric(db['Flag_lux'], errors='coerce').eq(4)
+    daily = pd.Series(
+        flags.values, index=pd.DatetimeIndex(db['Datetime'])).resample('D').max()
+    return daily.reindex(index).fillna(False).astype(bool)
+
+
+def _hobo_deployments(db):
+    """Chronological HOBO deployment slices from preserved source provenance.
+
+    Curated workbooks keep the original ``Source file`` written by
+    ``build_database``. Treating all products at one site as one time series
+    pooled sensors, connected campaigns and fitted trends across deployments.
+    A standalone frame without provenance remains one deployment.
+    """
+    if db.empty:
+        return []
+    groups = (db.groupby('Source file', dropna=False, sort=False)
+              if 'Source file' in db.columns else [('Selected data', db)])
+    deployments = []
+    for source, group in groups:
+        group = group.sort_values('Datetime')
+        valid = pd.to_datetime(group['Datetime'], errors='coerce').notna()
+        group = group.loc[valid].copy()
+        if not group.empty:
+            deployments.append((str(source), group))
+    deployments.sort(key=lambda item: item[1]['Datetime'].min())
+    return deployments
 
 
 def _hobo_light_bad_spans(db):
-    """Contiguous Flag_lux=4 spans, kept separate across source deployments.
+    """Flag_lux=4 spans, kept separate across source deployments.
 
     A curated site can contain several qualified products. Taking the first
     BAD row and shading through the end incorrectly covered later clean
     deployments; source-aware spans represent the flags that are actually in
-    each product. Overlapping spans are merged only for a clean visual.
+    each product. A sampling gap does not start a second fouling event: only an
+    observed return to a non-BAD flag closes a span. Overlapping spans are
+    merged only for a clean visual.
     """
     if 'Flag_lux' not in db.columns or db.empty:
         return []
-    groups = (db.groupby('Source file', dropna=False, sort=False)
-              if 'Source file' in db.columns else [(None, db)])
     spans = []
-    for _source, group in groups:
-        group = group.sort_values('Datetime')
+    for _source, group in _hobo_deployments(db):
         times = pd.to_datetime(group['Datetime'], errors='coerce')
         flags = pd.to_numeric(group['Flag_lux'], errors='coerce').eq(4)
-        valid_times = times.dropna().sort_values()
-        diffs = valid_times.diff().dropna()
-        positive = diffs[diffs > pd.Timedelta(0)]
-        gap_limit = (max(positive.median() * 3, pd.Timedelta(hours=6))
-                     if not positive.empty else pd.Timedelta(hours=6))
-        start = end = previous = None
+        start = end = None
         for timestamp, is_bad in zip(times, flags, strict=True):
             if pd.isna(timestamp):
                 continue
             timestamp = pd.Timestamp(timestamp)
-            split = (previous is not None
-                     and timestamp - previous > gap_limit)
             if is_bad:
-                if start is None or split:
-                    if start is not None:
-                        spans.append((start, end))
+                if start is None:
                     start = timestamp
                 end = timestamp
             elif start is not None:
                 spans.append((start, end))
                 start = end = None
-            previous = timestamp
         if start is not None:
             spans.append((start, end))
 
@@ -1333,14 +1365,15 @@ def _hobo_light_bad_spans(db):
     return merged
 
 
-def plot_hobo_params_at_site (database, dataViewSettings, site):
+def plot_hobo_params_at_site (database, dataViewSettings, site,
+                              figures=None, show=True):
     """HOBO 'Parameters at a site': the selected parameters (temperature and/or
     light) for ONE site in a single figure spanning EVERY selected year (a
-    deployment crossing the new year is not split). Temperature: dots +
-    suspect/bad highlights + optional replicate-disagreement bars + tendency line
-    (floored at 0). Light: LINEAR scale with the DAILY-PEAK envelope (the same
-    visual as the fouling review), optional raw points, and the fouling window
-    (Flag_lux == 4) shaded. Returns the number of figures generated (0 or 1)."""
+    deployment crossing the new year is not split). Temperature: dots + optional
+    replicate-disagreement bars + one tendency per deployment (floored at 0).
+    Light: LINEAR scale with one gap-aware DAILY-PEAK envelope per deployment,
+    optional raw points, and the recorded BAD window (Flag_lux == 4) shaded.
+    Returns the number of figures generated (0 or 1)."""
     cParam, bcParam = getParamColors()
     db = _hobo_slice_years(database, dataViewSettings, site)
     params = [p for p in dataViewSettings['parameterList']
@@ -1390,34 +1423,50 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
                              markersize=3, color=bcParam[param], label='Temperature')
                 handles.append(h)
             if fit:
-                s = pd.Series(temp.values, index=pd.DatetimeIndex(db['Datetime'])).dropna()
-                if len(s) > 3:
-                    xp, yp = linear_regression(s, degree=deg)
-                    yp = _floor_fit(yp)
-                    h, = ax.plot(xp, yp, linestyle='-', color=bcParam[param],
-                                 label='Temperature tendency')
-                    handles.append(h)
+                tendency_added = False
+                for _source, deployment in _hobo_deployments(db):
+                    dep_temp = pd.to_numeric(
+                        deployment['Temperature (degC)'], errors='coerce')
+                    s = pd.Series(dep_temp.values,
+                                  index=pd.DatetimeIndex(deployment['Datetime'])).dropna()
+                    if len(s) > 3:
+                        xp, yp = linear_regression(s, degree=deg)
+                        yp = _floor_fit(yp)
+                        h, = ax.plot(
+                            xp, yp, linestyle='-', color=bcParam[param],
+                            label=('Temperature tendency (each deployment)'
+                                   if not tendency_added else None))
+                        if not tendency_added:
+                            handles.append(h)
+                            tendency_added = True
         else:
-            # light: daily-peak envelope on a LINEAR scale (the fouling-review
-            # visual the operator already knows), optional raw points
+            # Light stays source-aware: each qualified deployment has its own
+            # daily envelope, and NaN days break the line across data gaps.
             lux = pd.to_numeric(db['Luminosity (lux)'], errors='coerce')
-            peak = _lux_daily_peak(db)
             if points:
                 h, = ax.plot(db['Datetime'], lux, linestyle='None', marker='.',
                              markersize=2, alpha=0.35, color=cParam[param],
                              label='Light readings')
                 handles.append(h)
-            h, = ax.plot(peak.index, peak.values, linestyle='-', marker='.',
-                         markersize=4, lw=1.2, color=bcParam[param],
-                         label='Daily light peak')
-            handles.append(h)
+            peak_added = False
+            for _source, deployment in _hobo_deployments(db):
+                peak = _lux_daily_peak(deployment)
+                if not peak.notna().any():
+                    continue
+                h, = ax.plot(
+                    peak.index, peak.values, linestyle='-', marker='.',
+                    markersize=4, lw=1.2, color=bcParam[param],
+                    label=('Daily light peak (each deployment)'
+                           if not peak_added else None))
+                if not peak_added:
+                    handles.append(h)
+                    peak_added = True
             if 'Flag_lux' in db.columns:
                 for span_index, (start, end) in enumerate(
                         _hobo_light_bad_spans(db)):
-                    ax.axvline(start, color='#b30000', lw=1.2)
                     span = ax.axvspan(
                         start, end, color='#b30000', alpha=0.10,
-                        label='Fouling/BAD light window')
+                        label='Recorded BAD light window')
                     if span_index == 0:
                         handles.append(span)
         ax.set_ylabel(display, color=bcParam[param])
@@ -1432,20 +1481,25 @@ def plot_hobo_params_at_site (database, dataViewSettings, site):
     ax1.set_title('HOBO parameters for %s' % site)
     ax1.xaxis.set_major_formatter(_mdates.DateFormatter('%d/%m/%y'))
     ax1.legend(handles=handles, fontsize=8)
+    _name_panel(fig, 'HOBO parameters', site)
     plt.savefig('hobo_params_%s.svg' % site, bbox_inches='tight')
     enable_scroll_zoom(fig)
-    show_panels()
+    _keep_or_close(fig, show, figures)
+    if show and figures is None:
+        show_panels([fig])
     return 1
 
 
-def plot_hobo_params_across_sites (database, dataViewSettings):
+def plot_hobo_params_across_sites (database, dataViewSettings,
+                                   figures=None, show=True):
     """HOBO 'Parameters across sites': ONE figure per selected parameter with
-    every selected site overlaid by elapsed time from its first selected sample,
-    spanning every selected year in one plot. Absolute Time window filtering is
-    applied first; no timestamp match between deployments is required.
-    Temperature: dots + optional per-site tendency (floored at 0). Light: the
-    daily-peak envelope per site (linear scale) with each site's fouling cutoff
-    marked. Returns the number of figures generated."""
+    every selected deployment overlaid by elapsed time from its own first
+    selected sample, spanning every selected year in one plot. Absolute Time
+    window filtering is applied first; no timestamp match is required.
+    Temperature: dots + optional per-deployment tendency (floored at 0). Light:
+    a gap-aware daily-peak envelope per deployment (linear scale), with recorded
+    BAD days dotted and faded instead of pooled into an ambiguous background
+    span. Returns the number of figures generated."""
     site_names = dataViewSettings['siteList']
     params = [p for p in dataViewSettings['parameterList']
               if p in ('Temperature (degC)', 'Luminosity (lux)')]
@@ -1462,53 +1516,85 @@ def plot_hobo_params_across_sites (database, dataViewSettings):
         ax.grid(True, linestyle='dotted', linewidth=0.5)
         plotted = 0
         max_day = 0.0
+        bad_light_plotted = False
         for site in site_names:
             db = _hobo_slice_years(database, dataViewSettings, site)
             if db.empty or param not in db.columns:
                 print('\nNo %s data for %s.' % (param, site))
                 continue
-            values = pd.to_numeric(db[param], errors='coerce')
-            if not values.notna().any():
+            if not pd.to_numeric(db[param], errors='coerce').notna().any():
                 print('\nNo %s data for %s.' % (param, site))
                 continue
-            site_origin = db['Datetime'].min()
-            x_days = ((pd.DatetimeIndex(db['Datetime']) - site_origin)
-                      .total_seconds() / 86400)
-            max_day = max(max_day, float(x_days.max()))
+            label_added = False
             if param == 'Luminosity (lux)':
-                peak = _lux_daily_peak(db)
-                peak_days = (peak.index - site_origin).total_seconds() / 86400
-                if points:
-                    ax.plot(x_days, values, linestyle='None', marker='.',
-                            markersize=2, alpha=0.30, color=colors[site])
-                ax.plot(peak_days, peak.values, linestyle='-', marker='.', markersize=4,
-                        lw=1.2, color=colors[site], label='%s daily peak' % site)
-                if 'Flag_lux' in db.columns:
-                    for span_index, (start, end) in enumerate(
-                            _hobo_light_bad_spans(db)):
-                        start_day = ((start - site_origin).total_seconds()
-                                     / 86400)
-                        end_day = ((end - site_origin).total_seconds()
-                                   / 86400)
-                        ax.axvspan(
-                            start_day, end_day, color=colors[site], alpha=0.08,
-                            label=('%s Fouling/BAD window' % site
-                                   if span_index == 0 else None))
-            else:
-                if fit:
-                    s = pd.Series(values.values, index=pd.DatetimeIndex(db['Datetime'])).dropna()
+                for _source, deployment in _hobo_deployments(db):
+                    values = pd.to_numeric(
+                        deployment['Luminosity (lux)'], errors='coerce')
+                    if not values.notna().any():
+                        continue
+                    origin = deployment['Datetime'].min()
+                    x_days = ((pd.DatetimeIndex(deployment['Datetime']) - origin)
+                              .total_seconds() / 86400)
+                    max_day = max(max_day, float(x_days.max()))
+                    peak = _lux_daily_peak(deployment)
+                    peak_days = ((peak.index - origin).total_seconds()
+                                 / 86400)
                     if points:
                         ax.plot(x_days, values, linestyle='None', marker='.',
-                                markersize=3, color=colors[site], label='%s data' % site)
-                    if len(s) > 3:
-                        xp, yp = linear_regression(s, degree=deg)
-                        yp = _floor_fit(yp)
-                        xp_days = (xp - site_origin).total_seconds() / 86400
-                        ax.plot(xp_days, yp, linestyle='-', color=colors[site],
-                                label='%s tendency' % site)
-                else:
-                    ax.plot(x_days, values, linestyle='None', marker='.',
-                            markersize=3, color=colors[site], label='%s data' % site)
+                                markersize=2, alpha=0.30, color=colors[site])
+                    daily_bad = _lux_daily_bad(deployment, peak.index)
+                    usable_peak = peak.mask(daily_bad)
+                    bad_peak = peak.where(daily_bad)
+                    if usable_peak.notna().any():
+                        ax.plot(
+                            peak_days, usable_peak.values, linestyle='-',
+                            marker='.', markersize=4, lw=1.2,
+                            color=colors[site],
+                            label=site if not label_added else None)
+                        label_added = True
+                    if bad_peak.notna().any():
+                        ax.plot(
+                            peak_days, bad_peak.values, linestyle=':',
+                            marker='.', markersize=4, lw=1.0, alpha=0.50,
+                            color=colors[site],
+                            label=site if not label_added else None)
+                        label_added = True
+                        bad_light_plotted = True
+            else:
+                for _source, deployment in _hobo_deployments(db):
+                    values = pd.to_numeric(
+                        deployment['Temperature (degC)'], errors='coerce')
+                    if not values.notna().any():
+                        continue
+                    origin = deployment['Datetime'].min()
+                    x_days = ((pd.DatetimeIndex(deployment['Datetime']) - origin)
+                              .total_seconds() / 86400)
+                    max_day = max(max_day, float(x_days.max()))
+                    if fit:
+                        s = pd.Series(
+                            values.values,
+                            index=pd.DatetimeIndex(deployment['Datetime'])).dropna()
+                        if points:
+                            ax.plot(
+                                x_days, values, linestyle='None', marker='.',
+                                markersize=3, color=colors[site],
+                                label=site if not label_added else None)
+                            label_added = True
+                        if len(s) > 3:
+                            xp, yp = linear_regression(s, degree=deg)
+                            yp = _floor_fit(yp)
+                            xp_days = ((xp - origin).total_seconds()
+                                       / 86400)
+                            ax.plot(
+                                xp_days, yp, linestyle='-', color=colors[site],
+                                label=site if not label_added else None)
+                            label_added = True
+                    else:
+                        ax.plot(
+                            x_days, values, linestyle='None', marker='.',
+                            markersize=3, color=colors[site],
+                            label=site if not label_added else None)
+                        label_added = True
             plotted += 1
         if plotted == 0:
             plt.close(fig)
@@ -1520,14 +1606,22 @@ def plot_hobo_params_across_sites (database, dataViewSettings):
         if dataViewSettings.get('fixedScale') and param in dataViewSettings.get('scaleSettings', {}):
             ax.set_ylim(dataViewSettings['scaleSettings'][param]['min'],
                         dataViewSettings['scaleSettings'][param]['max'])
-        ax.legend(fontsize=8, loc='lower left')
+        handles, labels = ax.get_legend_handles_labels()
+        if param == 'Luminosity (lux)' and bad_light_plotted:
+            handles.append(Line2D(
+                [0], [0], color='0.35', linestyle=':', marker='.',
+                lw=1.0, alpha=0.50))
+            labels.append('Dotted/faded = recorded BAD light')
+        ax.legend(handles, labels, fontsize=8, loc='lower left')
+        _name_panel(fig, 'HOBO %s across sites' % display)
         param_r = re.sub(r'\([^()]*\)', '', param).strip().replace(' ', '_')
         plt.savefig('hobo_%s_across_sites.svg' % param_r, bbox_inches='tight')
         enable_scroll_zoom(fig)
-        show_panels()
+        _keep_or_close(fig, show, figures)
         n_figs += 1
+    if show and figures is None and n_figs:
+        show_panels(browse=n_figs > 1)
     return n_figs
-
 def plot_TS_diagram (database, dataViewSettings):
     import gsw # type: ignore
     import matplotlib.cm as cm # type: ignore
