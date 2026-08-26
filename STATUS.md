@@ -17,17 +17,19 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   and must be rebuilt.
 - Elapsed HOBO comparisons now print source-colored calendar dates at each
   deployment's endpoints when at most 16 deployments are selected; broader
-  views show one narrowing prompt. The full 116-product/351,787-row replay kept
+  views show one narrowing prompt. The full 115-product/348,183-row replay kept
   zero light bridges, vertical BAD markers and background BAD spans. A real Qt
   probe confirmed that changing site now refits the Time window as changing year
   already did. The suite remains 67/67 and full ruff is clean.
-- PAB3 2026 currently has two separate qualified products from the same campaign:
-  HOBO2 ends 2026-03-15 and HOBO1 ends 2026-02-15. The data-driven grouping rule
-  split them because the recovery ends differ by about 28 days; deciding that
-  one logger ended early and requalifying them as replicates requires the archive
-  owner's explicit confirmation.
-- Next: resolve the PAB3 replicate decision, repeat final build/smoke, merge the
-  follow-up, tag and publish v13.2.1.
+- The owner confirmed that PAB3 2026S1 HOBO1/HOBO2 are replicates whose
+  filenames obscured the relationship. They now qualify as one product, with
+  the longer HOBO2 export supplying the 4,269-row time grid and 3,559 paired
+  temperature-spread rows. Both superseded products and their reports were
+  moved recoverably to `DATABASE\_deleted\20260826`; raw files were untouched.
+  The rebuilt corpus has 281 products and 640,807 source rows; its read-only
+  build yields 640,717 rows after the same 90 exact duplicates as before.
+- Next: repeat final test/build/smoke, merge the follow-up, tag and publish
+  v13.2.1.
 
 ## Open items
 

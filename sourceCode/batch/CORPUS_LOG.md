@@ -13,6 +13,58 @@ holds **irreversible operations on the archive** — dated, with their evidence.
 
 ---
 
+## 2026-08-26 — PAB3 2026S1 HOBO exports qualified as replicates
+
+Owner decision: `HOBO1_PAB3_180925_110326.xlsx` and
+`HOBO2_PAB3_180925_110326.xlsx` are replicate loggers from one deployment; the
+filenames made them look like separate deployments. The automatic data-span
+rule had split them because HOBO1 stopped about 28 days before HOBO2. This is
+now an exact, ordered exception scoped only to `PAB3/2026S1`: HOBO2 comes first
+because `combine_hobo_replicates` uses the first logger's timestamps as the
+output grid. A missing forced-group member fails loudly rather than silently
+recreating two products.
+
+The two raw inputs were not modified:
+
+| raw export | bytes | SHA-256 |
+|---|---:|---|
+| `HOBO2_PAB3_180925_110326.xlsx` | 107,161 | `EFB91AECDCF6501C37D68FC25EBD003BA3BBE69B7EE43DFA9A1BFAC3FE60E1A6` |
+| `HOBO1_PAB3_180925_110326.xlsx` | 91,049 | `469459B50ABCB982EB99BA9A044114D994A48D95CE427DFBBFC2BD42032F1C54` |
+
+The official HOBO-only qualification wrote `PAB3_2026S1_HOBO_QLF`: **4,269
+rows**, 2025-09-18 05:24:49 through 2026-03-15 13:24:49, all stamped v13.2.1,
+with no invalid or duplicated timestamp and no exact duplicate row. The
+ordered provenance block names HOBO2 then HOBO1. Temperature spread is present
+on **3,559 paired rows**; `Flag_T` is 4,245 GOOD / 24 NOT_EVALUATED and
+`Flag_lux` is 1,440 GOOD / 2,829 BAD under the unchanged fixed-60-day light
+rule. Both clock verdicts are OK. The product has one panel and eight reports.
+
+Only after the replacement passed those checks, `drop_stale_products.py`
+moved both superseded products, their DataView directories and five reports
+each — **14 files / 2,905,576 bytes** — to the recoverable destinations:
+
+```
+DATABASE\_deleted\20260826\PAB3_2026S1_HOBO_1_QLF
+DATABASE\_deleted\20260826\PAB3_2026S1_HOBO_2_QLF
+```
+
+No file was permanently deleted. Their provenance blocks were removed only
+after the replacement's ordered inputs were verified.
+
+The final rebuilt index contains **281 products**: 113 Seaguard, 53 Doppler and
+115 HOBO. Its value-integrity sweep found 3,354 out-of-sensor-limit values
+across five products and confirmed that all 3,354 carry BAD flag 4. Independent
+direct discovery and read-only build reopened all 281 products: **640,807
+source rows became 640,717 unified rows** (Seaguard 163,152; Doppler 129,382;
+HOBO 348,183). The same 90 exact duplicate rows were removed and the same
+10,654 non-identical Site+Datetime overlaps were retained; neither count changed
+because of the replicate correction. A full HOBO replay found 115 products,
+348,183 rows, zero finite light bridges across missing days, and one PAB3
+deployment with one temperature tendency. Its light plot has separate solid
+and dotted portions for usable versus recorded-BAD data, not a second logger.
+
+---
+
 ## 2026-08-25 — `_SEM_SITIO` resolved; BURACA_FUNDA 2021S2 qualified
 
 Owner decision: the anonymous raw 2021S2 deployment belongs to

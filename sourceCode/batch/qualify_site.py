@@ -358,7 +358,8 @@ def plan(site, sem):
             # logger spanning 2016-2018) - group them from the data
             pl = os.path.join(cdir, 'planilha')
             dropped = _excluded_in(pl)
-            for grp, span in _group_replicates(_sheets(pl)):
+            for grp, span in _group_replicates(
+                    _sheets(pl), site=site, sem=sem):
                 items.append({'kind': 'HOBO', 'tipo': None, 'campaign': camp,
                               'start': span[0] if span else camp, 'files': grp,
                               'co2': None, 'excluded': _exclusions_for(dropped, span)})
@@ -586,6 +587,19 @@ _REPL_TOL = pd.Timedelta(days=1)
 _REPL_TOL_LOOSE = pd.Timedelta(days=3)
 _REPL_LEN_TOL = 0.05          # durations may differ by this much within a pair
 
+# Owner-confirmed exceptions to the data-span rule. Each tuple is ORDERED: the
+# first export supplies combine_hobo_replicates' output time grid, so a logger
+# that kept recording after its twin stopped must come first. This is deliberately
+# site+semester scoped; it does not weaken the corpus-wide deployment criterion.
+FORCED_REPLICATE_GROUPS = {
+    ('PAB3', '2026S1'): (
+        (
+            'HOBO2_PAB3_180925_110326.xlsx',  # 4,269 rows, ends 2026-03-15
+            'HOBO1_PAB3_180925_110326.xlsx',  # stopped early on 2026-02-15
+        ),
+    ),
+}
+
 
 def _same_deployment(s, e, gs, ge):
     """Are these two spans the same deployment (i.e. replicates)?
@@ -611,7 +625,7 @@ def _same_deployment(s, e, gs, ge):
     return False
 
 
-def _group_replicates(files):
+def _group_replicates(files, site=None, sem=None):
     """Group exports into DEPLOYMENTS from the DATA, not the names (see
     `_same_deployment` for the criterion). Returns [(files, span)].
 
@@ -621,10 +635,45 @@ def _group_replicates(files):
         'PAB3_30062016_PAREDE' (wall, 2016-2018) - two different loggers.
     Averaging those as replicates is simply wrong, and names cannot decide it
     (the same SET's replicates get spelled 'ExpIncubacaoMacroalgas' vs
-    'Expincubacaorodolito'; dates appear as both 260326 and 26032026)."""
+    'Expincubacaorodolito'; dates appear as both 260326 and 26032026).
+
+    Rare owner-confirmed exceptions are exact, ordered filename sets scoped to
+    one site+semester. A partial set fails loudly instead of silently reverting
+    to two products on the next corpus run.
+    """
+    files = list(files)
     spans = {f: _span(f) for f in files}
+    by_name = {os.path.basename(f): f for f in files}
+    forced_groups = []
+    claimed = set()
+    forced_sets = FORCED_REPLICATE_GROUPS.get(
+        (str(site).upper(), str(sem).upper()), ())
+    for ordered_names in forced_sets:
+        present = [name for name in ordered_names if name in by_name]
+        if present and len(present) != len(ordered_names):
+            missing = [name for name in ordered_names if name not in by_name]
+            raise RuntimeError(
+                'forced replicate group %s/%s is incomplete; missing %s'
+                % (site, sem, ', '.join(missing)))
+        if not present:
+            continue
+        ordered_files = [by_name[name] for name in ordered_names]
+        if any(spans[path] is None for path in ordered_files):
+            raise RuntimeError(
+                'forced replicate group %s/%s contains an unreadable export'
+                % (site, sem))
+        forced_groups.append({
+            'files': ordered_files,
+            'span': (
+                min(spans[path][0] for path in ordered_files),
+                max(spans[path][1] for path in ordered_files),
+            ),
+        })
+        claimed.update(ordered_files)
     groups = []
-    for f in sorted([x for x in files if spans[x]], key=lambda x: spans[x][0]):
+    for f in sorted(
+            [x for x in files if spans[x] and x not in claimed],
+            key=lambda x: spans[x][0]):
         s, e = spans[f]
         for g in groups:
             gs, ge = g['span']
@@ -635,9 +684,9 @@ def _group_replicates(files):
         else:
             groups.append({'files': [f], 'span': (s, e)})
     for f in files:                       # unreadable: its own group, let it fail loudly
-        if not spans[f]:
+        if not spans[f] and f not in claimed:
             groups.append({'files': [f], 'span': None})
-    return [(g['files'], g['span']) for g in groups]
+    return [(g['files'], g['span']) for g in forced_groups + groups]
 
 
 def _station_of(subpath, files):
