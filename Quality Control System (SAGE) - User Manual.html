@@ -1573,9 +1573,12 @@
             <td>Parameters across sites</td>
             <td>One figure per selected parameter with all sites overlaid on the
                 <strong>elapsed-days axis</strong> from each source deployment's first selected
-                sample, so campaigns and sites do not need coincident timestamps. The actual Time
-                window filters rows before this alignment. Light uses a separate gap-aware daily
-                peak for each deployment; recorded BAD light is dotted and faded instead of
+                day, so campaigns and sites do not need coincident timestamps. Calendar dates in
+                the site's color mark the first and last selected day of each deployment. They are
+                shown for selections of up to 16 deployments; a broader chart displays a note asking
+                for narrower site/year filters rather than stacking unreadable labels. The actual
+                Time window filters rows before this alignment. Light uses a separate gap-aware
+                daily peak for each deployment; recorded BAD light is dotted and faded instead of
                 becoming an ambiguous background span. Temperature gains per-deployment tendency
                 lines calculated against real elapsed time</td>
             <td><code>hobo_&lt;parameter&gt;_across_sites.svg</code></td>
@@ -1800,8 +1803,12 @@
 
     <h4>Time Filter</h4>
     <ul>
-        <li><strong>By Year:</strong> Type a specific year in the "Filter by Year" field</li>
-        <li><strong>By Date/Time:</strong> Use the chronological sorting ("Sort by Time" in the input window)</li>
+        <li><strong>By site/year:</strong> Use the checkboxes in Filter settings. Every site or
+            year change automatically fits the editable Time window to the first and last available
+            sample in the new selection</li>
+        <li><strong>By date/time:</strong> Refine the resulting Time window by typing its start and
+            end in <code>DD/MM/YYYY HH:MM</code>. Cross-site panels apply this absolute interval before
+            aligning each deployment by elapsed day</li>
     </ul>
 
     <h4>Spatial Filter</h4>

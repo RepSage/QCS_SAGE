@@ -105,7 +105,48 @@ def _elapsed_days_axis(ax, max_day):
     upper = max(float(max_day), 1.0)
     ax.set_xlim(0.0, upper)
     ax.xaxis.set_major_locator(MaxNLocator(nbins=9, min_n_ticks=3))
-    ax.set_xlabel("Elapsed days since each deployment's first selected sample")
+    ax.set_xlabel("Elapsed days since each deployment's first selected day")
+
+
+def _annotate_elapsed_dates(ax, x_days, values, datetimes, color):
+    """Stamp the first/last plotted calendar date on an elapsed-time series.
+
+    A shared day-zero axis makes deployments comparable but deliberately removes
+    their calendar position. Small endpoint labels restore that context without
+    joining campaigns or adding one legend entry per source file. The text uses
+    the site's line color, so the existing site legend remains authoritative.
+    """
+    x = np.asarray(x_days, dtype=float)
+    y = pd.to_numeric(pd.Series(values), errors='coerce').to_numpy(dtype=float)
+    dates = pd.to_datetime(pd.Series(datetimes), errors='coerce')
+    valid = np.isfinite(x) & np.isfinite(y) & dates.notna().to_numpy()
+    positions = np.flatnonzero(valid)
+    if not len(positions):
+        return []
+    endpoints = [positions[0]]
+    if positions[-1] != positions[0]:
+        endpoints.append(positions[-1])
+    labels = []
+    middle = float(np.nanmedian(y[valid]))
+    for endpoint, is_start in zip(
+            endpoints, (True, False) if len(endpoints) == 2 else (True,),
+            strict=True):
+        place_above = y[endpoint] < middle
+        if np.isclose(y[endpoint], middle):
+            place_above = is_start
+        label = ax.annotate(
+            pd.Timestamp(dates.iloc[endpoint]).strftime('%d/%m/%y'),
+            xy=(x[endpoint], y[endpoint]),
+            xytext=(3 if is_start else -3, 5 if place_above else -5),
+            textcoords='offset points',
+            ha='left' if is_start else 'right',
+            va='bottom' if place_above else 'top',
+            color=color, fontsize=7, fontweight='bold', clip_on=True,
+            bbox={'facecolor': 'white', 'edgecolor': 'none',
+                  'alpha': 0.65, 'pad': 0.5},
+            zorder=5)
+        labels.append(label)
+    return labels
 
 
 # display labels for the internal semester keys (titles/log lines only; file
@@ -1510,6 +1551,15 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
 
     n_figs = 0
     for param in params:
+        deployment_count = sum(
+            1
+            for site in site_names
+            for _source, deployment in _hobo_deployments(
+                _hobo_slice_years(database, dataViewSettings, site))
+            if (param in deployment.columns
+                and pd.to_numeric(
+                    deployment[param], errors='coerce').notna().any()))
+        show_endpoint_dates = deployment_count <= 16
         display = renameParameters([param])[0]
         fig, ax = plt.subplots(figsize=(1050 / 100, 540 / 100))
         plt.subplots_adjust(bottom=0.14)
@@ -1532,11 +1582,13 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
                         deployment['Luminosity (lux)'], errors='coerce')
                     if not values.notna().any():
                         continue
-                    origin = deployment['Datetime'].min()
+                    peak = _lux_daily_peak(deployment)
+                    origin = peak.first_valid_index()
+                    if origin is None:
+                        continue
                     x_days = ((pd.DatetimeIndex(deployment['Datetime']) - origin)
                               .total_seconds() / 86400)
                     max_day = max(max_day, float(x_days.max()))
-                    peak = _lux_daily_peak(deployment)
                     peak_days = ((peak.index - origin).total_seconds()
                                  / 86400)
                     if points:
@@ -1560,6 +1612,9 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
                             label=site if not label_added else None)
                         label_added = True
                         bad_light_plotted = True
+                    if show_endpoint_dates:
+                        _annotate_elapsed_dates(
+                            ax, peak_days, peak.values, peak.index, colors[site])
             else:
                 for _source, deployment in _hobo_deployments(db):
                     values = pd.to_numeric(
@@ -1570,6 +1625,8 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
                     x_days = ((pd.DatetimeIndex(deployment['Datetime']) - origin)
                               .total_seconds() / 86400)
                     max_day = max(max_day, float(x_days.max()))
+                    date_x, date_y = x_days, values
+                    date_times = deployment['Datetime']
                     if fit:
                         s = pd.Series(
                             values.values,
@@ -1589,12 +1646,18 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
                                 xp_days, yp, linestyle='-', color=colors[site],
                                 label=site if not label_added else None)
                             label_added = True
+                            if not points:
+                                date_x, date_y, date_times = xp_days, yp, xp
                     else:
                         ax.plot(
                             x_days, values, linestyle='None', marker='.',
                             markersize=3, color=colors[site],
                             label=site if not label_added else None)
                         label_added = True
+                    if (show_endpoint_dates
+                            and (not fit or points or len(s) > 3)):
+                        _annotate_elapsed_dates(
+                            ax, date_x, date_y, date_times, colors[site])
             plotted += 1
         if plotted == 0:
             plt.close(fig)
@@ -1612,7 +1675,19 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
                 [0], [0], color='0.35', linestyle=':', marker='.',
                 lw=1.0, alpha=0.50))
             labels.append('Dotted/faded = recorded BAD light')
-        ax.legend(handles, labels, fontsize=8, loc='lower left')
+        # Let matplotlib keep the legend away from the newly explicit calendar
+        # endpoints; a fixed lower-left legend could cover a low first-day light
+        # peak and its date.
+        ax.legend(handles, labels, fontsize=8, loc='best')
+        if not show_endpoint_dates:
+            ax.text(
+                0.99, 0.01,
+                ('Calendar endpoint dates hidden for %d deployments; narrow '
+                 'the site/year selection to show them.' % deployment_count),
+                transform=ax.transAxes, ha='right', va='bottom', fontsize=7,
+                color='0.35',
+                bbox={'facecolor': 'white', 'edgecolor': '0.8',
+                      'alpha': 0.80, 'pad': 1.5})
         _name_panel(fig, 'HOBO %s across sites' % display)
         param_r = re.sub(r'\([^()]*\)', '', param).strip().replace(' ', '_')
         plt.savefig('hobo_%s_across_sites.svg' % param_r, bbox_inches='tight')

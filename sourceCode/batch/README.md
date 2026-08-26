@@ -70,7 +70,9 @@ untouched — used for light-mode reruns.
 - **HOBO replicates are grouped by DATA, not names**: replicates are deployed
   and recovered together (both ends within 1 day). One folder can hold several
   deployments (PAB3 8a = reef-top AND wall loggers) and names lie
-  ('ExpIncubacaoMacroalgas' vs 'Expincubacaorodolito').
+  ('ExpIncubacaoMacroalgas' vs 'Expincubacaorodolito'). Rare owner-confirmed
+  exceptions live in `FORCED_REPLICATE_GROUPS`, scoped to one site+semester and
+  ordered with the longest sound time grid first; a missing member fails loudly.
 - **CO2 pairs by time overlap**: each cast attaches the CO2 txt whose own time
   range (local, read from its Year..Second columns) covers the cast's local
   start (±1 h); among several covering exports the SHORTEST wins (the per-cast

@@ -587,7 +587,7 @@ class VisualizationTab(QWidget):
             cb = QCheckBox(str(site))
             cb.setToolTip(TOOLTIPS['site_filter'])
             self._check_pair(cb, dbv.site_vars[site], dbv.site_widgets.get(site),
-                             after=(dbv._refresh_scale_defaults,))
+                             after=(dbv.filter_selection_changed,))
             self.site_checks[site] = cb
             ff.addWidget(cb)
         ff.addLayout(self._all_none_row(lambda: self.site_checks.values()))
@@ -603,7 +603,7 @@ class VisualizationTab(QWidget):
             cb = QCheckBox(str(y))
             cb.setToolTip(TOOLTIPS['filter_year'])
             self._check_pair(cb, dbv.year_vars[y], dbv.year_widgets.get(y),
-                             after=(dbv.year_filter_changed,))
+                             after=(dbv.filter_selection_changed,))
             self.year_checks[y] = cb
             ygrid.addWidget(cb, i // 2, i % 2)
         yh = QWidget()
