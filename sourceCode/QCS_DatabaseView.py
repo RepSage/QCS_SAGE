@@ -33,8 +33,8 @@ TOOLTIPS = {
     'output_path': "Folder for the outputs",
     'data_type': "Collection type: TSCP Mooring, TSCP Profile or TSCP Doppler\n(same naming as the qualification Data type)\nA HOBO database is shown as HOBO",
     'filter_year': "Year(s) to visualize\nPanels are generated once per selected year",
-    'time_start': "Optional: first actual date/time included in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 15/04/2019 09:00); changing the year fits this to the new available interval\nCross-site panels filter these dates first, then compare sites by elapsed time",
-    'time_end': "Optional: last actual date/time included in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 16/04/2019 09:00); changing the year fits this to the new available interval\nCross-site panels filter these dates first, then compare sites by elapsed time",
+    'time_start': "Optional: first actual date/time included in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 15/04/2019 09:00); changing the site or year fits this to the new available interval\nCross-site panels filter these dates first, then compare sites by elapsed time",
+    'time_end': "Optional: last actual date/time included in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 16/04/2019 09:00); changing the site or year fits this to the new available interval\nCross-site panels filter these dates first, then compare sites by elapsed time",
     'depth_min': "Optional: upper limit of the depth axis in profile/current plots (m)\nEmpty = fit the data",
     'depth_max': "Optional: lower limit of the depth axis in profile/current plots (m)\nEmpty = fit the data",
     'uv_gap_mode': "How the U/V component lines treat missing or BAD current cells\n"
@@ -44,7 +44,7 @@ TOOLTIPS = {
     'panel2': "Panel 2: one parameter compared between sites\nSites do not need matching timestamps: each deployment starts at elapsed day 0",
     'panel3': "Panel 3: parameters compared at the same site (vertical profile)",
     'hobo_params_site': "Temperature/light at one site, one figure per site,\nall selected years in a single plot\nEach deployment keeps its own tendency and gap-aware daily light peak;\nrecorded BAD light windows are shaded",
-    'hobo_params_across': "One figure per parameter, all sites together,\neach deployment aligned from its own elapsed day 0\nLight peaks never bridge unsampled days; recorded BAD light is\ndotted and faded",
+    'hobo_params_across': "One figure per parameter, all sites together,\neach deployment aligned from its own elapsed day 0\nColored endpoint dates restore its calendar start/end (up to 16 deployments);\nbroader plots ask for narrower filters instead of stacking unreadable dates\nLight gaps stay broken; recorded BAD light is dotted/faded",
     'ts_diagram': "Temperature-Salinity (T-S) diagram: temperature vs salinity with\ndepth as the color, to identify water masses",
     'latitude': "Latitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'longitude': "Longitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
@@ -381,8 +381,8 @@ def reset_time_window_to_selection():
             entry.insert(0, value.strftime(TIME_TEXT_FORMAT))
 
 
-def year_filter_changed():
-    """Refresh dependent values and fit Time window to the selected year(s)."""
+def filter_selection_changed():
+    """Refresh dependent values and fit Time window to selected sites/years."""
     _refresh_scale_defaults()
     reset_time_window_to_selection()
 
@@ -1881,7 +1881,7 @@ def build_step2(parent):
         # changing the Year filter re-computes the auto scale defaults (their
         # range spans the selected years)
         cb = ttk.Checkbutton(filter_frame, text=str(db_year), variable=var,
-                             command=year_filter_changed)
+                             command=filter_selection_changed)
         cb.grid(row=row_n, column=0, sticky='w', pady=2)
         ToolTip(cb, TOOLTIPS['filter_year'])
         year_vars[db_year] = var
@@ -1900,9 +1900,9 @@ def build_step2(parent):
 
     for site in site_names:
         var = BooleanVar(value=False)
-        # changing the Site filter re-computes the auto scale defaults
+        # Site and Year both change the available interval and scale defaults.
         cb = ttk.Checkbutton(filter_frame, text=site, variable=var,
-                             command=_refresh_scale_defaults)
+                             command=filter_selection_changed)
         cb.grid(row=row_n, column=0, sticky='w', pady=2)
         site_vars[site] = var
         site_widgets[site] = cb

@@ -1637,6 +1637,13 @@ try:
     assert set(_across_ax.get_legend_handles_labels()[1]) == {'A', 'B'}
     assert 'Elapsed days' in _across_ax.get_xlabel()
     assert 'deployment' in _across_ax.get_xlabel()
+    assert len(_across_ax.texts) == 6
+    assert {text.get_text() for text in _across_ax.texts} == {
+        '01/01/25', '02/01/25', '01/06/25', '02/06/25',
+        '01/09/25', '02/09/25',
+    }
+    assert ({text.get_color() for text in _across_ax.texts}
+            <= {line.get_color() for line in _across_ax.lines})
 
     _light_frame = pd.DataFrame({
         'Datetime': pd.to_datetime([
@@ -1669,11 +1676,33 @@ try:
     assert len(_light_ax.patches) == 0
     assert sum(line.get_linestyle() == ':' for line in _light_ax.lines) == 2
     assert _light_ax.get_legend_handles_labels()[1] == ['A']
+    assert len(_light_ax.texts) == 4
+
+    _broad_frame = pd.concat([
+        pd.DataFrame({
+            'Datetime': pd.to_datetime(['2025-01-01', '2025-01-02'])
+                        + pd.Timedelta(days=source),
+            'Site': ['A', 'A'],
+            'Source file': ['A-%02d.csv' % source] * 2,
+            'Temperature (degC)': [25.0 + source / 10,
+                                   25.1 + source / 10],
+        })
+        for source in range(17)
+    ], ignore_index=True)
+    _broad_settings = dict(_across_settings)
+    _broad_settings['siteList'] = ['A']
+    _broad_settings['tendencyLines'] = False
+    _broad_figs = []
+    assert _data_view.plot_hobo_params_across_sites(
+        _broad_frame, _broad_settings,
+        figures=_broad_figs, show=False) == 1
+    assert len(_broad_figs[0].axes[0].texts) == 1
+    assert 'hidden for 17 deployments' in _broad_figs[0].axes[0].texts[0].get_text()
 finally:
     _data_view.plt.savefig = _real_savefig
     _data_view.show_panels = _real_show_panels
     _data_view.plt.close('all')
-ok.append('HOBO panels: deployments align independently; BAD is shaded at-site and dotted across sites')
+ok.append('HOBO panels: elapsed deployments carry endpoint dates; BAD is shaded at-site and dotted across sites')
 
 _gap_times = pd.date_range('2026-01-01', periods=3, freq='5min')
 _gap_frame = pd.DataFrame({

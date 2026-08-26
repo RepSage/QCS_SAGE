@@ -9,6 +9,26 @@ leave this file, and only what is still open moves down to the open items,
 dated with when it was last touched. The full text before the 2026-08-18
 pruning is in git (`git show a0994bf:STATUS.md`).
 
+## 2026-08-26 — v13.2.1 reopened before publication
+
+- The first v13.2.1 content merge reached `master`, but owner validation paused
+  the release before any `v13.2.1` tag or GitHub Release was created. Follow-up
+  work is on `codex/fix-hobo-date-window`; the earlier installer is superseded
+  and must be rebuilt.
+- Elapsed HOBO comparisons now print source-colored calendar dates at each
+  deployment's endpoints when at most 16 deployments are selected; broader
+  views show one narrowing prompt. The full 116-product/351,787-row replay kept
+  zero light bridges, vertical BAD markers and background BAD spans. A real Qt
+  probe confirmed that changing site now refits the Time window as changing year
+  already did. The suite remains 67/67 and full ruff is clean.
+- PAB3 2026 currently has two separate qualified products from the same campaign:
+  HOBO2 ends 2026-03-15 and HOBO1 ends 2026-02-15. The data-driven grouping rule
+  split them because the recovery ends differ by about 28 days; deciding that
+  one logger ended early and requalifying them as replicates requires the archive
+  owner's explicit confirmation.
+- Next: resolve the PAB3 replicate decision, repeat final build/smoke, merge the
+  follow-up, tag and publish v13.2.1.
+
 ## Open items
 
 **Program and release**
