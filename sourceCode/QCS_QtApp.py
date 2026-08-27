@@ -2517,27 +2517,33 @@ class QtShell(QMainWindow):
             'Hides the batch status; View > Batch status brings it back')
         self._batch_rows = {}
         self._menus()
-        # no size grip: it reserved a ~24 px strip that pushed the criteria
-        # indicator out of line with the log's Clear button (the window edges
-        # and corners still resize normally)
-        self.statusBar().setSizeGripEnabled(False)
-        # Permanent status widgets, left to right: progress, criteria
-        # indicator, alignment spacer. The progress bar comes FIRST so that
-        # showing it during a run cannot shift the indicator sideways.
-        #
-        # pipeline progress: indeterminate while a single run is busy, and a
+        status = self.statusBar()
+        # No size grip: the window edges and corners still resize normally.
+        # QStatusBar adds a native 2 px inset only on the left. These asymmetric
+        # layout margins therefore put both widgets on the same 11 px axes as
+        # the main content.
+        status.setSizeGripEnabled(False)
+        status.setContentsMargins(9, 0, 11, 0)
+        # Criteria is an ordinary (left-side) status widget, while progress is
+        # permanent and therefore stays against the far right when shown.
+        self.criteria_label = QLabel('')
+        self.criteria_label.setFixedWidth(self._criteria_width())
+        self.criteria_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        status.addWidget(self.criteria_label)
+        # Pipeline progress: indeterminate while a single run is busy, and a
         # real fraction on the batch/replicate markers the pipeline already
-        # logs ('=== File k/n ===' / '=== Replicate k/n ===')
+        # logs ('=== File k/n ===' / '=== Replicate k/n ===').
         self.progress = QProgressBar()
         self.progress.setFixedWidth(220)
         self.progress.setVisible(False)
-        self.statusBar().addPermanentWidget(self.progress)
-        # criteria indicator: at a glance, are the quality criteria the
-        # software defaults or operator-edited? (owner request, 2026-08-17)
-        self.criteria_label = QLabel('')
-        # the indicator shares its width with the log's 'Clear log' button so
-        # the two line up on one axis (see _align_clear_button)
-        self.statusBar().addPermanentWidget(self.criteria_label)
+        status.addPermanentWidget(self.progress)
+        # Moving the indicator must not resize the existing log action. Keep
+        # its established width and right-hand content axis independently.
+        clear_width = max(
+            self.log_dock.clear_button.sizeHint().width(),
+            self._criteria_width())
+        self.log_dock.clear_button.setFixedWidth(clear_width)
+        self.log_dock.button_row.setContentsMargins(0, 0, 12, 0)
 
     def _criteria_width(self):
         """How wide the indicator must be to hold its text.
@@ -2549,45 +2555,6 @@ class QtShell(QMainWindow):
         widget jump sideways whenever the indicator changed."""
         fm = self.criteria_label.fontMetrics()
         return max(fm.horizontalAdvance(t) for t in CRITERIA_TEXTS) + 18
-
-    def _align_clear_button(self):
-        """Puts 'Clear log' on the same vertical axis as the status bar's
-        criteria indicator right below it (owner)."""
-        if self.log_dock.isFloating() or not self.log_dock.isVisible():
-            # nothing to line up with, but the indicator must still fit: this
-            # early return used to leave it at whatever width it had
-            needed = self._criteria_width()
-            if self.criteria_label.width() != needed:
-                self.criteria_label.setFixedWidth(needed)
-                self.criteria_label.setAlignment(Qt.AlignCenter)
-            return
-        # Both sit flush against the right edge, so equal WIDTHS put them on
-        # the same axis - deterministic, unlike nudging margins (the widths
-        # differ by theme, text and DPI, so they are measured, not hardcoded).
-        btn = self.log_dock.clear_button
-        label = self.criteria_label
-        width = max(btn.sizeHint().width(), self._criteria_width())
-        if btn.width() != width or label.width() != width:
-            btn.setFixedWidth(width)
-            label.setFixedWidth(width)
-            label.setAlignment(Qt.AlignCenter)
-        # Equal widths are not enough on their own: the two live in different
-        # containers (a dock and the status bar), and the dock does not always
-        # span the whole window - the batch dock takes the right side during a
-        # batch. So the button gets a fixed inset and the status bar's right
-        # margin is then MEASURED against it, which lands the two right edges
-        # on the same pixel whatever the dock is doing (owner, 2026-08-19).
-        inset = 12
-        if self.log_dock.button_row.contentsMargins().right() != inset:
-            self.log_dock.button_row.setContentsMargins(0, 0, inset, 0)
-        bar = self.statusBar()
-        margins = bar.contentsMargins()
-        delta = (label.mapTo(self, label.rect().topRight()).x()
-                 - btn.mapTo(self, btn.rect().topRight()).x())
-        if delta:
-            right = min(400, max(0, margins.right() + delta))
-            if right != margins.right():
-                bar.setContentsMargins(6, 0, right, margins.bottom())
 
     def _align_batch_top(self):
         """Top margin that puts the batch table's top on the tab page's top
@@ -2605,7 +2572,6 @@ class QtShell(QMainWindow):
     def showEvent(self, event):
         super().showEvent(event)
         self._align_batch_top()
-        self._align_clear_button()
 
     def closeEvent(self, event):
         """The window remembers how it was left, and so does the form: the tk
@@ -2655,7 +2621,6 @@ class QtShell(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._align_batch_top()
-        self._align_clear_button()
 
     def update_criteria_indicator(self):
         d = qm.DEFAULT_QUALITY_CONFIG
@@ -2665,7 +2630,6 @@ class QtShell(QMainWindow):
                    == d['tsFactors'])
         self.criteria_label.setText(CRITERIA_TEXTS[0] if default
                                     else CRITERIA_TEXTS[1])
-        self._align_clear_button()      # 'CUSTOM' is the wider of the two
         self.criteria_label.setToolTip(
             'The quality criteria are the software defaults' if default else
             'At least one quality criterion differs from the defaults\n'
