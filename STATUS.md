@@ -22,22 +22,26 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   selection, each selected instrument family adds one unification stage, and
   the final stage completes the atomic workbook. Consecutive fast stages may
   still advance between screen redraws; no artificial delay was added.
-- The dotted lines behind HOBO luminosity values were the plot's axis grid, not
-  data, a fouling cutoff or a tendency. The grid is now absent from HOBO
-  figures containing luminosity; temperature-only figures retain it. The solid
-  marked lines remain the usable daily light peaks.
+- The colored dotted-looking band near the base of HOBO luminosity panels was
+  the dense raw-light point layer, dominated by nighttime low values, not the
+  neutral axis grid. That raw layer is now omitted; the solid marked daily-peak
+  line remains. `Show data points` is cleared and disabled for HOBO
+  Luminosity-only selections, while mixed Temperature + Luminosity selections
+  keep it for temperature. The mistakenly removed neutral grid was restored.
 - HOBO luminosity has no polynomial tendency line. When Luminosity is the only
   checked parameter, Tendency lines and Regression degree are cleared and
   disabled; selecting Temperature enables them again. Seaguard behavior and a
   HOBO Temperature + Luminosity selection are unchanged.
-- The 69/69 self-test passes. Full-tree ruff, compileall, the HTML parser and
+- The 70/70 self-test passes. Full-tree ruff, compileall, the HTML parser and
   `git diff --check` are clean. Off-screen Qt probes exercised a click on the
   row body, a direct checkbox click and a disabled row; the first two emitted
   exactly one state change and the disabled row emitted none. A real curated
   HOBO workbook confirmed the complete Temperature + Luminosity -> Luminosity
-  only -> Temperature + Luminosity tendency-control cycle. Shell probes
-  confirmed both `Stage 0/N Preparing` and later numbered stages; plotting
-  assertions confirm that both HOBO luminosity layouts have no visible grid.
+  only -> Temperature + Luminosity tendency/data-point control cycle, including
+  Fixed scale remaining enabled for light-only. Shell probes
+  confirmed both `Stage 0/N Preparing` and later numbered stages. Plotting
+  assertions confirm both HOBO luminosity layouts retain their neutral grid
+  but contain only the source-aware daily-peak data lines.
 - Next: owner validation through `QCS.bat`, then any additional PATCH fixes.
   Only an explicit close/publish request starts final audit, changelog,
   installer smoke, tag, merge and GitHub publication.

@@ -712,7 +712,9 @@
         </tr>
         <tr>
             <td>Show Data Points</td>
-            <td>Checkbox to show individual data points on the plots.</td>
+            <td>Checkbox to show individual data points on the plots. HOBO luminosity is already
+            represented by marked daily peaks, so raw light readings are not overlaid and this
+            option is unavailable when <em>Luminosity</em> is the only selected parameter.</td>
         </tr>
         <tr>
             <td>Show disagreement bars</td>
@@ -1599,9 +1601,10 @@
     opens in one paged window with <em>&lt; Previous</em>, <em>Next &gt;</em> and a direct panel picker.
     This keeps broad site/year selections browsable without opening and rebuilding many separate
     windows.</p>
-    <p>HOBO luminosity panels do not draw an axis grid, avoiding confusion between reference lines
-    and light series. HOBO luminosity itself is the solid line with markers showing the usable
-    daily peak for each source deployment.</p>
+    <p>HOBO luminosity itself is the solid line with markers showing the usable daily peak for each
+    source deployment. Raw light readings are not overlaid: dense nighttime low values previously
+    appeared as a colored dotted line along the bottom of the plot. Faint neutral background lines
+    are only the axis grid.</p>
 
     <h3>Visualization Panels (Doppler / current-profiler databases)</h3>
     <p>With <strong>Instrument = Doppler</strong> the panel content is fixed: a current
@@ -1870,7 +1873,7 @@
         </tr>
         <tr>
             <td>Show Data Points</td>
-            <td>Shows individual points in addition to the line</td>
+            <td>Shows individual points in addition to the line, except for HOBO luminosity</td>
             <td>Visualize data density</td>
         </tr>
         <tr>

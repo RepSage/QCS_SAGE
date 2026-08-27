@@ -197,6 +197,17 @@ def tendency_lines_available(instrument, parameters):
                 and selected == {'Luminosity (lux)'})
 
 
+def data_points_available(instrument, parameters):
+    """Whether Show data points can add a meaningful raw-point layer.
+
+    HOBO light is intentionally represented only by its daily-peak series.
+    Dense nighttime raw readings otherwise resemble a dashed baseline.
+    """
+    selected = set(parameters or ())
+    return not (instrument == 'HOBO'
+                and selected == {'Luminosity (lux)'})
+
+
 def _fit_margins(fig, pad=6):
     """Measure the actually-drawn content (tick labels + axis labels of every
     axis) and pull the plot's left/right margins in so NOTHING is clipped at the
@@ -1711,13 +1722,7 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
     fig, ax1 = plt.subplots(figsize=(1050 / 100, 540 / 100))
     plt.xticks(rotation=35)
     plt.subplots_adjust(bottom=0.18)
-    # With light present, dotted grid lines were repeatedly mistaken for an
-    # extra light series. Keep the positional grid only on temperature-only
-    # HOBO figures, where that ambiguity does not exist.
-    if 'Luminosity (lux)' in params:
-        ax1.grid(False)
-    else:
-        ax1.grid(True, linestyle='dotted', linewidth=0.5)
+    ax1.grid(True, linestyle='dotted', linewidth=0.5)
     handles = []
     for i, param in enumerate(params):
         ax = ax1 if i == 0 else ax1.twinx()
@@ -1772,12 +1777,9 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
         else:
             # Light stays source-aware: each qualified deployment has its own
             # daily envelope, and NaN days break the line across data gaps.
-            lux = _usable_lux(db)
-            if points:
-                h, = ax.plot(db['Datetime'], lux, linestyle='None', marker='.',
-                             markersize=2, alpha=0.35, color=cParam[param],
-                             label='Light readings')
-                handles.append(h)
+            # Do not overlay raw readings: their dense nighttime values form a
+            # misleading dotted baseline and add no information to the daily
+            # peak representation.
             peak_added = False
             for source, deployment in _source_deployments(db):
                 peak = _lux_daily_peak(deployment)
@@ -1838,10 +1840,7 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
         fig, ax = plt.subplots(figsize=(1050 / 100, 540 / 100))
         plt.subplots_adjust(bottom=0.14)
         plt.xticks(rotation=35)
-        if param == 'Luminosity (lux)':
-            ax.grid(False)
-        else:
-            ax.grid(True, linestyle='dotted', linewidth=0.5)
+        ax.grid(True, linestyle='dotted', linewidth=0.5)
         plotted = 0
         for site in site_names:
             db = _hobo_slice_years(database, dataViewSettings, site)
@@ -1862,10 +1861,6 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
                     peak = _lux_daily_peak(deployment)
                     if peak.first_valid_index() is None:
                         continue
-                    if points:
-                        ax.plot(deployment['Datetime'], values,
-                                linestyle='None', marker='.',
-                                markersize=2, alpha=0.30, color=colors[site])
                     if peak.notna().any():
                         line, = ax.plot(
                             peak.index, peak.values, linestyle='-',
