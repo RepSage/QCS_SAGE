@@ -1711,7 +1711,13 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
     fig, ax1 = plt.subplots(figsize=(1050 / 100, 540 / 100))
     plt.xticks(rotation=35)
     plt.subplots_adjust(bottom=0.18)
-    ax1.grid(True, linestyle='dotted', linewidth=0.5)
+    # With light present, dotted grid lines were repeatedly mistaken for an
+    # extra light series. Keep the positional grid only on temperature-only
+    # HOBO figures, where that ambiguity does not exist.
+    if 'Luminosity (lux)' in params:
+        ax1.grid(False)
+    else:
+        ax1.grid(True, linestyle='dotted', linewidth=0.5)
     handles = []
     for i, param in enumerate(params):
         ax = ax1 if i == 0 else ax1.twinx()
@@ -1832,7 +1838,10 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
         fig, ax = plt.subplots(figsize=(1050 / 100, 540 / 100))
         plt.subplots_adjust(bottom=0.14)
         plt.xticks(rotation=35)
-        ax.grid(True, linestyle='dotted', linewidth=0.5)
+        if param == 'Luminosity (lux)':
+            ax.grid(False)
+        else:
+            ax.grid(True, linestyle='dotted', linewidth=0.5)
         plotted = 0
         for site in site_names:
             db = _hobo_slice_years(database, dataViewSettings, site)

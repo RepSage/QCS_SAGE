@@ -1690,6 +1690,8 @@ try:
         _light_frame, _light_settings, 'A',
         figures=_site_figs, show=False) == 1
     _site_ax = _site_figs[0].axes[0]
+    assert not any(line.get_visible() for line in _site_ax.get_xgridlines())
+    assert not any(line.get_visible() for line in _site_ax.get_ygridlines())
     assert all(line.get_color() != '#b30000' for line in _site_ax.lines)
     assert len(_site_ax.lines) == 3
     assert len(_site_ax.patches) == 0
@@ -1713,6 +1715,8 @@ try:
         _light_frame, _light_settings,
         figures=_light_figs, show=False) == 1
     _light_ax = _light_figs[0].axes[0]
+    assert not any(line.get_visible() for line in _light_ax.get_xgridlines())
+    assert not any(line.get_visible() for line in _light_ax.get_ygridlines())
     assert len(_light_ax.lines) == 4
     assert len(_light_ax.patches) == 0
     assert sum(line.get_linestyle() == 'None' for line in _light_ax.lines) == 2

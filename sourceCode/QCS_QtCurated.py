@@ -83,11 +83,11 @@ class _CuratedWorker(QThread):
                     should_cancel=self.isInterruptionRequested)
                 result = {"catalog": catalog, "messages": messages}
             elif self.operation == "build":
-                selected = curated.select_catalog(
-                    self.payload["catalog"], self.payload["instruments"],
-                    self.payload["sites"], self.payload["years"])
-                active = [name for name in curated.INSTRUMENT_ORDER
-                          if name in set(selected["instrument"])]
+                active = self.payload.get("active_instruments")
+                if active is None:
+                    requested = set(self.payload["instruments"])
+                    active = [name for name in curated.INSTRUMENT_ORDER
+                              if name in requested]
                 total_stages = len(active) + 2
                 stage = [1]
                 self.progress.emit(
@@ -515,6 +515,13 @@ class CuratedDatabaseTab(QWidget):
         update_shell_progress = getattr(self.shell, "update_curated_progress", None)
         if callable(update_shell_progress):
             update_shell_progress(status)
+            # Paint the known 0/N build state before the worker can queue
+            # several very fast stage updates. This makes startup truthful
+            # without sleeping or slowing the actual corpus work.
+            progress_widget = getattr(self.shell, "progress", None)
+            repaint_progress = getattr(progress_widget, "repaint", None)
+            if operation == "build" and callable(repaint_progress):
+                repaint_progress()
         worker = _CuratedWorker(operation, payload, self)
         if callable(update_shell_progress):
             worker.progress.connect(update_shell_progress)
@@ -722,6 +729,10 @@ class CuratedDatabaseTab(QWidget):
                 return
         selected = curated.select_catalog(
             self.catalog, instruments, sites, years)
+        active_instruments = [
+            instrument for instrument in curated.INSTRUMENT_ORDER
+            if instrument in set(selected["instrument"])]
+        total_stages = len(active_instruments) + 2
         source_rows = int(selected["n_rows"].sum())
         if source_rows >= LARGE_SELECTION_ROW_THRESHOLD:
             answer = QMessageBox.question(
@@ -739,7 +750,8 @@ class CuratedDatabaseTab(QWidget):
             "catalog": self.catalog.copy(),
             "corpus_root": self.corpus_root.text().strip(),
             "instruments": instruments,
+            "active_instruments": active_instruments,
             "sites": sites,
             "years": years,
             "output_path": output_path,
-        }, "Preparing curated database...")
+        }, "Stage 0/%d - Preparing" % total_stages)

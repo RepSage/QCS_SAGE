@@ -18,11 +18,14 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   checkbox. Clicking the indicator itself still changes state exactly once,
   and disabled incompatible rows remain inert.
 - Curated Build progress now spells out `Stage k/N` instead of the opaque
-  `S1/N`. Stage 1 applies the selection, each selected instrument family adds
-  one unification stage, and the final stage completes the atomic workbook.
-- The dotted lines behind HOBO luminosity values are the plot's axis grid, not
-  data, a fouling cutoff or a tendency. They remain as positional references;
-  the solid marked lines are the usable daily light peaks.
+  `S1/N` and visibly initializes at `Stage 0/N Preparing`. Stage 1 applies the
+  selection, each selected instrument family adds one unification stage, and
+  the final stage completes the atomic workbook. Consecutive fast stages may
+  still advance between screen redraws; no artificial delay was added.
+- The dotted lines behind HOBO luminosity values were the plot's axis grid, not
+  data, a fouling cutoff or a tendency. The grid is now absent from HOBO
+  figures containing luminosity; temperature-only figures retain it. The solid
+  marked lines remain the usable daily light peaks.
 - HOBO luminosity has no polynomial tendency line. When Luminosity is the only
   checked parameter, Tendency lines and Regression degree are cleared and
   disabled; selecting Temperature enables them again. Seaguard behavior and a
@@ -32,8 +35,9 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   row body, a direct checkbox click and a disabled row; the first two emitted
   exactly one state change and the disabled row emitted none. A real curated
   HOBO workbook confirmed the complete Temperature + Luminosity -> Luminosity
-  only -> Temperature + Luminosity tendency-control cycle. A shell probe
-  confirmed `Stage 2/4 HOBO` at value 2 on a 0..4 progress range.
+  only -> Temperature + Luminosity tendency-control cycle. Shell probes
+  confirmed both `Stage 0/N Preparing` and later numbered stages; plotting
+  assertions confirm that both HOBO luminosity layouts have no visible grid.
 - Next: owner validation through `QCS.bat`, then any additional PATCH fixes.
   Only an explicit close/publish request starts final audit, changelog,
   installer smoke, tag, merge and GitHub publication.
