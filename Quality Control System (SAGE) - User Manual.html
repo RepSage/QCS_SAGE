@@ -1705,7 +1705,9 @@
     For plots whose X axis is datetime, Figure options replaces serial numeric limits with
     editable <em>Start</em> and <em>End</em> fields in <code>DD/MM/YYYY HH:MM</code>, matching
     Data Visualization step 2. An invalid or out-of-range value leaves the graph unchanged
-    and displays the available interval, which is also shown below the fields. The top of the <em>Axes</em> tab edits the title of the
+    and displays the available interval, which is also shown below the fields. The same
+    <em>Date/time range</em> section keeps an <em>Axis label</em> field for editing text such
+    as <em>Datetime</em>. The top of the <em>Axes</em> tab edits the title of the
     complete figure separately from the shared plot title; editing either from one selected
     parameter is retained when another parameter from the same figure is selected. Scale
     choices are displayed as <em>Linear</em>, <em>Log</em>, <em>Symlog</em> and <em>Logit</em>.
@@ -1717,9 +1719,12 @@
     leaves point symbols unchanged. When several deployments are present, its selector names
     each line by site, role and source product instead of exposing Matplotlib identifiers such
     as <code>_child3</code>. This prevents dashed or dotted styles from connecting independent
-    points. A separate <em>Legends</em> tab names each entry from its displayed label and
+    points. Its <em>Color</em> row uses the same full swatch button as legend symbols and
+    preserves the product opacity automatically. A separate <em>Legends</em> tab names each
+    entry from its displayed label and
     edits the text actually drawn in line legends, color scales and the direction compass.
-    Line-legend entries additionally offer symbol, symbol color and symbol size; those
+    Line-legend entries additionally offer symbol, symbol color and symbol size. Their neutral
+    initial symbol is <em>Circle</em>, while <em>Dot</em> remains available explicitly; those
     controls change the legend key only, never the plotted observations. The tab is omitted
     when that plot has no legend or key to edit. Applying a style while the
     non-modal window remains open preserves any newer zoom unless the range itself was
@@ -1895,7 +1900,7 @@
     <code>HOBO\qualified</code>, then choose <strong>Load catalog</strong>. The scan reads each
     <code>*_QLF.csv</code>/<code>*_QLF.xlsx</code> product below those two
     <code>qualified</code> trees; raw files and report spreadsheets are not cataloged. The
-    progress bar remains a determinate catalog count: <em>Catalog 0/?</em> while discovering
+    progress bar remains empty with <em>Calculating...</em> while discovering
     files, then <em>Catalog 0/N</em> and the current read position, without
     an indeterminate full-bar animation. It reads
     neither <code>_EXPERIMENTOS</code>, <code>_PISCINAS</code>, nor direct site folders whose
@@ -1903,6 +1908,10 @@
     the monitoring corpus and are ignored even if such a folder is restored later. It reads
     each qualified product's Site and Datetime columns so the filters describe the data itself;
     a prebuilt <code>qualified_index.csv</code> is not required.</p>
+    <p>During <strong>Build curated database</strong>, the bar is cleared before it becomes
+    visible, advances through selection and instrument stages, remains below 100% while the
+    workbook is being written, and reaches <em>Complete</em> only after the atomic output file
+    has finished.</p>
 
     <h3>Selection</h3>
     <p>Any combination of <strong>site</strong>, <strong>calendar year</strong> and

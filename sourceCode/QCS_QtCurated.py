@@ -66,13 +66,16 @@ class _CuratedWorker(QThread):
                     self.payload["sites"], self.payload["years"],
                     progress=build_progress,
                     should_cancel=self.isInterruptionRequested)
-                self.progress.emit(
-                    "Stage %d/%d - Save"
-                    % (total_stages, total_stages))
+                # Keep the bar below 100% during the potentially long Excel
+                # write. Full means the atomic output has actually finished.
+                self.progress.emit("Writing curated workbook...")
                 output_path = curated.write_curated_workbook(
                     self.payload["output_path"], self.payload["corpus_root"],
                     tables, included, summary,
                     should_cancel=self.isInterruptionRequested)
+                self.progress.emit(
+                    "Stage %d/%d - Complete"
+                    % (total_stages, total_stages))
                 result = {
                     "output_path": output_path,
                     "summary": summary,

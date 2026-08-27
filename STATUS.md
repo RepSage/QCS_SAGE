@@ -26,9 +26,11 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   pressure lines and HOBO daily light peaks. Figure options -> Lines now names
   each deployment-specific line by site, role and source product instead of
   exposing Matplotlib `_childN` identifiers.
-- Curated `Load catalog` now stays determinate from the empty `Catalog 0/?`
-  discovery state through `Catalog 0/N` and the current read position; the former
-  full blue indeterminate animation is gone.
+- Curated `Load catalog` now stays empty at `Calculating...` until the product
+  count is known, then advances from `Catalog 0/N`; the former full blue
+  indeterminate animation is gone. Starting Build now clears the hidden prior
+  state before showing the bar, and the write stage stays below 100% until the
+  atomic XLSX output has actually completed.
 - Figure options `Reset values` restores figure styles and text without moving
   the live zoom/pan view. The apparent line-width inflation was a marker-alias
   bug: resetting a marker-free line selected Matplotlib's first marker even
@@ -37,13 +39,23 @@ pruning is in git (`git show a0994bf:STATUS.md`).
 - Figure options -> Legends names entries from their visible text and, for line
   keys, edits symbol, symbol color and symbol size independently of the plotted
   data. Its global reset restores the exact original key style; per-row resets
-  restore the selected displayed control.
+  restore the selected displayed control. Legend-only handles now start with a
+  neutral Circle without changing plotted markers; Dot is an explicit option
+  instead of `Custom (.)`.
+- Figure options -> Lines presents `Color` as the same full swatch button used
+  for legend symbols while preserving each product line's existing opacity.
+  Date/time axes again expose `Axis label` (including the default `Datetime`)
+  while keeping serial Min/Max and the irrelevant datetime Scale hidden.
 - The 68/68 self-test passes. A synthetic 32-row, 4-deployment Seaguard replay
   generated one at-site and two across-site figures on the exact 2024-01-01 to
   2027-01-01 domain while excluding an unselected 2025 product. A real
   off-screen Qt Figure options probe confirmed the two semantic line names.
-  A second Qt probe confirmed `Catalog 0/? -> 0/N -> 1/N`, exact width/marker
+  A second Qt probe confirmed `Calculating... -> 0/N -> 1/N`, exact width/marker
   restoration, unchanged X/Y zoom, and legend-only symbol/color/size edits.
+  Follow-up probes confirmed Build `1/N -> ... -> Writing -> N/N Complete`, an
+  empty first visible frame, RGB line selection with retained alpha, Circle/Dot
+  legend defaults, editable `Datetime`, and zero changed render pixels after a
+  color reset at a retained zoom.
 - Read-only replay of all 48 current Seaguard fundeio products built 129,780
   rows (0 invalid datetimes, 0 exact duplicates, 19 sites) and generated three
   across-site panels plus one 6-deployment PAB3 panel on the exact 2019-01-01 to
