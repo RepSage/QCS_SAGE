@@ -28,11 +28,14 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   line remains. `Show data points` is cleared and disabled for HOBO
   Luminosity-only selections, while mixed Temperature + Luminosity selections
   keep it for temperature. The mistakenly removed neutral grid was restored.
+- `Show disagreement bars` is also cleared and disabled when HOBO Luminosity
+  is the only selected parameter. The bars encode replicate-temperature spread
+  only; selecting Temperature makes the control available again.
 - HOBO luminosity has no polynomial tendency line. When Luminosity is the only
   checked parameter, Tendency lines and Regression degree are cleared and
   disabled; selecting Temperature enables them again. Seaguard behavior and a
   HOBO Temperature + Luminosity selection are unchanged.
-- The 70/70 self-test passes. Full-tree ruff, compileall, the HTML parser and
+- The 71/71 self-test passes. Full-tree ruff, compileall, the HTML parser and
   `git diff --check` are clean. Off-screen Qt probes exercised a click on the
   row body, a direct checkbox click and a disabled row; the first two emitted
   exactly one state change and the disabled row emitted none. A real curated

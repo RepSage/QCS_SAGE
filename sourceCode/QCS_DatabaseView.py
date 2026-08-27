@@ -55,7 +55,8 @@ TOOLTIPS = {
     'disagreement_bars': "HOBO only: one vertical bar per sample on the temperature\n"
                          "series, showing how far the replicates disagreed\n"
                          "(bar = max - min, centered on the plotted mean)\n"
-                         "Only combined-replicate databases carry that spread",
+                         "Only combined-replicate databases carry that spread;\n"
+                         "unavailable when only Luminosity is selected",
     'site_filter': "Sites to include in the plots",
     'param_filter': "Parameters to include in the plots",
     'param_secondary': "Rarely-used variables, always start unchecked\n(check manually when needed)",
@@ -544,6 +545,9 @@ def toggle_panel_dependent_controls():
         # promising a raw light layer that the plot intentionally omits.
         dataPoints.set(False)
 
+    if not disagreement_bars_available_for_selection():
+        disagreement.set(False)
+
     if any_panel_selected and tendency_available:
         set_enabled_style(tendency_cb)
         if tendency.get():
@@ -584,6 +588,15 @@ def data_points_available_for_selection():
         parameter for parameter, variable in parameter_vars.items()
         if variable.get()]
     return view.data_points_available(
+        instrument_combobox.get(), selected)
+
+
+def disagreement_bars_available_for_selection():
+    """True when the current selection includes HOBO temperature."""
+    selected = [
+        parameter for parameter, variable in parameter_vars.items()
+        if variable.get()]
+    return view.disagreement_bars_available(
         instrument_combobox.get(), selected)
 
 

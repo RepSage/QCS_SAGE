@@ -208,6 +208,12 @@ def data_points_available(instrument, parameters):
                 and selected == {'Luminosity (lux)'})
 
 
+def disagreement_bars_available(instrument, parameters):
+    """Whether the selection can contain HOBO replicate-temperature spread."""
+    return (instrument == 'HOBO'
+            and 'Temperature (degC)' in set(parameters or ()))
+
+
 def _fit_margins(fig, pad=6):
     """Measure the actually-drawn content (tick labels + axis labels of every
     axis) and pull the plot's left/right margins in so NOTHING is clipped at the

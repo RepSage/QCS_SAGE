@@ -1591,6 +1591,15 @@ assert _data_view.data_points_available(
 assert _data_view.data_points_available(
     'HOBO', ['Temperature (degC)', 'Luminosity (lux)'])
 ok.append('data-point availability: HOBO light uses only its daily peaks')
+assert not _data_view.disagreement_bars_available(
+    'HOBO', ['Luminosity (lux)'])
+assert _data_view.disagreement_bars_available(
+    'HOBO', ['Temperature (degC)'])
+assert _data_view.disagreement_bars_available(
+    'HOBO', ['Temperature (degC)', 'Luminosity (lux)'])
+assert not _data_view.disagreement_bars_available(
+    'Seaguard', ['Temperature (degC)'])
+ok.append('disagreement availability: only HOBO temperature can draw bars')
 
 # Curated/multi-deployment HOBO plots remove BAD light before daily resampling,
 # while the across-sites comparison needs no matching datetimes: deployments
