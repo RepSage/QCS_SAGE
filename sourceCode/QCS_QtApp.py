@@ -2461,6 +2461,9 @@ class QtShell(QMainWindow):
         self._curated_busy = False
 
         tabs = QTabWidget()
+        # Set before adding pages so size hints reserve enough width for the
+        # bold active label while Figure options and other tabs stay native.
+        tabs.tabBar().setObjectName('MainTabs')
         # every page is wrapped: a page that cannot shrink caps how far the
         # Execution log can be dragged open (see qtheme.scrollable)
         self._qualification_page = qtheme.scrollable(self._qualification_tab())
@@ -2476,9 +2479,6 @@ class QtShell(QMainWindow):
         self._viz_placeholder = QWidget()
         tabs.addTab(self._viz_placeholder, 'Data visualization')
         tabs.currentChanged.connect(self._tab_changed)
-        # Identifies only the workflow bar: the native style draws its active
-        # label in bold while Figure options and other tab widgets stay native.
-        tabs.tabBar().setObjectName('MainTabs')
         self.tabs = tabs
         self.setCentralWidget(tabs)
 

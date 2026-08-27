@@ -211,6 +211,25 @@ class AccentStyle(QProxyStyle):
             return
         super().drawControl(element, option, painter, widget)
 
+    def sizeFromContents(self, contents_type, option, size, widget=None):
+        result = super().sizeFromContents(
+            contents_type, option, size, widget)
+        main_tab = (
+            contents_type == QStyle.ContentsType.CT_TabBarTab
+            and widget is not None
+            and widget.objectName() == 'MainTabs')
+        if main_tab:
+            # Fusion measures the tab with the regular font, but QCS paints the
+            # active label in bold. Reserve the bold advance for every tab so
+            # its ends cannot be elided and widths do not jump on selection.
+            bold_font = widget.font()
+            bold_font.setBold(True)
+            bold_width = QFontMetrics(bold_font).horizontalAdvance(option.text)
+            regular_width = option.fontMetrics.horizontalAdvance(option.text)
+            result.setWidth(
+                result.width() + max(0, bold_width - regular_width) + 12)
+        return result
+
 
 def dark_palette():
     p = QPalette()
