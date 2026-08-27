@@ -3,7 +3,8 @@
 
 The Qt counterpart of QCS_Theme: Fusion style in light/dark (owner decisions,
 2026-08-14 - scheme pinned so the toggle, not the OS, decides; base font
-10.5 pt; bold main tabs; grayed Execution log background), the Execution log
+10.5 pt; native tabs with a bold active workflow tab; borderless menu bar;
+grayed Execution log background), the Execution log
 as a dockable panel with the same severity colors as the tk LogConsole, and
 the crash handler. File-path helpers (writable_app_dir) stay in QCS_Theme -
 they are toolkit-free and both shells share them.
@@ -14,7 +15,7 @@ import sys
 import traceback
 
 from PySide6.QtCore import (QEasingCurve, QEventLoop, QPropertyAnimation, Qt)
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QFontMetrics, QPalette
 from PySide6.QtWidgets import (QAbstractButton, QAbstractSpinBox, QApplication,
                                QDockWidget,
                                QGraphicsOpacityEffect,
@@ -169,10 +170,7 @@ def wait_cursor(widget):
 
 
 class AccentStyle(QProxyStyle):
-    """Draws the check/radio indicators with the accent color instead of the
-    plain text color, keeping Fusion's own shape: the base style paints the
-    mark with palette.text(), so swapping that ONE role for the primitive is
-    enough - no bitmap assets, and it survives freezing."""
+    """Keeps Fusion native while applying the few QCS-wide refinements."""
 
     def __init__(self, base, accent, muted):
         super().__init__(base)
@@ -194,6 +192,44 @@ class AccentStyle(QProxyStyle):
             super().drawPrimitive(element, opt, painter, widget)
             return
         super().drawPrimitive(element, option, painter, widget)
+
+    def drawControl(self, element, option, painter, widget=None):
+        active_main_tab = (
+            element == QStyle.ControlElement.CE_TabBarTabLabel
+            and widget is not None
+            and widget.objectName() == 'MainTabs'
+            and option.state & QStyle.StateFlag.State_Selected
+            and option.state & QStyle.StateFlag.State_Enabled)
+        if active_main_tab:
+            painter.save()
+            bold_font = painter.font()
+            bold_font.setBold(True)
+            painter.setFont(bold_font)
+            opt = type(option)(option)
+            opt.fontMetrics = QFontMetrics(bold_font)
+            super().drawControl(element, opt, painter, widget)
+            painter.restore()
+            return
+        super().drawControl(element, option, painter, widget)
+
+    def sizeFromContents(self, contents_type, option, size, widget=None):
+        result = super().sizeFromContents(
+            contents_type, option, size, widget)
+        main_tab = (
+            contents_type == QStyle.ContentsType.CT_TabBarTab
+            and widget is not None
+            and widget.objectName() == 'MainTabs')
+        if main_tab:
+            # Fusion measures the tab with the regular font, but QCS paints the
+            # active label in bold. Reserve the bold advance for every tab so
+            # its ends cannot be elided and widths do not jump on selection.
+            bold_font = widget.font()
+            bold_font.setBold(True)
+            bold_width = QFontMetrics(bold_font).horizontalAdvance(option.text)
+            regular_width = option.fontMetrics.horizontalAdvance(option.text)
+            result.setWidth(
+                result.width() + max(0, bold_width - regular_width) + 12)
+        return result
 
 
 def dark_palette():
@@ -238,16 +274,10 @@ def apply_style(dark):
         app.styleHints().setColorScheme(Qt.ColorScheme.Light)
         app.setStyle(AccentStyle('Fusion', accent, muted_accent))
         app.setPalette(app.style().standardPalette())
-    # main tabs: bold labels, no color - a subtle GRAYSCALE step separates the
-    # active tab from the inactive one (owner, 2026-08-17; the pastel round
-    # was tried and dropped). Scoped to QTabBar#MainTabs so the Settings
-    # window's tabs stay native.
     if dark:
         log_bg = '#232324'
-        tab_off, tab_on = '#252526', '#3e3e40'
     else:
         log_bg = '#e9e9e9'
-        tab_off, tab_on = '#d0d0d0', '#f6f6f6'
     # Tooltips: inverted against the window (dark slab with light text in the
     # light scheme, the reverse in the dark one), through the stylesheet - the
     # owner prefers this rendering to the palette-only version.
@@ -261,17 +291,16 @@ def apply_style(dark):
     app.setStyleSheet(
         'QToolTip { background: %s; color: %s; border: 1px solid %s;'
         ' padding: 4px; }\n'
+        'QMenuBar { border: none; }\n'
         'QComboBox { combobox-popup: 0; }\n'
         'QTextEdit#ExecutionLog { background: %s; }\n'
-        'QTabBar#MainTabs::tab { font-weight: bold; padding: 6px 16px; background: %s; }\n'
-        'QTabBar#MainTabs::tab:selected { background: %s; }\n'
         'QPushButton#AccentButton { background: %s; color: white; border: none;'
         ' border-radius: 3px; padding: 6px 18px; }\n'
         'QPushButton#AccentButton:hover { background: %s; }\n'
         'QPushButton#AccentButton:pressed { background: %s; }\n'
         'QPushButton#AccentButton:disabled { background: %s; color: %s; }'
         % (tip_bg, tip_fg, _shift(tip_bg, -40 if dark else 40),
-           log_bg, tab_off, tab_on, accent,
+           log_bg, accent,
            _shift(accent, 18), _shift(accent, -22),
            '#4a4a4c' if dark else '#c8c8c8', '#8a8a8a' if dark else '#efefef'))
 

@@ -50,13 +50,14 @@ from matplotlib.transforms import Bbox
 
 from PySide6.QtCore import (QByteArray, QEvent, QEventLoop, QObject, QSize,
                             QSignalBlocker, Qt, QThread, QTimer, Signal, Slot)
-from PySide6.QtGui import QAction, QIcon, QPainter, QPalette, QPixmap
+from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPalette, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QDockWidget, QFileDialog, QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                                QDoubleSpinBox, QLineEdit, QMainWindow,
-                               QMessageBox, QPlainTextEdit, QInputDialog,
+                               QColorDialog, QMessageBox, QPlainTextEdit,
+                               QInputDialog,
                                QProgressBar, QProgressDialog, QPushButton,
                                QRadioButton, QScrollArea, QStackedWidget,
                                QSizePolicy, QTableWidget, QTableWidgetItem,
@@ -151,6 +152,19 @@ def _row_reset_button(tooltip, callback):
     button.setAutoRaise(True)
     button.clicked.connect(callback)
     return button
+
+
+class _QCSColorButton(QPushButton):
+    """Full-size color swatch whose form value retains a hidden alpha."""
+
+    def __init__(self, alpha=1.0, parent=None):
+        super().__init__(parent)
+        self._qcs_alpha = float(alpha)
+
+    def text(self):
+        color = getattr(self, '_qcs_color', '#000000')
+        return mcolors.to_hex(
+            mcolors.to_rgba(color, self._qcs_alpha), keep_alpha=True)
 
 
 def _duration_text(hours):
@@ -655,12 +669,21 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 self._minimum_axis_span(ylim),
             )
             self._zoom_max_spans[ax] = (
-                abs(float(xlim[1]) - float(xlim[0])),
-                abs(float(ylim[1]) - float(ylim[0])),
+                abs(float(xlim[1]) - float(xlim[0])) * view.ZOOM_OUT_FACTOR,
+                abs(float(ylim[1]) - float(ylim[0])) * view.ZOOM_OUT_FACTOR,
             )
-        self._legend_label_defaults = {
+        # Legend keys use a neutral circle initially when the plotted line has
+        # no marker or uses Matplotlib's tiny dot. This changes only the cloned
+        # legend handle; observations and plotted line markers stay untouched.
+        for ax in default_axes:
+            for record in self._collect_legend_labels(ax):
+                handle = self._legend_symbol_handle(record)
+                if (handle is not None and
+                        handle.get_marker() in (None, '', ' ', 'None', 'none', '.')):
+                    handle.set_marker('o')
+        self._legend_defaults = {
             ax: {
-                record['key']: record['artist'].get_text()
+                record['key']: self._capture_legend_record(record)
                 for record in self._collect_legend_labels(ax)
             }
             for ax in default_axes
@@ -671,7 +694,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         zoom_action = self._actions.get('zoom')
         if zoom_action is not None:
             zoom_action.setToolTip(
-                'Zoom to rectangle (range: 1/10,000 to 1x the opening view)')
+                'Zoom to rectangle (range: 1/10,000 to 100x the opening view)')
         if coordinates:
             font = self.locLabel.font()
             font.setBold(True)
@@ -739,7 +762,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         return max(opening_span / 10_000.0, roundoff_floor)
 
     def _enforce_zoom_limits(self):
-        """Bound zoom-in and zoom-out without changing the Home view."""
+        """Bound extreme zoom without changing the Home view."""
         changed = False
         for ax, (min_x, min_y) in self._zoom_min_spans.items():
             if ax not in self.canvas.figure.axes:
@@ -1055,7 +1078,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         records = []
         seen = set()
 
-        def add(key, name, artist, kind, index=None):
+        def add(key, name, artist, kind, index=None, handle=None):
             if artist is None or id(artist) in seen:
                 return
             records.append({
@@ -1064,19 +1087,29 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 'artist': artist,
                 'kind': kind,
                 'index': index,
+                'handle': handle,
             })
             seen.add(id(artist))
 
         legend = ax.get_legend()
         if legend is not None:
+            handles = getattr(legend, 'legend_handles', ())
             for index, artist in enumerate(legend.get_texts()):
-                add(('legend', index), 'Legend entry %d' % (index + 1),
-                    artist, 'legend', index)
+                text = artist.get_text().strip()
+                add(('legend', index),
+                    'Entry %d%s' % (
+                        index + 1, ' - ' + text if text else ''),
+                    artist, 'legend', index,
+                    handles[index] if index < len(handles) else None)
         for legend_index, figure_legend in enumerate(ax.figure.legends):
+            handles = getattr(figure_legend, 'legend_handles', ())
             for index, artist in enumerate(figure_legend.get_texts()):
+                text = artist.get_text().strip()
                 add(('figure legend', legend_index, index),
-                    'Figure legend entry %d' % (index + 1),
-                    artist, 'figure legend', index)
+                    'Figure entry %d%s' % (
+                        index + 1, ' - ' + text if text else ''),
+                    artist, 'figure legend', index,
+                    handles[index] if index < len(handles) else None)
         metadata = getattr(ax.figure, '_qcs_legend_labels', {}).get(ax, [])
         for index, item in enumerate(metadata):
             add(('key', index, item['name']), item['name'], item['artist'],
@@ -1093,6 +1126,73 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         return records
 
     @staticmethod
+    def _legend_symbol_handle(record):
+        """Return a legend-only Line2D-like handle that can show a symbol."""
+        handle = record.get('handle')
+        required = ('get_marker', 'set_marker', 'get_markersize',
+                    'set_markersize', 'set_markerfacecolor',
+                    'set_markeredgecolor')
+        return handle if all(hasattr(handle, name) for name in required) else None
+
+    @classmethod
+    def _capture_legend_record(cls, record):
+        """Capture text and legend-key style without touching plotted data."""
+        values = {'text': record['artist'].get_text()}
+        handle = cls._legend_symbol_handle(record)
+        if handle is None:
+            return values
+        facecolor = handle.get_markerfacecolor()
+        edgecolor = handle.get_markeredgecolor()
+        color = facecolor
+        if color is None or str(color).lower() in ('none', 'auto'):
+            color = edgecolor
+        if color is None or str(color).lower() in ('none', 'auto'):
+            color = handle.get_color()
+        values.update({
+            'marker': handle.get_marker(),
+            'color': mcolors.to_hex(mcolors.to_rgba(color)),
+            'size': handle.get_markersize(),
+            'facecolor': facecolor,
+            'edgecolor': edgecolor,
+        })
+        return values
+
+    @staticmethod
+    def _set_color_button(button, color, mark_dirty=True,
+                          update_alpha=False):
+        """Store a valid Matplotlib RGB color and show it as a Qt swatch."""
+        rgba = mcolors.to_rgba(color)
+        if update_alpha and hasattr(button, '_qcs_alpha'):
+            button._qcs_alpha = rgba[3]
+        color = mcolors.to_hex(rgba)
+        button._qcs_color = color
+        rgb = mcolors.to_rgb(color)
+        foreground = '#000000' if sum(rgb) > 1.55 else '#ffffff'
+        button.setText(color.upper())
+        button.setStyleSheet(
+            'QPushButton { background-color: %s; color: %s; }' %
+            (color, foreground))
+        if mark_dirty and hasattr(button, '_qcs_legend_record'):
+            button._qcs_legend_record['style_dirty'].add('color')
+
+    @classmethod
+    def _choose_color(cls, dialog, button):
+        selected = QColorDialog.getColor(
+            QColor(button._qcs_color), dialog,
+            getattr(button, '_qcs_color_title', 'Select color'))
+        if selected.isValid():
+            cls._set_color_button(button, selected.name())
+
+    @staticmethod
+    def _set_legend_marker_combo(field, marker):
+        marker = 'None' if marker in (None, '', ' ', 'None', 'none') else marker
+        index = field.findData(marker)
+        if index < 0:
+            field.addItem('Custom (%s)' % marker, marker)
+            index = field.count() - 1
+        field.setCurrentIndex(index)
+
+    @staticmethod
     def _set_form_values(form, values):
         """Put values into Matplotlib's private FormWidget without applying."""
         value_iter = iter(values)
@@ -1101,19 +1201,32 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 continue
             value = next(value_iter)
             field = form.widgets[index]
-            if hasattr(field, 'lineedit') and hasattr(field, 'colorbtn'):
+            if isinstance(field, QPushButton) and hasattr(field, '_qcs_color'):
+                QCSNavigationToolbar._set_color_button(
+                    field, value, mark_dirty=False, update_alpha=True)
+            elif hasattr(field, 'lineedit') and hasattr(field, 'colorbtn'):
                 field.lineedit.setText(str(value))
                 field.update_color()
             elif isinstance(field, QComboBox):
                 choices = original
-                wanted = field.findText(str(value))
-                if (wanted < 0 and choices and
-                        isinstance(choices[0], (list, tuple))):
+                if choices and isinstance(choices[0], (list, tuple)):
                     keys = [choice[0] for choice in choices]
-                    wanted = keys.index(value) if value in keys else 0
-                elif wanted < 0:
+                    texts = [str(choice[1]) for choice in choices]
+                    if value in keys:
+                        wanted = keys.index(value)
+                    elif value in (None, '', ' ', 'None', 'none'):
+                        wanted = next(
+                            (item for item, choice in enumerate(choices)
+                             if (choice[0] in ('', ' ', 'None', 'none') or
+                                 str(choice[1]).lower() == 'nothing')), 0)
+                    else:
+                        shown = str(value)
+                        wanted = (texts.index(shown)
+                                  if shown in texts else 0)
+                else:
                     texts = [str(choice) for choice in choices]
-                    wanted = texts.index(str(value)) if str(value) in texts else 0
+                    shown = str(value)
+                    wanted = texts.index(shown) if shown in texts else 0
                 field.setCurrentIndex(wanted)
             elif isinstance(field, QCheckBox):
                 field.setChecked(bool(value))
@@ -1132,6 +1245,9 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
     @staticmethod
     def _form_widget_value(field):
         """Capture one editable Figure-options widget without applying it."""
+        if isinstance(field, QPushButton) and hasattr(field, '_qcs_color'):
+            return 'qcs_color', (
+                field._qcs_color, getattr(field, '_qcs_alpha', None))
         if hasattr(field, 'lineedit') and hasattr(field, 'colorbtn'):
             return 'color', field.lineedit.text()
         if isinstance(field, QComboBox):
@@ -1167,6 +1283,12 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             field.setDate(value)
         elif kind == 'value':
             field.setValue(value)
+        elif kind == 'qcs_color':
+            color, alpha = value
+            QCSNavigationToolbar._set_color_button(
+                field, color, mark_dirty=False)
+            if alpha is not None:
+                field._qcs_alpha = alpha
 
     def _figure_option_form_rows(self, dialog):
         """All Figure-options value rows and whether each is user-visible."""
@@ -1207,8 +1329,16 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         if axis_name is not None:
             dialog._qcs_dirty_axis_limits.add(axis_name)
         for record in getattr(dialog, '_qcs_legend_records', []):
-            if record.get('field') is field:
+            if field in record.get('widgets', (record.get('field'),)):
                 record['dirty'] = True
+                if field is not record.get('field'):
+                    style_fields = {
+                        record.get('marker_field'): 'marker',
+                        record.get('color_field'): 'color',
+                        record.get('size_field'): 'size',
+                    }
+                    record['style_dirty'].add(style_fields[field])
+                    record['restore_style'] = False
                 break
         dialog.update_buttons()
 
@@ -1244,7 +1374,9 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             for record in rows
         }
         legend_dirty = {
-            record['field']: record['dirty']
+            record['key']: (
+                record['dirty'], set(record.get('style_dirty', ())),
+                record.get('restore_style', False))
             for record in getattr(dialog, '_qcs_legend_records', [])
         }
         self._reset_figure_options_form(dialog, ax)
@@ -1255,7 +1387,8 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         for field, state in current.items():
             self._restore_form_widget_value(field, state)
         for record in getattr(dialog, '_qcs_legend_records', []):
-            record['dirty'] = legend_dirty[record['field']]
+            (record['dirty'], record['style_dirty'],
+             record['restore_style']) = legend_dirty[record['key']]
         dialog.update_buttons()
 
         installed = []
@@ -1280,13 +1413,14 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             installed.append({**record, 'button': button})
         dialog._qcs_row_reset_buttons = installed
 
-    def _reset_figure_options_form(self, dialog, ax):
+    def _reset_figure_options_form(self, dialog, ax, preserve_view=False):
         """Refill product defaults; Apply remains the only mutation step."""
         state = self._figure_option_defaults[ax]
         axes_values = [self._shared_plot_title(ax, defaults=True)]
         for name in ax._axis_map:
             values = state['axes'][name]
-            limits = values['limits']
+            limits = (getattr(ax, 'get_%slim' % name)()
+                      if preserve_view else values['limits'])
             axes_values.extend([
                 *limits, values['label'], values['scale']])
 
@@ -1299,7 +1433,18 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         dialog._qcs_figure_title.setText(state['figure_title'])
         datetime_fields = getattr(dialog, '_qcs_datetime_fields', None)
         if datetime_fields is not None:
-            lower, upper = dialog._qcs_datetime_bounds
+            if preserve_view:
+                lower, upper = dbv.normalized_time_bounds(
+                    *(mdates.num2date(value)
+                      for value in sorted(ax.get_xlim())))
+                available_start, available_end = dialog._qcs_datetime_bounds
+                if upper < available_start or lower > available_end:
+                    lower, upper = available_start, available_end
+                else:
+                    lower = max(lower, available_start)
+                    upper = min(upper, available_end)
+            else:
+                lower, upper = dialog._qcs_datetime_bounds
             datetime_fields[0].setText(lower.strftime(dbv.TIME_TEXT_FORMAT))
             datetime_fields[1].setText(upper.strftime(dbv.TIME_TEXT_FORMAT))
 
@@ -1341,9 +1486,17 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 self._set_form_values(form, graph_values)
 
         for record in getattr(dialog, '_qcs_legend_records', []):
-            default = self._legend_label_defaults.get(ax, {}).get(
-                record['key'], record['artist'].get_text())
-            record['field'].setText(default)
+            default = self._legend_defaults.get(ax, {}).get(
+                record['key'], {'text': record['artist'].get_text()})
+            record['field'].setText(default['text'])
+            if 'marker' in default and 'marker_field' in record:
+                self._set_legend_marker_combo(
+                    record['marker_field'], default['marker'])
+                self._set_color_button(
+                    record['color_field'], default['color'], mark_dirty=False)
+                record['size_field'].setValue(default['size'])
+                record['style_dirty'] = {'marker', 'color', 'size'}
+                record['restore_style'] = True
             record['dirty'] = True
         dialog.update_buttons()
 
@@ -1362,6 +1515,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         x_section = False
         header_row = None
         min_position = max_position = None
+        axis_label_row = None
         hidden_fields = getattr(dialog, '_qcs_hidden_option_fields', set())
         dialog._qcs_hidden_option_fields = hidden_fields
         for row, (label, value) in enumerate(general.data):
@@ -1378,9 +1532,6 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             if label is None and value is None:
                 general.formlayout.setRowVisible(row, False)
                 break
-            field = general.widgets[row]
-            general.formlayout.setRowVisible(row, False)
-            hidden_fields.add(field)
             value_position = sum(
                 item_label is not None
                 for item_label, _item_value in general.data[:row])
@@ -1388,9 +1539,23 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 min_position = value_position
             elif label == 'Max':
                 max_position = value_position
+            field = general.widgets[row]
+            if label == 'Label':
+                axis_label_row = row
+                field.setToolTip(
+                    'Edit the X-axis label, such as Datetime.')
+            else:
+                general.formlayout.setRowVisible(row, False)
+                hidden_fields.add(field)
 
-        if header_row is None or min_position is None or max_position is None:
+        if (header_row is None or min_position is None or
+                max_position is None or axis_label_row is None):
             return False
+
+        axis_label = general.formlayout.takeRow(axis_label_row)
+        axis_label_widget = axis_label.fieldItem.widget()
+        axis_label_caption = axis_label.labelItem.widget()
+        axis_label_caption.setText('Axis label')
 
         current_lower, current_upper = sorted(ax.get_xlim())
         current_lower, current_upper = dbv.normalized_time_bounds(
@@ -1405,17 +1570,19 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             field.setText(value.strftime(dbv.TIME_TEXT_FORMAT))
             field.setToolTip(
                 'Edit as DD/MM/YYYY HH:MM. Both values must stay inside the '
-                'available interval shown below.')
+                'selected calendar interval shown below.')
         available = QLabel(
             'From %s to %s' % (
                 available_start.strftime('%d/%m/%Y %H:%M'),
                 available_end.strftime('%d/%m/%Y %H:%M')))
         available.setToolTip(
-            'Range available after the Data Visualization filters were '
-            'applied to this product.')
+            'Calendar domain established by the Data Visualization year and '
+            'Time window selection.')
         general.formlayout.insertRow(header_row + 1, 'Start', start_field)
         general.formlayout.insertRow(header_row + 2, 'End', end_field)
-        general.formlayout.insertRow(header_row + 3, 'Available', available)
+        general.formlayout.insertRow(
+            header_row + 3, axis_label_caption, axis_label_widget)
+        general.formlayout.insertRow(header_row + 4, 'Available', available)
         dialog._qcs_datetime_fields = (start_field, end_field)
         dialog._qcs_datetime_data_positions = (min_position, max_position)
         dialog._qcs_datetime_bounds = (available_start, available_end)
@@ -1462,8 +1629,8 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                         hidden_fields.add(form.widgets[row])
                         break
 
-    @staticmethod
-    def _configure_line_options(dialog):
+    @classmethod
+    def _configure_line_options(cls, dialog, ax):
         """Expose line styling only; points and legend text have other roles."""
         tabs = dialog.formwidget.tabwidget
         hidden_fields = getattr(dialog, '_qcs_hidden_option_fields', set())
@@ -1473,11 +1640,37 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 continue
             tabs.setTabText(index, 'Lines')
             curves = dialog.formwidget.widgetlist[index]
+            metadata = getattr(ax.figure, '_qcs_line_names', {})
+            names = []
+            occurrences = {}
+            for line_number, line in enumerate(ax.get_lines(), start=1):
+                if (line.get_label() == '_nolegend_' or
+                        not cls._is_editable_line(line)):
+                    continue
+                label = str(metadata.get(line, line.get_label())).strip()
+                if not label or label.startswith('_'):
+                    label = 'Line %d' % line_number
+                occurrences[label] = occurrences.get(label, 0) + 1
+                suffix = occurrences[label]
+                names.append(label if suffix == 1 else '%s (%d)' % (label, suffix))
+            if len(names) == len(curves.widgetlist):
+                curves.combobox.clear()
+                curves.combobox.addItems(names)
+            else:
+                fallback = []
+                for item in range(curves.combobox.count()):
+                    label = curves.combobox.itemText(item).strip()
+                    fallback.append(
+                        label if label and not label.startswith('_')
+                        else 'Line %d' % (item + 1))
+                curves.combobox.clear()
+                curves.combobox.addItems(fallback)
             if len(curves.widgetlist) == 1:
                 curves.combobox.hide()
             else:
                 curves.combobox.setToolTip(
-                    'Select the plotted line to customize.')
+                    'Select a named plotted line to customize. Site and '
+                    'source-product names distinguish deployments.')
             for form in curves.widgetlist:
                 marker_section = False
                 for row, (label, value) in enumerate(form.data):
@@ -1490,6 +1683,31 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                         field = form.widgets[row]
                         if field is not None:
                             hidden_fields.add(field)
+                    if label == 'Color (RGBA)':
+                        original = form.widgets[row]
+                        rgba = mcolors.to_rgba(original.lineedit.text())
+                        color = _QCSColorButton(rgba[3])
+                        color._qcs_color_title = 'Select line color'
+                        cls._set_color_button(
+                            color, rgba, mark_dirty=False, update_alpha=True)
+                        color.setToolTip(
+                            'Choose the line color. The product opacity is '
+                            'preserved automatically.')
+                        color.clicked.connect(
+                            lambda _checked=False, button=color:
+                            cls._choose_color(dialog, button))
+                        label_item = form.formlayout.itemAt(
+                            row, QFormLayout.ItemRole.LabelRole)
+                        original.lineedit.hide()
+                        original.colorbtn.hide()
+                        form.formlayout.removeItem(original)
+                        form.formlayout.setWidget(
+                            row, QFormLayout.ItemRole.FieldRole, color)
+                        if (label_item is not None and
+                                label_item.widget() is not None):
+                            label_item.widget().setText('Color')
+                        form.widgets[row] = color
+                        color._qcs_upstream_color_layout = original
                     if label != 'Line style':
                         continue
                     field = form.widgets[row]
@@ -1560,16 +1778,77 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         records = self._collect_legend_labels(ax)
         dialog._qcs_legend_records = records
         if records:
-            page = QWidget()
-            form = QFormLayout(page)
+            content = QWidget()
+            layout = QVBoxLayout(content)
             for record in records:
+                group = QGroupBox(record['name'])
+                form = QFormLayout(group)
                 field = QLineEdit(record['artist'].get_text())
+                field.setToolTip(
+                    'Edit the text displayed for this legend or key entry.')
                 record['field'] = field
+                record['widgets'] = [field]
                 record['dirty'] = False
+                record['style_dirty'] = set()
+                record['restore_style'] = False
                 field.textEdited.connect(
                     lambda _text, item=record:
                     item.__setitem__('dirty', True))
-                form.addRow(record['name'], field)
+                form.addRow('Text', field)
+                handle = self._legend_symbol_handle(record)
+                if handle is not None:
+                    marker = QComboBox()
+                    for label, value in (
+                            ('(None)', 'None'), ('Circle', 'o'),
+                            ('Dot', '.'), ('Square', 's'),
+                            ('Triangle up', '^'),
+                            ('Triangle down', 'v'), ('Diamond', 'D'),
+                            ('Plus', '+'), ('Cross', 'x'), ('Star', '*')):
+                        marker.addItem(label, value)
+                    self._set_legend_marker_combo(marker, handle.get_marker())
+                    marker.setToolTip(
+                        'Change the symbol in this legend key only; plotted '
+                        'data are not changed.')
+                    color = QPushButton()
+                    source_color = self._legend_defaults[ax][
+                        record['key']]['color']
+                    self._set_color_button(
+                        color, source_color, mark_dirty=False)
+                    color._qcs_color_title = 'Select symbol color'
+                    color._qcs_legend_record = record
+                    color.setToolTip(
+                        'Choose the symbol color in this legend key only.')
+                    color.clicked.connect(
+                        lambda _checked=False, button=color:
+                        self._choose_color(dialog, button))
+                    size = QDoubleSpinBox()
+                    size.setRange(0.1, 100.0)
+                    size.setDecimals(1)
+                    size.setSingleStep(0.5)
+                    size.setValue(handle.get_markersize())
+                    size.setSuffix(' pt')
+                    size.setToolTip(
+                        'Change the symbol size in this legend key only.')
+                    record.update({
+                        'marker_field': marker,
+                        'color_field': color,
+                        'size_field': size,
+                    })
+                    marker.currentIndexChanged.connect(
+                        lambda _index, item=record:
+                        item['style_dirty'].add('marker'))
+                    size.valueChanged.connect(
+                        lambda _value, item=record:
+                        item['style_dirty'].add('size'))
+                    record['widgets'].extend((marker, color, size))
+                    form.addRow('Symbol', marker)
+                    form.addRow('Symbol color', color)
+                    form.addRow('Symbol size', size)
+                layout.addWidget(group)
+            layout.addStretch(1)
+            page = QScrollArea()
+            page.setWidgetResizable(True)
+            page.setWidget(content)
             tabs.addTab(page, 'Legends')
 
         # Keep the mappable forms available for the safe color-limit update in
@@ -1583,7 +1862,8 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
 
         def apply_with_legends(data):
             datetime_fields = getattr(dialog, '_qcs_datetime_fields', None)
-            if datetime_fields is not None:
+            if (datetime_fields is not None and
+                    'x' in dialog._qcs_dirty_axis_limits):
                 datetime_values = self._datetime_form_values(dialog)
                 if datetime_values is None:
                     return
@@ -1637,6 +1917,30 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 ax.figure._suptitle.set_text(figure_title)
             for record in records:
                 record['artist'].set_text(record['field'].text())
+                handle = self._legend_symbol_handle(record)
+                if (handle is not None and 'marker_field' in record and
+                        record['style_dirty']):
+                    default = self._legend_defaults[ax][record['key']]
+                    if record['restore_style']:
+                        handle.set_marker(default['marker'])
+                        handle.set_markersize(default['size'])
+                        handle.set_markerfacecolor(default['facecolor'])
+                        handle.set_markeredgecolor(default['edgecolor'])
+                    else:
+                        if 'marker' in record['style_dirty']:
+                            marker = record['marker_field'].currentData()
+                            handle.set_marker(
+                                '' if marker == 'None' else marker)
+                        if 'size' in record['style_dirty']:
+                            handle.set_markersize(
+                                record['size_field'].value())
+                        if 'color' in record['style_dirty']:
+                            color = record['color_field']._qcs_color
+                            handle.set_markerfacecolor(color)
+                            handle.set_markeredgecolor(color)
+                    record['style_dirty'].clear()
+                    record['restore_style'] = False
+                record['dirty'] = False
             dialog._qcs_dirty_axis_limits.clear()
             ax.figure.canvas.draw_idle()
 
@@ -1679,7 +1983,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             'Edit the title shown above the complete figure.')
         general.formlayout.insertRow(0, 'Figure title', figure_title)
         dialog._qcs_figure_title = figure_title
-        self._configure_line_options(dialog)
+        self._configure_line_options(dialog, ax)
         self._hide_graph_names(dialog)
         self._add_legends_tab(dialog, ax)
         self._track_axis_limit_edits(dialog, ax)
@@ -1712,19 +2016,22 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             lambda: self._return_to_customize_picker(dialog))
         reset = buttons['reset']
         reset.setToolTip(
-            'Refill the original product values; use Apply to confirm them.')
+            'Refill the original figure values without changing the current '
+            'zoom or position; use Apply to confirm them.')
         def reset_all_values():
-            self._reset_figure_options_form(dialog, ax)
-            dialog._qcs_dirty_axis_limits.update(ax._axis_map)
+            self._reset_figure_options_form(dialog, ax, preserve_view=True)
+            dialog._qcs_dirty_axis_limits.clear()
 
         reset.clicked.connect(reset_all_values)
 
         def apply_checked():
-            if self._datetime_form_values(dialog) is not None:
+            if ('x' not in dialog._qcs_dirty_axis_limits or
+                    self._datetime_form_values(dialog) is not None):
                 dialog.apply()
 
         def accept_checked():
-            if self._datetime_form_values(dialog) is None:
+            if ('x' in dialog._qcs_dirty_axis_limits and
+                    self._datetime_form_values(dialog) is None):
                 return
             dialog.apply()
             QDialog.accept(dialog)
@@ -2154,6 +2461,9 @@ class QtShell(QMainWindow):
         self._curated_busy = False
 
         tabs = QTabWidget()
+        # Set before adding pages so size hints reserve enough width for the
+        # bold active label while Figure options and other tabs stay native.
+        tabs.tabBar().setObjectName('MainTabs')
         # every page is wrapped: a page that cannot shrink caps how far the
         # Execution log can be dragged open (see qtheme.scrollable)
         self._qualification_page = qtheme.scrollable(self._qualification_tab())
@@ -2169,7 +2479,6 @@ class QtShell(QMainWindow):
         self._viz_placeholder = QWidget()
         tabs.addTab(self._viz_placeholder, 'Data visualization')
         tabs.currentChanged.connect(self._tab_changed)
-        tabs.tabBar().setObjectName('MainTabs')   # scoped pastel tab styling
         self.tabs = tabs
         self.setCentralWidget(tabs)
 
@@ -2208,27 +2517,33 @@ class QtShell(QMainWindow):
             'Hides the batch status; View > Batch status brings it back')
         self._batch_rows = {}
         self._menus()
-        # no size grip: it reserved a ~24 px strip that pushed the criteria
-        # indicator out of line with the log's Clear button (the window edges
-        # and corners still resize normally)
-        self.statusBar().setSizeGripEnabled(False)
-        # Permanent status widgets, left to right: progress, criteria
-        # indicator, alignment spacer. The progress bar comes FIRST so that
-        # showing it during a run cannot shift the indicator sideways.
-        #
-        # pipeline progress: indeterminate while a single run is busy, and a
+        status = self.statusBar()
+        # No size grip: the window edges and corners still resize normally.
+        # QStatusBar adds a native 2 px inset only on the left. These asymmetric
+        # layout margins therefore put both widgets on the same 11 px axes as
+        # the main content.
+        status.setSizeGripEnabled(False)
+        status.setContentsMargins(9, 0, 11, 0)
+        # Criteria is an ordinary (left-side) status widget, while progress is
+        # permanent and therefore stays against the far right when shown.
+        self.criteria_label = QLabel('')
+        self.criteria_label.setFixedWidth(self._criteria_width())
+        self.criteria_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        status.addWidget(self.criteria_label)
+        # Pipeline progress: indeterminate while a single run is busy, and a
         # real fraction on the batch/replicate markers the pipeline already
-        # logs ('=== File k/n ===' / '=== Replicate k/n ===')
+        # logs ('=== File k/n ===' / '=== Replicate k/n ===').
         self.progress = QProgressBar()
         self.progress.setFixedWidth(220)
         self.progress.setVisible(False)
-        self.statusBar().addPermanentWidget(self.progress)
-        # criteria indicator: at a glance, are the quality criteria the
-        # software defaults or operator-edited? (owner request, 2026-08-17)
-        self.criteria_label = QLabel('')
-        # the indicator shares its width with the log's 'Clear log' button so
-        # the two line up on one axis (see _align_clear_button)
-        self.statusBar().addPermanentWidget(self.criteria_label)
+        status.addPermanentWidget(self.progress)
+        # Moving the indicator must not resize the existing log action. Keep
+        # its established width and right-hand content axis independently.
+        clear_width = max(
+            self.log_dock.clear_button.sizeHint().width(),
+            self._criteria_width())
+        self.log_dock.clear_button.setFixedWidth(clear_width)
+        self.log_dock.button_row.setContentsMargins(0, 0, 12, 0)
 
     def _criteria_width(self):
         """How wide the indicator must be to hold its text.
@@ -2240,45 +2555,6 @@ class QtShell(QMainWindow):
         widget jump sideways whenever the indicator changed."""
         fm = self.criteria_label.fontMetrics()
         return max(fm.horizontalAdvance(t) for t in CRITERIA_TEXTS) + 18
-
-    def _align_clear_button(self):
-        """Puts 'Clear log' on the same vertical axis as the status bar's
-        criteria indicator right below it (owner)."""
-        if self.log_dock.isFloating() or not self.log_dock.isVisible():
-            # nothing to line up with, but the indicator must still fit: this
-            # early return used to leave it at whatever width it had
-            needed = self._criteria_width()
-            if self.criteria_label.width() != needed:
-                self.criteria_label.setFixedWidth(needed)
-                self.criteria_label.setAlignment(Qt.AlignCenter)
-            return
-        # Both sit flush against the right edge, so equal WIDTHS put them on
-        # the same axis - deterministic, unlike nudging margins (the widths
-        # differ by theme, text and DPI, so they are measured, not hardcoded).
-        btn = self.log_dock.clear_button
-        label = self.criteria_label
-        width = max(btn.sizeHint().width(), self._criteria_width())
-        if btn.width() != width or label.width() != width:
-            btn.setFixedWidth(width)
-            label.setFixedWidth(width)
-            label.setAlignment(Qt.AlignCenter)
-        # Equal widths are not enough on their own: the two live in different
-        # containers (a dock and the status bar), and the dock does not always
-        # span the whole window - the batch dock takes the right side during a
-        # batch. So the button gets a fixed inset and the status bar's right
-        # margin is then MEASURED against it, which lands the two right edges
-        # on the same pixel whatever the dock is doing (owner, 2026-08-19).
-        inset = 12
-        if self.log_dock.button_row.contentsMargins().right() != inset:
-            self.log_dock.button_row.setContentsMargins(0, 0, inset, 0)
-        bar = self.statusBar()
-        margins = bar.contentsMargins()
-        delta = (label.mapTo(self, label.rect().topRight()).x()
-                 - btn.mapTo(self, btn.rect().topRight()).x())
-        if delta:
-            right = min(400, max(0, margins.right() + delta))
-            if right != margins.right():
-                bar.setContentsMargins(6, 0, right, margins.bottom())
 
     def _align_batch_top(self):
         """Top margin that puts the batch table's top on the tab page's top
@@ -2296,7 +2572,6 @@ class QtShell(QMainWindow):
     def showEvent(self, event):
         super().showEvent(event)
         self._align_batch_top()
-        self._align_clear_button()
 
     def closeEvent(self, event):
         """The window remembers how it was left, and so does the form: the tk
@@ -2346,7 +2621,6 @@ class QtShell(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._align_batch_top()
-        self._align_clear_button()
 
     def update_criteria_indicator(self):
         d = qm.DEFAULT_QUALITY_CONFIG
@@ -2356,7 +2630,6 @@ class QtShell(QMainWindow):
                    == d['tsFactors'])
         self.criteria_label.setText(CRITERIA_TEXTS[0] if default
                                     else CRITERIA_TEXTS[1])
-        self._align_clear_button()      # 'CUSTOM' is the wider of the two
         self.criteria_label.setToolTip(
             'The quality criteria are the software defaults' if default else
             'At least one quality criterion differs from the defaults\n'
@@ -2938,17 +3211,30 @@ class QtShell(QMainWindow):
     def _sync_workflow_tabs(self):
         """Apply the two job locks and the independent Field mode lock."""
         curated_page = self._curated_page or self._curated_placeholder
+        job_busy = self._qualification_busy or self._curated_busy
         states = (
-            (self._qualification_page, not self._curated_busy),
-            (curated_page,
-             not self._qualification_busy and not self._field_mode_enabled()),
+            (self._qualification_page, not job_busy),
+            (curated_page, not job_busy and not self._field_mode_enabled()),
             (self._viz_page or self._viz_placeholder,
-             not self._qualification_busy and not self._curated_busy),
+             not job_busy),
         )
+        current_index = self.tabs.currentIndex()
+        deferred_current = None
         for page, enabled in states:
             index = self.tabs.indexOf(page)
             if index >= 0:
-                self.tabs.setTabEnabled(index, enabled)
+                if job_busy and index == current_index and not enabled:
+                    deferred_current = (index, page)
+                else:
+                    self.tabs.setTabEnabled(index, enabled)
+        if deferred_current is not None:
+            # QTabWidget.setTabEnabled(False) also disables the current PAGE,
+            # which would kill its live Cancel button. Disable only the tab-bar
+            # item after the other tabs so the page stays visible and Cancel
+            # remains interactive while every workflow label looks unavailable.
+            index, page = deferred_current
+            page.setEnabled(True)
+            self.tabs.tabBar().setTabEnabled(index, False)
         curated_index = self.tabs.indexOf(curated_page)
         if curated_index >= 0:
             tooltip = (CURATED_TAB_FIELD_TOOLTIP if self._field_mode_enabled()
@@ -3548,11 +3834,15 @@ class QtShell(QMainWindow):
         self._curated_busy = bool(busy)
         self._sync_workflow_tabs()
         self.menuBar().setEnabled(not busy)
-        self.progress.setVisible(busy)
         if busy:
-            self.progress.setRange(0, 0)
-            self.progress.setFormat('Preparing curated database...')
+            self.progress.setRange(0, 1)
+            self.progress.setValue(0)
+            self.progress.setFormat('Calculating...')
+            self.progress.setToolTip(
+                'Calculating the amount of work; the total is not known yet.')
+            self.progress.setVisible(True)
         else:
+            self.progress.setVisible(False)
             self.progress.reset()
 
     def update_curated_progress(self, message):
@@ -3574,11 +3864,18 @@ class QtShell(QMainWindow):
             self.progress.setValue(current)
             self.progress.setFormat('Catalog %d/%d' % (current, total))
         else:
-            self.progress.setRange(0, 0)
             if message.startswith('Unifying '):
                 label = 'Building database...'
             elif message == 'Writing curated workbook...':
                 label = 'Writing workbook...'
+            elif message == 'Discovering qualified products...':
+                self.progress.setRange(0, 1)
+                self.progress.setValue(0)
+                label = 'Calculating...'
+            elif message == 'Preparing curated database...':
+                self.progress.setRange(0, 1)
+                self.progress.setValue(0)
+                label = 'Preparing database...'
             else:
                 label = message
             self.progress.setFormat(label)

@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v13.2.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v13.2.2</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -224,7 +224,9 @@
     on high-resolution displays. The <strong>Run qualification</strong> button enables only when
     everything required is filled &mdash; the hint under it names the next missing step &mdash;
     and a <strong>progress bar</strong> (bottom right) follows the pipeline stages, prefixed
-    with the batch/replicate scope (e.g. <em>Replicate 2/2 - Stage 3/5</em>).</p>
+    with the batch/replicate scope (e.g. <em>Replicate 2/2 - Stage 3/5</em>). While a
+    qualification or curated-database job is running, all three workflow tabs are dimmed;
+    the active page remains visible so its <em>Cancel</em> button stays available.</p>
     <p>The app runs with <strong>no terminal window</strong>: all progress, warnings and errors
     appear in the <strong>Execution log</strong> — one single panel at the bottom of the
     window, the same log for every pipeline stage (qualification, database building/preview,
@@ -235,7 +237,7 @@
     <strong>batch</strong> a <em>Batch status</em> panel lists one row per file with its state
     (running / ok / FAILED), and when a run finishes two shortcuts appear under the RUN
     button: <strong>Open output folder</strong> and <strong>Go to visualization</strong>.</p>
-    <p>The status bar states which quality criteria are in force:
+    <p>The left side of the status bar states which quality criteria are in force:
     <strong>criteria: defaults</strong> or <strong>criteria: CUSTOM</strong>. In the
     <strong>Quality control settings</strong> window every field that differs from the
     software default is shown in <strong>bold</strong>, each row carries a circular-arrow
@@ -652,10 +654,13 @@
         <tr>
             <td>Filter by Year</td>
             <td>Checkboxes for the years actually present in the loaded spreadsheet (detected
-            automatically). You can check more than one year — panels are generated for each
-            checked year. Changing this selection automatically fits X-Axis Start/End to the
-            exact interval available in the newly selected year(s). If none is checked, a warning
-            lists the available years.</td>
+            automatically). You can check more than one year. For HOBO and for a Seaguard mooring
+            selection containing several source deployments, the selection establishes one
+            continuous calendar X axis from 1 January of the earliest checked year through 1 January
+            after the latest. Only rows from checked years are drawn, so unselected years and
+            unsampled periods remain visible as gaps. Single-deployment Seaguard, profile and Doppler
+            panels retain their established behavior. If none is checked, a warning lists the
+            available years.</td>
         </tr>
         <tr>
             <td>Panel 1</td>
@@ -667,9 +672,9 @@
             <td>Panel 2</td>
             <td>Checkbox to enable the panel comparing the same parameter between sites.
             <strong>With Instrument = HOBO</strong> it reads <em>"Parameters across sites"</em>.
-            Sites do not need coincident timestamps: the actual Time window is applied first,
-            then each series starts at elapsed day zero. Unavailable when the database has a
-            single site.</td>
+            Sites do not need coincident timestamps: every deployment keeps its absolute datetime
+            inside the calendar domain selected by year, and the optional Time window crops that
+            domain further. Unavailable when the database has a single site.</td>
         </tr>
         <tr>
             <td>Panel 3</td>
@@ -734,12 +739,13 @@
         <tr>
             <td>X-Axis Start / X-Axis End (mooring)</td>
             <td>(Optional) Start and end of the time axis in mooring plots, in the format
-            <code>DD/MM/YYYY HH:MM</code>. These are actual calendar limits; a cross-site panel
-            applies them before aligning each site's surviving series by elapsed days. Grayed out
-            when the type is profile. A label below follows the Site/Year filters and shows their
-            available interval; changing the Year filter resets both fields to that interval.
-            An invalid date, reversed interval or value outside that interval stops generation
-            and asks you to use the displayed <em>Data available</em> range.</td>
+            <code>DD/MM/YYYY HH:MM</code>. For a multi-deployment scalar selection these fields are a
+            finer crop inside the full selected calendar-year domain. Changing the Site/Year filters
+            recalculates whether the selection is multi-deployment and resets the fields to its
+            applicable calendar or actual-data interval. Grayed out when the type is profile. The
+            <em>Data available</em> label always reports the actual first and last samples in the
+            current Site/Year selection. An invalid date, reversed interval or value outside the
+            allowed domain stops generation.</td>
         </tr>
         <tr>
             <td>Depth-Axis Min / Max (profile/current)</td>
@@ -1525,12 +1531,15 @@
         </tr>
         <tr>
             <td>Panel 1</td>
-            <td>Comparison between parameters at the same site</td>
+            <td>Comparison between parameters at the same site. A selection with several source
+                deployments uses one absolute datetime axis over the complete selected-year domain,
+                and keeps each source tendency separate</td>
             <td>Mooring data</td>
         </tr>
         <tr>
             <td>Panel 2</td>
-            <td>Comparison of the same parameter between sites</td>
+            <td>Comparison of the same parameter between sites. Multi-deployment selections retain
+                absolute datetime instead of resetting each site to elapsed day zero</td>
             <td>Mooring data</td>
         </tr>
         <tr>
@@ -1558,29 +1567,28 @@
         <tr>
             <td>Parameters at a site</td>
             <td>The selected parameters (temperature and/or light) for one site in a single
-                figure with twin axes, spanning <strong>every selected year in one plot</strong>.
+                figure with twin axes, spanning <strong>the complete calendar domain of every
+                selected year in one plot</strong>. Data appear only at their absolute datetimes;
+                empty year edges, unsampled periods and unselected intervening years stay blank.
                 Temperature: dots, one optional tendency line per source deployment and, for combined-replicates files,
                 one vertical bar per sample showing the replicate disagreement
                 (bar length = max &minus; min). Light: <strong>daily-peak envelope on a linear
                 scale for each source deployment</strong> (the fouling-review visual), optional raw
-                points, and source-aware BAD windows (<code>Flag_lux == 4</code>) shaded. An
-                unsampled day breaks the light line, and a sampling gap inside one BAD window does
-                not create another BAD span. Products from separate deployments never
-                pool their daily maxima or tendencies</td>
+                points, with readings marked <code>Flag_lux == 4</code> excluded before the
+                daily maximum is calculated. An unsampled day breaks the light line. Products
+                from separate deployments never pool their daily maxima or tendencies</td>
             <td><code>hobo_params_&lt;site&gt;.svg</code></td>
         </tr>
         <tr>
             <td>Parameters across sites</td>
             <td>One figure per selected parameter with all sites overlaid on the
-                <strong>elapsed-days axis</strong> from each source deployment's first selected
-                day, so campaigns and sites do not need coincident timestamps. Calendar dates in
-                the site's color mark the first and last selected day of each deployment. They are
-                shown for selections of up to 16 deployments; a broader chart displays a note asking
-                for narrower site/year filters rather than stacking unreadable labels. The actual
-                Time window filters rows before this alignment. Light uses a separate gap-aware
-                daily peak for each deployment; recorded BAD light is dotted and faded instead of
-                becoming an ambiguous background span. Temperature gains per-deployment tendency
-                lines calculated against real elapsed time</td>
+                <strong>same absolute datetime axis</strong>. Its opening limits are the complete
+                selected calendar year or continuous span of years; only rows from checked years
+                and the optional Time window are drawn. This makes the timing and separation of
+                deployments visible without endpoint date labels. Light uses a separate gap-aware
+                daily peak for each deployment and omits readings marked
+                <code>Flag_lux == 4</code>. Temperature gains per-deployment tendency lines
+                calculated against real elapsed time</td>
             <td><code>hobo_&lt;parameter&gt;_across_sites.svg</code></td>
         </tr>
     </table>
@@ -1657,8 +1665,8 @@
     restores the opening view; four-arrow <strong>Pan</strong> and rectangular <strong>Zoom</strong>
     change only the view. On Current profile, horizontal and vertical navigation stay synchronized
     between the speed and direction heatmaps. Toolbar and mouse-wheel Zoom stay between
-    1/10,000 and 1&times; each axis' opening span, preventing both an indefinitely small view and
-    unlimited zoom out while retaining fine inspection.
+    1/10,000 and 100&times; each axis' opening span, allowing substantial zoom out while keeping
+    navigation finite. Home always restores the opening view.
     Selecting Home, Subplots, Customize or Save leaves an active Pan
     or Zoom mode before carrying out that command. <strong>Subplots</strong> adjusts the plot area, gaps and legend
     position; <strong>Customize</strong> edits a selected plot; and <strong>Save</strong>
@@ -1684,7 +1692,9 @@
     above <em>Export values</em>, and <em>Reset values</em> above <em>OK</em>. Reset restores
     the complete original layout immediately. Every editable layout row also has a circular
     arrow that restores only that value. Figure options instead refills the original
-    fields and waits for <em>Apply</em>, like every other edit in that window. Its action
+    fields and waits for <em>Apply</em>, like every other edit in that window. This reset
+    does not change the current zoom or pan position; the toolbar <em>Home</em> button is
+    the only control that restores the opening view. Its action
     buttons, in order, are <em>&lt; Back</em>, <em>Reset values</em>, <em>Apply</em> and
     <em>OK</em>. Its editable rows carry the same individual reset arrow; these refill only the
     selected field and still wait for <em>Apply</em>. Back returns to plot selection and is
@@ -1696,7 +1706,10 @@
     For plots whose X axis is datetime, Figure options replaces serial numeric limits with
     editable <em>Start</em> and <em>End</em> fields in <code>DD/MM/YYYY HH:MM</code>, matching
     Data Visualization step 2. An invalid or out-of-range value leaves the graph unchanged
-    and displays the available interval, which is also shown below the fields. The top of the <em>Axes</em> tab edits the title of the
+    and displays the available interval, which is also shown below the fields. The same
+    <em>Date/time range</em> section keeps an <em>Axis label</em> field above the
+    <em>Available</em> interval for editing text such as <em>Datetime</em>. The top of the
+    <em>Axes</em> tab edits the title of the
     complete figure separately from the shared plot title; editing either from one selected
     parameter is retained when another parameter from the same figure is selected. Scale
     choices are displayed as <em>Linear</em>, <em>Log</em>, <em>Symlog</em> and <em>Logit</em>.
@@ -1705,16 +1718,26 @@
     retained when it is needed to choose between several. Mappable metadata
     names that do not change visible text are omitted. Point-only series are not presented
     as lines: the <em>Lines</em> tab edits only real plotted lines, offers Solid first, and
-    leaves point symbols unchanged. This prevents dashed or dotted styles from connecting
-    independent points. A separate <em>Legends</em> tab edits the labels actually drawn in
-    line legends, color scales and the direction compass; it is omitted when that plot has
-    no legend or key to edit. Applying a style while the
+    leaves point symbols unchanged. When several deployments are present, its selector names
+    each line by site, role and source product instead of exposing Matplotlib identifiers such
+    as <code>_child3</code>. This prevents dashed or dotted styles from connecting independent
+    points. Its <em>Color</em> row uses the same full swatch button as legend symbols and
+    preserves the product opacity automatically. A separate <em>Legends</em> tab names each
+    entry from its displayed label and
+    edits the text actually drawn in line legends, color scales and the direction compass.
+    Line-legend entries additionally offer symbol, symbol color and symbol size. Their neutral
+    initial symbol is <em>Circle</em>; <em>(None)</em> stays first in the option list and
+    <em>Dot</em> remains available explicitly. Those
+    controls change the legend key only, never the plotted observations. The tab is omitted
+    when that plot has no legend or key to edit. Applying a style while the
     non-modal window remains open preserves any newer zoom unless the range itself was
     edited. The row reset arrow can restore a line width to the original product value just
     like the other fields; the restored value is committed only by <em>Apply</em> or
     <em>OK</em>. Automatic legend regeneration
     is not offered. Both the plot selector and Figure options carry the Customize toolbar
-    icon.</p>
+    icon. The main Data qualification, Curated database and Data visualization tabs use the
+    same native Qt/Fusion treatment as the Figure options tabs, with the active main tab
+    identified by a bold label and enough reserved width to show that label in full.</p>
     <h4>Reading the blanks</h4>
     <p>Large blank areas in the heatmaps are normal. A DCPS writes its own quality word
     for every cell of every record (<em>Cell state</em>), and the current tests reject
@@ -1804,11 +1827,13 @@
     <h4>Time Filter</h4>
     <ul>
         <li><strong>By site/year:</strong> Use the checkboxes in Filter settings. Every site or
-            year change automatically fits the editable Time window to the first and last available
-            sample in the new selection</li>
+            year change refreshes the actual <em>Data available</em> label. For HOBO and scalar
+            Seaguard selections with several source deployments, the checked years establish the
+            complete calendar X domain instead of shrinking it to the first and last samples</li>
         <li><strong>By date/time:</strong> Refine the resulting Time window by typing its start and
-            end in <code>DD/MM/YYYY HH:MM</code>. Cross-site panels apply this absolute interval before
-            aligning each deployment by elapsed day</li>
+            end in <code>DD/MM/YYYY HH:MM</code>. Multi-deployment scalar panels use this absolute
+            interval as a finer crop inside the selected year domain and plot data only where
+            samples exist</li>
     </ul>
 
     <h4>Spatial Filter</h4>
@@ -1832,8 +1857,9 @@
         </tr>
         <tr>
             <td>Trend Lines</td>
-            <td>Adds polynomial trend lines against real elapsed time; separate HOBO deployments
-                are never fitted as one historical series</td>
+            <td>Adds polynomial trend lines against real elapsed time; source deployments in HOBO
+                and multi-deployment Seaguard mooring panels are never fitted as one historical
+                series</td>
             <td>Identify temporal patterns</td>
         </tr>
         <tr>
@@ -1878,12 +1904,19 @@
     Select the folder that contains <code>SEAGUARD\qualified</code> and
     <code>HOBO\qualified</code>, then choose <strong>Load catalog</strong>. The scan reads each
     <code>*_QLF.csv</code>/<code>*_QLF.xlsx</code> product below those two
-    <code>qualified</code> trees; raw files and report spreadsheets are not cataloged. It reads
+    <code>qualified</code> trees; raw files and report spreadsheets are not cataloged. The
+    progress bar remains empty with <em>Calculating...</em> while discovering
+    files, then <em>Catalog 0/N</em> and the current read position, without
+    an indeterminate full-bar animation. It reads
     neither <code>_EXPERIMENTOS</code>, <code>_PISCINAS</code>, nor direct site folders whose
     names begin with <code>PISCINA_</code>: those experiment and pool deployments are outside
     the monitoring corpus and are ignored even if such a folder is restored later. It reads
     each qualified product's Site and Datetime columns so the filters describe the data itself;
     a prebuilt <code>qualified_index.csv</code> is not required.</p>
+    <p>During <strong>Build curated database</strong>, the bar is cleared before it becomes
+    visible, advances through selection and instrument stages, remains below 100% while the
+    workbook is being written, and reaches <em>Complete</em> only after the atomic output file
+    has finished.</p>
 
     <h3>Selection</h3>
     <p>Any combination of <strong>site</strong>, <strong>calendar year</strong> and

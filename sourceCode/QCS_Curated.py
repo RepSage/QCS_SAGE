@@ -138,6 +138,8 @@ def discover_qualified_corpus(
     rows = []
     messages = []
     total = len(candidates)
+    if progress:
+        progress("Reading qualified product 0/%d..." % total)
     for number, (path, family_instrument) in enumerate(candidates, start=1):
         _check_cancel(should_cancel)
         if progress and (number == 1 or number == total or number % 10 == 0):
