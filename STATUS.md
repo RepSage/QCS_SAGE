@@ -54,7 +54,10 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   reserve the bold-label width plus 12 px so selection cannot clip the text or
   resize the buttons. The criteria indicator now occupies the left side of the
   status bar, while the 220 px progress bar occupies the far right; both use
-  the same 11 px effective content inset as the main page.
+  the same 11 px effective content inset as the main page. While qualification
+  or curated progress is active, all three workflow tabs are disabled and
+  dimmed, including the selected one; its page remains visible and its Cancel
+  control remains enabled.
 - The 68/68 self-test passes. A synthetic 32-row, 4-deployment Seaguard replay
   generated one at-site and two across-site figures on the exact 2024-01-01 to
   2027-01-01 domain while excluding an unselected 2025 product. A real
@@ -76,6 +79,10 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   1,180 px and 1,340 px window widths placed the criteria label at x = 11 px
   and the progress right edge 11 px from the window edge in both themes; the
   criteria position did not change when progress became visible.
+  A busy-state Qt probe recorded all tab items disabled for both Qualification
+  and Curated jobs, only the selected page enabled, and its Cancel control
+  enabled. The selected-label paint probe changed from bold to regular when
+  that tab became disabled.
 - Read-only replay of all 48 current Seaguard fundeio products built 129,780
   rows (0 invalid datetimes, 0 exact duplicates, 19 sites) and generated three
   across-site panels plus one 6-deployment PAB3 panel on the exact 2019-01-01 to

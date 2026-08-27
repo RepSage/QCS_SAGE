@@ -3211,17 +3211,30 @@ class QtShell(QMainWindow):
     def _sync_workflow_tabs(self):
         """Apply the two job locks and the independent Field mode lock."""
         curated_page = self._curated_page or self._curated_placeholder
+        job_busy = self._qualification_busy or self._curated_busy
         states = (
-            (self._qualification_page, not self._curated_busy),
-            (curated_page,
-             not self._qualification_busy and not self._field_mode_enabled()),
+            (self._qualification_page, not job_busy),
+            (curated_page, not job_busy and not self._field_mode_enabled()),
             (self._viz_page or self._viz_placeholder,
-             not self._qualification_busy and not self._curated_busy),
+             not job_busy),
         )
+        current_index = self.tabs.currentIndex()
+        deferred_current = None
         for page, enabled in states:
             index = self.tabs.indexOf(page)
             if index >= 0:
-                self.tabs.setTabEnabled(index, enabled)
+                if job_busy and index == current_index and not enabled:
+                    deferred_current = (index, page)
+                else:
+                    self.tabs.setTabEnabled(index, enabled)
+        if deferred_current is not None:
+            # QTabWidget.setTabEnabled(False) also disables the current PAGE,
+            # which would kill its live Cancel button. Disable only the tab-bar
+            # item after the other tabs so the page stays visible and Cancel
+            # remains interactive while every workflow label looks unavailable.
+            index, page = deferred_current
+            page.setEnabled(True)
+            self.tabs.tabBar().setTabEnabled(index, False)
         curated_index = self.tabs.indexOf(curated_page)
         if curated_index >= 0:
             tooltip = (CURATED_TAB_FIELD_TOOLTIP if self._field_mode_enabled()

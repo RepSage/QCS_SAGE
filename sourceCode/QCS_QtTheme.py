@@ -198,7 +198,8 @@ class AccentStyle(QProxyStyle):
             element == QStyle.ControlElement.CE_TabBarTabLabel
             and widget is not None
             and widget.objectName() == 'MainTabs'
-            and option.state & QStyle.StateFlag.State_Selected)
+            and option.state & QStyle.StateFlag.State_Selected
+            and option.state & QStyle.StateFlag.State_Enabled)
         if active_main_tab:
             painter.save()
             bold_font = painter.font()
