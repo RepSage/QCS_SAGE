@@ -1691,7 +1691,9 @@
     above <em>Export values</em>, and <em>Reset values</em> above <em>OK</em>. Reset restores
     the complete original layout immediately. Every editable layout row also has a circular
     arrow that restores only that value. Figure options instead refills the original
-    fields and waits for <em>Apply</em>, like every other edit in that window. Its action
+    fields and waits for <em>Apply</em>, like every other edit in that window. This reset
+    does not change the current zoom or pan position; the toolbar <em>Home</em> button is
+    the only control that restores the opening view. Its action
     buttons, in order, are <em>&lt; Back</em>, <em>Reset values</em>, <em>Apply</em> and
     <em>OK</em>. Its editable rows carry the same individual reset arrow; these refill only the
     selected field and still wait for <em>Apply</em>. Back returns to plot selection and is
@@ -1715,9 +1717,11 @@
     leaves point symbols unchanged. When several deployments are present, its selector names
     each line by site, role and source product instead of exposing Matplotlib identifiers such
     as <code>_child3</code>. This prevents dashed or dotted styles from connecting independent
-    points. A separate <em>Legends</em> tab edits the labels actually drawn in
-    line legends, color scales and the direction compass; it is omitted when that plot has
-    no legend or key to edit. Applying a style while the
+    points. A separate <em>Legends</em> tab names each entry from its displayed label and
+    edits the text actually drawn in line legends, color scales and the direction compass.
+    Line-legend entries additionally offer symbol, symbol color and symbol size; those
+    controls change the legend key only, never the plotted observations. The tab is omitted
+    when that plot has no legend or key to edit. Applying a style while the
     non-modal window remains open preserves any newer zoom unless the range itself was
     edited. The row reset arrow can restore a line width to the original product value just
     like the other fields; the restored value is committed only by <em>Apply</em> or
@@ -1890,7 +1894,10 @@
     Select the folder that contains <code>SEAGUARD\qualified</code> and
     <code>HOBO\qualified</code>, then choose <strong>Load catalog</strong>. The scan reads each
     <code>*_QLF.csv</code>/<code>*_QLF.xlsx</code> product below those two
-    <code>qualified</code> trees; raw files and report spreadsheets are not cataloged. It reads
+    <code>qualified</code> trees; raw files and report spreadsheets are not cataloged. The
+    progress bar remains a determinate catalog count: <em>Catalog 0/?</em> while discovering
+    files, then <em>Catalog 0/N</em> and the current read position, without
+    an indeterminate full-bar animation. It reads
     neither <code>_EXPERIMENTOS</code>, <code>_PISCINAS</code>, nor direct site folders whose
     names begin with <code>PISCINA_</code>: those experiment and pool deployments are outside
     the monitoring corpus and are ignored even if such a folder is restored later. It reads

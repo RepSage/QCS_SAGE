@@ -26,10 +26,24 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   pressure lines and HOBO daily light peaks. Figure options -> Lines now names
   each deployment-specific line by site, role and source product instead of
   exposing Matplotlib `_childN` identifiers.
+- Curated `Load catalog` now stays determinate from the empty `Catalog 0/?`
+  discovery state through `Catalog 0/N` and the current read position; the former
+  full blue indeterminate animation is gone.
+- Figure options `Reset values` restores figure styles and text without moving
+  the live zoom/pan view. The apparent line-width inflation was a marker-alias
+  bug: resetting a marker-free line selected Matplotlib's first marker even
+  though Width still read 1.5. Marker aliases now restore exactly, and an
+  off-screen before/after render had zero changed pixels.
+- Figure options -> Legends names entries from their visible text and, for line
+  keys, edits symbol, symbol color and symbol size independently of the plotted
+  data. Its global reset restores the exact original key style; per-row resets
+  restore the selected displayed control.
 - The 68/68 self-test passes. A synthetic 32-row, 4-deployment Seaguard replay
   generated one at-site and two across-site figures on the exact 2024-01-01 to
   2027-01-01 domain while excluding an unselected 2025 product. A real
   off-screen Qt Figure options probe confirmed the two semantic line names.
+  A second Qt probe confirmed `Catalog 0/? -> 0/N -> 1/N`, exact width/marker
+  restoration, unchanged X/Y zoom, and legend-only symbol/color/size edits.
 - Read-only replay of all 48 current Seaguard fundeio products built 129,780
   rows (0 invalid datetimes, 0 exact duplicates, 19 sites) and generated three
   across-site panels plus one 6-deployment PAB3 panel on the exact 2019-01-01 to

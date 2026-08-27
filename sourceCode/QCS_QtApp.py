@@ -50,13 +50,14 @@ from matplotlib.transforms import Bbox
 
 from PySide6.QtCore import (QByteArray, QEvent, QEventLoop, QObject, QSize,
                             QSignalBlocker, Qt, QThread, QTimer, Signal, Slot)
-from PySide6.QtGui import QAction, QIcon, QPainter, QPalette, QPixmap
+from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPalette, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                                QDockWidget, QFileDialog, QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                                QDoubleSpinBox, QLineEdit, QMainWindow,
-                               QMessageBox, QPlainTextEdit, QInputDialog,
+                               QColorDialog, QMessageBox, QPlainTextEdit,
+                               QInputDialog,
                                QProgressBar, QProgressDialog, QPushButton,
                                QRadioButton, QScrollArea, QStackedWidget,
                                QSizePolicy, QTableWidget, QTableWidgetItem,
@@ -658,9 +659,9 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 abs(float(xlim[1]) - float(xlim[0])) * view.ZOOM_OUT_FACTOR,
                 abs(float(ylim[1]) - float(ylim[0])) * view.ZOOM_OUT_FACTOR,
             )
-        self._legend_label_defaults = {
+        self._legend_defaults = {
             ax: {
-                record['key']: record['artist'].get_text()
+                record['key']: self._capture_legend_record(record)
                 for record in self._collect_legend_labels(ax)
             }
             for ax in default_axes
@@ -1055,7 +1056,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         records = []
         seen = set()
 
-        def add(key, name, artist, kind, index=None):
+        def add(key, name, artist, kind, index=None, handle=None):
             if artist is None or id(artist) in seen:
                 return
             records.append({
@@ -1064,19 +1065,29 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 'artist': artist,
                 'kind': kind,
                 'index': index,
+                'handle': handle,
             })
             seen.add(id(artist))
 
         legend = ax.get_legend()
         if legend is not None:
+            handles = getattr(legend, 'legend_handles', ())
             for index, artist in enumerate(legend.get_texts()):
-                add(('legend', index), 'Legend entry %d' % (index + 1),
-                    artist, 'legend', index)
+                text = artist.get_text().strip()
+                add(('legend', index),
+                    'Entry %d%s' % (
+                        index + 1, ' - ' + text if text else ''),
+                    artist, 'legend', index,
+                    handles[index] if index < len(handles) else None)
         for legend_index, figure_legend in enumerate(ax.figure.legends):
+            handles = getattr(figure_legend, 'legend_handles', ())
             for index, artist in enumerate(figure_legend.get_texts()):
+                text = artist.get_text().strip()
                 add(('figure legend', legend_index, index),
-                    'Figure legend entry %d' % (index + 1),
-                    artist, 'figure legend', index)
+                    'Figure entry %d%s' % (
+                        index + 1, ' - ' + text if text else ''),
+                    artist, 'figure legend', index,
+                    handles[index] if index < len(handles) else None)
         metadata = getattr(ax.figure, '_qcs_legend_labels', {}).get(ax, [])
         for index, item in enumerate(metadata):
             add(('key', index, item['name']), item['name'], item['artist'],
@@ -1093,6 +1104,68 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         return records
 
     @staticmethod
+    def _legend_symbol_handle(record):
+        """Return a legend-only Line2D-like handle that can show a symbol."""
+        handle = record.get('handle')
+        required = ('get_marker', 'set_marker', 'get_markersize',
+                    'set_markersize', 'set_markerfacecolor',
+                    'set_markeredgecolor')
+        return handle if all(hasattr(handle, name) for name in required) else None
+
+    @classmethod
+    def _capture_legend_record(cls, record):
+        """Capture text and legend-key style without touching plotted data."""
+        values = {'text': record['artist'].get_text()}
+        handle = cls._legend_symbol_handle(record)
+        if handle is None:
+            return values
+        facecolor = handle.get_markerfacecolor()
+        edgecolor = handle.get_markeredgecolor()
+        color = facecolor
+        if color is None or str(color).lower() in ('none', 'auto'):
+            color = edgecolor
+        if color is None or str(color).lower() in ('none', 'auto'):
+            color = handle.get_color()
+        values.update({
+            'marker': handle.get_marker(),
+            'color': mcolors.to_hex(mcolors.to_rgba(color)),
+            'size': handle.get_markersize(),
+            'facecolor': facecolor,
+            'edgecolor': edgecolor,
+        })
+        return values
+
+    @staticmethod
+    def _set_legend_color_button(button, color, mark_dirty=True):
+        """Store a valid Matplotlib color and show it as a Qt swatch."""
+        color = mcolors.to_hex(mcolors.to_rgba(color))
+        button._qcs_color = color
+        rgb = mcolors.to_rgb(color)
+        foreground = '#000000' if sum(rgb) > 1.55 else '#ffffff'
+        button.setText(color.upper())
+        button.setStyleSheet(
+            'QPushButton { background-color: %s; color: %s; }' %
+            (color, foreground))
+        if mark_dirty and hasattr(button, '_qcs_legend_record'):
+            button._qcs_legend_record['style_dirty'].add('color')
+
+    @classmethod
+    def _choose_legend_color(cls, dialog, button):
+        selected = QColorDialog.getColor(
+            QColor(button._qcs_color), dialog, 'Select symbol color')
+        if selected.isValid():
+            cls._set_legend_color_button(button, selected.name())
+
+    @staticmethod
+    def _set_legend_marker_combo(field, marker):
+        marker = 'None' if marker in (None, '', ' ', 'None', 'none') else marker
+        index = field.findData(marker)
+        if index < 0:
+            field.addItem('Custom (%s)' % marker, marker)
+            index = field.count() - 1
+        field.setCurrentIndex(index)
+
+    @staticmethod
     def _set_form_values(form, values):
         """Put values into Matplotlib's private FormWidget without applying."""
         value_iter = iter(values)
@@ -1106,14 +1179,24 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 field.update_color()
             elif isinstance(field, QComboBox):
                 choices = original
-                wanted = field.findText(str(value))
-                if (wanted < 0 and choices and
-                        isinstance(choices[0], (list, tuple))):
+                if choices and isinstance(choices[0], (list, tuple)):
                     keys = [choice[0] for choice in choices]
-                    wanted = keys.index(value) if value in keys else 0
-                elif wanted < 0:
+                    texts = [str(choice[1]) for choice in choices]
+                    if value in keys:
+                        wanted = keys.index(value)
+                    elif value in (None, '', ' ', 'None', 'none'):
+                        wanted = next(
+                            (item for item, choice in enumerate(choices)
+                             if (choice[0] in ('', ' ', 'None', 'none') or
+                                 str(choice[1]).lower() == 'nothing')), 0)
+                    else:
+                        shown = str(value)
+                        wanted = (texts.index(shown)
+                                  if shown in texts else 0)
+                else:
                     texts = [str(choice) for choice in choices]
-                    wanted = texts.index(str(value)) if str(value) in texts else 0
+                    shown = str(value)
+                    wanted = texts.index(shown) if shown in texts else 0
                 field.setCurrentIndex(wanted)
             elif isinstance(field, QCheckBox):
                 field.setChecked(bool(value))
@@ -1132,6 +1215,8 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
     @staticmethod
     def _form_widget_value(field):
         """Capture one editable Figure-options widget without applying it."""
+        if isinstance(field, QPushButton) and hasattr(field, '_qcs_color'):
+            return 'legend_color', field._qcs_color
         if hasattr(field, 'lineedit') and hasattr(field, 'colorbtn'):
             return 'color', field.lineedit.text()
         if isinstance(field, QComboBox):
@@ -1167,6 +1252,9 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             field.setDate(value)
         elif kind == 'value':
             field.setValue(value)
+        elif kind == 'legend_color':
+            QCSNavigationToolbar._set_legend_color_button(
+                field, value, mark_dirty=False)
 
     def _figure_option_form_rows(self, dialog):
         """All Figure-options value rows and whether each is user-visible."""
@@ -1207,8 +1295,16 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         if axis_name is not None:
             dialog._qcs_dirty_axis_limits.add(axis_name)
         for record in getattr(dialog, '_qcs_legend_records', []):
-            if record.get('field') is field:
+            if field in record.get('widgets', (record.get('field'),)):
                 record['dirty'] = True
+                if field is not record.get('field'):
+                    style_fields = {
+                        record.get('marker_field'): 'marker',
+                        record.get('color_field'): 'color',
+                        record.get('size_field'): 'size',
+                    }
+                    record['style_dirty'].add(style_fields[field])
+                    record['restore_style'] = False
                 break
         dialog.update_buttons()
 
@@ -1244,7 +1340,9 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             for record in rows
         }
         legend_dirty = {
-            record['field']: record['dirty']
+            record['key']: (
+                record['dirty'], set(record.get('style_dirty', ())),
+                record.get('restore_style', False))
             for record in getattr(dialog, '_qcs_legend_records', [])
         }
         self._reset_figure_options_form(dialog, ax)
@@ -1255,7 +1353,8 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         for field, state in current.items():
             self._restore_form_widget_value(field, state)
         for record in getattr(dialog, '_qcs_legend_records', []):
-            record['dirty'] = legend_dirty[record['field']]
+            (record['dirty'], record['style_dirty'],
+             record['restore_style']) = legend_dirty[record['key']]
         dialog.update_buttons()
 
         installed = []
@@ -1280,13 +1379,14 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             installed.append({**record, 'button': button})
         dialog._qcs_row_reset_buttons = installed
 
-    def _reset_figure_options_form(self, dialog, ax):
+    def _reset_figure_options_form(self, dialog, ax, preserve_view=False):
         """Refill product defaults; Apply remains the only mutation step."""
         state = self._figure_option_defaults[ax]
         axes_values = [self._shared_plot_title(ax, defaults=True)]
         for name in ax._axis_map:
             values = state['axes'][name]
-            limits = values['limits']
+            limits = (getattr(ax, 'get_%slim' % name)()
+                      if preserve_view else values['limits'])
             axes_values.extend([
                 *limits, values['label'], values['scale']])
 
@@ -1299,7 +1399,18 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         dialog._qcs_figure_title.setText(state['figure_title'])
         datetime_fields = getattr(dialog, '_qcs_datetime_fields', None)
         if datetime_fields is not None:
-            lower, upper = dialog._qcs_datetime_bounds
+            if preserve_view:
+                lower, upper = dbv.normalized_time_bounds(
+                    *(mdates.num2date(value)
+                      for value in sorted(ax.get_xlim())))
+                available_start, available_end = dialog._qcs_datetime_bounds
+                if upper < available_start or lower > available_end:
+                    lower, upper = available_start, available_end
+                else:
+                    lower = max(lower, available_start)
+                    upper = min(upper, available_end)
+            else:
+                lower, upper = dialog._qcs_datetime_bounds
             datetime_fields[0].setText(lower.strftime(dbv.TIME_TEXT_FORMAT))
             datetime_fields[1].setText(upper.strftime(dbv.TIME_TEXT_FORMAT))
 
@@ -1341,9 +1452,17 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 self._set_form_values(form, graph_values)
 
         for record in getattr(dialog, '_qcs_legend_records', []):
-            default = self._legend_label_defaults.get(ax, {}).get(
-                record['key'], record['artist'].get_text())
-            record['field'].setText(default)
+            default = self._legend_defaults.get(ax, {}).get(
+                record['key'], {'text': record['artist'].get_text()})
+            record['field'].setText(default['text'])
+            if 'marker' in default and 'marker_field' in record:
+                self._set_legend_marker_combo(
+                    record['marker_field'], default['marker'])
+                self._set_legend_color_button(
+                    record['color_field'], default['color'], mark_dirty=False)
+                record['size_field'].setValue(default['size'])
+                record['style_dirty'] = {'marker', 'color', 'size'}
+                record['restore_style'] = True
             record['dirty'] = True
         dialog.update_buttons()
 
@@ -1586,16 +1705,75 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         records = self._collect_legend_labels(ax)
         dialog._qcs_legend_records = records
         if records:
-            page = QWidget()
-            form = QFormLayout(page)
+            content = QWidget()
+            layout = QVBoxLayout(content)
             for record in records:
+                group = QGroupBox(record['name'])
+                form = QFormLayout(group)
                 field = QLineEdit(record['artist'].get_text())
+                field.setToolTip(
+                    'Edit the text displayed for this legend or key entry.')
                 record['field'] = field
+                record['widgets'] = [field]
                 record['dirty'] = False
+                record['style_dirty'] = set()
+                record['restore_style'] = False
                 field.textEdited.connect(
                     lambda _text, item=record:
                     item.__setitem__('dirty', True))
-                form.addRow(record['name'], field)
+                form.addRow('Text', field)
+                handle = self._legend_symbol_handle(record)
+                if handle is not None:
+                    marker = QComboBox()
+                    for label, value in (
+                            ('None', 'None'), ('Circle', 'o'),
+                            ('Square', 's'), ('Triangle up', '^'),
+                            ('Triangle down', 'v'), ('Diamond', 'D'),
+                            ('Plus', '+'), ('Cross', 'x'), ('Star', '*')):
+                        marker.addItem(label, value)
+                    self._set_legend_marker_combo(marker, handle.get_marker())
+                    marker.setToolTip(
+                        'Change the symbol in this legend key only; plotted '
+                        'data are not changed.')
+                    color = QPushButton()
+                    source_color = self._legend_defaults[ax][
+                        record['key']]['color']
+                    self._set_legend_color_button(
+                        color, source_color, mark_dirty=False)
+                    color._qcs_legend_record = record
+                    color.setToolTip(
+                        'Choose the symbol color in this legend key only.')
+                    color.clicked.connect(
+                        lambda _checked=False, button=color:
+                        self._choose_legend_color(dialog, button))
+                    size = QDoubleSpinBox()
+                    size.setRange(0.1, 100.0)
+                    size.setDecimals(1)
+                    size.setSingleStep(0.5)
+                    size.setValue(handle.get_markersize())
+                    size.setSuffix(' pt')
+                    size.setToolTip(
+                        'Change the symbol size in this legend key only.')
+                    record.update({
+                        'marker_field': marker,
+                        'color_field': color,
+                        'size_field': size,
+                    })
+                    marker.currentIndexChanged.connect(
+                        lambda _index, item=record:
+                        item['style_dirty'].add('marker'))
+                    size.valueChanged.connect(
+                        lambda _value, item=record:
+                        item['style_dirty'].add('size'))
+                    record['widgets'].extend((marker, color, size))
+                    form.addRow('Symbol', marker)
+                    form.addRow('Symbol color', color)
+                    form.addRow('Symbol size', size)
+                layout.addWidget(group)
+            layout.addStretch(1)
+            page = QScrollArea()
+            page.setWidgetResizable(True)
+            page.setWidget(content)
             tabs.addTab(page, 'Legends')
 
         # Keep the mappable forms available for the safe color-limit update in
@@ -1609,7 +1787,8 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
 
         def apply_with_legends(data):
             datetime_fields = getattr(dialog, '_qcs_datetime_fields', None)
-            if datetime_fields is not None:
+            if (datetime_fields is not None and
+                    'x' in dialog._qcs_dirty_axis_limits):
                 datetime_values = self._datetime_form_values(dialog)
                 if datetime_values is None:
                     return
@@ -1663,6 +1842,30 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 ax.figure._suptitle.set_text(figure_title)
             for record in records:
                 record['artist'].set_text(record['field'].text())
+                handle = self._legend_symbol_handle(record)
+                if (handle is not None and 'marker_field' in record and
+                        record['style_dirty']):
+                    default = self._legend_defaults[ax][record['key']]
+                    if record['restore_style']:
+                        handle.set_marker(default['marker'])
+                        handle.set_markersize(default['size'])
+                        handle.set_markerfacecolor(default['facecolor'])
+                        handle.set_markeredgecolor(default['edgecolor'])
+                    else:
+                        if 'marker' in record['style_dirty']:
+                            marker = record['marker_field'].currentData()
+                            handle.set_marker(
+                                '' if marker == 'None' else marker)
+                        if 'size' in record['style_dirty']:
+                            handle.set_markersize(
+                                record['size_field'].value())
+                        if 'color' in record['style_dirty']:
+                            color = record['color_field']._qcs_color
+                            handle.set_markerfacecolor(color)
+                            handle.set_markeredgecolor(color)
+                    record['style_dirty'].clear()
+                    record['restore_style'] = False
+                record['dirty'] = False
             dialog._qcs_dirty_axis_limits.clear()
             ax.figure.canvas.draw_idle()
 
@@ -1738,19 +1941,22 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             lambda: self._return_to_customize_picker(dialog))
         reset = buttons['reset']
         reset.setToolTip(
-            'Refill the original product values; use Apply to confirm them.')
+            'Refill the original figure values without changing the current '
+            'zoom or position; use Apply to confirm them.')
         def reset_all_values():
-            self._reset_figure_options_form(dialog, ax)
-            dialog._qcs_dirty_axis_limits.update(ax._axis_map)
+            self._reset_figure_options_form(dialog, ax, preserve_view=True)
+            dialog._qcs_dirty_axis_limits.clear()
 
         reset.clicked.connect(reset_all_values)
 
         def apply_checked():
-            if self._datetime_form_values(dialog) is not None:
+            if ('x' not in dialog._qcs_dirty_axis_limits or
+                    self._datetime_form_values(dialog) is not None):
                 dialog.apply()
 
         def accept_checked():
-            if self._datetime_form_values(dialog) is None:
+            if ('x' in dialog._qcs_dirty_axis_limits and
+                    self._datetime_form_values(dialog) is None):
                 return
             dialog.apply()
             QDialog.accept(dialog)
@@ -3576,8 +3782,11 @@ class QtShell(QMainWindow):
         self.menuBar().setEnabled(not busy)
         self.progress.setVisible(busy)
         if busy:
-            self.progress.setRange(0, 0)
-            self.progress.setFormat('Preparing curated database...')
+            self.progress.setRange(0, 1)
+            self.progress.setValue(0)
+            self.progress.setFormat('Catalog 0/?')
+            self.progress.setToolTip(
+                'Discovering qualified products; the total is not known yet.')
         else:
             self.progress.reset()
 
@@ -3600,11 +3809,14 @@ class QtShell(QMainWindow):
             self.progress.setValue(current)
             self.progress.setFormat('Catalog %d/%d' % (current, total))
         else:
-            self.progress.setRange(0, 0)
             if message.startswith('Unifying '):
                 label = 'Building database...'
             elif message == 'Writing curated workbook...':
                 label = 'Writing workbook...'
+            elif message == 'Discovering qualified products...':
+                self.progress.setRange(0, 1)
+                self.progress.setValue(0)
+                label = 'Catalog 0/?'
             else:
                 label = message
             self.progress.setFormat(label)

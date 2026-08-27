@@ -1940,7 +1940,13 @@ with _tempfile.TemporaryDirectory() as _curated_root:
         'Luminosity (lux)': [0.0, 100.0], 'Flag_T': [1, 1], 'Flag_lux': [1, 1],
     }).to_csv(_os.path.join(_hobo_dir, _hobo_name), index=False)
 
-    _catalog, _catalog_messages = _curated.discover_qualified_corpus(_curated_root)
+    _catalog_progress = []
+    _catalog, _catalog_messages = _curated.discover_qualified_corpus(
+        _curated_root, progress=_catalog_progress.append)
+    assert _catalog_progress[:2] == [
+        'Reading qualified product 0/3...',
+        'Reading qualified product 1/3...',
+    ], _catalog_progress
     assert len(_catalog) == 3 and int(_catalog['n_rows'].sum()) == 6, _catalog
     _filters = _curated.available_filters(_catalog)
     assert _filters['instruments'] == ['Seaguard', 'Doppler', 'HOBO'], _filters
