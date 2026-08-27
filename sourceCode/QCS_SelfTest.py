@@ -1575,22 +1575,21 @@ ok.append('manual cut: Help uses the shell-replaceable plot dialog facade')
 # 'both' must generate two named figures so the operator can compare them.
 import QCS_DataView as _data_view                         # noqa: E402
 
-# Curated/multi-deployment HOBO plots must not turn the first BAD light flag
-# into one site-wide fouling window. Spans remain source-aware, while the
-# across-sites comparison needs no matching datetimes: deployments keep their
-# absolute dates inside the full selected calendar-year domain.
-_fouling_frame = pd.DataFrame({
+# Curated/multi-deployment HOBO plots remove BAD light before daily resampling,
+# while the across-sites comparison needs no matching datetimes: deployments
+# keep their absolute dates inside the full selected calendar-year domain.
+_light_qc_frame = pd.DataFrame({
     'Datetime': pd.to_datetime([
-        '2025-01-01', '2025-01-02', '2025-01-10',
-        '2025-06-01', '2025-06-02', '2025-06-03', '2025-06-04']),
-    'Source file': ['old.csv'] * 3 + ['new.csv'] * 4,
-    'Flag_lux': [4, 4, 4, 1, 1, 4, 4],
+        '2025-01-01 10:00', '2025-01-01 12:00',
+        '2025-01-02 12:00', '2025-01-03 12:00']),
+    'Luminosity (lux)': [100.0, 1000.0, 900.0, 80.0],
+    'Flag_lux': [1, 4, 4, 1],
 })
-assert _data_view._hobo_light_bad_spans(_fouling_frame) == [
-    (pd.Timestamp('2025-01-01'), pd.Timestamp('2025-01-10')),
-    (pd.Timestamp('2025-06-03'), pd.Timestamp('2025-06-04')),
-]
-ok.append('HOBO fouling spans: deployments stay separate; data gaps do not restart fouling')
+_usable_peak = _data_view._lux_daily_peak(_light_qc_frame)
+assert _usable_peak.iloc[0] == 100.0
+assert pd.isna(_usable_peak.iloc[1])
+assert _usable_peak.iloc[2] == 80.0
+ok.append('HOBO light plots exclude Flag_lux=4 before daily peaks')
 
 _trend_index = pd.to_datetime(['2025-01-01', '2025-01-02', '2025-01-10'])
 _trend_x, _trend_y = _data_view.linear_regression(
@@ -1675,14 +1674,24 @@ try:
     _light_settings = dict(_across_settings)
     _light_settings['siteList'] = ['A']
     _light_settings['parameterList'] = ['Luminosity (lux)']
-    _light_settings['viewDataPoints'] = False
+    _light_settings['viewDataPoints'] = True
     _site_figs = []
     assert _data_view.plot_hobo_params_at_site(
         _light_frame, _light_settings, 'A',
         figures=_site_figs, show=False) == 1
     _site_ax = _site_figs[0].axes[0]
     assert all(line.get_color() != '#b30000' for line in _site_ax.lines)
-    assert len(_site_ax.patches) == 2
+    assert len(_site_ax.lines) == 3
+    assert len(_site_ax.patches) == 0
+    assert sorted(_site_figs[0]._qcs_line_names.values()) == [
+        'Daily light peak - A-new',
+        'Daily light peak - A-old',
+    ]
+    _site_raw = [line for line in _site_ax.lines
+                 if line.get_linestyle() == 'None']
+    assert len(_site_raw) == 1
+    assert _site_raw[0].get_ydata()[
+        np.isfinite(_site_raw[0].get_ydata())].tolist() == [100.0, 110.0]
     assert np.allclose(
         sorted(_site_ax.get_xlim()),
         [_plot_dates.date2num(pd.Timestamp('2025-01-01')),
@@ -1696,14 +1705,18 @@ try:
     _light_ax = _light_figs[0].axes[0]
     assert len(_light_ax.lines) == 4
     assert len(_light_ax.patches) == 0
-    assert sum(line.get_linestyle() == ':' for line in _light_ax.lines) == 2
+    assert sum(line.get_linestyle() == 'None' for line in _light_ax.lines) == 2
+    assert sum(line.get_linestyle() == '-' for line in _light_ax.lines) == 2
+    assert sorted([
+        value
+        for line in _light_ax.lines
+        for value in line.get_ydata()[np.isfinite(line.get_ydata())]
+    ]) == [100.0, 100.0, 110.0, 110.0]
     assert _light_ax.get_legend_handles_labels()[1] == ['A']
     assert len(_light_ax.texts) == 0
     assert sorted(_light_figs[0]._qcs_line_names.values()) == [
-        'A - Daily light peak - recorded BAD - A-new',
-        'A - Daily light peak - recorded BAD - A-old',
-        'A - Daily light peak - usable - A-new',
-        'A - Daily light peak - usable - A-old',
+        'A - Daily light peak - A-new',
+        'A - Daily light peak - A-old',
     ]
 
     _scalar_rows = []
@@ -1797,7 +1810,7 @@ finally:
     _data_view.plt.savefig = _real_savefig
     _data_view.show_panels = _real_show_panels
     _data_view.plt.close('all')
-ok.append('HOBO panels: absolute calendar years; BAD is shaded at-site and dotted across sites')
+ok.append('HOBO panels: absolute calendar years; BAD light excluded from every view')
 ok.append('scalar multi-deployments: source-aware calendar panels; single deployments stay separate')
 
 _gap_times = pd.date_range('2026-01-01', periods=3, freq='5min')

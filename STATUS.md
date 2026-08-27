@@ -25,7 +25,9 @@ pruning is in git (`git show a0994bf:STATUS.md`).
 - Source products remain separate for temperature/parameter tendencies, raw
   pressure lines and HOBO daily light peaks. Figure options -> Lines now names
   each deployment-specific line by site, role and source product instead of
-  exposing Matplotlib `_childN` identifiers.
+  exposing Matplotlib `_childN` identifiers. HOBO luminosity panels omit
+  `Flag_lux == 4` samples before calculating or drawing raw/daily-peak light;
+  the former BAD shading, dotted segments and legend entry are removed.
 - Curated `Load catalog` now stays empty at `Calculating...` until the product
   count is known, then advances from `Catalog 0/N`; the former full blue
   indeterminate animation is gone. Starting Build now clears the hidden prior
@@ -88,6 +90,14 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   across-site panels plus one 6-deployment PAB3 panel on the exact 2019-01-01 to
   2026-01-01 domain. Every parameter had 48 named source lines; the 2023 data
   gap stayed visible.
+- Read-only replay of all 115 current HOBO products built 348,183 rows after
+  dropping 90 exact duplicates (0 invalid datetimes; 10,654 overlapping rows
+  with different values retained by the database rule). The all-year light
+  views produced 17 PAB3 deployment lines and 113 across-site deployment lines
+  with 1,035 and 6,785 finite daily points, respectively: 0 BAD-named lines,
+  0 dotted lines and 0 BAD-window patches. A targeted PAB3 2026 render retained
+  all 1,440 GOOD raw readings and 61 usable daily peaks through 2025-11-17,
+  while excluding all 2,829 BAD readings.
 - Broad automatic Y scales can still be stretched by two known qualified BAD
   values: `PAB3_2024S2_HOBO_2` reaches 89,384 degrees C and
   `RRDM03_C_2019S1_SEAGUARD_FUNDEIO_QLF.csv` has one 107.2118 degrees C sample.

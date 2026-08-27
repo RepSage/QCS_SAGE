@@ -1574,10 +1574,9 @@
                 one vertical bar per sample showing the replicate disagreement
                 (bar length = max &minus; min). Light: <strong>daily-peak envelope on a linear
                 scale for each source deployment</strong> (the fouling-review visual), optional raw
-                points, and source-aware BAD windows (<code>Flag_lux == 4</code>) shaded. An
-                unsampled day breaks the light line, and a sampling gap inside one BAD window does
-                not create another BAD span. Products from separate deployments never
-                pool their daily maxima or tendencies</td>
+                points, with readings marked <code>Flag_lux == 4</code> excluded before the
+                daily maximum is calculated. An unsampled day breaks the light line. Products
+                from separate deployments never pool their daily maxima or tendencies</td>
             <td><code>hobo_params_&lt;site&gt;.svg</code></td>
         </tr>
         <tr>
@@ -1587,9 +1586,9 @@
                 selected calendar year or continuous span of years; only rows from checked years
                 and the optional Time window are drawn. This makes the timing and separation of
                 deployments visible without endpoint date labels. Light uses a separate gap-aware
-                daily peak for each deployment; recorded BAD light is dotted and faded instead of
-                becoming an ambiguous background span. Temperature gains per-deployment tendency
-                lines calculated against real elapsed time</td>
+                daily peak for each deployment and omits readings marked
+                <code>Flag_lux == 4</code>. Temperature gains per-deployment tendency lines
+                calculated against real elapsed time</td>
             <td><code>hobo_&lt;parameter&gt;_across_sites.svg</code></td>
         </tr>
     </table>
