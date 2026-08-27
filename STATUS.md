@@ -48,7 +48,9 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   above `Available`, while keeping serial Min/Max and the irrelevant datetime
   Scale hidden. The former special bold grayscale rule was removed from the
   three main workflow tabs, which now follow the native Qt/Fusion appearance
-  already used by Figure options in both light and dark modes.
+  already used by Figure options in both light and dark modes. Only the active
+  main workflow tab has a bold label, and the native divider below the File /
+  View / Help menu bar is suppressed for a cleaner header.
 - The 68/68 self-test passes. A synthetic 32-row, 4-deployment Seaguard replay
   generated one at-site and two across-site figures on the exact 2024-01-01 to
   2027-01-01 domain while excluding an unselected 2025 product. A real
@@ -60,7 +62,11 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   legend defaults, editable `Datetime`, and zero changed render pixels after a
   color reset at a retained zoom. A final Qt layout probe confirmed `(None)`,
   Circle, Dot ordering; Start, End, Axis label, Available ordering; and matching
-  native styling without scoped tab-bar overrides.
+  native tab shapes without a `QTabBar` stylesheet. The subsequent header probe
+  recorded bold / regular / regular paint states for the active main tab, an
+  inactive main tab and an active non-main tab, respectively. Light and dark
+  renders had continuous `#efefef` and `#252526` pixels across the former menu
+  divider row.
 - Read-only replay of all 48 current Seaguard fundeio products built 129,780
   rows (0 invalid datetimes, 0 exact duplicates, 19 sites) and generated three
   across-site panels plus one 6-deployment PAB3 panel on the exact 2019-01-01 to

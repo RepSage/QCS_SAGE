@@ -2476,6 +2476,9 @@ class QtShell(QMainWindow):
         self._viz_placeholder = QWidget()
         tabs.addTab(self._viz_placeholder, 'Data visualization')
         tabs.currentChanged.connect(self._tab_changed)
+        # Identifies only the workflow bar: the native style draws its active
+        # label in bold while Figure options and other tab widgets stay native.
+        tabs.tabBar().setObjectName('MainTabs')
         self.tabs = tabs
         self.setCentralWidget(tabs)
 
