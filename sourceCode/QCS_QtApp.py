@@ -1953,7 +1953,6 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             'Figure options - %s' % (
                 plot_name or _axes_display_name(ax, 0)))
         tabs = dialog.formwidget.tabwidget
-        tabs.tabBar().setObjectName('FigureOptionsTabs')
         for index in range(tabs.count()):
             if tabs.tabText(index) == 'Images, etc.':
                 tabs.setTabText(index, 'Graphs')
@@ -2477,7 +2476,6 @@ class QtShell(QMainWindow):
         self._viz_placeholder = QWidget()
         tabs.addTab(self._viz_placeholder, 'Data visualization')
         tabs.currentChanged.connect(self._tab_changed)
-        tabs.tabBar().setObjectName('MainTabs')   # scoped pastel tab styling
         self.tabs = tabs
         self.setCentralWidget(tabs)
 

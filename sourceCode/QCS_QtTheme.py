@@ -3,7 +3,7 @@
 
 The Qt counterpart of QCS_Theme: Fusion style in light/dark (owner decisions,
 2026-08-14 - scheme pinned so the toggle, not the OS, decides; base font
-10.5 pt; bold main tabs; grayed Execution log background), the Execution log
+10.5 pt; native tabs; grayed Execution log background), the Execution log
 as a dockable panel with the same severity colors as the tk LogConsole, and
 the crash handler. File-path helpers (writable_app_dir) stay in QCS_Theme -
 they are toolkit-free and both shells share them.
@@ -238,16 +238,10 @@ def apply_style(dark):
         app.styleHints().setColorScheme(Qt.ColorScheme.Light)
         app.setStyle(AccentStyle('Fusion', accent, muted_accent))
         app.setPalette(app.style().standardPalette())
-    # main tabs: bold labels, no color - a subtle GRAYSCALE step separates the
-    # active tab from the inactive one (owner, 2026-08-17; the pastel round
-    # was tried and dropped). Scoped to the main workflow and Figure options
-    # tab bars so the Settings window's tabs stay native.
     if dark:
         log_bg = '#232324'
-        tab_off, tab_on = '#252526', '#3e3e40'
     else:
         log_bg = '#e9e9e9'
-        tab_off, tab_on = '#d0d0d0', '#f6f6f6'
     # Tooltips: inverted against the window (dark slab with light text in the
     # light scheme, the reverse in the dark one), through the stylesheet - the
     # owner prefers this rendering to the palette-only version.
@@ -263,17 +257,13 @@ def apply_style(dark):
         ' padding: 4px; }\n'
         'QComboBox { combobox-popup: 0; }\n'
         'QTextEdit#ExecutionLog { background: %s; }\n'
-        'QTabBar#MainTabs::tab, QTabBar#FigureOptionsTabs::tab {'
-        ' font-weight: bold; padding: 6px 16px; background: %s; }\n'
-        'QTabBar#MainTabs::tab:selected,'
-        ' QTabBar#FigureOptionsTabs::tab:selected { background: %s; }\n'
         'QPushButton#AccentButton { background: %s; color: white; border: none;'
         ' border-radius: 3px; padding: 6px 18px; }\n'
         'QPushButton#AccentButton:hover { background: %s; }\n'
         'QPushButton#AccentButton:pressed { background: %s; }\n'
         'QPushButton#AccentButton:disabled { background: %s; color: %s; }'
         % (tip_bg, tip_fg, _shift(tip_bg, -40 if dark else 40),
-           log_bg, tab_off, tab_on, accent,
+           log_bg, accent,
            _shift(accent, 18), _shift(accent, -22),
            '#4a4a4c' if dark else '#c8c8c8', '#8a8a8a' if dark else '#efefef'))
 
