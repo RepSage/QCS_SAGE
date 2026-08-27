@@ -705,7 +705,7 @@ class VisualizationTab(QWidget):
                           else TOOLTIPS['param_filter'])
             self._check_pair(cb, dbv.parameter_vars[param],
                              dbv.parameter_widgets.get(param),
-                             after=(dbv.toggle_scale_controls,))
+                             after=(dbv.toggle_panel_dependent_controls,))
             self.param_checks[param] = cb
             ff.addWidget(cb)
         ff.addLayout(self._all_none_row(lambda: self.param_checks.values()))
@@ -800,6 +800,12 @@ class VisualizationTab(QWidget):
                 qt.setChecked(bool(var.get()))
                 if widget is not None:
                     qt.setEnabled(_tk_enabled(widget))
+        if self.disagreement is not None:
+            panels_selected = bool(
+                dbv.panel1.get() or dbv.panel2.get() or dbv.panel3.get())
+            self.disagreement.setEnabled(
+                panels_selected
+                and dbv.disagreement_bars_available_for_selection())
         with QSignalBlocker(self.ts_param):
             self.ts_param.setCurrentText(dbv.tsParam_combobox.get())
             self.ts_param.setEnabled(_tk_enabled(dbv.tsParam_combobox))

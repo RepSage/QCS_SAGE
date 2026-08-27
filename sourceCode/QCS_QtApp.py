@@ -3856,7 +3856,7 @@ class QtShell(QMainWindow):
             self.progress.setRange(0, total)
             self.progress.setValue(stage)
             self.progress.setFormat(
-                'S%d/%d%s' %
+                'Stage %d/%d%s' %
                 (stage, total, ' ' + detail if detail else ''))
         elif catalog_match:
             current, total = (int(value) for value in catalog_match.groups())

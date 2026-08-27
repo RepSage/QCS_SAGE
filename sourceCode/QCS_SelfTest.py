@@ -1575,6 +1575,32 @@ ok.append('manual cut: Help uses the shell-replaceable plot dialog facade')
 # 'both' must generate two named figures so the operator can compare them.
 import QCS_DataView as _data_view                         # noqa: E402
 
+assert not _data_view.tendency_lines_available(
+    'HOBO', ['Luminosity (lux)'])
+assert _data_view.tendency_lines_available(
+    'HOBO', ['Temperature (degC)'])
+assert _data_view.tendency_lines_available(
+    'HOBO', ['Temperature (degC)', 'Luminosity (lux)'])
+assert _data_view.tendency_lines_available(
+    'Seaguard', ['Luminosity (lux)'])
+ok.append('tendency availability: HOBO luminosity alone has no polynomial fit')
+assert not _data_view.data_points_available(
+    'HOBO', ['Luminosity (lux)'])
+assert _data_view.data_points_available(
+    'HOBO', ['Temperature (degC)'])
+assert _data_view.data_points_available(
+    'HOBO', ['Temperature (degC)', 'Luminosity (lux)'])
+ok.append('data-point availability: HOBO light uses only its daily peaks')
+assert not _data_view.disagreement_bars_available(
+    'HOBO', ['Luminosity (lux)'])
+assert _data_view.disagreement_bars_available(
+    'HOBO', ['Temperature (degC)'])
+assert _data_view.disagreement_bars_available(
+    'HOBO', ['Temperature (degC)', 'Luminosity (lux)'])
+assert not _data_view.disagreement_bars_available(
+    'Seaguard', ['Temperature (degC)'])
+ok.append('disagreement availability: only HOBO temperature can draw bars')
+
 # Curated/multi-deployment HOBO plots remove BAD light before daily resampling,
 # while the across-sites comparison needs no matching datetimes: deployments
 # keep their absolute dates inside the full selected calendar-year domain.
@@ -1680,18 +1706,16 @@ try:
         _light_frame, _light_settings, 'A',
         figures=_site_figs, show=False) == 1
     _site_ax = _site_figs[0].axes[0]
+    assert any(line.get_visible() for line in _site_ax.get_xgridlines())
+    assert any(line.get_visible() for line in _site_ax.get_ygridlines())
     assert all(line.get_color() != '#b30000' for line in _site_ax.lines)
-    assert len(_site_ax.lines) == 3
+    assert len(_site_ax.lines) == 2
     assert len(_site_ax.patches) == 0
     assert sorted(_site_figs[0]._qcs_line_names.values()) == [
         'Daily light peak - A-new',
         'Daily light peak - A-old',
     ]
-    _site_raw = [line for line in _site_ax.lines
-                 if line.get_linestyle() == 'None']
-    assert len(_site_raw) == 1
-    assert _site_raw[0].get_ydata()[
-        np.isfinite(_site_raw[0].get_ydata())].tolist() == [100.0, 110.0]
+    assert all(line.get_linestyle() == '-' for line in _site_ax.lines)
     assert np.allclose(
         sorted(_site_ax.get_xlim()),
         [_plot_dates.date2num(pd.Timestamp('2025-01-01')),
@@ -1703,15 +1727,16 @@ try:
         _light_frame, _light_settings,
         figures=_light_figs, show=False) == 1
     _light_ax = _light_figs[0].axes[0]
-    assert len(_light_ax.lines) == 4
+    assert any(line.get_visible() for line in _light_ax.get_xgridlines())
+    assert any(line.get_visible() for line in _light_ax.get_ygridlines())
+    assert len(_light_ax.lines) == 2
     assert len(_light_ax.patches) == 0
-    assert sum(line.get_linestyle() == 'None' for line in _light_ax.lines) == 2
     assert sum(line.get_linestyle() == '-' for line in _light_ax.lines) == 2
     assert sorted([
         value
         for line in _light_ax.lines
         for value in line.get_ydata()[np.isfinite(line.get_ydata())]
-    ]) == [100.0, 100.0, 110.0, 110.0]
+    ]) == [100.0, 110.0]
     assert _light_ax.get_legend_handles_labels()[1] == ['A']
     assert len(_light_ax.texts) == 0
     assert sorted(_light_figs[0]._qcs_line_names.values()) == [

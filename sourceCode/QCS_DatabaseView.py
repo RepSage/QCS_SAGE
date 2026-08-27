@@ -49,13 +49,14 @@ TOOLTIPS = {
     'latitude': "Latitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'longitude': "Longitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'ts_params': "Temperature & salinity pair for the T-S diagram:\nConservative T & Absolute S (TEOS-10, uses lat/long) or\nPotential T & Practical S (classic EOS-80)",
-    'tendency': "Adds regression lines against real elapsed time\nSource deployments are fitted separately in multi-deployment scalar panels",
+    'tendency': "Adds regression lines against real elapsed time\nSource deployments are fitted separately in multi-deployment scalar panels\nHOBO light uses daily peaks, not fitted tendencies; this option is unavailable when only Luminosity is selected",
     'tendency_degree': "Degree of the regression polynomial (1 to 5)\n1 = linear, 2 = quadratic, 3 = cubic\nUse degrees 4-5 only when the data justify the extra curvature",
-    'data_points': "Draws the individual data points on the plots",
+    'data_points': "Draws the individual data points on the plots\nHOBO luminosity is shown only as daily peaks; this option is unavailable when only Luminosity is selected",
     'disagreement_bars': "HOBO only: one vertical bar per sample on the temperature\n"
                          "series, showing how far the replicates disagreed\n"
                          "(bar = max - min, centered on the plotted mean)\n"
-                         "Only combined-replicate databases carry that spread",
+                         "Only combined-replicate databases carry that spread;\n"
+                         "unavailable when only Luminosity is selected",
     'site_filter': "Sites to include in the plots",
     'param_filter': "Parameters to include in the plots",
     'param_secondary': "Rarely-used variables, always start unchecked\n(check manually when needed)",
@@ -513,8 +514,8 @@ def toggle_input_mode():
             set_disabled_style(preview_btn)
 
 def toggle_panel_dependent_controls():
-    # trend lines, points and fixed scale apply to every panel family,
-    # HOBO included (its panels honor them like the Seaguard ones)
+    # Trend lines and raw points require a fit-capable/raw series. HOBO light
+    # has neither overlay; fixed scale still applies to every scalar panel.
     any_panel_selected = panel1.get() or panel2.get() or panel3.get()
 
     if is_doppler_input():
@@ -531,7 +532,23 @@ def toggle_panel_dependent_controls():
         toggle_scale_controls()
         return
 
-    if any_panel_selected:
+    tendency_available = tendency_lines_available_for_selection()
+    if not tendency_available:
+        # A checked but disabled box would claim a fit that no luminosity panel
+        # draws. Clear the transient tk state; the saved preference changes
+        # only when the operator explicitly edits the Qt control.
+        tendency.set(False)
+
+    points_available = data_points_available_for_selection()
+    if not points_available:
+        # Like the tendency switch above, do not leave a checked disabled box
+        # promising a raw light layer that the plot intentionally omits.
+        dataPoints.set(False)
+
+    if not disagreement_bars_available_for_selection():
+        disagreement.set(False)
+
+    if any_panel_selected and tendency_available:
         set_enabled_style(tendency_cb)
         if tendency.get():
             set_enabled_style(tendency_entry)
@@ -539,15 +556,49 @@ def toggle_panel_dependent_controls():
             # unchecking Tendency lines must gray the degree again (the old
             # code only ever enabled it)
             set_disabled_style(tendency_entry)
-        set_enabled_style(points_cb)
-        set_enabled_style(fixed_scale_cb)
     else:
         set_disabled_style(tendency_cb)
         set_disabled_style(tendency_entry)
+
+    if any_panel_selected and points_available:
+        set_enabled_style(points_cb)
+    else:
         set_disabled_style(points_cb)
+
+    if any_panel_selected:
+        set_enabled_style(fixed_scale_cb)
+    else:
         set_disabled_style(fixed_scale_cb)
 
     toggle_scale_controls()
+
+
+def tendency_lines_available_for_selection():
+    """True unless the current HOBO parameter choice is luminosity alone."""
+    selected = [
+        parameter for parameter, variable in parameter_vars.items()
+        if variable.get()]
+    return view.tendency_lines_available(
+        instrument_combobox.get(), selected)
+
+
+def data_points_available_for_selection():
+    """True unless the current HOBO parameter choice is luminosity alone."""
+    selected = [
+        parameter for parameter, variable in parameter_vars.items()
+        if variable.get()]
+    return view.data_points_available(
+        instrument_combobox.get(), selected)
+
+
+def disagreement_bars_available_for_selection():
+    """True when the current selection includes HOBO temperature."""
+    selected = [
+        parameter for parameter, variable in parameter_vars.items()
+        if variable.get()]
+    return view.disagreement_bars_available(
+        instrument_combobox.get(), selected)
+
 
 def toggle_parameter_checkboxes():
     # the parameter filter applies to every family (for HOBO it selects between
@@ -2041,7 +2092,7 @@ def build_step2(parent):
             return
         for p in group:
             parameter_vars[p].set(value)
-        toggle_scale_controls()
+        toggle_panel_dependent_controls()
 
     def _group_buttons(parent, group):
         # small All/None pair placed INSIDE the group's header row, so the row
@@ -2069,8 +2120,9 @@ def build_step2(parent):
             prow += 1
         var = BooleanVar(value=False)
         # toggling a parameter updates its per-parameter scale row (enable/fill/clear)
-        cb = ttk.Checkbutton(param_col, text=_param_display(param), variable=var,
-                             command=toggle_scale_controls)
+        cb = ttk.Checkbutton(
+            param_col, text=_param_display(param), variable=var,
+            command=toggle_panel_dependent_controls)
         cb.grid(row=prow, column=0, sticky='w', pady=2, padx=10)
         parameter_vars[param] = var
         parameter_widgets[param] = cb

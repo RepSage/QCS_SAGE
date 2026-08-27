@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v13.2.2</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v13.2.3</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -712,7 +712,9 @@
         </tr>
         <tr>
             <td>Show Data Points</td>
-            <td>Checkbox to show individual data points on the plots.</td>
+            <td>Checkbox to show individual data points on the plots. HOBO luminosity is already
+            represented by marked daily peaks, so raw light readings are not overlaid and this
+            option is unavailable when <em>Luminosity</em> is the only selected parameter.</td>
         </tr>
         <tr>
             <td>Show disagreement bars</td>
@@ -720,13 +722,18 @@
             series showing how far the redundant replicates disagreed at that instant
             (bar = max &minus; min, centered on the plotted mean). Only a database built from
             COMBINED replicates carries that spread; it starts checked, which is what the
-            program did before the option existed.</td>
+            program did before the option existed. Because luminosity has no
+            replicate-temperature spread, the option is cleared and unavailable when
+            <em>Luminosity</em> is the only selected parameter.</td>
         </tr>
         <tr>
             <td>Trend Lines</td>
             <td>Checkbox to add trend lines. This choice and the regression degree are saved
             as soon as they are edited, so they survive moving between steps and rebuilding
-            the available choices.</td>
+            the available choices. HOBO luminosity uses daily peaks rather than a fitted
+            tendency, so the checkbox and degree are cleared and unavailable when
+            <em>Luminosity</em> is the only selected parameter; selecting Temperature enables
+            them again.</td>
         </tr>
         <tr>
             <td>Degree</td>
@@ -1596,6 +1603,10 @@
     opens in one paged window with <em>&lt; Previous</em>, <em>Next &gt;</em> and a direct panel picker.
     This keeps broad site/year selections browsable without opening and rebuilding many separate
     windows.</p>
+    <p>HOBO luminosity itself is the solid line with markers showing the usable daily peak for each
+    source deployment. Raw light readings are not overlaid: dense nighttime low values previously
+    appeared as a colored dotted line along the bottom of the plot. Faint neutral background lines
+    are only the axis grid.</p>
 
     <h3>Visualization Panels (Doppler / current-profiler databases)</h3>
     <p>With <strong>Instrument = Doppler</strong> the panel content is fixed: a current
@@ -1864,7 +1875,7 @@
         </tr>
         <tr>
             <td>Show Data Points</td>
-            <td>Shows individual points in addition to the line</td>
+            <td>Shows individual points in addition to the line, except for HOBO luminosity</td>
             <td>Visualize data density</td>
         </tr>
         <tr>
@@ -1914,14 +1925,19 @@
     each qualified product's Site and Datetime columns so the filters describe the data itself;
     a prebuilt <code>qualified_index.csv</code> is not required.</p>
     <p>During <strong>Build curated database</strong>, the bar is cleared before it becomes
-    visible, advances through selection and instrument stages, remains below 100% while the
-    workbook is being written, and reaches <em>Complete</em> only after the atomic output file
-    has finished.</p>
+    visible, then starts at <em>Stage 0/N Preparing</em>. Stage 1 applies the selection, one stage is
+    counted for each selected instrument family, and the final stage completes the workbook.
+    Very fast stages may advance before the window's next redraw, so the visible number can skip
+    ahead without any work being omitted.
+    The bar remains below 100% while that workbook is being written and reaches
+    <em>Stage N/N Complete</em> only after the atomic output file has finished.</p>
 
     <h3>Selection</h3>
     <p>Any combination of <strong>site</strong>, <strong>calendar year</strong> and
     <strong>instrument</strong> can be selected. Each list has <em>All</em> and <em>None</em>
-    shortcuts. The three lists are dynamic: options that do not occur with the current combination
+    shortcuts. Clicking anywhere on an enabled option row toggles its checkbox; clicking the
+    checkbox itself has the same single-toggle behavior. The three lists are dynamic: options that
+    do not occur with the current combination
     remain visible but turn gray and are automatically unchecked. Broadening another filter makes
     compatible options selectable again, but never silently restores a previously hidden check.
     Instruments are ordered as Seaguard, Seaguard current profiler (Doppler), then HOBO.

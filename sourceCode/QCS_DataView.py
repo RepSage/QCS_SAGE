@@ -185,6 +185,35 @@ def _floor_fit(fitted):
     return np.maximum(fitted, 0.0)
 
 
+def tendency_lines_available(instrument, parameters):
+    """Whether the selected variables contain a series QCS actually fits.
+
+    HOBO luminosity is represented by its source-aware daily-peak envelope,
+    not by a polynomial tendency. Temperature remains fit-capable, including
+    when it is selected together with luminosity.
+    """
+    selected = set(parameters or ())
+    return not (instrument == 'HOBO'
+                and selected == {'Luminosity (lux)'})
+
+
+def data_points_available(instrument, parameters):
+    """Whether Show data points can add a meaningful raw-point layer.
+
+    HOBO light is intentionally represented only by its daily-peak series.
+    Dense nighttime raw readings otherwise resemble a dashed baseline.
+    """
+    selected = set(parameters or ())
+    return not (instrument == 'HOBO'
+                and selected == {'Luminosity (lux)'})
+
+
+def disagreement_bars_available(instrument, parameters):
+    """Whether the selection can contain HOBO replicate-temperature spread."""
+    return (instrument == 'HOBO'
+            and 'Temperature (degC)' in set(parameters or ()))
+
+
 def _fit_margins(fig, pad=6):
     """Measure the actually-drawn content (tick labels + axis labels of every
     axis) and pull the plot's left/right margins in so NOTHING is clipped at the
@@ -1754,12 +1783,9 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
         else:
             # Light stays source-aware: each qualified deployment has its own
             # daily envelope, and NaN days break the line across data gaps.
-            lux = _usable_lux(db)
-            if points:
-                h, = ax.plot(db['Datetime'], lux, linestyle='None', marker='.',
-                             markersize=2, alpha=0.35, color=cParam[param],
-                             label='Light readings')
-                handles.append(h)
+            # Do not overlay raw readings: their dense nighttime values form a
+            # misleading dotted baseline and add no information to the daily
+            # peak representation.
             peak_added = False
             for source, deployment in _source_deployments(db):
                 peak = _lux_daily_peak(deployment)
@@ -1841,10 +1867,6 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
                     peak = _lux_daily_peak(deployment)
                     if peak.first_valid_index() is None:
                         continue
-                    if points:
-                        ax.plot(deployment['Datetime'], values,
-                                linestyle='None', marker='.',
-                                markersize=2, alpha=0.30, color=colors[site])
                     if peak.notna().any():
                         line, = ax.plot(
                             peak.index, peak.values, linestyle='-',
