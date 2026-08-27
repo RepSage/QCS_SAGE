@@ -1706,8 +1706,9 @@
     editable <em>Start</em> and <em>End</em> fields in <code>DD/MM/YYYY HH:MM</code>, matching
     Data Visualization step 2. An invalid or out-of-range value leaves the graph unchanged
     and displays the available interval, which is also shown below the fields. The same
-    <em>Date/time range</em> section keeps an <em>Axis label</em> field for editing text such
-    as <em>Datetime</em>. The top of the <em>Axes</em> tab edits the title of the
+    <em>Date/time range</em> section keeps an <em>Axis label</em> field above the
+    <em>Available</em> interval for editing text such as <em>Datetime</em>. The top of the
+    <em>Axes</em> tab edits the title of the
     complete figure separately from the shared plot title; editing either from one selected
     parameter is retained when another parameter from the same figure is selected. Scale
     choices are displayed as <em>Linear</em>, <em>Log</em>, <em>Symlog</em> and <em>Logit</em>.
@@ -1724,7 +1725,8 @@
     entry from its displayed label and
     edits the text actually drawn in line legends, color scales and the direction compass.
     Line-legend entries additionally offer symbol, symbol color and symbol size. Their neutral
-    initial symbol is <em>Circle</em>, while <em>Dot</em> remains available explicitly; those
+    initial symbol is <em>Circle</em>; <em>(None)</em> stays first in the option list and
+    <em>Dot</em> remains available explicitly. Those
     controls change the legend key only, never the plotted observations. The tab is omitted
     when that plot has no legend or key to edit. Applying a style while the
     non-modal window remains open preserves any newer zoom unless the range itself was
@@ -1732,7 +1734,8 @@
     like the other fields; the restored value is committed only by <em>Apply</em> or
     <em>OK</em>. Automatic legend regeneration
     is not offered. Both the plot selector and Figure options carry the Customize toolbar
-    icon.</p>
+    icon. The Figure options tabs use the same bold grayscale selected/unselected treatment
+    as the main Data qualification, Curated database and Data visualization tabs.</p>
     <h4>Reading the blanks</h4>
     <p>Large blank areas in the heatmaps are normal. A DCPS writes its own quality word
     for every cell of every record (<em>Cell state</em>), and the current tests reject

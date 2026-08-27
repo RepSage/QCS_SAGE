@@ -240,8 +240,8 @@ def apply_style(dark):
         app.setPalette(app.style().standardPalette())
     # main tabs: bold labels, no color - a subtle GRAYSCALE step separates the
     # active tab from the inactive one (owner, 2026-08-17; the pastel round
-    # was tried and dropped). Scoped to QTabBar#MainTabs so the Settings
-    # window's tabs stay native.
+    # was tried and dropped). Scoped to the main workflow and Figure options
+    # tab bars so the Settings window's tabs stay native.
     if dark:
         log_bg = '#232324'
         tab_off, tab_on = '#252526', '#3e3e40'
@@ -263,8 +263,10 @@ def apply_style(dark):
         ' padding: 4px; }\n'
         'QComboBox { combobox-popup: 0; }\n'
         'QTextEdit#ExecutionLog { background: %s; }\n'
-        'QTabBar#MainTabs::tab { font-weight: bold; padding: 6px 16px; background: %s; }\n'
-        'QTabBar#MainTabs::tab:selected { background: %s; }\n'
+        'QTabBar#MainTabs::tab, QTabBar#FigureOptionsTabs::tab {'
+        ' font-weight: bold; padding: 6px 16px; background: %s; }\n'
+        'QTabBar#MainTabs::tab:selected,'
+        ' QTabBar#FigureOptionsTabs::tab:selected { background: %s; }\n'
         'QPushButton#AccentButton { background: %s; color: white; border: none;'
         ' border-radius: 3px; padding: 6px 18px; }\n'
         'QPushButton#AccentButton:hover { background: %s; }\n'

@@ -41,11 +41,13 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   data. Its global reset restores the exact original key style; per-row resets
   restore the selected displayed control. Legend-only handles now start with a
   neutral Circle without changing plotted markers; Dot is an explicit option
-  instead of `Custom (.)`.
+  instead of `Custom (.)`, and `(None)` is kept first in the list.
 - Figure options -> Lines presents `Color` as the same full swatch button used
   for legend symbols while preserving each product line's existing opacity.
   Date/time axes again expose `Axis label` (including the default `Datetime`)
-  while keeping serial Min/Max and the irrelevant datetime Scale hidden.
+  above `Available`, while keeping serial Min/Max and the irrelevant datetime
+  Scale hidden. Figure options tabs now reuse the exact bold grayscale rule of
+  the three main workflow tabs in both light and dark modes.
 - The 68/68 self-test passes. A synthetic 32-row, 4-deployment Seaguard replay
   generated one at-site and two across-site figures on the exact 2024-01-01 to
   2027-01-01 domain while excluding an unselected 2025 product. A real
@@ -55,7 +57,9 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   Follow-up probes confirmed Build `1/N -> ... -> Writing -> N/N Complete`, an
   empty first visible frame, RGB line selection with retained alpha, Circle/Dot
   legend defaults, editable `Datetime`, and zero changed render pixels after a
-  color reset at a retained zoom.
+  color reset at a retained zoom. A final Qt layout probe confirmed `(None)`,
+  Circle, Dot ordering; Start, End, Axis label, Available ordering; and identical
+  88 x 26 tab sizing under the shared theme rule.
 - Read-only replay of all 48 current Seaguard fundeio products built 129,780
   rows (0 invalid datetimes, 0 exact duplicates, 19 sites) and generated three
   across-site panels plus one 6-deployment PAB3 panel on the exact 2019-01-01 to

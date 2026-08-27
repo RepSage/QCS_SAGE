@@ -1515,6 +1515,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         x_section = False
         header_row = None
         min_position = max_position = None
+        axis_label_row = None
         hidden_fields = getattr(dialog, '_qcs_hidden_option_fields', set())
         dialog._qcs_hidden_option_fields = hidden_fields
         for row, (label, value) in enumerate(general.data):
@@ -1540,19 +1541,21 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 max_position = value_position
             field = general.widgets[row]
             if label == 'Label':
-                general.formlayout.setRowVisible(row, True)
-                label_item = general.formlayout.itemAt(
-                    row, QFormLayout.ItemRole.LabelRole)
-                if label_item is not None and label_item.widget() is not None:
-                    label_item.widget().setText('Axis label')
+                axis_label_row = row
                 field.setToolTip(
                     'Edit the X-axis label, such as Datetime.')
             else:
                 general.formlayout.setRowVisible(row, False)
                 hidden_fields.add(field)
 
-        if header_row is None or min_position is None or max_position is None:
+        if (header_row is None or min_position is None or
+                max_position is None or axis_label_row is None):
             return False
+
+        axis_label = general.formlayout.takeRow(axis_label_row)
+        axis_label_widget = axis_label.fieldItem.widget()
+        axis_label_caption = axis_label.labelItem.widget()
+        axis_label_caption.setText('Axis label')
 
         current_lower, current_upper = sorted(ax.get_xlim())
         current_lower, current_upper = dbv.normalized_time_bounds(
@@ -1577,7 +1580,9 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             'Time window selection.')
         general.formlayout.insertRow(header_row + 1, 'Start', start_field)
         general.formlayout.insertRow(header_row + 2, 'End', end_field)
-        general.formlayout.insertRow(header_row + 3, 'Available', available)
+        general.formlayout.insertRow(
+            header_row + 3, axis_label_caption, axis_label_widget)
+        general.formlayout.insertRow(header_row + 4, 'Available', available)
         dialog._qcs_datetime_fields = (start_field, end_field)
         dialog._qcs_datetime_data_positions = (min_position, max_position)
         dialog._qcs_datetime_bounds = (available_start, available_end)
@@ -1794,8 +1799,8 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 if handle is not None:
                     marker = QComboBox()
                     for label, value in (
-                            ('Circle', 'o'), ('Dot', '.'),
-                            ('None', 'None'), ('Square', 's'),
+                            ('(None)', 'None'), ('Circle', 'o'),
+                            ('Dot', '.'), ('Square', 's'),
                             ('Triangle up', '^'),
                             ('Triangle down', 'v'), ('Diamond', 'D'),
                             ('Plus', '+'), ('Cross', 'x'), ('Star', '*')):
@@ -1948,6 +1953,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             'Figure options - %s' % (
                 plot_name or _axes_display_name(ax, 0)))
         tabs = dialog.formwidget.tabwidget
+        tabs.tabBar().setObjectName('FigureOptionsTabs')
         for index in range(tabs.count()):
             if tabs.tabText(index) == 'Images, etc.':
                 tabs.setTabText(index, 'Graphs')
