@@ -19,6 +19,48 @@ import QCS_QtTheme as qtheme
 LARGE_SELECTION_ROW_THRESHOLD = 250_000
 
 
+class _RowCheckListWidget(QListWidget):
+    """A checkable list whose whole enabled row toggles its checkbox.
+
+    Qt already toggles when the indicator itself is clicked. Remembering the
+    state at press time lets the release handler add the same behavior to the
+    rest of the row without toggling an indicator click twice.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._pressed_item = None
+        self._pressed_check_state = None
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            item = self.itemAt(event.position().toPoint())
+            if item is not None and item.flags() & Qt.ItemFlag.ItemIsEnabled:
+                self._pressed_item = item
+                self._pressed_check_state = item.checkState()
+            else:
+                self._pressed_item = None
+                self._pressed_check_state = None
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        item = self.itemAt(event.position().toPoint())
+        pressed_item = self._pressed_item
+        pressed_state = self._pressed_check_state
+        super().mouseReleaseEvent(event)
+        self._pressed_item = None
+        self._pressed_check_state = None
+        if (event.button() != Qt.MouseButton.LeftButton
+                or item is None or item is not pressed_item
+                or not item.flags() & Qt.ItemFlag.ItemIsEnabled
+                or item.checkState() != pressed_state):
+            return
+        item.setCheckState(
+            Qt.CheckState.Unchecked
+            if pressed_state == Qt.CheckState.Checked
+            else Qt.CheckState.Checked)
+
+
 class _CuratedWorker(QThread):
     succeeded = Signal(str, object)
     failed = Signal(str)
@@ -270,7 +312,7 @@ class CuratedDatabaseTab(QWidget):
 
     @staticmethod
     def _filter_list(_name):
-        widget = QListWidget()
+        widget = _RowCheckListWidget()
         widget.setMinimumHeight(190)
         widget.setMaximumHeight(260)
         widget.setAlternatingRowColors(True)

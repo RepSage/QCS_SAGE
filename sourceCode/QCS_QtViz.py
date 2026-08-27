@@ -705,7 +705,7 @@ class VisualizationTab(QWidget):
                           else TOOLTIPS['param_filter'])
             self._check_pair(cb, dbv.parameter_vars[param],
                              dbv.parameter_widgets.get(param),
-                             after=(dbv.toggle_scale_controls,))
+                             after=(dbv.toggle_panel_dependent_controls,))
             self.param_checks[param] = cb
             ff.addWidget(cb)
         ff.addLayout(self._all_none_row(lambda: self.param_checks.values()))

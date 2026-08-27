@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v13.2.2</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v13.2.3</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -726,7 +726,10 @@
             <td>Trend Lines</td>
             <td>Checkbox to add trend lines. This choice and the regression degree are saved
             as soon as they are edited, so they survive moving between steps and rebuilding
-            the available choices.</td>
+            the available choices. HOBO luminosity uses daily peaks rather than a fitted
+            tendency, so the checkbox and degree are cleared and unavailable when
+            <em>Luminosity</em> is the only selected parameter; selecting Temperature enables
+            them again.</td>
         </tr>
         <tr>
             <td>Degree</td>
@@ -1596,6 +1599,10 @@
     opens in one paged window with <em>&lt; Previous</em>, <em>Next &gt;</em> and a direct panel picker.
     This keeps broad site/year selections browsable without opening and rebuilding many separate
     windows.</p>
+    <p>The faint dotted background lines in luminosity panels are the axis grid: they align the
+    plotted values with datetime and luminosity ticks. They are not observations, fouling cutoffs
+    or tendency lines. HOBO luminosity itself is the solid line with markers showing the usable
+    daily peak for each source deployment.</p>
 
     <h3>Visualization Panels (Doppler / current-profiler databases)</h3>
     <p>With <strong>Instrument = Doppler</strong> the panel content is fixed: a current
@@ -1914,14 +1921,17 @@
     each qualified product's Site and Datetime columns so the filters describe the data itself;
     a prebuilt <code>qualified_index.csv</code> is not required.</p>
     <p>During <strong>Build curated database</strong>, the bar is cleared before it becomes
-    visible, advances through selection and instrument stages, remains below 100% while the
-    workbook is being written, and reaches <em>Complete</em> only after the atomic output file
-    has finished.</p>
+    visible, then shows <em>Stage k/N</em>: the first stage applies the selection, one stage is
+    counted for each selected instrument family, and the final stage completes the workbook.
+    The bar remains below 100% while that workbook is being written and reaches
+    <em>Stage N/N Complete</em> only after the atomic output file has finished.</p>
 
     <h3>Selection</h3>
     <p>Any combination of <strong>site</strong>, <strong>calendar year</strong> and
     <strong>instrument</strong> can be selected. Each list has <em>All</em> and <em>None</em>
-    shortcuts. The three lists are dynamic: options that do not occur with the current combination
+    shortcuts. Clicking anywhere on an enabled option row toggles its checkbox; clicking the
+    checkbox itself has the same single-toggle behavior. The three lists are dynamic: options that
+    do not occur with the current combination
     remain visible but turn gray and are automatically unchecked. Broadening another filter makes
     compatible options selectable again, but never silently restores a previously hidden check.
     Instruments are ordered as Seaguard, Seaguard current profiler (Doppler), then HOBO.

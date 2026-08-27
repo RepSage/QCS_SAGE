@@ -185,6 +185,18 @@ def _floor_fit(fitted):
     return np.maximum(fitted, 0.0)
 
 
+def tendency_lines_available(instrument, parameters):
+    """Whether the selected variables contain a series QCS actually fits.
+
+    HOBO luminosity is represented by its source-aware daily-peak envelope,
+    not by a polynomial tendency. Temperature remains fit-capable, including
+    when it is selected together with luminosity.
+    """
+    selected = set(parameters or ())
+    return not (instrument == 'HOBO'
+                and selected == {'Luminosity (lux)'})
+
+
 def _fit_margins(fig, pad=6):
     """Measure the actually-drawn content (tick labels + axis labels of every
     axis) and pull the plot's left/right margins in so NOTHING is clipped at the

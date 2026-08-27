@@ -9,6 +9,35 @@ leave this file, and only what is still open moves down to the open items,
 dated with when it was last touched. The full text before the 2026-08-18
 pruning is in git (`git show a0994bf:STATUS.md`).
 
+## 2026-08-27 - v13.2.3 interaction PATCH open
+
+- Branch `codex/curated-row-click-hobo-tendency` carries the unreleased PATCH.
+  Keep it open until the owner explicitly asks to close and publish it: no tag,
+  merge, installer build, GitHub release or `changelog/v13.2.3.md` exists yet.
+- Every enabled option row in Curated database -> Selection now toggles its
+  checkbox. Clicking the indicator itself still changes state exactly once,
+  and disabled incompatible rows remain inert.
+- Curated Build progress now spells out `Stage k/N` instead of the opaque
+  `S1/N`. Stage 1 applies the selection, each selected instrument family adds
+  one unification stage, and the final stage completes the atomic workbook.
+- The dotted lines behind HOBO luminosity values are the plot's axis grid, not
+  data, a fouling cutoff or a tendency. They remain as positional references;
+  the solid marked lines are the usable daily light peaks.
+- HOBO luminosity has no polynomial tendency line. When Luminosity is the only
+  checked parameter, Tendency lines and Regression degree are cleared and
+  disabled; selecting Temperature enables them again. Seaguard behavior and a
+  HOBO Temperature + Luminosity selection are unchanged.
+- The 69/69 self-test passes. Full-tree ruff, compileall, the HTML parser and
+  `git diff --check` are clean. Off-screen Qt probes exercised a click on the
+  row body, a direct checkbox click and a disabled row; the first two emitted
+  exactly one state change and the disabled row emitted none. A real curated
+  HOBO workbook confirmed the complete Temperature + Luminosity -> Luminosity
+  only -> Temperature + Luminosity tendency-control cycle. A shell probe
+  confirmed `Stage 2/4 HOBO` at value 2 on a 0..4 progress range.
+- Next: owner validation through `QCS.bat`, then any additional PATCH fixes.
+  Only an explicit close/publish request starts final audit, changelog,
+  installer smoke, tag, merge and GitHub publication.
+
 ## Open items
 
 **Program and release**

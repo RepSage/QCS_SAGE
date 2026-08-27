@@ -1575,6 +1575,16 @@ ok.append('manual cut: Help uses the shell-replaceable plot dialog facade')
 # 'both' must generate two named figures so the operator can compare them.
 import QCS_DataView as _data_view                         # noqa: E402
 
+assert not _data_view.tendency_lines_available(
+    'HOBO', ['Luminosity (lux)'])
+assert _data_view.tendency_lines_available(
+    'HOBO', ['Temperature (degC)'])
+assert _data_view.tendency_lines_available(
+    'HOBO', ['Temperature (degC)', 'Luminosity (lux)'])
+assert _data_view.tendency_lines_available(
+    'Seaguard', ['Luminosity (lux)'])
+ok.append('tendency availability: HOBO luminosity alone has no polynomial fit')
+
 # Curated/multi-deployment HOBO plots remove BAD light before daily resampling,
 # while the across-sites comparison needs no matching datetimes: deployments
 # keep their absolute dates inside the full selected calendar-year domain.

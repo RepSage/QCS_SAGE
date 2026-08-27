@@ -49,7 +49,7 @@ TOOLTIPS = {
     'latitude': "Latitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'longitude': "Longitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'ts_params': "Temperature & salinity pair for the T-S diagram:\nConservative T & Absolute S (TEOS-10, uses lat/long) or\nPotential T & Practical S (classic EOS-80)",
-    'tendency': "Adds regression lines against real elapsed time\nSource deployments are fitted separately in multi-deployment scalar panels",
+    'tendency': "Adds regression lines against real elapsed time\nSource deployments are fitted separately in multi-deployment scalar panels\nHOBO light uses daily peaks, not fitted tendencies; this option is unavailable when only Luminosity is selected",
     'tendency_degree': "Degree of the regression polynomial (1 to 5)\n1 = linear, 2 = quadratic, 3 = cubic\nUse degrees 4-5 only when the data justify the extra curvature",
     'data_points': "Draws the individual data points on the plots",
     'disagreement_bars': "HOBO only: one vertical bar per sample on the temperature\n"
@@ -531,7 +531,14 @@ def toggle_panel_dependent_controls():
         toggle_scale_controls()
         return
 
-    if any_panel_selected:
+    tendency_available = tendency_lines_available_for_selection()
+    if not tendency_available:
+        # A checked but disabled box would claim a fit that no luminosity panel
+        # draws. Clear the transient tk state; the saved preference changes
+        # only when the operator explicitly edits the Qt control.
+        tendency.set(False)
+
+    if any_panel_selected and tendency_available:
         set_enabled_style(tendency_cb)
         if tendency.get():
             set_enabled_style(tendency_entry)
@@ -548,6 +555,15 @@ def toggle_panel_dependent_controls():
         set_disabled_style(fixed_scale_cb)
 
     toggle_scale_controls()
+
+
+def tendency_lines_available_for_selection():
+    """True unless the current HOBO parameter choice is luminosity alone."""
+    selected = [
+        parameter for parameter, variable in parameter_vars.items()
+        if variable.get()]
+    return view.tendency_lines_available(
+        instrument_combobox.get(), selected)
 
 def toggle_parameter_checkboxes():
     # the parameter filter applies to every family (for HOBO it selects between
@@ -2041,7 +2057,7 @@ def build_step2(parent):
             return
         for p in group:
             parameter_vars[p].set(value)
-        toggle_scale_controls()
+        toggle_panel_dependent_controls()
 
     def _group_buttons(parent, group):
         # small All/None pair placed INSIDE the group's header row, so the row
@@ -2069,8 +2085,9 @@ def build_step2(parent):
             prow += 1
         var = BooleanVar(value=False)
         # toggling a parameter updates its per-parameter scale row (enable/fill/clear)
-        cb = ttk.Checkbutton(param_col, text=_param_display(param), variable=var,
-                             command=toggle_scale_controls)
+        cb = ttk.Checkbutton(
+            param_col, text=_param_display(param), variable=var,
+            command=toggle_panel_dependent_controls)
         cb.grid(row=prow, column=0, sticky='w', pady=2, padx=10)
         parameter_vars[param] = var
         parameter_widgets[param] = cb
