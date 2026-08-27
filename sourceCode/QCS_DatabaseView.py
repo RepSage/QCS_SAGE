@@ -32,24 +32,24 @@ TOOLTIPS = {
     'input_path': "Folder with the input files",
     'output_path': "Folder for the outputs",
     'data_type': "Collection type: TSCP Mooring, TSCP Profile or TSCP Doppler\n(same naming as the qualification Data type)\nA HOBO database is shown as HOBO",
-    'filter_year': "Year(s) to visualize\nPanels are generated once per selected year",
-    'time_start': "Optional: first actual date/time included in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 15/04/2019 09:00); changing the site or year fits this to the new available interval\nCross-site panels filter these dates first, then compare sites by elapsed time",
-    'time_end': "Optional: last actual date/time included in mooring plots\n(DD/MM/YYYY HH:MM, e.g. 16/04/2019 09:00); changing the site or year fits this to the new available interval\nCross-site panels filter these dates first, then compare sites by elapsed time",
+    'filter_year': "Year(s) to visualize\nMulti-deployment scalar panels keep one absolute datetime axis spanning the full selected calendar years; only rows from checked years are drawn",
+    'time_start': "Optional finer datetime crop inside the selected year range\n(DD/MM/YYYY HH:MM, e.g. 15/04/2019 09:00)\nMulti-deployment scalar panels otherwise open on the full selected calendar years",
+    'time_end': "Optional finer datetime crop inside the selected year range\n(DD/MM/YYYY HH:MM, e.g. 16/04/2019 09:00)\nMulti-deployment scalar panels otherwise open on the full selected calendar years",
     'depth_min': "Optional: upper limit of the depth axis in profile/current plots (m)\nEmpty = fit the data",
     'depth_max': "Optional: lower limit of the depth axis in profile/current plots (m)\nEmpty = fit the data",
     'uv_gap_mode': "How the U/V component lines treat missing or BAD current cells\n"
                    "Break = show the discontinuity; Connect = join the surviving points;\n"
                    "Both = generate the two versions for direct comparison",
     'panel1': "Panel 1: parameters compared at the same site",
-    'panel2': "Panel 2: one parameter compared between sites\nSites do not need matching timestamps: each deployment starts at elapsed day 0",
+    'panel2': "Panel 2: one parameter compared between sites\nMulti-deployment moorings retain absolute datetime; sites do not need matching timestamps",
     'panel3': "Panel 3: parameters compared at the same site (vertical profile)",
     'hobo_params_site': "Temperature/light at one site, one figure per site,\nall selected years in a single plot\nEach deployment keeps its own tendency and gap-aware daily light peak;\nrecorded BAD light windows are shaded",
-    'hobo_params_across': "One figure per parameter, all sites together,\neach deployment aligned from its own elapsed day 0\nColored endpoint dates restore its calendar start/end (up to 16 deployments);\nbroader plots ask for narrower filters instead of stacking unreadable dates\nLight gaps stay broken; recorded BAD light is dotted/faded",
+    'hobo_params_across': "One figure per parameter, all sites together\nDeployments stay on one absolute datetime axis spanning the full selected calendar years; only checked years and the optional Time window are drawn\nLight gaps stay broken; recorded BAD light is dotted/faded",
     'ts_diagram': "Temperature-Salinity (T-S) diagram: temperature vs salinity with\ndepth as the color, to identify water masses",
     'latitude': "Latitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'longitude': "Longitude for the T-S diagram (gsw)\nPre-filled from the qualification region and locked; editable only\nfor a standalone file (which stores no coordinates)",
     'ts_params': "Temperature & salinity pair for the T-S diagram:\nConservative T & Absolute S (TEOS-10, uses lat/long) or\nPotential T & Practical S (classic EOS-80)",
-    'tendency': "Adds regression lines against real elapsed time\nHOBO deployments are fitted separately",
+    'tendency': "Adds regression lines against real elapsed time\nSource deployments are fitted separately in multi-deployment scalar panels",
     'tendency_degree': "Degree of the regression polynomial (1 to 5)\n1 = linear, 2 = quadratic, 3 = cubic\nUse degrees 4-5 only when the data justify the extra curvature",
     'data_points': "Draws the individual data points on the plots",
     'disagreement_bars': "HOBO only: one vertical bar per sample on the temperature\n"
@@ -295,6 +295,41 @@ def time_availability(frame=None):
     return pd.Timestamp(values.min()), pd.Timestamp(values.max())
 
 
+def time_window_bounds(frame=None, years=None):
+    """Allowed Time window bounds for the active visualization.
+
+    Multi-deployment scalar year checkboxes define a full calendar domain,
+    including empty edges and gaps; Time window is a finer crop inside it.
+    Single-deployment, profile and Doppler panels retain their established
+    data-availability bounds.
+    """
+    if years is None:
+        variables = globals().get('year_vars') or {}
+        years = [year for year, var in variables.items() if var.get()]
+    if uses_calendar_year_domain(frame, years):
+        return view.selected_year_bounds(years)
+    return normalized_time_bounds(*time_availability(frame))
+
+
+def uses_calendar_year_domain(frame=None, years=None):
+    """True for HOBO or a selected scalar mooring with several deployments."""
+    if is_hobo_input():
+        return True
+    if is_doppler_input():
+        return False
+    data_type = dataViewSettings.get('dataType')
+    widget = globals().get('dType_combobox')
+    if widget is not None:
+        data_type = widget.get() or data_type
+    if data_type != 'TSCP Mooring':
+        return False
+    source = globals().get('database') if frame is None else frame
+    if source is None:
+        return False
+    settings = {'filterByYears': years or []}
+    return view.is_multi_deployment_selection(source, settings)
+
+
 def time_availability_text(frame=None):
     """Shared Qt/Tk wording for the selected Site/Year time interval."""
     start, end = time_availability(frame)
@@ -323,18 +358,18 @@ def validate_time_window_texts(start_text, end_text,
     return start, end
 
 
-def time_window_error_message(available_start, available_end):
-    if available_start is None or available_end is None:
-        available = 'Available: no data in the selected sites/years.'
+def time_window_error_message(allowed_start, allowed_end):
+    if allowed_start is None or allowed_end is None:
+        allowed = 'Allowed: no interval for the selected sites/years.'
     else:
-        available_start, available_end = normalized_time_bounds(
-            available_start, available_end)
-        available = 'Available: %s to %s.' % (
-            pd.Timestamp(available_start).strftime(TIME_TEXT_FORMAT),
-            pd.Timestamp(available_end).strftime(TIME_TEXT_FORMAT))
+        allowed_start, allowed_end = normalized_time_bounds(
+            allowed_start, allowed_end)
+        allowed = 'Allowed: %s to %s.' % (
+            pd.Timestamp(allowed_start).strftime(TIME_TEXT_FORMAT),
+            pd.Timestamp(allowed_end).strftime(TIME_TEXT_FORMAT))
     return (
         'Use DD/MM/YYYY HH:MM for both values, with End after Start.\n\n'
-        '%s\n\nChoose date/times inside this available interval.' % available)
+        '%s\n\nChoose date/times inside this interval.' % allowed)
 
 def depth_availability_text(frame=None):
     """Shared Qt/Tk wording for the actual plottable depth interval."""
@@ -366,13 +401,12 @@ def refresh_time_availability():
 
 
 def reset_time_window_to_selection():
-    """Fit the editable X-axis window to the current Site/Year selection."""
+    """Reset X to full multi-deployment years or actual data otherwise."""
     entries = (globals().get('time_start_entry'),
                globals().get('time_end_entry'))
     if any(entry is None for entry in entries):
         return
-    start, end = normalized_time_bounds(
-        *time_availability(selected_database()))
+    start, end = time_window_bounds(selected_database())
     for entry, value in zip(entries, (start, end), strict=True):
         if str(entry.cget('state')) == 'disabled':
             continue
@@ -382,7 +416,7 @@ def reset_time_window_to_selection():
 
 
 def filter_selection_changed():
-    """Refresh dependent values and fit Time window to selected sites/years."""
+    """Refresh dependent values and reset Time window to its filter domain."""
     _refresh_scale_defaults()
     reset_time_window_to_selection()
 
@@ -993,18 +1027,18 @@ def saveDataViewSettings():
         start_text = time_start_entry.get().strip()
         end_text = time_end_entry.get().strip()
         if start_text or end_text:
-            available_start, available_end = time_availability(
-                selected_database())
+            allowed_start, allowed_end = time_window_bounds(
+                selected_database(), selectedYears)
             try:
                 x_start, x_end = validate_time_window_texts(
-                    start_text, end_text, available_start, available_end)
+                    start_text, end_text, allowed_start, allowed_end)
                 dataViewSettings['xAxisStart'] = x_start
                 dataViewSettings['xAxisEnd'] = x_end
             except ValueError:
                 ui_error(
                     "Invalid date/time range",
                     time_window_error_message(
-                        available_start, available_end))
+                        allowed_start, allowed_end))
                 error_logger.log(
                     "Error: invalid X-axis date/time range - generation stopped")
                 return False
@@ -1125,6 +1159,10 @@ def generatePanels():
         # the log is not a wall of redundant "generated successfully" messages)
         n_ok = 0
         scalar_figs = []
+        scalar_multi = (
+            not (is_hobo_input() or is_doppler_input()) and
+            dataViewSettings.get('dataType') == 'TSCP Mooring' and
+            view.is_multi_deployment_selection(database, dataViewSettings))
         if is_hobo_input():
             # HOBO: two panels, each spanning EVERY selected year in one figure
             # (a deployment crossing the new year is never split into truncated
@@ -1226,6 +1264,42 @@ def generatePanels():
                 if dop_figs:
                     view.show_panels(dop_figs, browse=True)
 
+        if scalar_multi:
+            selected_sites = dataViewSettings.get('siteList', [])
+            if not selected_sites:
+                error_logger.log(
+                    "Error: no site selected - check at least one site in "
+                    "'Filter by Site'")
+            else:
+                if dataViewSettings.get('panel1', False):
+                    for site in selected_sites:
+                        try:
+                            count = view.plot_scalar_multi_params_at_site(
+                                database, dataViewSettings, site,
+                                figures=scalar_figs, show=False)
+                            if count:
+                                error_logger.log(
+                                    "Info: multi-deployment Panel 1 for %s "
+                                    "generated." % site)
+                                n_ok += count
+                        except Exception as e:
+                            error_logger.log(
+                                "Error generating multi-deployment Panel 1 "
+                                "for %s: %s" % (site, e))
+                if dataViewSettings.get('panel2', False):
+                    try:
+                        count = view.plot_scalar_multi_params_across_sites(
+                            database, dataViewSettings,
+                            figures=scalar_figs, show=False)
+                        if count:
+                            error_logger.log(
+                                "Info: multi-deployment Panel 2 generated "
+                                "(%d figure(s))." % count)
+                            n_ok += count
+                    except Exception as e:
+                        error_logger.log(
+                            "Error generating multi-deployment Panel 2: %s" % e)
+
         if scalar_figs:
             view.show_panels(scalar_figs, browse=len(scalar_figs) > 1)
 
@@ -1234,7 +1308,7 @@ def generatePanels():
             dataViewSettings['filterByYear'] = year
 
             if dataViewSettings['dataType'] == 'TSCP Mooring':
-                if dataViewSettings.get('panel1', False):
+                if dataViewSettings.get('panel1', False) and not scalar_multi:
                     try:
                         view.plot_database_panel1(database, dataViewSettings)
                         error_logger.log("Info: Panel 1 (%d) generated." % year)
@@ -1242,7 +1316,7 @@ def generatePanels():
                     except Exception as e:
                         error_logger.log(f"Error generating Panel 1 ({year}): {str(e)}")
 
-                if dataViewSettings.get('panel2', False):
+                if dataViewSettings.get('panel2', False) and not scalar_multi:
                     try:
                         view.plot_database_panel2(database, dataViewSettings)
                         error_logger.log("Info: Panel 2 (%d) generated." % year)
@@ -1837,8 +1911,6 @@ def build_step2(parent):
 
     # shows the period covered by the loaded database, so the user does not
     # need to open the spreadsheet to know which days were sampled
-    data_start = database['Datetime'].min()
-    data_end = database['Datetime'].max()
     time_avail_lbl = ttk.Label(
         vis_frame, text=time_availability_text(database),
         style='Small.TLabel')
@@ -2185,10 +2257,10 @@ def build_step2(parent):
     if _pending_step2.get('longitude') is not None:
         restore_entry(longitude_entry, str(_pending_step2['longitude']))
 
-    # X-axis start/end default to the first/last available date (mooring plots).
-    # A saved value is kept only if it falls inside this database's range (a value
-    # left over from another database would plot an empty window).
-    def _default_time(entry, default_dt):
+    # Multi-deployment scalar panels default to complete selected calendar
+    # years; all other panels keep their established first/last-data default.
+    # A saved value is retained only inside the current allowed domain.
+    def _default_time(entry, default_dt, allowed_start, allowed_end):
         if pd.isna(default_dt) or str(entry.cget('state')) == 'disabled':
             return
         cur = entry.get().strip()
@@ -2196,16 +2268,18 @@ def build_step2(parent):
         if cur:
             try:
                 cv = pd.Timestamp(datetime.strptime(cur, TIME_TEXT_FORMAT))
-                keep = pd.notna(cv) and data_start <= cv <= data_end
+                keep = (pd.notna(cv) and allowed_start <= cv <= allowed_end)
             except Exception:
                 keep = False
         if not keep:
             entry.delete(0, END)
             entry.insert(0, default_dt.strftime(TIME_TEXT_FORMAT))
 
-    default_start, default_end = normalized_time_bounds(data_start, data_end)
-    _default_time(time_start_entry, default_start)
-    _default_time(time_end_entry, default_end)
+    default_start, default_end = time_window_bounds(database)
+    _default_time(time_start_entry, default_start,
+                  default_start, default_end)
+    _default_time(time_end_entry, default_end,
+                  default_start, default_end)
 
     _pending_step2 = {}  # consumed
 

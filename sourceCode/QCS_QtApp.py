@@ -655,8 +655,8 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 self._minimum_axis_span(ylim),
             )
             self._zoom_max_spans[ax] = (
-                abs(float(xlim[1]) - float(xlim[0])),
-                abs(float(ylim[1]) - float(ylim[0])),
+                abs(float(xlim[1]) - float(xlim[0])) * view.ZOOM_OUT_FACTOR,
+                abs(float(ylim[1]) - float(ylim[0])) * view.ZOOM_OUT_FACTOR,
             )
         self._legend_label_defaults = {
             ax: {
@@ -671,7 +671,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         zoom_action = self._actions.get('zoom')
         if zoom_action is not None:
             zoom_action.setToolTip(
-                'Zoom to rectangle (range: 1/10,000 to 1x the opening view)')
+                'Zoom to rectangle (range: 1/10,000 to 100x the opening view)')
         if coordinates:
             font = self.locLabel.font()
             font.setBold(True)
@@ -739,7 +739,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
         return max(opening_span / 10_000.0, roundoff_floor)
 
     def _enforce_zoom_limits(self):
-        """Bound zoom-in and zoom-out without changing the Home view."""
+        """Bound extreme zoom without changing the Home view."""
         changed = False
         for ax, (min_x, min_y) in self._zoom_min_spans.items():
             if ax not in self.canvas.figure.axes:
@@ -1405,14 +1405,14 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             field.setText(value.strftime(dbv.TIME_TEXT_FORMAT))
             field.setToolTip(
                 'Edit as DD/MM/YYYY HH:MM. Both values must stay inside the '
-                'available interval shown below.')
+                'selected calendar interval shown below.')
         available = QLabel(
             'From %s to %s' % (
                 available_start.strftime('%d/%m/%Y %H:%M'),
                 available_end.strftime('%d/%m/%Y %H:%M')))
         available.setToolTip(
-            'Range available after the Data Visualization filters were '
-            'applied to this product.')
+            'Calendar domain established by the Data Visualization year and '
+            'Time window selection.')
         general.formlayout.insertRow(header_row + 1, 'Start', start_field)
         general.formlayout.insertRow(header_row + 2, 'End', end_field)
         general.formlayout.insertRow(header_row + 3, 'Available', available)
@@ -1462,8 +1462,8 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                         hidden_fields.add(form.widgets[row])
                         break
 
-    @staticmethod
-    def _configure_line_options(dialog):
+    @classmethod
+    def _configure_line_options(cls, dialog, ax):
         """Expose line styling only; points and legend text have other roles."""
         tabs = dialog.formwidget.tabwidget
         hidden_fields = getattr(dialog, '_qcs_hidden_option_fields', set())
@@ -1473,11 +1473,37 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 continue
             tabs.setTabText(index, 'Lines')
             curves = dialog.formwidget.widgetlist[index]
+            metadata = getattr(ax.figure, '_qcs_line_names', {})
+            names = []
+            occurrences = {}
+            for line_number, line in enumerate(ax.get_lines(), start=1):
+                if (line.get_label() == '_nolegend_' or
+                        not cls._is_editable_line(line)):
+                    continue
+                label = str(metadata.get(line, line.get_label())).strip()
+                if not label or label.startswith('_'):
+                    label = 'Line %d' % line_number
+                occurrences[label] = occurrences.get(label, 0) + 1
+                suffix = occurrences[label]
+                names.append(label if suffix == 1 else '%s (%d)' % (label, suffix))
+            if len(names) == len(curves.widgetlist):
+                curves.combobox.clear()
+                curves.combobox.addItems(names)
+            else:
+                fallback = []
+                for item in range(curves.combobox.count()):
+                    label = curves.combobox.itemText(item).strip()
+                    fallback.append(
+                        label if label and not label.startswith('_')
+                        else 'Line %d' % (item + 1))
+                curves.combobox.clear()
+                curves.combobox.addItems(fallback)
             if len(curves.widgetlist) == 1:
                 curves.combobox.hide()
             else:
                 curves.combobox.setToolTip(
-                    'Select the plotted line to customize.')
+                    'Select a named plotted line to customize. Site and '
+                    'source-product names distinguish deployments.')
             for form in curves.widgetlist:
                 marker_section = False
                 for row, (label, value) in enumerate(form.data):
@@ -1679,7 +1705,7 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             'Edit the title shown above the complete figure.')
         general.formlayout.insertRow(0, 'Figure title', figure_title)
         dialog._qcs_figure_title = figure_title
-        self._configure_line_options(dialog)
+        self._configure_line_options(dialog, ax)
         self._hide_graph_names(dialog)
         self._add_legends_tab(dialog, ax)
         self._track_axis_limit_edits(dialog, ax)

@@ -1,5 +1,6 @@
 import re
 import math
+import os
 import numpy as np # type: ignore
 import pandas as pd # type: ignore
 import datetime as _dt # type: ignore
@@ -35,6 +36,68 @@ def show_panels(figures=None, browse=False):
 # produce an out-of-range date ordinal that crashes the tick formatter.
 _DATE_MIN = _mdates.date2num(_dt.datetime(100, 1, 1))
 _DATE_MAX = _mdates.date2num(_dt.datetime(9000, 1, 1))
+
+# Navigation stays finite, but zoom-out must be genuinely useful. The opening
+# panel is the Home view, not a hard outer wall (v13.2.1 accidentally made it
+# both). One hundred opening spans is generous while keeping numeric axes sane.
+ZOOM_OUT_FACTOR = 100.0
+
+
+def selected_year_bounds(years):
+    """Full continuous calendar domain covered by selected years.
+
+    A non-contiguous selection keeps the intervening calendar gap visible on
+    the datetime axis; rows from unselected years are still filtered out.
+    """
+    clean = sorted({int(year) for year in (years or [])})
+    if not clean:
+        return None, None
+    return (pd.Timestamp(year=clean[0], month=1, day=1),
+            pd.Timestamp(year=clean[-1] + 1, month=1, day=1))
+
+
+def _calendar_axis_bounds(dataViewSettings):
+    """Visible multi-deployment domain: explicit crop or full years."""
+    start = dataViewSettings.get('xAxisStart')
+    end = dataViewSettings.get('xAxisEnd')
+    if start is not None and end is not None:
+        return pd.Timestamp(start), pd.Timestamp(end)
+    return selected_year_bounds(dataViewSettings.get('filterByYears'))
+
+
+def _format_calendar_datetime_axis(ax, start, end):
+    """Use calendar ticks, adding clock time only for short custom windows."""
+    if start is not None and end is not None:
+        start = pd.Timestamp(start)
+        end = pd.Timestamp(end)
+        ax.set_xlim(start, end)
+        span = end - start
+    else:
+        span = pd.Timedelta(days=abs(np.diff(ax.get_xlim())[0]))
+    locator = _mdates.AutoDateLocator(minticks=3, maxticks=9)
+    ax.xaxis.set_major_locator(locator)
+    tick_format = ('%d/%m/%y %H:%M'
+                   if span <= pd.Timedelta(days=7) else '%d/%m/%y')
+    ax.xaxis.set_major_formatter(_mdates.DateFormatter(tick_format))
+    ax.set_xlabel('Datetime')
+
+
+def _source_display_name(source):
+    """Compact provenance name for line selectors without losing identity."""
+    text = str(source).strip()
+    if not text or text.lower() in ('nan', '<na>', 'none'):
+        return 'Selected data'
+    return os.path.splitext(os.path.basename(text))[0]
+
+
+def _name_plot_line(fig, line, role, source=None, site=None):
+    """Give Figure options a semantic name independent of legend labels."""
+    parts = [str(value).strip() for value in (site, role)
+             if value is not None and str(value).strip()]
+    if source is not None:
+        parts.append(_source_display_name(source))
+    fig.__dict__.setdefault('_qcs_line_names', {})[line] = ' - '.join(parts)
+    return line
 
 def _apply_time_window(df, dataViewSettings):
     """Keep only the rows inside the chosen X-axis time window (start/end), so the
@@ -106,47 +169,6 @@ def _elapsed_days_axis(ax, max_day):
     ax.set_xlim(0.0, upper)
     ax.xaxis.set_major_locator(MaxNLocator(nbins=9, min_n_ticks=3))
     ax.set_xlabel("Elapsed days since each deployment's first selected day")
-
-
-def _annotate_elapsed_dates(ax, x_days, values, datetimes, color):
-    """Stamp the first/last plotted calendar date on an elapsed-time series.
-
-    A shared day-zero axis makes deployments comparable but deliberately removes
-    their calendar position. Small endpoint labels restore that context without
-    joining campaigns or adding one legend entry per source file. The text uses
-    the site's line color, so the existing site legend remains authoritative.
-    """
-    x = np.asarray(x_days, dtype=float)
-    y = pd.to_numeric(pd.Series(values), errors='coerce').to_numpy(dtype=float)
-    dates = pd.to_datetime(pd.Series(datetimes), errors='coerce')
-    valid = np.isfinite(x) & np.isfinite(y) & dates.notna().to_numpy()
-    positions = np.flatnonzero(valid)
-    if not len(positions):
-        return []
-    endpoints = [positions[0]]
-    if positions[-1] != positions[0]:
-        endpoints.append(positions[-1])
-    labels = []
-    middle = float(np.nanmedian(y[valid]))
-    for endpoint, is_start in zip(
-            endpoints, (True, False) if len(endpoints) == 2 else (True,),
-            strict=True):
-        place_above = y[endpoint] < middle
-        if np.isclose(y[endpoint], middle):
-            place_above = is_start
-        label = ax.annotate(
-            pd.Timestamp(dates.iloc[endpoint]).strftime('%d/%m/%y'),
-            xy=(x[endpoint], y[endpoint]),
-            xytext=(3 if is_start else -3, 5 if place_above else -5),
-            textcoords='offset points',
-            ha='left' if is_start else 'right',
-            va='bottom' if place_above else 'top',
-            color=color, fontsize=7, fontweight='bold', clip_on=True,
-            bbox={'facecolor': 'white', 'edgecolor': 'none',
-                  'alpha': 0.65, 'pad': 0.5},
-            zorder=5)
-        labels.append(label)
-    return labels
 
 
 # display labels for the internal semester keys (titles/log lines only; file
@@ -276,7 +298,7 @@ def enable_scroll_zoom(fig, fit=True):
     opening = {ax: (xl, yl) for ax, xl, yl in original}
 
     def _bounded_zoom(limits, opening_limits):
-        """Keep wheel zoom between 1/10,000 and 1x the opening span."""
+        """Keep wheel zoom between 1/10,000 and 100x the opening span."""
         lo, hi = limits
         opening_span = abs(opening_limits[1] - opening_limits[0])
         minimum = max(
@@ -284,7 +306,7 @@ def enable_scroll_zoom(fig, fit=True):
             max(abs(opening_limits[0]), abs(opening_limits[1]), 1.0) *
             np.finfo(float).eps * 64)
         span = abs(hi - lo)
-        target = min(max(span, minimum), opening_span)
+        target = min(max(span, minimum), opening_span * ZOOM_OUT_FACTOR)
         if abs(target - span) <= np.finfo(float).eps * max(span, 1.0):
             return limits
         centre = (lo + hi) / 2.0
@@ -313,10 +335,11 @@ def enable_scroll_zoom(fig, fit=True):
         ref = event.inaxes
         xd, _ = ref.transData.inverted().transform((event.x, event.y))
         xl = ref.get_xlim()
-        new_xlim = _clamp_x(
-            ref, xd - (xd - xl[0]) * scale,
+        new_xlim = (
+            xd - (xd - xl[0]) * scale,
             xd + (xl[1] - xd) * scale)
         new_xlim = _bounded_zoom(new_xlim, opening[ref][0])
+        new_xlim = _clamp_x(ref, *new_xlim)
         for ax in axes:
             ax.set_xlim(new_xlim)          # shared x: same absolute value, no compounding
             _, yd = ax.transData.inverted().transform((event.x, event.y))
@@ -1060,6 +1083,283 @@ def plot_database_panel2(database, dataViewSettings):
             enable_scroll_zoom(fig)
             show_panels()
 
+
+def _scalar_calendar_slice(database, dataViewSettings, site=None,
+                           time_window=True):
+    """Selected scalar-mooring rows on one absolute calendar axis."""
+    years = dataViewSettings.get('filterByYears') or []
+    if not years and dataViewSettings.get('filterByYear') is not None:
+        years = [dataViewSettings['filterByYear']]
+    db = database
+    if years:
+        db = db[db['Datetime'].dt.year.isin(years)]
+    if site is not None:
+        db = db[db['Site'] == site]
+    elif dataViewSettings.get('siteList'):
+        db = db[db['Site'].isin(dataViewSettings['siteList'])]
+    if time_window:
+        db = _apply_time_window(db, dataViewSettings)
+    return db.sort_values('Datetime')
+
+
+def deployment_count(database, dataViewSettings, site=None):
+    """Count selected source products; fall back to sites without provenance."""
+    db = _scalar_calendar_slice(
+        database, dataViewSettings, site=site, time_window=False)
+    if db.empty:
+        return 0
+    if 'Source file' in db.columns:
+        columns = ['Source file']
+        if 'Site' in db.columns:
+            columns.insert(0, 'Site')
+        return len(db[columns].fillna('Selected data').drop_duplicates())
+    if 'Site' in db.columns:
+        return int(db['Site'].nunique(dropna=False))
+    return 1
+
+
+def is_multi_deployment_selection(database, dataViewSettings):
+    """Whether scalar mooring plots should use the combined calendar view."""
+    return deployment_count(database, dataViewSettings) > 1
+
+
+def _deployment_parameter_series(deployment, parameter):
+    """Numeric deployment series with the established visible-gap rule."""
+    values = pd.to_numeric(deployment[parameter], errors='coerce')
+    series = pd.Series(
+        values.to_numpy(), index=pd.DatetimeIndex(deployment['Datetime']),
+        name=parameter)
+    series = series.loc[
+        ~(series.index.duplicated(keep=False) & series.isna())]
+    if not series.notna().any():
+        return series
+    series, _gap_ids = fill_NaT_gap(series)
+    return series
+
+
+def _scalar_panel_axis_layout(parameter_count):
+    """Opening geometry for a scalar Panel 1 with stacked parameter axes."""
+    n_right = max(0, parameter_count - 1)
+    total_px, height_px, left_px = 1050, 540, 78
+    max_zone = total_px - left_px - 560
+    spacing = (min(60.0, max(22.0, (max_zone - 95) / (n_right - 1)))
+               if n_right > 1 else 60.0)
+    actual_zone = min(
+        max_zone, ((n_right - 1) * spacing + 95) if n_right >= 1 else 40)
+    plot_px = total_px - left_px - actual_zone
+    font_scale = min(1.0, max(0.55, spacing / 58.0))
+    bins = 6 if n_right >= 4 else 8
+    return (total_px, height_px, left_px, plot_px, spacing, font_scale, bins)
+
+
+def plot_scalar_multi_params_at_site(database, dataViewSettings, site,
+                                     figures=None, show=True):
+    """Scalar mooring Panel 1 for several source deployments in calendar time."""
+    db = _scalar_calendar_slice(database, dataViewSettings, site=site)
+    parameters = [
+        parameter for parameter in dataViewSettings['parameterList']
+        if parameter in db.columns and
+        pd.to_numeric(db[parameter], errors='coerce').notna().any()]
+    if db.empty or not parameters:
+        print('\nNo scalar mooring data to plot for %s.' % site)
+        return 0
+
+    colors, bold_colors = getParamColors()
+    displays = renameParameters(parameters)
+    fit = dataViewSettings['tendencyLines']
+    degree = dataViewSettings['linearRegressionDegree']
+    points = dataViewSettings['viewDataPoints']
+    (total_px, height_px, left_px, plot_px, spacing,
+     font_scale, bins) = _scalar_panel_axis_layout(len(parameters))
+    fig, ax1 = plt.subplots(figsize=(total_px / 100, height_px / 100))
+    fig.subplots_adjust(
+        left=left_px / total_px,
+        right=(left_px + plot_px) / total_px, bottom=0.18)
+    ax1.grid(True, linestyle='dotted', linewidth=0.5)
+    axes = []
+    outward = 0.0
+
+    for index, (parameter, display) in enumerate(
+            zip(parameters, displays, strict=True)):
+        ax = ax1 if index == 0 else ax1.twinx()
+        axes.append(ax)
+        fitted_values = []
+        plotted = False
+        for source, deployment in _source_deployments(db):
+            series = _deployment_parameter_series(deployment, parameter)
+            if not series.notna().any():
+                continue
+            plotted = True
+            if parameter == 'Pressure (dbar)':
+                line, = ax.plot(
+                    series.index, series.values, linestyle='--', marker='None',
+                    color=bold_colors[parameter])
+                _name_plot_line(
+                    fig, line, '%s data' % display, source=source)
+                continue
+            enough_for_fit = (
+                fit and series.notna().sum() > max(3, int(degree or 1)))
+            if points or not enough_for_fit:
+                ax.plot(
+                    series.index, series.values, linestyle='None', marker='.',
+                    markersize=3, color=(colors[parameter] if fit
+                                         else bold_colors[parameter]))
+            if enough_for_fit:
+                xp, yp = linear_regression(series, degree=degree)
+                yp = _floor_fit(yp)
+                line, = ax.plot(
+                    xp, yp, linestyle='-', color=bold_colors[parameter])
+                _name_plot_line(
+                    fig, line, '%s tendency' % display, source=source)
+                fitted_values.extend(np.asarray(yp, dtype=float))
+        if not plotted:
+            ax.set_visible(False)
+            continue
+        if fit and not points and fitted_values:
+            low = float(np.nanmin(fitted_values))
+            high = float(np.nanmax(fitted_values))
+            margin = 0.05 * abs(high - low)
+            ax.set_ylim(max(0.0, low - margin), high + margin)
+        ax.set_ylabel(
+            display, color=bold_colors[parameter], fontsize=10 * font_scale)
+        ax.tick_params(
+            axis='y', colors=bold_colors[parameter],
+            labelsize=10 * font_scale)
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=bins, prune='both'))
+        if index == 0:
+            ax.spines['left'].set_color(bold_colors[parameter])
+            ax.spines['left'].set_position(('outward', 1))
+            ax.spines['left'].set_linewidth(2.0)
+        else:
+            if index > 1:
+                ax.spines['right'].set_position(('outward', outward))
+            outward += spacing
+            ax.spines['right'].set_color(bold_colors[parameter])
+            ax.spines['right'].set_linewidth(1.5)
+            ax.spines['left'].set_color('none')
+        if (dataViewSettings.get('fixedScale') and
+                parameter in dataViewSettings.get('scaleSettings', {})):
+            scale = dataViewSettings['scaleSettings'][parameter]
+            ax.set_ylim(scale['min'], scale['max'])
+
+    ax1.set_title('Parameters for %s across deployments' % site)
+    axis_start, axis_end = _calendar_axis_bounds(dataViewSettings)
+    _format_calendar_datetime_axis(ax1, axis_start, axis_end)
+    _fit_stacked_yticks(fig, spacing)
+    visible_axes = [ax for ax in axes if ax.get_visible()]
+    visible_names = [display for display, ax in zip(
+        displays, axes, strict=True) if ax.get_visible()]
+    fig._qcs_customize_axes = list(zip(
+        visible_names, visible_axes, strict=True))
+    fig._qcs_axes_names = dict(zip(
+        visible_axes, visible_names, strict=True))
+    _name_panel(fig, 'Parameters across deployments', site)
+    years = dataViewSettings.get('filterByYears') or []
+    year_tag = '%d-%d' % (min(years), max(years)) if years else 'selected'
+    plt.savefig(
+        'panel1_%s_%s.svg' % (site, year_tag), bbox_inches='tight')
+    enable_scroll_zoom(fig)
+    _keep_or_close(fig, show, figures)
+    if show and figures is None:
+        show_panels([fig])
+    return 1
+
+
+def plot_scalar_multi_params_across_sites(database, dataViewSettings,
+                                          figures=None, show=True):
+    """Scalar mooring Panel 2 across sites and products in calendar time."""
+    sites = dataViewSettings['siteList']
+    parameters = [
+        parameter for parameter in dataViewSettings['parameterList']
+        if parameter in database.columns]
+    colors = getSiteColors(sites)
+    fit = dataViewSettings['tendencyLines']
+    degree = dataViewSettings['linearRegressionDegree']
+    points = dataViewSettings['viewDataPoints']
+    figure_count = 0
+
+    for parameter, display in zip(
+            parameters, renameParameters(parameters), strict=True):
+        fig, ax = plt.subplots(figsize=(10.5, 5.4))
+        fig.subplots_adjust(left=0.10, right=0.80, top=0.88, bottom=0.18)
+        ax.grid(True, linestyle='dotted', linewidth=0.5)
+        plotted_sites = []
+        for site in sites:
+            db = _scalar_calendar_slice(
+                database, dataViewSettings, site=site)
+            if db.empty or not pd.to_numeric(
+                    db[parameter], errors='coerce').notna().any():
+                print('\nNo %s data for %s in the selected calendar domain.' %
+                      (parameter, site))
+                continue
+            site_plotted = False
+            for source, deployment in _source_deployments(db):
+                series = _deployment_parameter_series(deployment, parameter)
+                if not series.notna().any():
+                    continue
+                site_plotted = True
+                if parameter == 'Pressure (dbar)':
+                    line, = ax.plot(
+                        series.index, series.values, linestyle='--',
+                        marker='None', color=colors[site])
+                    _name_plot_line(
+                        fig, line, '%s data' % display,
+                        source=source, site=site)
+                    continue
+                enough_for_fit = (
+                    fit and series.notna().sum() > max(3, int(degree or 1)))
+                if points or not enough_for_fit:
+                    ax.plot(
+                        series.index, series.values, linestyle='None',
+                        marker='.', markersize=3, color=colors[site])
+                if enough_for_fit:
+                    xp, yp = linear_regression(series, degree=degree)
+                    yp = _floor_fit(yp)
+                    line, = ax.plot(
+                        xp, yp, linestyle='-', color=colors[site])
+                    _name_plot_line(
+                        fig, line, '%s tendency' % display,
+                        source=source, site=site)
+            if site_plotted:
+                plotted_sites.append(site)
+
+        if not plotted_sites:
+            plt.close(fig)
+            continue
+        axis_start, axis_end = _calendar_axis_bounds(dataViewSettings)
+        _format_calendar_datetime_axis(ax, axis_start, axis_end)
+        ax.set_ylabel(display)
+        ax.set_title('%s across sites and deployments' % display)
+        if (dataViewSettings.get('fixedScale') and
+                parameter in dataViewSettings.get('scaleSettings', {})):
+            scale = dataViewSettings['scaleSettings'][parameter]
+            ax.set_ylim(scale['min'], scale['max'])
+        legend_handles = [
+            Line2D(
+                [0], [0], color=colors[site],
+                linestyle=('--' if parameter == 'Pressure (dbar)'
+                           else ('-' if fit else 'None')),
+                marker='.' if points or not fit else 'None')
+            for site in plotted_sites]
+        ax.legend(
+            legend_handles, plotted_sites, loc='upper left',
+            bbox_to_anchor=(1, 1.01), fontsize=7)
+        fig._qcs_customize_axes = [(display, ax)]
+        fig._qcs_axes_names = {ax: display}
+        _name_panel(fig, '%s across sites and deployments' % display)
+        years = dataViewSettings.get('filterByYears') or []
+        year_tag = '%d-%d' % (min(years), max(years)) if years else 'selected'
+        parameter_tag = re.sub(r'\([^()]*\)', '', parameter).strip()
+        plt.savefig(
+            'panel2_%s_%s.svg' % (parameter_tag, year_tag),
+            bbox_inches='tight')
+        enable_scroll_zoom(fig)
+        _keep_or_close(fig, show, figures)
+        figure_count += 1
+    if show and figures is None and figure_count:
+        show_panels(browse=figure_count > 1)
+    return figure_count
+
 def plot_database_panel3(database, dataViewSettings):
     site_names = dataViewSettings['siteList']
     parameter_names = dataViewSettings['parameterList']
@@ -1343,8 +1643,8 @@ def _lux_daily_bad(db, index):
     return daily.reindex(index).fillna(False).astype(bool)
 
 
-def _hobo_deployments(db):
-    """Chronological HOBO deployment slices from preserved source provenance.
+def _source_deployments(db):
+    """Chronological deployment slices from preserved source provenance.
 
     Curated workbooks keep the original ``Source file`` written by
     ``build_database``. Treating all products at one site as one time series
@@ -1379,7 +1679,7 @@ def _hobo_light_bad_spans(db):
     if 'Flag_lux' not in db.columns or db.empty:
         return []
     spans = []
-    for _source, group in _hobo_deployments(db):
+    for _source, group in _source_deployments(db):
         times = pd.to_datetime(group['Datetime'], errors='coerce')
         flags = pd.to_numeric(group['Flag_lux'], errors='coerce').eq(4)
         start = end = None
@@ -1409,8 +1709,9 @@ def _hobo_light_bad_spans(db):
 def plot_hobo_params_at_site (database, dataViewSettings, site,
                               figures=None, show=True):
     """HOBO 'Parameters at a site': the selected parameters (temperature and/or
-    light) for ONE site in a single figure spanning EVERY selected year (a
-    deployment crossing the new year is not split). Temperature: dots + optional
+    light) for ONE site in a single figure on the continuous calendar domain of
+    every selected year. Only rows in those years and the optional Time window
+    are drawn. Temperature: dots + optional
     replicate-disagreement bars + one tendency per deployment (floored at 0).
     Light: LINEAR scale with one gap-aware DAILY-PEAK envelope per deployment,
     optional raw points, and the recorded BAD window (Flag_lux == 4) shaded.
@@ -1465,7 +1766,7 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
                 handles.append(h)
             if fit:
                 tendency_added = False
-                for _source, deployment in _hobo_deployments(db):
+                for source, deployment in _source_deployments(db):
                     dep_temp = pd.to_numeric(
                         deployment['Temperature (degC)'], errors='coerce')
                     s = pd.Series(dep_temp.values,
@@ -1477,6 +1778,8 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
                             xp, yp, linestyle='-', color=bcParam[param],
                             label=('Temperature tendency (each deployment)'
                                    if not tendency_added else None))
+                        _name_plot_line(
+                            fig, h, 'Temperature tendency', source=source)
                         if not tendency_added:
                             handles.append(h)
                             tendency_added = True
@@ -1490,7 +1793,7 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
                              label='Light readings')
                 handles.append(h)
             peak_added = False
-            for _source, deployment in _hobo_deployments(db):
+            for source, deployment in _source_deployments(db):
                 peak = _lux_daily_peak(deployment)
                 if not peak.notna().any():
                     continue
@@ -1499,6 +1802,7 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
                     markersize=4, lw=1.2, color=bcParam[param],
                     label=('Daily light peak (each deployment)'
                            if not peak_added else None))
+                _name_plot_line(fig, h, 'Daily light peak', source=source)
                 if not peak_added:
                     handles.append(h)
                     peak_added = True
@@ -1520,7 +1824,8 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
     # the year lives on the X axis since v12.0 (owner: day/month alone was
     # confusing; the title then drops the redundant year list)
     ax1.set_title('HOBO parameters for %s' % site)
-    ax1.xaxis.set_major_formatter(_mdates.DateFormatter('%d/%m/%y'))
+    axis_start, axis_end = _calendar_axis_bounds(dataViewSettings)
+    _format_calendar_datetime_axis(ax1, axis_start, axis_end)
     ax1.legend(handles=handles, fontsize=8)
     _name_panel(fig, 'HOBO parameters', site)
     plt.savefig('hobo_params_%s.svg' % site, bbox_inches='tight')
@@ -1534,9 +1839,10 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
 def plot_hobo_params_across_sites (database, dataViewSettings,
                                    figures=None, show=True):
     """HOBO 'Parameters across sites': ONE figure per selected parameter with
-    every selected deployment overlaid by elapsed time from its own first
-    selected sample, spanning every selected year in one plot. Absolute Time
-    window filtering is applied first; no timestamp match is required.
+    every selected deployment kept on its absolute datetime, spanning the full
+    continuous calendar domain of the selected years in one plot. The optional
+    Time window narrows both the rows and the visible domain; no timestamp match
+    between sites is required.
     Temperature: dots + optional per-deployment tendency (floored at 0). Light:
     a gap-aware daily-peak envelope per deployment (linear scale), with recorded
     BAD days dotted and faded instead of pooled into an ambiguous background
@@ -1551,21 +1857,12 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
 
     n_figs = 0
     for param in params:
-        deployment_count = sum(
-            1
-            for site in site_names
-            for _source, deployment in _hobo_deployments(
-                _hobo_slice_years(database, dataViewSettings, site))
-            if (param in deployment.columns
-                and pd.to_numeric(
-                    deployment[param], errors='coerce').notna().any()))
-        show_endpoint_dates = deployment_count <= 16
         display = renameParameters([param])[0]
         fig, ax = plt.subplots(figsize=(1050 / 100, 540 / 100))
         plt.subplots_adjust(bottom=0.14)
+        plt.xticks(rotation=35)
         ax.grid(True, linestyle='dotted', linewidth=0.5)
         plotted = 0
-        max_day = 0.0
         bad_light_plotted = False
         for site in site_names:
             db = _hobo_slice_years(database, dataViewSettings, site)
@@ -1577,93 +1874,83 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
                 continue
             label_added = False
             if param == 'Luminosity (lux)':
-                for _source, deployment in _hobo_deployments(db):
+                for source, deployment in _source_deployments(db):
                     values = pd.to_numeric(
                         deployment['Luminosity (lux)'], errors='coerce')
                     if not values.notna().any():
                         continue
                     peak = _lux_daily_peak(deployment)
-                    origin = peak.first_valid_index()
-                    if origin is None:
+                    if peak.first_valid_index() is None:
                         continue
-                    x_days = ((pd.DatetimeIndex(deployment['Datetime']) - origin)
-                              .total_seconds() / 86400)
-                    max_day = max(max_day, float(x_days.max()))
-                    peak_days = ((peak.index - origin).total_seconds()
-                                 / 86400)
                     if points:
-                        ax.plot(x_days, values, linestyle='None', marker='.',
+                        ax.plot(deployment['Datetime'], values,
+                                linestyle='None', marker='.',
                                 markersize=2, alpha=0.30, color=colors[site])
                     daily_bad = _lux_daily_bad(deployment, peak.index)
                     usable_peak = peak.mask(daily_bad)
                     bad_peak = peak.where(daily_bad)
                     if usable_peak.notna().any():
-                        ax.plot(
-                            peak_days, usable_peak.values, linestyle='-',
+                        line, = ax.plot(
+                            peak.index, usable_peak.values, linestyle='-',
                             marker='.', markersize=4, lw=1.2,
                             color=colors[site],
                             label=site if not label_added else None)
+                        _name_plot_line(
+                            fig, line, 'Daily light peak - usable',
+                            source=source, site=site)
                         label_added = True
                     if bad_peak.notna().any():
-                        ax.plot(
-                            peak_days, bad_peak.values, linestyle=':',
+                        line, = ax.plot(
+                            peak.index, bad_peak.values, linestyle=':',
                             marker='.', markersize=4, lw=1.0, alpha=0.50,
                             color=colors[site],
                             label=site if not label_added else None)
+                        _name_plot_line(
+                            fig, line, 'Daily light peak - recorded BAD',
+                            source=source, site=site)
                         label_added = True
                         bad_light_plotted = True
-                    if show_endpoint_dates:
-                        _annotate_elapsed_dates(
-                            ax, peak_days, peak.values, peak.index, colors[site])
             else:
-                for _source, deployment in _hobo_deployments(db):
+                for source, deployment in _source_deployments(db):
                     values = pd.to_numeric(
                         deployment['Temperature (degC)'], errors='coerce')
                     if not values.notna().any():
                         continue
-                    origin = deployment['Datetime'].min()
-                    x_days = ((pd.DatetimeIndex(deployment['Datetime']) - origin)
-                              .total_seconds() / 86400)
-                    max_day = max(max_day, float(x_days.max()))
-                    date_x, date_y = x_days, values
-                    date_times = deployment['Datetime']
                     if fit:
                         s = pd.Series(
                             values.values,
                             index=pd.DatetimeIndex(deployment['Datetime'])).dropna()
                         if points:
                             ax.plot(
-                                x_days, values, linestyle='None', marker='.',
+                                deployment['Datetime'], values,
+                                linestyle='None', marker='.',
                                 markersize=3, color=colors[site],
                                 label=site if not label_added else None)
                             label_added = True
                         if len(s) > 3:
                             xp, yp = linear_regression(s, degree=deg)
                             yp = _floor_fit(yp)
-                            xp_days = ((xp - origin).total_seconds()
-                                       / 86400)
-                            ax.plot(
-                                xp_days, yp, linestyle='-', color=colors[site],
+                            line, = ax.plot(
+                                xp, yp, linestyle='-', color=colors[site],
                                 label=site if not label_added else None)
+                            _name_plot_line(
+                                fig, line, 'Temperature tendency',
+                                source=source, site=site)
                             label_added = True
-                            if not points:
-                                date_x, date_y, date_times = xp_days, yp, xp
                     else:
                         ax.plot(
-                            x_days, values, linestyle='None', marker='.',
+                            deployment['Datetime'], values,
+                            linestyle='None', marker='.',
                             markersize=3, color=colors[site],
                             label=site if not label_added else None)
                         label_added = True
-                    if (show_endpoint_dates
-                            and (not fit or points or len(s) > 3)):
-                        _annotate_elapsed_dates(
-                            ax, date_x, date_y, date_times, colors[site])
             plotted += 1
         if plotted == 0:
             plt.close(fig)
             print('\nNo %s data for any selected site.' % param)
             continue
-        _elapsed_days_axis(ax, max_day)
+        axis_start, axis_end = _calendar_axis_bounds(dataViewSettings)
+        _format_calendar_datetime_axis(ax, axis_start, axis_end)
         ax.set_ylabel(display)
         ax.set_title('HOBO %s across sites' % display)
         if dataViewSettings.get('fixedScale') and param in dataViewSettings.get('scaleSettings', {}):
@@ -1675,19 +1962,7 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
                 [0], [0], color='0.35', linestyle=':', marker='.',
                 lw=1.0, alpha=0.50))
             labels.append('Dotted/faded = recorded BAD light')
-        # Let matplotlib keep the legend away from the newly explicit calendar
-        # endpoints; a fixed lower-left legend could cover a low first-day light
-        # peak and its date.
         ax.legend(handles, labels, fontsize=8, loc='best')
-        if not show_endpoint_dates:
-            ax.text(
-                0.99, 0.01,
-                ('Calendar endpoint dates hidden for %d deployments; narrow '
-                 'the site/year selection to show them.' % deployment_count),
-                transform=ax.transAxes, ha='right', va='bottom', fontsize=7,
-                color='0.35',
-                bbox={'facecolor': 'white', 'edgecolor': '0.8',
-                      'alpha': 0.80, 'pad': 1.5})
         _name_panel(fig, 'HOBO %s across sites' % display)
         param_r = re.sub(r'\([^()]*\)', '', param).strip().replace(' ', '_')
         plt.savefig('hobo_%s_across_sites.svg' % param_r, bbox_inches='tight')

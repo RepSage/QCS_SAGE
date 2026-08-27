@@ -9,6 +9,41 @@ leave this file, and only what is still open moves down to the open items,
 dated with when it was last touched. The full text before the 2026-08-18
 pruning is in git (`git show a0994bf:STATUS.md`).
 
+## 2026-08-27 - v13.2.2 calendar-domain PATCH open
+
+- Branch `codex/fix-plot-time-axis` carries the unreleased PATCH. Keep it open
+  until the owner explicitly asks to close and publish it: no tag, merge,
+  installer build, GitHub release or `changelog/v13.2.2.md` exists yet.
+- Plot wheel and toolbar zoom-out now reach 100 times the opening span; Home
+  retains the opening view as its reset target.
+- HOBO panels always use one absolute datetime axis from 1 January of the
+  earliest checked year through 1 January after the latest. Scalar Seaguard
+  mooring Panels 1/2 use the same combined calendar view when the selected
+  Site/Year rows contain more than one `Site` + `Source file` deployment.
+  Single-deployment Seaguard, profiles, T-S and Doppler retain their previous
+  paths. Time window is a finer crop inside a combined calendar domain.
+- Source products remain separate for temperature/parameter tendencies, raw
+  pressure lines and HOBO daily light peaks. Figure options -> Lines now names
+  each deployment-specific line by site, role and source product instead of
+  exposing Matplotlib `_childN` identifiers.
+- The 68/68 self-test passes. A synthetic 32-row, 4-deployment Seaguard replay
+  generated one at-site and two across-site figures on the exact 2024-01-01 to
+  2027-01-01 domain while excluding an unselected 2025 product. A real
+  off-screen Qt Figure options probe confirmed the two semantic line names.
+- Read-only replay of all 48 current Seaguard fundeio products built 129,780
+  rows (0 invalid datetimes, 0 exact duplicates, 19 sites) and generated three
+  across-site panels plus one 6-deployment PAB3 panel on the exact 2019-01-01 to
+  2026-01-01 domain. Every parameter had 48 named source lines; the 2023 data
+  gap stayed visible.
+- Broad automatic Y scales can still be stretched by two known qualified BAD
+  values: `PAB3_2024S2_HOBO_2` reaches 89,384 degrees C and
+  `RRDM03_C_2019S1_SEAGUARD_FUNDEIO_QLF.csv` has one 107.2118 degrees C sample.
+  Both carry flag 4. This PATCH neither hides nor changes qualified values;
+  revising BAD-value display/scale policy requires an explicit owner decision.
+- Next: owner validation through `QCS.bat`, then any additional PATCH fixes.
+  Only an explicit close/publish request starts final audit, changelog,
+  installer smoke, tag, merge and GitHub publication.
+
 ## Open items
 
 **Program and release**

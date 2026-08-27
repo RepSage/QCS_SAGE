@@ -1577,8 +1577,8 @@ import QCS_DataView as _data_view                         # noqa: E402
 
 # Curated/multi-deployment HOBO plots must not turn the first BAD light flag
 # into one site-wide fouling window. Spans remain source-aware, while the
-# across-sites comparison needs no matching datetimes: each selected series
-# starts at elapsed day zero after the absolute Time window is applied.
+# across-sites comparison needs no matching datetimes: deployments keep their
+# absolute dates inside the full selected calendar-year domain.
 _fouling_frame = pd.DataFrame({
     'Datetime': pd.to_datetime([
         '2025-01-01', '2025-01-02', '2025-01-10',
@@ -1602,7 +1602,24 @@ _peak_gap = _data_view._lux_daily_peak(pd.DataFrame({
     'Luminosity (lux)': [100.0, 80.0],
 }))
 assert len(_peak_gap) == 3 and pd.isna(_peak_gap.iloc[1])
-ok.append('time tendencies use elapsed time; daily light lines retain gaps')
+ok.append('time tendencies use real datetime intervals; daily light lines retain gaps')
+
+assert _data_view.selected_year_bounds([2026, 2024]) == (
+    pd.Timestamp('2024-01-01'), pd.Timestamp('2027-01-01'))
+_year_filter_frame = pd.DataFrame({
+    'Datetime': pd.to_datetime([
+        '2024-05-01', '2024-07-01', '2025-07-01',
+        '2026-05-01', '2026-07-01']),
+    'Site': ['A'] * 5,
+})
+_year_filter_settings = {
+    'filterByYears': [2024, 2026],
+    'xAxisStart': pd.Timestamp('2024-06-01'),
+    'xAxisEnd': pd.Timestamp('2026-06-01'),
+}
+assert _data_view._hobo_slice_years(
+    _year_filter_frame, _year_filter_settings, 'A')['Datetime'].tolist() == [
+        pd.Timestamp('2024-07-01'), pd.Timestamp('2026-05-01')]
 
 _across_frame = pd.DataFrame({
     'Datetime': pd.to_datetime([
@@ -1615,7 +1632,7 @@ _across_frame = pd.DataFrame({
 _across_settings = {
     'siteList': ['A', 'B'], 'parameterList': ['Temperature (degC)'],
     'filterByYears': [2025], 'xAxisStart': pd.Timestamp('2025-01-01'),
-    'xAxisEnd': pd.Timestamp('2025-12-31 23:59'),
+    'xAxisEnd': pd.Timestamp('2026-01-01'),
     'tendencyLines': False, 'linearRegressionDegree': None,
     'viewDataPoints': True, 'fixedScale': False, 'scaleSettings': {},
 }
@@ -1630,20 +1647,21 @@ try:
         figures=_across_figs, show=False) == 1
     assert len(_across_figs) == 1
     _across_ax = _data_view.plt.gcf().axes[0]
-    _deployment_x = [np.asarray(line.get_xdata(), dtype=float)
-                     for line in _across_ax.lines]
-    assert len(_deployment_x) == 3
-    assert all(np.allclose(values, [0.0, 1.0]) for values in _deployment_x)
+    _deployment_dates = [pd.to_datetime(line.get_xdata()).tolist()
+                         for line in _across_ax.lines]
+    assert _deployment_dates == [
+        [pd.Timestamp('2025-01-01'), pd.Timestamp('2025-01-02')],
+        [pd.Timestamp('2025-06-01'), pd.Timestamp('2025-06-02')],
+        [pd.Timestamp('2025-09-01'), pd.Timestamp('2025-09-02')],
+    ]
     assert set(_across_ax.get_legend_handles_labels()[1]) == {'A', 'B'}
-    assert 'Elapsed days' in _across_ax.get_xlabel()
-    assert 'deployment' in _across_ax.get_xlabel()
-    assert len(_across_ax.texts) == 6
-    assert {text.get_text() for text in _across_ax.texts} == {
-        '01/01/25', '02/01/25', '01/06/25', '02/06/25',
-        '01/09/25', '02/09/25',
-    }
-    assert ({text.get_color() for text in _across_ax.texts}
-            <= {line.get_color() for line in _across_ax.lines})
+    assert _across_ax.get_xlabel() == 'Datetime'
+    import matplotlib.dates as _plot_dates                 # noqa: E402
+    assert np.allclose(
+        sorted(_across_ax.get_xlim()),
+        [_plot_dates.date2num(pd.Timestamp('2025-01-01')),
+         _plot_dates.date2num(pd.Timestamp('2026-01-01'))])
+    assert len(_across_ax.texts) == 0
 
     _light_frame = pd.DataFrame({
         'Datetime': pd.to_datetime([
@@ -1665,6 +1683,10 @@ try:
     _site_ax = _site_figs[0].axes[0]
     assert all(line.get_color() != '#b30000' for line in _site_ax.lines)
     assert len(_site_ax.patches) == 2
+    assert np.allclose(
+        sorted(_site_ax.get_xlim()),
+        [_plot_dates.date2num(pd.Timestamp('2025-01-01')),
+         _plot_dates.date2num(pd.Timestamp('2026-01-01'))])
     _data_view.plt.close(_site_figs[0])
 
     _light_figs = []
@@ -1676,7 +1698,81 @@ try:
     assert len(_light_ax.patches) == 0
     assert sum(line.get_linestyle() == ':' for line in _light_ax.lines) == 2
     assert _light_ax.get_legend_handles_labels()[1] == ['A']
-    assert len(_light_ax.texts) == 4
+    assert len(_light_ax.texts) == 0
+    assert sorted(_light_figs[0]._qcs_line_names.values()) == [
+        'A - Daily light peak - recorded BAD - A-new',
+        'A - Daily light peak - recorded BAD - A-old',
+        'A - Daily light peak - usable - A-new',
+        'A - Daily light peak - usable - A-old',
+    ]
+
+    _scalar_rows = []
+    for _site, _source, _start, _offset in [
+            ('A', 'A_2024.xlsx', '2024-03-10', 0.0),
+            ('A', 'A_2026.xlsx', '2026-08-10', 0.4),
+            ('B', 'B_2024.xlsx', '2024-09-10', 1.0),
+            ('B', 'B_2026.xlsx', '2026-04-10', 1.4),
+            ('A', 'A_2025_unselected.xlsx', '2025-05-10', 9.0)]:
+        for _sample, _timestamp in enumerate(
+                pd.date_range(_start, periods=5, freq='h')):
+            _scalar_rows.append({
+                'Datetime': _timestamp,
+                'Site': _site,
+                'Source file': _source,
+                'Temperature (degC)': 24.0 + _offset + _sample * 0.05,
+                'Pressure (dbar)': 5.0 + _offset + np.sin(_sample),
+            })
+    _scalar_frame = pd.DataFrame(_scalar_rows)
+    _scalar_settings = {
+        'siteList': ['A', 'B'],
+        'parameterList': ['Temperature (degC)', 'Pressure (dbar)'],
+        'filterByYears': [2024, 2026],
+        'xAxisStart': pd.Timestamp('2024-01-01'),
+        'xAxisEnd': pd.Timestamp('2027-01-01'),
+        'tendencyLines': True, 'linearRegressionDegree': 1,
+        'viewDataPoints': True, 'fixedScale': False, 'scaleSettings': {},
+    }
+    assert _data_view.deployment_count(
+        _scalar_frame, _scalar_settings) == 4
+    assert _data_view.is_multi_deployment_selection(
+        _scalar_frame, _scalar_settings)
+    _single_settings = dict(_scalar_settings)
+    _single_settings['siteList'] = ['A']
+    _single_settings['filterByYears'] = [2024]
+    assert not _data_view.is_multi_deployment_selection(
+        _scalar_frame, _single_settings)
+
+    _scalar_at_figs = []
+    assert _data_view.plot_scalar_multi_params_at_site(
+        _scalar_frame, _scalar_settings, 'A',
+        figures=_scalar_at_figs, show=False) == 1
+    assert len(_scalar_at_figs[0].axes) == 2
+    assert np.allclose(
+        sorted(_scalar_at_figs[0].axes[0].get_xlim()),
+        [_plot_dates.date2num(pd.Timestamp('2024-01-01')),
+         _plot_dates.date2num(pd.Timestamp('2027-01-01'))])
+    assert len(_scalar_at_figs[0]._qcs_line_names) == 4
+    assert not any(
+        '2025_unselected' in name
+        for name in _scalar_at_figs[0]._qcs_line_names.values())
+
+    _scalar_across_figs = []
+    assert _data_view.plot_scalar_multi_params_across_sites(
+        _scalar_frame, _scalar_settings,
+        figures=_scalar_across_figs, show=False) == 2
+    assert len(_scalar_across_figs) == 2
+    assert all(np.allclose(
+        sorted(fig.axes[0].get_xlim()),
+        [_plot_dates.date2num(pd.Timestamp('2024-01-01')),
+         _plot_dates.date2num(pd.Timestamp('2027-01-01'))])
+        for fig in _scalar_across_figs)
+    assert all(
+        [text.get_text() for text in fig.axes[0].get_legend().get_texts()]
+        == ['A', 'B'] for fig in _scalar_across_figs)
+    assert not any(
+        '2025_unselected' in name
+        for fig in _scalar_across_figs
+        for name in fig._qcs_line_names.values())
 
     _broad_frame = pd.concat([
         pd.DataFrame({
@@ -1696,13 +1792,13 @@ try:
     assert _data_view.plot_hobo_params_across_sites(
         _broad_frame, _broad_settings,
         figures=_broad_figs, show=False) == 1
-    assert len(_broad_figs[0].axes[0].texts) == 1
-    assert 'hidden for 17 deployments' in _broad_figs[0].axes[0].texts[0].get_text()
+    assert len(_broad_figs[0].axes[0].texts) == 0
 finally:
     _data_view.plt.savefig = _real_savefig
     _data_view.show_panels = _real_show_panels
     _data_view.plt.close('all')
-ok.append('HOBO panels: elapsed deployments carry endpoint dates; BAD is shaded at-site and dotted across sites')
+ok.append('HOBO panels: absolute calendar years; BAD is shaded at-site and dotted across sites')
+ok.append('scalar multi-deployments: source-aware calendar panels; single deployments stay separate')
 
 _gap_times = pd.date_range('2026-01-01', periods=3, freq='5min')
 _gap_frame = pd.DataFrame({
@@ -1740,9 +1836,25 @@ with _tempfile.TemporaryDirectory() as _gap_out:
                 button='up', step=1)._process()
     _span_after = abs(np.diff(_wheel_ax.get_xlim())[0])
     assert _span_after < _span_before, (_span_before, _span_after)
+    # v13.2.1 capped zoom-out at exactly the opening view. Two down notches
+    # after one up notch must now pass it; repeated notches stay finite at 100x.
+    for _ in range(2):
+        _MouseEvent('scroll_event', _wheel_fig.canvas, _xpx, _ypx,
+                    button='down', step=-1)._process()
+    _span_zoomed_out = abs(np.diff(_wheel_ax.get_xlim())[0])
+    assert _span_zoomed_out > _span_before, (
+        _span_before, _span_zoomed_out)
+    for _ in range(120):
+        _MouseEvent('scroll_event', _wheel_fig.canvas, _xpx, _ypx,
+                    button='down', step=-1)._process()
+    _span_at_cap = abs(np.diff(_wheel_ax.get_xlim())[0])
+    assert 90 * _span_before < _span_at_cap <= 100.000001 * _span_before, (
+        _span_before, _span_at_cap)
+    _wheel_fig._qcs_reset_view()
+    assert np.isclose(abs(np.diff(_wheel_ax.get_xlim())[0]), _span_before)
     for _gap_fig in _gap_figs:
         _plt.close(_gap_fig)
-ok.append('Doppler U/V gaps: break/connect/both produce distinct named panels')
+ok.append('Doppler U/V gaps and plot zoom: distinct panels; 100x zoom-out; Home reset')
 
 # Step 1 may disable Instrument only for an unmistakable qualified QCS header.
 # The legacy layout helper deliberately defaults unknown tables to TSCP, so the
