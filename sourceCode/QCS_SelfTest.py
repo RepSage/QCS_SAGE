@@ -1260,6 +1260,7 @@ assert upd.is_newer('v11.1.1', 'v11.1'), 'a patch outranks its base'
 assert not upd.is_newer('v11.1', 'v11.1')
 assert not upd.is_newer('v10.0', 'v11.1'), 'never offer a downgrade'
 assert not upd.is_newer('nightly', 'v11.1'), 'a malformed remote tag is ignored'
+assert upd.NEW_ISSUE_PAGE == 'https://github.com/RepSage/QCS_SAGE/issues/new'
 ok.append('update version comparison (upgrade yes / same no / downgrade no / junk tag no)')
 
 # ------------------------------------------------- 32. writable app dir (v11.2)

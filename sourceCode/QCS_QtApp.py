@@ -3104,6 +3104,18 @@ class QtShell(QMainWindow):
             % data.QCS_VERSION))
         helpm.addAction(about)
 
+        feedback = QAction('Bugs && Suggestions', self)
+        feedback.setStatusTip(
+            'Report a bug or share a suggestion in a new GitHub issue.')
+        feedback.triggered.connect(self._open_issue_form)
+        mb.addAction(feedback)
+
+    @staticmethod
+    def _open_issue_form():
+        """Open a blank GitHub issue so the operator can describe anything."""
+        import webbrowser
+        webbrowser.open(upd.NEW_ISSUE_PAGE)
+
     # ----- update check (the network parts are shared with the tk shell) -----
     def check_for_updates(self):
         """Help > Check for updates: reports EVERY outcome (unlike the silent
