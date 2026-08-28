@@ -7,7 +7,9 @@ The shipped entry point is QCS_QtApp.py; this module preserves the older Tk
 surface for compatibility and standalone diagnostics.
 """
 import os
+import queue
 import re
+import threading
 import webbrowser
 
 import QCS_DataHandler as data
@@ -52,7 +54,7 @@ def show_about():
 
 
 def open_feedback_form(parent):
-    """Tk fallback for the local feedback form used by the Qt release."""
+    """Tk fallback for the direct feedback form used by the Qt release."""
     dialog = Toplevel(parent)
     dialog.title('Bugs & Suggestions')
     dialog.transient(parent)
@@ -64,23 +66,22 @@ def open_feedback_form(parent):
     outer.pack(fill=BOTH, expand=True)
     intro = ttk.Label(
         outer,
-        text=('Describe a problem or suggestion. QCS will prepare an email to '
-              'the support contact: %s.'
-              % feedback_api.SUPPORT_EMAIL),
+        text=('Describe a problem or suggestion. Title and description are '
+              'required.'),
         wraplength=550)
     intro.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 12))
 
     ttk.Label(outer, text='Your name (optional):').grid(
         row=1, column=0, sticky='w', pady=4)
     name_var = StringVar()
-    ttk.Entry(outer, textvariable=name_var).grid(
-        row=1, column=1, sticky='ew', pady=4)
+    name_entry = ttk.Entry(outer, textvariable=name_var)
+    name_entry.grid(row=1, column=1, sticky='ew', pady=4)
 
     ttk.Label(outer, text='Title:').grid(
         row=2, column=0, sticky='w', pady=4)
     title_var = StringVar()
-    ttk.Entry(outer, textvariable=title_var).grid(
-        row=2, column=1, sticky='ew', pady=4)
+    title_entry = ttk.Entry(outer, textvariable=title_var)
+    title_entry.grid(row=2, column=1, sticky='ew', pady=4)
 
     ttk.Label(outer, text='Description:').grid(
         row=3, column=0, columnspan=2, sticky='w', pady=(8, 4))
@@ -89,9 +90,10 @@ def open_feedback_form(parent):
 
     note = ttk.Label(
         outer,
-        text=('The message is not sent automatically. Review it in your email '
-              'application and select Send. If no email application opens, '
-              'use Copy report instead.'),
+        text=('The report will be public. QCS submits it directly to the '
+              'project issue tracker. Do not include passwords, private data '
+              'or other sensitive information. If submission fails, use Copy '
+              'report.'),
         wraplength=550)
     note.grid(row=5, column=0, columnspan=2, sticky='ew', pady=12)
 
@@ -110,33 +112,84 @@ def open_feedback_form(parent):
         dialog.clipboard_append(report)
         messagebox.showinfo(
             'Bugs & Suggestions',
-            'The report was copied. Paste it into an email to %s.'
-            % feedback_api.SUPPORT_EMAIL,
+            'The report was copied to the clipboard.',
             parent=dialog)
 
-    def open_email():
+    results = queue.Queue()
+    busy = [False]
+
+    def set_busy(value):
+        busy[0] = value
+        state = DISABLED if value else NORMAL
+        name_entry.configure(state=state)
+        title_entry.configure(state=state)
+        description.configure(state=state)
+        cancel_button.configure(state=state)
+        copy_button.configure(state=state)
+        submit_button.configure(state=state)
+        submit_button.configure(
+            text='Submitting...' if value else 'Submit report')
+
+    def submit_worker(report_values):
         try:
-            feedback_api.open_feedback_email(
-                *values(), data.QCS_VERSION)
+            receipt = feedback_api.submit_feedback(
+                *report_values, data.QCS_VERSION)
+            results.put((True, receipt))
         except feedback_api.FeedbackError as exc:
-            messagebox.showwarning('Bugs & Suggestions', str(exc), parent=dialog)
+            results.put((False, str(exc)))
+        except Exception:
+            results.put((
+                False,
+                'The feedback report could not be sent. Use Copy report instead.'))
+
+    def poll_submission():
+        try:
+            succeeded, detail = results.get_nowait()
+        except queue.Empty:
+            dialog.after(100, poll_submission)
+            return
+        set_busy(False)
+        if not succeeded:
+            messagebox.showwarning(
+                'Bugs & Suggestions', detail, parent=dialog)
             return
         messagebox.showinfo(
             'Bugs & Suggestions',
-            'Your email application was opened. Review the message and select Send.',
+            'Thank you. The report was submitted as Issue #%d.'
+            % detail['issue_number'],
             parent=dialog)
         dialog.destroy()
 
+    def submit_report():
+        report_values = values()
+        try:
+            feedback_api.validate_report(*report_values)
+        except feedback_api.FeedbackError as exc:
+            messagebox.showwarning(
+                'Bugs & Suggestions', str(exc), parent=dialog)
+            return
+        set_busy(True)
+        threading.Thread(
+            target=submit_worker, args=(report_values,), daemon=True).start()
+        dialog.after(100, poll_submission)
+
+    def close_dialog():
+        if not busy[0]:
+            dialog.destroy()
+
     actions = ttk.Frame(outer)
     actions.grid(row=6, column=0, columnspan=2, sticky='e')
-    ttk.Button(actions, text='Cancel', command=dialog.destroy).pack(
-        side=LEFT, padx=(0, 8))
-    ttk.Button(actions, text='Copy report', command=copy_report).pack(
-        side=LEFT, padx=(0, 8))
-    ttk.Button(actions, text='Open email', command=open_email).pack(side=LEFT)
+    cancel_button = ttk.Button(actions, text='Cancel', command=close_dialog)
+    cancel_button.pack(side=LEFT, padx=(0, 8))
+    copy_button = ttk.Button(
+        actions, text='Copy report', command=copy_report)
+    copy_button.pack(side=LEFT, padx=(0, 8))
+    submit_button = ttk.Button(
+        actions, text='Submit report', command=submit_report)
+    submit_button.pack(side=LEFT)
     outer.columnconfigure(1, weight=1)
     outer.rowconfigure(4, weight=1)
-    dialog.protocol('WM_DELETE_WINDOW', dialog.destroy)
+    dialog.protocol('WM_DELETE_WINDOW', close_dialog)
     dialog.wait_window()
 
 

@@ -38,6 +38,12 @@ _prbody.md
 _diag_*.py
 _smoke_test.py
 
+# Cloudflare Worker local dependencies, state and secrets
+feedback-worker/node_modules/
+feedback-worker/.wrangler/
+feedback-worker/.dev.vars*
+feedback-worker/.env*
+
 # Packaging build artifacts (rebuilt at will from packaging/*.spec + .iss)
 packaging/dist/
 packaging/Output/

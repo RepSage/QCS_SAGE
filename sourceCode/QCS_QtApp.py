@@ -2435,7 +2435,9 @@ def qt_choose_variables(candidates, root=None):
 
 
 class FeedbackDialog(QDialog):
-    """Collect a report locally and prepare it in the default email app."""
+    """Collect a report and submit it without blocking the interface."""
+
+    submission_finished = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2445,9 +2447,8 @@ class FeedbackDialog(QDialog):
 
         layout = QVBoxLayout(self)
         intro = QLabel(
-            'Describe a problem or suggestion. QCS will prepare an email to '
-            'the support contact: <b>%s</b>.'
-            % feedback_api.SUPPORT_EMAIL)
+            'Describe a problem or suggestion. Title and description are '
+            'required.')
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
@@ -2479,27 +2480,29 @@ class FeedbackDialog(QDialog):
         self._update_count()
 
         note = QLabel(
-            '<b>The message is not sent automatically.</b> Review it in your '
-            'email application and select Send. If no email application opens, '
-            'use Copy report instead.')
+            '<b>The report will be public.</b> QCS submits it directly to the '
+            'project issue tracker. Do not include passwords, private data or '
+            'other sensitive information. If submission fails, use Copy report.')
         note.setWordWrap(True)
         layout.addWidget(note)
 
         buttons = QHBoxLayout()
-        cancel = QPushButton('Cancel')
-        cancel.clicked.connect(self.reject)
-        copy_report = QPushButton('Copy report')
-        copy_report.setObjectName('copyFeedbackReport')
-        copy_report.clicked.connect(self._copy_report)
-        open_email = QPushButton('Open email')
-        open_email.setObjectName('openFeedbackEmail')
-        open_email.setDefault(True)
-        open_email.clicked.connect(self._open_email)
+        self.cancel_button = QPushButton('Cancel')
+        self.cancel_button.clicked.connect(self.reject)
+        self.copy_button = QPushButton('Copy report')
+        self.copy_button.setObjectName('copyFeedbackReport')
+        self.copy_button.clicked.connect(self._copy_report)
+        self.submit_button = QPushButton('Submit report')
+        self.submit_button.setObjectName('submitFeedbackReport')
+        self.submit_button.setDefault(True)
+        self.submit_button.clicked.connect(self._submit)
         buttons.addStretch()
-        buttons.addWidget(cancel)
-        buttons.addWidget(copy_report)
-        buttons.addWidget(open_email)
+        buttons.addWidget(self.cancel_button)
+        buttons.addWidget(self.copy_button)
+        buttons.addWidget(self.submit_button)
         layout.addLayout(buttons)
+        self._busy = False
+        self.submission_finished.connect(self._submission_finished)
 
     def _values(self):
         return (self.name_edit.text(), self.title_edit.text(),
@@ -2524,21 +2527,64 @@ class FeedbackDialog(QDialog):
         QApplication.clipboard().setText(report)
         QMessageBox.information(
             self, 'Bugs & Suggestions',
-            'The report was copied. Paste it into an email to %s.'
-            % feedback_api.SUPPORT_EMAIL)
+            'The report was copied to the clipboard.')
 
-    def _open_email(self):
+    def _submit(self):
         try:
-            feedback_api.open_feedback_email(
-                *self._values(), data.QCS_VERSION)
+            feedback_api.validate_report(*self._values())
         except feedback_api.FeedbackError as exc:
             QMessageBox.warning(self, 'Bugs & Suggestions', str(exc))
             return
+        values = self._values()
+        self._set_busy(True)
+        threading.Thread(
+            target=self._submit_worker, args=(values,), daemon=True).start()
+
+    def _submit_worker(self, values):
+        try:
+            receipt = feedback_api.submit_feedback(
+                *values, data.QCS_VERSION)
+            result = (True, receipt)
+        except feedback_api.FeedbackError as exc:
+            result = (False, str(exc))
+        except Exception:
+            result = (
+                False,
+                'The feedback report could not be sent. Use Copy report instead.')
+        self.submission_finished.emit(result)
+
+    @Slot(object)
+    def _submission_finished(self, result):
+        self._set_busy(False)
+        succeeded, detail = result
+        if not succeeded:
+            QMessageBox.warning(self, 'Bugs & Suggestions', detail)
+            return
         QMessageBox.information(
             self, 'Bugs & Suggestions',
-            'Your email application was opened. Review the message and '
-            'select Send.')
+            'Thank you. The report was submitted as Issue #%d.'
+            % detail['issue_number'])
         self.accept()
+
+    def _set_busy(self, busy):
+        self._busy = busy
+        self.name_edit.setEnabled(not busy)
+        self.title_edit.setEnabled(not busy)
+        self.description_edit.setEnabled(not busy)
+        self.cancel_button.setEnabled(not busy)
+        self.copy_button.setEnabled(not busy)
+        self.submit_button.setEnabled(not busy)
+        self.submit_button.setText('Submitting...' if busy else 'Submit report')
+
+    def closeEvent(self, event):
+        if self._busy:
+            event.ignore()
+            return
+        super().closeEvent(event)
+
+    def reject(self):
+        if not self._busy:
+            super().reject()
 
 
 class QtShell(QMainWindow):
@@ -3214,7 +3260,7 @@ class QtShell(QMainWindow):
 
         feedback = QAction('Bugs && Suggestions', self)
         feedback.setStatusTip(
-            'Describe a problem or suggestion and prepare a support email.')
+            'Describe a problem or suggestion and submit it to the project.')
         feedback.triggered.connect(self._open_feedback_form)
         mb.addAction(feedback)
 

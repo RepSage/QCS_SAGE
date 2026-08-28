@@ -1,0 +1,17 @@
+name = "qcs-sage-feedback"
+main = "src/index.js"
+compatibility_date = "2026-08-28"
+workers_dev = true
+preview_urls = false
+minify = true
+
+[secrets]
+required = [ "GITHUB_TOKEN" ]
+
+[[ratelimits]]
+name = "FEEDBACK_RATE_LIMITER"
+namespace_id = "1330001"
+
+  [ratelimits.simple]
+  limit = 3
+  period = 60
