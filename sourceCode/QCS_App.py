@@ -23,6 +23,7 @@ from tkinter import ttk, messagebox
 
 import QCS_Main as qual
 import QCS_DatabaseView as viz
+import QCS_Feedback as feedback_api
 import QCS_Update as updater
 
 # Both tools share ONE preferences dict, so saving from either tab writes the
@@ -48,6 +49,95 @@ def show_about():
         'Quality Control System (SAGE)  %s\n\n'
         'Qualification and visualization of oceanographic sensor data\n'
         '(Seaguard/TSCP and HOBO Pendant loggers).' % data.QCS_VERSION)
+
+
+def open_feedback_form(parent):
+    """Tk fallback for the local feedback form used by the Qt release."""
+    dialog = Toplevel(parent)
+    dialog.title('Bugs & Suggestions')
+    dialog.transient(parent)
+    dialog.grab_set()
+    dialog.geometry('600x500')
+    theme.set_window_icon(dialog)
+
+    outer = ttk.Frame(dialog, padding=16)
+    outer.pack(fill=BOTH, expand=True)
+    intro = ttk.Label(
+        outer,
+        text=('Describe a problem or suggestion without signing in to GitHub. '
+              'QCS will prepare an email to the support contact: %s.'
+              % feedback_api.SUPPORT_EMAIL),
+        wraplength=550)
+    intro.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 12))
+
+    ttk.Label(outer, text='Your name (optional):').grid(
+        row=1, column=0, sticky='w', pady=4)
+    name_var = StringVar()
+    ttk.Entry(outer, textvariable=name_var).grid(
+        row=1, column=1, sticky='ew', pady=4)
+
+    ttk.Label(outer, text='Title:').grid(
+        row=2, column=0, sticky='w', pady=4)
+    title_var = StringVar()
+    ttk.Entry(outer, textvariable=title_var).grid(
+        row=2, column=1, sticky='ew', pady=4)
+
+    ttk.Label(outer, text='Description:').grid(
+        row=3, column=0, columnspan=2, sticky='w', pady=(8, 4))
+    description = Text(outer, height=13, wrap=WORD)
+    description.grid(row=4, column=0, columnspan=2, sticky='nsew')
+
+    note = ttk.Label(
+        outer,
+        text=('The message is not sent automatically. Review it in your email '
+              'application and select Send. If no email application opens, '
+              'use Copy report instead.'),
+        wraplength=550)
+    note.grid(row=5, column=0, columnspan=2, sticky='ew', pady=12)
+
+    def values():
+        return (name_var.get(), title_var.get(),
+                description.get('1.0', 'end-1c'))
+
+    def copy_report():
+        try:
+            report = feedback_api.build_report_text(
+                *values(), data.QCS_VERSION)
+        except feedback_api.FeedbackError as exc:
+            messagebox.showwarning('Bugs & Suggestions', str(exc), parent=dialog)
+            return
+        dialog.clipboard_clear()
+        dialog.clipboard_append(report)
+        messagebox.showinfo(
+            'Bugs & Suggestions',
+            'The report was copied. Paste it into an email to %s.'
+            % feedback_api.SUPPORT_EMAIL,
+            parent=dialog)
+
+    def open_email():
+        try:
+            feedback_api.open_feedback_email(
+                *values(), data.QCS_VERSION)
+        except feedback_api.FeedbackError as exc:
+            messagebox.showwarning('Bugs & Suggestions', str(exc), parent=dialog)
+            return
+        messagebox.showinfo(
+            'Bugs & Suggestions',
+            'Your email application was opened. Review the message and select Send.',
+            parent=dialog)
+        dialog.destroy()
+
+    actions = ttk.Frame(outer)
+    actions.grid(row=6, column=0, columnspan=2, sticky='e')
+    ttk.Button(actions, text='Cancel', command=dialog.destroy).pack(
+        side=LEFT, padx=(0, 8))
+    ttk.Button(actions, text='Copy report', command=copy_report).pack(
+        side=LEFT, padx=(0, 8))
+    ttk.Button(actions, text='Open email', command=open_email).pack(side=LEFT)
+    outer.columnconfigure(1, weight=1)
+    outer.rowconfigure(4, weight=1)
+    dialog.protocol('WM_DELETE_WINDOW', dialog.destroy)
+    dialog.wait_window()
 
 
 def main(run=True):
@@ -281,7 +371,7 @@ def main(run=True):
     menubar.add_cascade(label='Help', menu=m_help)
     menubar.add_command(
         label='Bugs & Suggestions',
-        command=lambda: webbrowser.open(updater.NEW_ISSUE_PAGE))
+        command=lambda: open_feedback_form(root))
 
     root.config(menu=menubar)
 

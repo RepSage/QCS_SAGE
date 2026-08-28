@@ -71,6 +71,7 @@ import QCS_DataHandler as data
 # installs the tk crash handler at import; main() installs the Qt one after
 import QCS_DataView as view      # the panel plots (show_panels hook)
 import QCS_DatabaseView as dbv
+import QCS_Feedback as feedback_api
 import QCS_Update as upd
 from QCS_QtCurated import CuratedDatabaseTab
 from QCS_QtViz import VisualizationTab
@@ -2433,6 +2434,113 @@ def qt_choose_variables(candidates, root=None):
     return dlg.chosen() if dlg.exec() == QDialog.DialogCode.Accepted else None
 
 
+class FeedbackDialog(QDialog):
+    """Collect a report locally and prepare it in the default email app."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Bugs & Suggestions')
+        self.setWindowIcon(_app_icon())
+        self.resize(590, 500)
+
+        layout = QVBoxLayout(self)
+        intro = QLabel(
+            'Describe a problem or suggestion without signing in to GitHub. '
+            'QCS will prepare an email to the support contact: <b>%s</b>.'
+            % feedback_api.SUPPORT_EMAIL)
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        form = QFormLayout()
+        self.name_edit = QLineEdit()
+        self.name_edit.setObjectName('feedbackName')
+        self.name_edit.setMaxLength(feedback_api.MAX_NAME_LENGTH)
+        self.name_edit.setPlaceholderText('Optional')
+        form.addRow('Your name (optional):', self.name_edit)
+
+        self.title_edit = QLineEdit()
+        self.title_edit.setObjectName('feedbackTitle')
+        self.title_edit.setMaxLength(feedback_api.MAX_TITLE_LENGTH)
+        self.title_edit.setPlaceholderText('Short summary of the problem or suggestion')
+        form.addRow('Title:', self.title_edit)
+        layout.addLayout(form)
+
+        layout.addWidget(QLabel('Description:'))
+        self.description_edit = QPlainTextEdit()
+        self.description_edit.setObjectName('feedbackDescription')
+        self.description_edit.setPlaceholderText(
+            'What were you doing, what happened, and what did you expect?')
+        self.description_edit.textChanged.connect(self._update_count)
+        layout.addWidget(self.description_edit, 1)
+
+        self.count_label = QLabel()
+        self.count_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        layout.addWidget(self.count_label)
+        self._update_count()
+
+        note = QLabel(
+            '<b>The message is not sent automatically.</b> Review it in your '
+            'email application and select Send. If no email application opens, '
+            'use Copy report instead.')
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        buttons = QHBoxLayout()
+        cancel = QPushButton('Cancel')
+        cancel.clicked.connect(self.reject)
+        copy_report = QPushButton('Copy report')
+        copy_report.setObjectName('copyFeedbackReport')
+        copy_report.clicked.connect(self._copy_report)
+        open_email = QPushButton('Open email')
+        open_email.setObjectName('openFeedbackEmail')
+        open_email.setDefault(True)
+        open_email.clicked.connect(self._open_email)
+        buttons.addStretch()
+        buttons.addWidget(cancel)
+        buttons.addWidget(copy_report)
+        buttons.addWidget(open_email)
+        layout.addLayout(buttons)
+
+    def _values(self):
+        return (self.name_edit.text(), self.title_edit.text(),
+                self.description_edit.toPlainText())
+
+    def _update_count(self):
+        count = len(self.description_edit.toPlainText())
+        self.count_label.setText(
+            '%d / %d characters' %
+            (count, feedback_api.MAX_DESCRIPTION_LENGTH))
+
+    def _report_text(self):
+        return feedback_api.build_report_text(
+            *self._values(), data.QCS_VERSION)
+
+    def _copy_report(self):
+        try:
+            report = self._report_text()
+        except feedback_api.FeedbackError as exc:
+            QMessageBox.warning(self, 'Bugs & Suggestions', str(exc))
+            return
+        QApplication.clipboard().setText(report)
+        QMessageBox.information(
+            self, 'Bugs & Suggestions',
+            'The report was copied. Paste it into an email to %s.'
+            % feedback_api.SUPPORT_EMAIL)
+
+    def _open_email(self):
+        try:
+            feedback_api.open_feedback_email(
+                *self._values(), data.QCS_VERSION)
+        except feedback_api.FeedbackError as exc:
+            QMessageBox.warning(self, 'Bugs & Suggestions', str(exc))
+            return
+        QMessageBox.information(
+            self, 'Bugs & Suggestions',
+            'Your email application was opened. Review the message and '
+            'select Send.')
+        self.accept()
+
+
 class QtShell(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -3106,15 +3214,13 @@ class QtShell(QMainWindow):
 
         feedback = QAction('Bugs && Suggestions', self)
         feedback.setStatusTip(
-            'Report a bug or share a suggestion in a new GitHub issue.')
-        feedback.triggered.connect(self._open_issue_form)
+            'Describe a problem or suggestion and prepare a support email.')
+        feedback.triggered.connect(self._open_feedback_form)
         mb.addAction(feedback)
 
-    @staticmethod
-    def _open_issue_form():
-        """Open a blank GitHub issue so the operator can describe anything."""
-        import webbrowser
-        webbrowser.open(upd.NEW_ISSUE_PAGE)
+    def _open_feedback_form(self):
+        """Open the local report form; no GitHub account is required."""
+        FeedbackDialog(self).exec()
 
     # ----- update check (the network parts are shared with the tk shell) -----
     def check_for_updates(self):

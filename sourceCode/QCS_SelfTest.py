@@ -6,6 +6,7 @@ import pandas as pd
 
 import QCS_Tests as QC
 import QCS_DataHandler as data
+import QCS_Feedback as feedback_api
 
 # flag layouts (param key per flag position), matching the test sequence order
 MOORING_LAYOUT = (['T', 'S', 'C', 'P', 'O2', 'pH', 'chl', 'tur', 'PAR', 'CO2'] +        # sensor range
@@ -1260,8 +1261,43 @@ assert upd.is_newer('v11.1.1', 'v11.1'), 'a patch outranks its base'
 assert not upd.is_newer('v11.1', 'v11.1')
 assert not upd.is_newer('v10.0', 'v11.1'), 'never offer a downgrade'
 assert not upd.is_newer('nightly', 'v11.1'), 'a malformed remote tag is ignored'
-assert upd.NEW_ISSUE_PAGE == 'https://github.com/RepSage/QCS_SAGE/issues/new'
 ok.append('update version comparison (upgrade yes / same no / downgrade no / junk tag no)')
+
+# ------------------------------- 31b. local feedback email (v13.3)
+from urllib.parse import parse_qs, urlsplit
+try:
+    feedback_api.validate_report('', '', 'description')
+    raise AssertionError('blank feedback title must be refused')
+except feedback_api.FeedbackError:
+    pass
+try:
+    feedback_api.validate_report('', 'title', '  ')
+    raise AssertionError('blank feedback description must be refused')
+except feedback_api.FeedbackError:
+    pass
+_report = feedback_api.build_report_text(
+    '  Ada  ', ' Unexpected flag & chart ', ' Steps:\n1. Open file ',
+    data.QCS_VERSION)
+assert _report == (
+    'Name: Ada\nQCS version: %s\n\nTitle: Unexpected flag & chart\n\n'
+    'Description:\nSteps:\n1. Open file' % data.QCS_VERSION), _report
+_opened = []
+_uri = feedback_api.open_feedback_email(
+    'Ada', 'Unexpected flag & chart', 'Steps:\n1. Open file',
+    data.QCS_VERSION, opener=_opened.append)
+_parts = urlsplit(_uri)
+_query = parse_qs(_parts.query)
+assert _parts.scheme == 'mailto' and _parts.path == feedback_api.SUPPORT_EMAIL
+assert _query['subject'] == ['[QCS %s] Unexpected flag & chart' % data.QCS_VERSION]
+assert _query['body'] == [_report] and _opened == [_uri]
+try:
+    feedback_api.open_feedback_email(
+        '', 'Title', 'Description', data.QCS_VERSION,
+        opener=lambda _uri: (_ for _ in ()).throw(OSError('no handler')))
+    raise AssertionError('email application failure must be reported')
+except feedback_api.FeedbackError as exc:
+    assert 'Copy report' in str(exc)
+ok.append('feedback email (validation / exact encoded content / safe failure)')
 
 # ------------------------------------------------- 32. writable app dir (v11.2)
 # From source it must be the script folder - byte-identical settings path to
