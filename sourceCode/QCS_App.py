@@ -1,7 +1,7 @@
 """Legacy Tk QCS shell, retained as a development fallback.
 
 Hosts both tools in one window: a menu bar
-(File / Edit / View / Tools / Help) plus a notebook with two tabs,
+(File / Edit / View / Tools / Help / Bugs & Suggestions) plus a notebook with two tabs,
 "Data Qualification" (QCS_Main) and "Data Visualization" (QCS_DatabaseView).
 The shipped entry point is QCS_QtApp.py; this module preserves the older Tk
 surface for compatibility and standalone diagnostics.
@@ -279,6 +279,9 @@ def main(run=True):
     m_help.add_command(label='Check for updates…', command=manual_update_check)
     m_help.add_command(label='About', command=show_about)
     menubar.add_cascade(label='Help', menu=m_help)
+    menubar.add_command(
+        label='Bugs & Suggestions',
+        command=lambda: webbrowser.open(updater.NEW_ISSUE_PAGE))
 
     root.config(menu=menubar)
 
