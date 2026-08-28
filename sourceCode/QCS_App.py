@@ -64,8 +64,8 @@ def open_feedback_form(parent):
     outer.pack(fill=BOTH, expand=True)
     intro = ttk.Label(
         outer,
-        text=('Describe a problem or suggestion without signing in to GitHub. '
-              'QCS will prepare an email to the support contact: %s.'
+        text=('Describe a problem or suggestion. QCS will prepare an email to '
+              'the support contact: %s.'
               % feedback_api.SUPPORT_EMAIL),
         wraplength=550)
     intro.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 12))

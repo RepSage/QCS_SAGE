@@ -2445,8 +2445,8 @@ class FeedbackDialog(QDialog):
 
         layout = QVBoxLayout(self)
         intro = QLabel(
-            'Describe a problem or suggestion without signing in to GitHub. '
-            'QCS will prepare an email to the support contact: <b>%s</b>.'
+            'Describe a problem or suggestion. QCS will prepare an email to '
+            'the support contact: <b>%s</b>.'
             % feedback_api.SUPPORT_EMAIL)
         intro.setWordWrap(True)
         layout.addWidget(intro)

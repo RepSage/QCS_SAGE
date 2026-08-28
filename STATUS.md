@@ -16,8 +16,11 @@ pruning is in git (`git show a0994bf:STATUS.md`).
 - **v13.3.0 is an unpublished local release candidate** (2026-08-28). It
   replaces the GitHub-account-dependent Bugs & Suggestions shortcut with an
   internal report form that prepares a support email and can copy the complete
-  report. Source and frozen checks pass; publish only after the owner validates
-  this candidate's workflow and wording.
+  report. Source and frozen checks passed before the 2026-08-28 request to
+  remove the GitHub reference from the form introduction; that source-only text
+  adjustment still needs a rebuilt frozen candidate. Direct sending remains an
+  open design choice because it needs either a configured mail client/account
+  or an authenticated service. Publish only after the owner chooses that path.
 - **Pre-v13 Doppler and PAR products still need explicit requalification before
   direct comparison** (deferred 2026-08-20). The current archive contains 53
   DCPS products with four-character flags and 112 Seaguard products containing
