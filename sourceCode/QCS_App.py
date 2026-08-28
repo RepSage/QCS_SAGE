@@ -7,7 +7,9 @@ The shipped entry point is QCS_QtApp.py; this module preserves the older Tk
 surface for compatibility and standalone diagnostics.
 """
 import os
+import queue
 import re
+import threading
 import webbrowser
 
 import QCS_DataHandler as data
@@ -23,6 +25,7 @@ from tkinter import ttk, messagebox
 
 import QCS_Main as qual
 import QCS_DatabaseView as viz
+import QCS_Feedback as feedback_api
 import QCS_Update as updater
 
 # Both tools share ONE preferences dict, so saving from either tab writes the
@@ -48,6 +51,129 @@ def show_about():
         'Quality Control System (SAGE)  %s\n\n'
         'Qualification and visualization of oceanographic sensor data\n'
         '(Seaguard/TSCP and HOBO Pendant loggers).' % data.QCS_VERSION)
+
+
+def open_feedback_form(parent):
+    """Tk fallback for the direct feedback form used by the Qt release."""
+    dialog = Toplevel(parent)
+    dialog.title('Bugs & Suggestions')
+    dialog.transient(parent)
+    dialog.grab_set()
+    dialog.geometry('600x500')
+    theme.set_window_icon(dialog)
+
+    outer = ttk.Frame(dialog, padding=16)
+    outer.pack(fill=BOTH, expand=True)
+    intro = ttk.Label(
+        outer,
+        text=('Describe a problem or suggestion. Title and description are '
+              'required.'),
+        wraplength=550)
+    intro.grid(row=0, column=0, sticky='ew', pady=(0, 12))
+
+    ttk.Label(outer, text='Your name:').grid(
+        row=1, column=0, sticky='w', pady=(4, 2))
+    name_var = StringVar()
+    name_entry = ttk.Entry(outer, textvariable=name_var)
+    name_entry.grid(row=2, column=0, sticky='ew', pady=(0, 4))
+
+    ttk.Label(outer, text='Title:').grid(
+        row=3, column=0, sticky='w', pady=(4, 2))
+    title_var = StringVar()
+    title_entry = ttk.Entry(outer, textvariable=title_var)
+    title_entry.grid(row=4, column=0, sticky='ew', pady=(0, 4))
+
+    ttk.Label(outer, text='Description:').grid(
+        row=5, column=0, sticky='w', pady=(8, 4))
+    description = Text(outer, height=13, wrap=WORD)
+    description.grid(row=6, column=0, sticky='nsew')
+
+    note = ttk.Label(
+        outer,
+        text=('The report will be public. QCS submits it directly to the '
+              'project issue tracker. Do not include passwords, private data '
+              'or other sensitive information. If submission fails, your text '
+              'stays in the form and can be copied.'),
+        wraplength=550)
+    note.grid(row=7, column=0, sticky='ew', pady=12)
+
+    def values():
+        return (name_var.get(), title_var.get(),
+                description.get('1.0', 'end-1c'))
+
+    results = queue.Queue()
+    busy = [False]
+
+    def set_busy(value):
+        busy[0] = value
+        state = DISABLED if value else NORMAL
+        name_entry.configure(state=state)
+        title_entry.configure(state=state)
+        description.configure(state=state)
+        cancel_button.configure(state=state)
+        submit_button.configure(state=state)
+        submit_button.configure(
+            text='Submitting...' if value else 'Submit report')
+
+    def submit_worker(report_values):
+        try:
+            receipt = feedback_api.submit_feedback(
+                *report_values, data.QCS_VERSION)
+            results.put((True, receipt))
+        except feedback_api.FeedbackError as exc:
+            results.put((False, str(exc)))
+        except Exception:
+            results.put((
+                False,
+                'The feedback report could not be sent. Your text is still in '
+                'the form.'))
+
+    def poll_submission():
+        try:
+            succeeded, detail = results.get_nowait()
+        except queue.Empty:
+            dialog.after(100, poll_submission)
+            return
+        set_busy(False)
+        if not succeeded:
+            messagebox.showwarning(
+                'Bugs & Suggestions', detail, parent=dialog)
+            return
+        messagebox.showinfo(
+            'Bugs & Suggestions',
+            'Thank you. The report was submitted as Issue #%d.'
+            % detail['issue_number'],
+            parent=dialog)
+        dialog.destroy()
+
+    def submit_report():
+        report_values = values()
+        try:
+            feedback_api.validate_report(*report_values)
+        except feedback_api.FeedbackError as exc:
+            messagebox.showwarning(
+                'Bugs & Suggestions', str(exc), parent=dialog)
+            return
+        set_busy(True)
+        threading.Thread(
+            target=submit_worker, args=(report_values,), daemon=True).start()
+        dialog.after(100, poll_submission)
+
+    def close_dialog():
+        if not busy[0]:
+            dialog.destroy()
+
+    actions = ttk.Frame(outer)
+    actions.grid(row=8, column=0, sticky='e')
+    cancel_button = ttk.Button(actions, text='Cancel', command=close_dialog)
+    cancel_button.pack(side=LEFT, padx=(0, 8))
+    submit_button = ttk.Button(
+        actions, text='Submit report', command=submit_report)
+    submit_button.pack(side=LEFT)
+    outer.columnconfigure(0, weight=1)
+    outer.rowconfigure(6, weight=1)
+    dialog.protocol('WM_DELETE_WINDOW', close_dialog)
+    dialog.wait_window()
 
 
 def main(run=True):
@@ -281,7 +407,7 @@ def main(run=True):
     menubar.add_cascade(label='Help', menu=m_help)
     menubar.add_command(
         label='Bugs & Suggestions',
-        command=lambda: webbrowser.open(updater.NEW_ISSUE_PAGE))
+        command=lambda: open_feedback_form(root))
 
     root.config(menu=menubar)
 

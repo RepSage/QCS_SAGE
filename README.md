@@ -39,6 +39,7 @@ python -m pip install -r sourceCode/requirements.txt
   - `QCS_DataHandler.py` — data reading, conversion and formatting; the `QCS_VERSION` constant.
   - `QCS_DataView.py` — plot and panel generation.
   - `QCS_Tests.py` — quality control tests.
+  - `QCS_Feedback.py` — local report validation and support-email preparation.
   - `QCS_Theme.py` — theming, DPI awareness and the crash handler.
   - `QCS_SelfTest.py` — self-tests with synthetic data (`python QCS_SelfTest.py`).
   - `qcs_headless_harness.py` — drives the real pipeline with no GUI.

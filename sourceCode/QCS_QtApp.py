@@ -71,6 +71,7 @@ import QCS_DataHandler as data
 # installs the tk crash handler at import; main() installs the Qt one after
 import QCS_DataView as view      # the panel plots (show_panels hook)
 import QCS_DatabaseView as dbv
+import QCS_Feedback as feedback_api
 import QCS_Update as upd
 from QCS_QtCurated import CuratedDatabaseTab
 from QCS_QtViz import VisualizationTab
@@ -2433,6 +2434,141 @@ def qt_choose_variables(candidates, root=None):
     return dlg.chosen() if dlg.exec() == QDialog.DialogCode.Accepted else None
 
 
+class FeedbackDialog(QDialog):
+    """Collect a report and submit it without blocking the interface."""
+
+    submission_finished = Signal(object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Bugs & Suggestions')
+        self.setWindowIcon(_app_icon())
+        self.resize(590, 500)
+
+        layout = QVBoxLayout(self)
+        intro = QLabel(
+            'Describe a problem or suggestion. Title and description are '
+            'required.')
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        layout.addWidget(QLabel('Your name:'))
+        self.name_edit = QLineEdit()
+        self.name_edit.setObjectName('feedbackName')
+        self.name_edit.setMaxLength(feedback_api.MAX_NAME_LENGTH)
+        self.name_edit.setPlaceholderText('Optional')
+        layout.addWidget(self.name_edit)
+
+        layout.addWidget(QLabel('Title:'))
+        self.title_edit = QLineEdit()
+        self.title_edit.setObjectName('feedbackTitle')
+        self.title_edit.setMaxLength(feedback_api.MAX_TITLE_LENGTH)
+        self.title_edit.setPlaceholderText('Short summary of the problem or suggestion')
+        layout.addWidget(self.title_edit)
+
+        layout.addWidget(QLabel('Description:'))
+        self.description_edit = QPlainTextEdit()
+        self.description_edit.setObjectName('feedbackDescription')
+        self.description_edit.setPlaceholderText(
+            'What were you doing, what happened, and what did you expect?')
+        self.description_edit.textChanged.connect(self._update_count)
+        layout.addWidget(self.description_edit, 1)
+
+        self.count_label = QLabel()
+        self.count_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        layout.addWidget(self.count_label)
+        self._update_count()
+
+        note = QLabel(
+            '<b>The report will be public.</b> QCS submits it directly to the '
+            'project issue tracker. Do not include passwords, private data or '
+            'other sensitive information. If submission fails, your text stays '
+            'in the form and can be copied.')
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        buttons = QHBoxLayout()
+        self.cancel_button = QPushButton('Cancel')
+        self.cancel_button.clicked.connect(self.reject)
+        self.submit_button = QPushButton('Submit report')
+        self.submit_button.setObjectName('submitFeedbackReport')
+        self.submit_button.setDefault(True)
+        self.submit_button.clicked.connect(self._submit)
+        buttons.addStretch()
+        buttons.addWidget(self.cancel_button)
+        buttons.addWidget(self.submit_button)
+        layout.addLayout(buttons)
+        self._busy = False
+        self.submission_finished.connect(self._submission_finished)
+
+    def _values(self):
+        return (self.name_edit.text(), self.title_edit.text(),
+                self.description_edit.toPlainText())
+
+    def _update_count(self):
+        count = len(self.description_edit.toPlainText())
+        self.count_label.setText(
+            '%d / %d characters' %
+            (count, feedback_api.MAX_DESCRIPTION_LENGTH))
+
+    def _submit(self):
+        try:
+            feedback_api.validate_report(*self._values())
+        except feedback_api.FeedbackError as exc:
+            QMessageBox.warning(self, 'Bugs & Suggestions', str(exc))
+            return
+        values = self._values()
+        self._set_busy(True)
+        threading.Thread(
+            target=self._submit_worker, args=(values,), daemon=True).start()
+
+    def _submit_worker(self, values):
+        try:
+            receipt = feedback_api.submit_feedback(
+                *values, data.QCS_VERSION)
+            result = (True, receipt)
+        except feedback_api.FeedbackError as exc:
+            result = (False, str(exc))
+        except Exception:
+            result = (
+                False,
+                'The feedback report could not be sent. Your text is still in '
+                'the form.')
+        self.submission_finished.emit(result)
+
+    @Slot(object)
+    def _submission_finished(self, result):
+        self._set_busy(False)
+        succeeded, detail = result
+        if not succeeded:
+            QMessageBox.warning(self, 'Bugs & Suggestions', detail)
+            return
+        QMessageBox.information(
+            self, 'Bugs & Suggestions',
+            'Thank you. The report was submitted as Issue #%d.'
+            % detail['issue_number'])
+        self.accept()
+
+    def _set_busy(self, busy):
+        self._busy = busy
+        self.name_edit.setEnabled(not busy)
+        self.title_edit.setEnabled(not busy)
+        self.description_edit.setEnabled(not busy)
+        self.cancel_button.setEnabled(not busy)
+        self.submit_button.setEnabled(not busy)
+        self.submit_button.setText('Submitting...' if busy else 'Submit report')
+
+    def closeEvent(self, event):
+        if self._busy:
+            event.ignore()
+            return
+        super().closeEvent(event)
+
+    def reject(self):
+        if not self._busy:
+            super().reject()
+
+
 class QtShell(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -3106,15 +3242,13 @@ class QtShell(QMainWindow):
 
         feedback = QAction('Bugs && Suggestions', self)
         feedback.setStatusTip(
-            'Report a bug or share a suggestion in a new GitHub issue.')
-        feedback.triggered.connect(self._open_issue_form)
+            'Describe a problem or suggestion and submit it to the project.')
+        feedback.triggered.connect(self._open_feedback_form)
         mb.addAction(feedback)
 
-    @staticmethod
-    def _open_issue_form():
-        """Open a blank GitHub issue so the operator can describe anything."""
-        import webbrowser
-        webbrowser.open(upd.NEW_ISSUE_PAGE)
+    def _open_feedback_form(self):
+        """Open the local report form; no GitHub account is required."""
+        FeedbackDialog(self).exec()
 
     # ----- update check (the network parts are shared with the tk shell) -----
     def check_for_updates(self):

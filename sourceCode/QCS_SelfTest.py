@@ -6,6 +6,7 @@ import pandas as pd
 
 import QCS_Tests as QC
 import QCS_DataHandler as data
+import QCS_Feedback as feedback_api
 
 # flag layouts (param key per flag position), matching the test sequence order
 MOORING_LAYOUT = (['T', 'S', 'C', 'P', 'O2', 'pH', 'chl', 'tur', 'PAR', 'CO2'] +        # sensor range
@@ -1260,8 +1261,90 @@ assert upd.is_newer('v11.1.1', 'v11.1'), 'a patch outranks its base'
 assert not upd.is_newer('v11.1', 'v11.1')
 assert not upd.is_newer('v10.0', 'v11.1'), 'never offer a downgrade'
 assert not upd.is_newer('nightly', 'v11.1'), 'a malformed remote tag is ignored'
-assert upd.NEW_ISSUE_PAGE == 'https://github.com/RepSage/QCS_SAGE/issues/new'
 ok.append('update version comparison (upgrade yes / same no / downgrade no / junk tag no)')
+
+# ------------------------------- 31b. direct feedback submission (v13.3)
+import json as _json
+import urllib.error as _urlerror
+try:
+    feedback_api.validate_report('', '', 'description')
+    raise AssertionError('blank feedback title must be refused')
+except feedback_api.FeedbackError:
+    pass
+try:
+    feedback_api.validate_report('', 'title', '  ')
+    raise AssertionError('blank feedback description must be refused')
+except feedback_api.FeedbackError:
+    pass
+class _FeedbackResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self, _limit):
+        return self._payload
+
+
+_captured_feedback = {}
+
+
+def _fake_feedback_open(request, *, timeout, context):
+    _captured_feedback.update(
+        request=request, timeout=timeout, context=context)
+    return _FeedbackResponse(
+        b'{"issue_number":321,"issue_url":"https://github.com/RepSage/'
+        b'QCS_SAGE/issues/321"}')
+
+
+_receipt = feedback_api.submit_feedback(
+    '  Ada  ', ' Unexpected flag & chart ', ' Steps:\n1. Open file ',
+    data.QCS_VERSION, endpoint='https://feedback.example/feedback',
+    urlopen=_fake_feedback_open)
+_request = _captured_feedback['request']
+_payload = _json.loads(_request.data.decode('utf-8'))
+assert _request.full_url == 'https://feedback.example/feedback'
+assert _request.get_method() == 'POST'
+assert _captured_feedback['timeout'] == feedback_api.TIMEOUT_S
+assert _captured_feedback['context'].verify_mode != 0
+assert _payload == {
+    'name': 'Ada',
+    'title': 'Unexpected flag & chart',
+    'description': 'Steps:\n1. Open file',
+    'qcs_version': data.QCS_VERSION,
+    'website': '',
+}
+assert _receipt == {
+    'issue_number': 321,
+    'issue_url': 'https://github.com/RepSage/QCS_SAGE/issues/321',
+}
+
+
+def _rate_limited(request, **_kwargs):
+    raise _urlerror.HTTPError(
+        request.full_url, 429, 'Too Many Requests', {},
+        io.BytesIO(b'{"error":"Wait one minute before trying again."}'))
+
+
+try:
+    feedback_api.submit_feedback(
+        '', 'Title', 'Description', data.QCS_VERSION,
+        endpoint='https://feedback.example/feedback',
+        urlopen=_rate_limited)
+    raise AssertionError('service rate limit must be reported')
+except feedback_api.FeedbackError as exc:
+    assert str(exc) == 'Wait one minute before trying again.'
+try:
+    feedback_api.submit_feedback(
+        '', 'Title', 'Description', data.QCS_VERSION, endpoint='')
+    raise AssertionError('missing feedback endpoint must be refused')
+except feedback_api.FeedbackError as exc:
+    assert 'Copy your text' in str(exc)
+ok.append('feedback submission (validation / exact JSON / safe failure)')
 
 # ------------------------------------------------- 32. writable app dir (v11.2)
 # From source it must be the script folder - byte-identical settings path to

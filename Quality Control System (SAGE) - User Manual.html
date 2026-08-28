@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v13.2.4</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v13.3.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -217,7 +217,8 @@
     control settings; exit, <code>Ctrl+Q</code>), <strong>View</strong> the dark and Field modes
     and the Execution log / Batch status panels, and <strong>Help</strong> the user manual,
     <strong>Check for updates</strong> and About. <strong>Bugs &amp; Suggestions</strong>,
-    beside Help, opens a blank GitHub issue where any problem or idea can be described freely.
+    beside Help, opens an internal form that submits a report directly to the project; no account on
+    the project website is required.
     The interface
     offers a <strong>dark mode</strong> and a <strong>Field mode</strong> (both in the View menu
     and remembered across sessions). Field mode disables only the <strong>Curated Database</strong>
@@ -2126,9 +2127,14 @@ python QCS_DatabaseView.py  # visualization tool only (development)</code></pre>
 
     <h3>Report a bug or suggest an improvement</h3>
     <p>Choose <strong>Bugs &amp; Suggestions</strong> beside Help in the menu bar. The program
-    opens a blank issue in the official GitHub repository, where the problem or idea can be
-    described freely. Include the QCS version, what you were doing, what happened and any
-    relevant message from the Execution log or <code>QCS_crash.log</code>.</p>
+    opens an internal form with fields for your name (optional), a required title and a required
+    description. No GitHub account is required. Explain what you were doing, what happened and
+    include any relevant message from the Execution log or <code>QCS_crash.log</code>.</p>
+    <p><strong>The submitted report is public.</strong> Do not include passwords, private data or
+    other sensitive information. <strong>Submit report</strong> sends the form through the QCS
+    feedback service, creates a GitHub Issue and confirms its number without opening a browser.
+    If the computer is offline or the service is unavailable, the text stays in the form and can
+    be copied from each field with <strong>Ctrl+C</strong> before the window is closed.</p>
 
     <h3>Support Contact</h3>
     <p>For questions not resolved in this manual, contact:</p>

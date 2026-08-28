@@ -22,7 +22,6 @@ import urllib.request
 
 RELEASES_API = 'https://api.github.com/repos/RepSage/QCS_SAGE/releases/latest'
 RELEASES_PAGE = 'https://github.com/RepSage/QCS_SAGE/releases/latest'
-NEW_ISSUE_PAGE = 'https://github.com/RepSage/QCS_SAGE/issues/new'
 # 15 s, not 6: a cold TLS handshake over a slow field link can eat several
 # seconds before the first byte, and a too-short timeout is indistinguishable
 # from "no internet" to the user.
