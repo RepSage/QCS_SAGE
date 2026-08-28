@@ -2483,7 +2483,7 @@ class FeedbackDialog(QDialog):
             '<b>The report will be public.</b> QCS submits it directly to the '
             'project issue tracker. Do not include passwords, private data or '
             'other sensitive information. If submission fails, your text stays '
-            'in the form and can be copied with Ctrl+C.')
+            'in the form and can be copied.')
         note.setWordWrap(True)
         layout.addWidget(note)
 

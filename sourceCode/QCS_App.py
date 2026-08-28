@@ -93,7 +93,7 @@ def open_feedback_form(parent):
         text=('The report will be public. QCS submits it directly to the '
               'project issue tracker. Do not include passwords, private data '
               'or other sensitive information. If submission fails, your text '
-              'stays in the form and can be copied with Ctrl+C.'),
+              'stays in the form and can be copied.'),
         wraplength=550)
     note.grid(row=7, column=0, sticky='ew', pady=12)
 

@@ -13,36 +13,6 @@ pruning is in git (`git show a0994bf:STATUS.md`).
 
 **Program and release**
 
-- **v13.3.0 is an unpublished local release candidate** (2026-08-28). It
-  replaces the GitHub-account-dependent Bugs & Suggestions shortcut with an
-  internal report form that submits through a Cloudflare Worker. Its three
-  labels now sit above equally wide fields, the name's optional status appears
-  only as its in-field hint, and the redundant Copy report button is absent;
-  ordinary Ctrl+C remains available in every field. The Worker has local validation,
-  a honeypot, a 16 KiB body limit, a three-attempts-per-minute IP rate limit and
-  nine passing tests; Wrangler 4.127.1 recognizes the binding in a deploy dry
-  run. The QCS client posts in a background thread and the full self-test passes
-  72/72. The Cloudflare account email was verified on 2026-08-28, the
-  fine-grained `QCS feedback Worker` token was installed as the encrypted
-  `GITHUB_TOKEN` Worker secret, and Worker version
-  `4e637a0d-daa2-421a-b23c-20983d8f2d54` was deployed at
-  `qcs-sage-feedback.qcs-sage.workers.dev`. The token has one-year expiry,
-  access only to `RepSage/QCS_SAGE`, Issues read/write and the required
-  Metadata read-only permission. The QCS endpoint is now wired to `/feedback`;
-  `/health` returned HTTP 200 and a validation-only live POST returned the
-  expected HTTP 400 without contacting GitHub. The exact released client path
-  then created public Issue #41 through the Worker; the Issue page returned
-  HTTP 200 with the expected title. The temporary Wrangler OAuth session was
-  removed immediately afterward and `wrangler whoami` confirms that this
-  machine is no longer authenticated. Off-screen Qt and Tk probes passed the
-  menu order, full-width fields, two-button layout, busy state and mocked success
-  flow without touching user preferences. A clean PyInstaller 6.22.2 build
-  produced a 301,453,201-byte bundle containing 2,334 files; the frozen QCS
-  stayed alive and responsive for its 12-second launch smoke, with no bundled
-  preferences or crash log. Inno Setup 6.7.3 replaced the obsolete candidate
-  with `QCS_Setup_v13.3.0.exe` (81,760,981 bytes; SHA-256
-  `D0A55587433E7BF18C767123943DB1795712079C06B606F0EC51933AB6AFCB9F`).
-  The candidate is ready for owner validation but remains unpublished.
 - **Pre-v13 Doppler and PAR products still need explicit requalification before
   direct comparison** (deferred 2026-08-20). The current archive contains 53
   DCPS products with four-character flags and 112 Seaguard products containing
