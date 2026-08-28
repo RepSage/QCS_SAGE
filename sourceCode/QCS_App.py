@@ -69,51 +69,37 @@ def open_feedback_form(parent):
         text=('Describe a problem or suggestion. Title and description are '
               'required.'),
         wraplength=550)
-    intro.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 12))
+    intro.grid(row=0, column=0, sticky='ew', pady=(0, 12))
 
-    ttk.Label(outer, text='Your name (optional):').grid(
-        row=1, column=0, sticky='w', pady=4)
+    ttk.Label(outer, text='Your name:').grid(
+        row=1, column=0, sticky='w', pady=(4, 2))
     name_var = StringVar()
     name_entry = ttk.Entry(outer, textvariable=name_var)
-    name_entry.grid(row=1, column=1, sticky='ew', pady=4)
+    name_entry.grid(row=2, column=0, sticky='ew', pady=(0, 4))
 
     ttk.Label(outer, text='Title:').grid(
-        row=2, column=0, sticky='w', pady=4)
+        row=3, column=0, sticky='w', pady=(4, 2))
     title_var = StringVar()
     title_entry = ttk.Entry(outer, textvariable=title_var)
-    title_entry.grid(row=2, column=1, sticky='ew', pady=4)
+    title_entry.grid(row=4, column=0, sticky='ew', pady=(0, 4))
 
     ttk.Label(outer, text='Description:').grid(
-        row=3, column=0, columnspan=2, sticky='w', pady=(8, 4))
+        row=5, column=0, sticky='w', pady=(8, 4))
     description = Text(outer, height=13, wrap=WORD)
-    description.grid(row=4, column=0, columnspan=2, sticky='nsew')
+    description.grid(row=6, column=0, sticky='nsew')
 
     note = ttk.Label(
         outer,
         text=('The report will be public. QCS submits it directly to the '
               'project issue tracker. Do not include passwords, private data '
-              'or other sensitive information. If submission fails, use Copy '
-              'report.'),
+              'or other sensitive information. If submission fails, your text '
+              'stays in the form and can be copied with Ctrl+C.'),
         wraplength=550)
-    note.grid(row=5, column=0, columnspan=2, sticky='ew', pady=12)
+    note.grid(row=7, column=0, sticky='ew', pady=12)
 
     def values():
         return (name_var.get(), title_var.get(),
                 description.get('1.0', 'end-1c'))
-
-    def copy_report():
-        try:
-            report = feedback_api.build_report_text(
-                *values(), data.QCS_VERSION)
-        except feedback_api.FeedbackError as exc:
-            messagebox.showwarning('Bugs & Suggestions', str(exc), parent=dialog)
-            return
-        dialog.clipboard_clear()
-        dialog.clipboard_append(report)
-        messagebox.showinfo(
-            'Bugs & Suggestions',
-            'The report was copied to the clipboard.',
-            parent=dialog)
 
     results = queue.Queue()
     busy = [False]
@@ -125,7 +111,6 @@ def open_feedback_form(parent):
         title_entry.configure(state=state)
         description.configure(state=state)
         cancel_button.configure(state=state)
-        copy_button.configure(state=state)
         submit_button.configure(state=state)
         submit_button.configure(
             text='Submitting...' if value else 'Submit report')
@@ -140,7 +125,8 @@ def open_feedback_form(parent):
         except Exception:
             results.put((
                 False,
-                'The feedback report could not be sent. Use Copy report instead.'))
+                'The feedback report could not be sent. Your text is still in '
+                'the form.'))
 
     def poll_submission():
         try:
@@ -178,17 +164,14 @@ def open_feedback_form(parent):
             dialog.destroy()
 
     actions = ttk.Frame(outer)
-    actions.grid(row=6, column=0, columnspan=2, sticky='e')
+    actions.grid(row=8, column=0, sticky='e')
     cancel_button = ttk.Button(actions, text='Cancel', command=close_dialog)
     cancel_button.pack(side=LEFT, padx=(0, 8))
-    copy_button = ttk.Button(
-        actions, text='Copy report', command=copy_report)
-    copy_button.pack(side=LEFT, padx=(0, 8))
     submit_button = ttk.Button(
         actions, text='Submit report', command=submit_report)
     submit_button.pack(side=LEFT)
-    outer.columnconfigure(1, weight=1)
-    outer.rowconfigure(4, weight=1)
+    outer.columnconfigure(0, weight=1)
+    outer.rowconfigure(6, weight=1)
     dialog.protocol('WM_DELETE_WINDOW', close_dialog)
     dialog.wait_window()
 

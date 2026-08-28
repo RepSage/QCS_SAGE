@@ -1276,14 +1276,6 @@ try:
     raise AssertionError('blank feedback description must be refused')
 except feedback_api.FeedbackError:
     pass
-_report = feedback_api.build_report_text(
-    '  Ada  ', ' Unexpected flag & chart ', ' Steps:\n1. Open file ',
-    data.QCS_VERSION)
-assert _report == (
-    'Name: Ada\nQCS version: %s\n\nTitle: Unexpected flag & chart\n\n'
-    'Description:\nSteps:\n1. Open file' % data.QCS_VERSION), _report
-
-
 class _FeedbackResponse:
     def __init__(self, payload):
         self._payload = payload
@@ -1351,7 +1343,7 @@ try:
         '', 'Title', 'Description', data.QCS_VERSION, endpoint='')
     raise AssertionError('missing feedback endpoint must be refused')
 except feedback_api.FeedbackError as exc:
-    assert 'Copy report' in str(exc)
+    assert 'Copy your text' in str(exc)
 ok.append('feedback submission (validation / exact JSON / safe failure)')
 
 # ------------------------------------------------- 32. writable app dir (v11.2)

@@ -1,8 +1,8 @@
 """Submit operator feedback without exposing a GitHub credential in QCS.
 
 The released application sends a small JSON report to a Cloudflare Worker.
-Only that Worker holds the repository credential. The plain-text form remains
-available for the clipboard fallback when the network service cannot be used.
+Only that Worker holds the repository credential. If submission fails, the
+form stays open so the operator can retry or copy individual fields normally.
 """
 import json
 import socket
@@ -52,19 +52,6 @@ def validate_report(name, title, description):
     return clean_name, clean_title, clean_description
 
 
-def build_report_text(name, title, description, qcs_version):
-    """Build the complete plain-text report used by the clipboard fallback."""
-    clean_name, clean_title, clean_description = validate_report(
-        name, title, description)
-    return (
-        'Name: %s\n'
-        'QCS version: %s\n\n'
-        'Title: %s\n\n'
-        'Description:\n%s'
-        % (clean_name or 'Not provided', str(qcs_version).strip(),
-           clean_title, clean_description))
-
-
 def _ssl_context():
     """Use the CA bundle shipped with QCS when it is available."""
     try:
@@ -96,7 +83,7 @@ def submit_feedback(name, title, description, qcs_version, *, endpoint=None,
     if not target.startswith('https://'):
         raise FeedbackError(
             'The feedback service is not configured in this QCS build. '
-            'Use Copy report instead.')
+            'Copy your text before closing the window.')
     payload = json.dumps({
         'name': clean_name,
         'title': clean_title,
@@ -121,15 +108,16 @@ def submit_feedback(name, title, description, qcs_version, *, endpoint=None,
             fallback = 'The feedback service refused this report.'
         else:
             fallback = ('The feedback service is temporarily unavailable. '
-                        'Use Copy report or try again later.')
+                        'Your text is still in the form; try again later.')
         raise FeedbackError(_service_error(raw, fallback)) from exc
     except (urllib.error.URLError, socket.timeout, TimeoutError) as exc:
         raise FeedbackError(
             'The feedback service could not be reached. Check the internet '
-            'connection, or use Copy report instead.') from exc
+            'connection. Your text is still in the form.') from exc
     except OSError as exc:
         raise FeedbackError(
-            'The feedback report could not be sent. Use Copy report instead.') \
+            'The feedback report could not be sent. Your text is still in '
+            'the form.') \
             from exc
     if len(raw) > MAX_RESPONSE_BYTES:
         raise FeedbackError('The feedback service returned an invalid response.')

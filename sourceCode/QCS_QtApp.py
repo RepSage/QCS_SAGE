@@ -2452,19 +2452,19 @@ class FeedbackDialog(QDialog):
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
-        form = QFormLayout()
+        layout.addWidget(QLabel('Your name:'))
         self.name_edit = QLineEdit()
         self.name_edit.setObjectName('feedbackName')
         self.name_edit.setMaxLength(feedback_api.MAX_NAME_LENGTH)
         self.name_edit.setPlaceholderText('Optional')
-        form.addRow('Your name (optional):', self.name_edit)
+        layout.addWidget(self.name_edit)
 
+        layout.addWidget(QLabel('Title:'))
         self.title_edit = QLineEdit()
         self.title_edit.setObjectName('feedbackTitle')
         self.title_edit.setMaxLength(feedback_api.MAX_TITLE_LENGTH)
         self.title_edit.setPlaceholderText('Short summary of the problem or suggestion')
-        form.addRow('Title:', self.title_edit)
-        layout.addLayout(form)
+        layout.addWidget(self.title_edit)
 
         layout.addWidget(QLabel('Description:'))
         self.description_edit = QPlainTextEdit()
@@ -2482,23 +2482,20 @@ class FeedbackDialog(QDialog):
         note = QLabel(
             '<b>The report will be public.</b> QCS submits it directly to the '
             'project issue tracker. Do not include passwords, private data or '
-            'other sensitive information. If submission fails, use Copy report.')
+            'other sensitive information. If submission fails, your text stays '
+            'in the form and can be copied with Ctrl+C.')
         note.setWordWrap(True)
         layout.addWidget(note)
 
         buttons = QHBoxLayout()
         self.cancel_button = QPushButton('Cancel')
         self.cancel_button.clicked.connect(self.reject)
-        self.copy_button = QPushButton('Copy report')
-        self.copy_button.setObjectName('copyFeedbackReport')
-        self.copy_button.clicked.connect(self._copy_report)
         self.submit_button = QPushButton('Submit report')
         self.submit_button.setObjectName('submitFeedbackReport')
         self.submit_button.setDefault(True)
         self.submit_button.clicked.connect(self._submit)
         buttons.addStretch()
         buttons.addWidget(self.cancel_button)
-        buttons.addWidget(self.copy_button)
         buttons.addWidget(self.submit_button)
         layout.addLayout(buttons)
         self._busy = False
@@ -2513,21 +2510,6 @@ class FeedbackDialog(QDialog):
         self.count_label.setText(
             '%d / %d characters' %
             (count, feedback_api.MAX_DESCRIPTION_LENGTH))
-
-    def _report_text(self):
-        return feedback_api.build_report_text(
-            *self._values(), data.QCS_VERSION)
-
-    def _copy_report(self):
-        try:
-            report = self._report_text()
-        except feedback_api.FeedbackError as exc:
-            QMessageBox.warning(self, 'Bugs & Suggestions', str(exc))
-            return
-        QApplication.clipboard().setText(report)
-        QMessageBox.information(
-            self, 'Bugs & Suggestions',
-            'The report was copied to the clipboard.')
 
     def _submit(self):
         try:
@@ -2550,7 +2532,8 @@ class FeedbackDialog(QDialog):
         except Exception:
             result = (
                 False,
-                'The feedback report could not be sent. Use Copy report instead.')
+                'The feedback report could not be sent. Your text is still in '
+                'the form.')
         self.submission_finished.emit(result)
 
     @Slot(object)
@@ -2572,7 +2555,6 @@ class FeedbackDialog(QDialog):
         self.title_edit.setEnabled(not busy)
         self.description_edit.setEnabled(not busy)
         self.cancel_button.setEnabled(not busy)
-        self.copy_button.setEnabled(not busy)
         self.submit_button.setEnabled(not busy)
         self.submit_button.setText('Submitting...' if busy else 'Submit report')
 

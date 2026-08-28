@@ -15,8 +15,10 @@ pruning is in git (`git show a0994bf:STATUS.md`).
 
 - **v13.3.0 is an unpublished local release candidate** (2026-08-28). It
   replaces the GitHub-account-dependent Bugs & Suggestions shortcut with an
-  internal report form that submits through a Cloudflare Worker and can copy
-  the complete report as an offline fallback. The Worker has local validation,
+  internal report form that submits through a Cloudflare Worker. Its three
+  labels now sit above equally wide fields, the name's optional status appears
+  only as its in-field hint, and the redundant Copy report button is absent;
+  ordinary Ctrl+C remains available in every field. The Worker has local validation,
   a honeypot, a 16 KiB body limit, a three-attempts-per-minute IP rate limit and
   nine passing tests; Wrangler 4.127.1 recognizes the binding in a deploy dry
   run. The QCS client posts in a background thread and the full self-test passes
@@ -33,13 +35,13 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   HTTP 200 with the expected title. The temporary Wrangler OAuth session was
   removed immediately afterward and `wrangler whoami` confirms that this
   machine is no longer authenticated. Off-screen Qt and Tk probes passed the
-  menu order, fields, counter/copy fallback, busy state and mocked success
+  menu order, full-width fields, two-button layout, busy state and mocked success
   flow without touching user preferences. A clean PyInstaller 6.22.2 build
-  produced a 301,453,854-byte bundle containing 2,334 files; the frozen QCS
+  produced a 301,453,201-byte bundle containing 2,334 files; the frozen QCS
   stayed alive and responsive for its 12-second launch smoke, with no bundled
   preferences or crash log. Inno Setup 6.7.3 replaced the obsolete candidate
-  with `QCS_Setup_v13.3.0.exe` (81,759,404 bytes; SHA-256
-  `23F984626A21F5589454E542C1539D7E065236370B84D360801B1E9E10DF56A7`).
+  with `QCS_Setup_v13.3.0.exe` (81,760,981 bytes; SHA-256
+  `D0A55587433E7BF18C767123943DB1795712079C06B606F0EC51933AB6AFCB9F`).
   The candidate is ready for owner validation but remains unpublished.
 - **Pre-v13 Doppler and PAR products still need explicit requalification before
   direct comparison** (deferred 2026-08-20). The current archive contains 53
