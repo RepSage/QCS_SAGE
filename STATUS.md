@@ -16,6 +16,25 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   is its first change. Keep subsequent fixes in this open version until the
   owner requests publication. QC rules are unchanged.
 
+- **Doppler depth initialization** (2026-09-03): each new visualization and
+  Site/Year selection starts from the complete non-BAD current cells in that
+  selection. Global saved limits and the disabled-field cache no longer crop a
+  new Doppler file. Manual limits remain editable within the current selection.
+  A single valid cell accepts equal minimum/maximum depth, and default values
+  retain the cell's full precision rather than rounding inward. Scalar profile
+  depth behavior and all QC rules are unchanged.
+  Reproduced in the real Tk/Qt wizard: RH30 2025S1 offered 5-27 m but retained
+  stale 100-200 m fields before the fix; it now opens at 5-27 m. RH18 2025S1
+  switches to 1-19 m, including through the qualification handoff. Twelve UI
+  checks passed, covering file changes, Site/Year filters, empty selection,
+  all-BAD data, manual limits and a single 2.345 m cell. Source rows stayed
+  13,408 for RH30 and 3,894 for RH18; availability excludes BAD/incomplete cells
+  only for plotting. Evidence and reproducible driver:
+  `diagnostics/doppler_depth/verify_depth_ui.py`, `before.json`, `after.json`
+  (local ignored diagnostics; run with the Qt interpreter and DATABASE root).
+  The 78-test suite and Ruff both passed (exit 0); logs are `selftest.log` and
+  `ruff.log` in the same diagnostic folder.
+
 - **Line legend keys**: `QCS_DataView.line_only_legend` removes markers from
   cloned line keys before SVG export. The Qt toolbar applies the same rule to
   incoming review figures and no longer adds a circle to line keys. Point-only

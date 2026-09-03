@@ -416,10 +416,25 @@ def reset_time_window_to_selection():
             entry.insert(0, value.strftime(TIME_TEXT_FORMAT))
 
 
+def reset_doppler_depth_to_selection():
+    """Start the current depth band from the selected plottable cells."""
+    if not is_doppler_input():
+        return
+    depths = available_depths(selected_database())
+    bounds = (None, None) if depths.empty else (depths.min(), depths.max())
+    for entry, value in zip(
+            (depth_min_entry, depth_max_entry), bounds, strict=True):
+        entry.delete(0, END)
+        if value is not None:
+            # Preserve the actual cell depth: rounding inward can exclude it.
+            entry.insert(0, str(float(value)))
+
+
 def filter_selection_changed():
-    """Refresh dependent values and reset Time window to its filter domain."""
+    """Reset time and current-depth bounds when Site or Year changes."""
     _refresh_scale_defaults()
     reset_time_window_to_selection()
+    reset_doppler_depth_to_selection()
 
 def toggle_all_controls(enabled=False):
     """Enables or disables all controls depending on the selected Data Type"""
@@ -841,8 +856,11 @@ def toggle_data_type():
         tendency_cb.config(state='disabled')
         points_cb.config(state='disabled')
         fixed_scale_cb.config(state='normal')            # -> heatmap speed scale
-        _restore_or_default_depth(depth_min_entry, 'depth_min', 'min')  # depth band applies
-        _restore_or_default_depth(depth_max_entry, 'depth_max', 'max')
+        # A new current selection has its own cell depths. Saved/cached limits
+        # belong to a previous selection and must not silently crop this one.
+        set_enabled_style(depth_min_entry)
+        set_enabled_style(depth_max_entry)
+        reset_doppler_depth_to_selection()
         _reset_time_default(time_start_entry, 'start')   # X-axis window applies
         _reset_time_default(time_end_entry, 'end')
 
@@ -1103,15 +1121,17 @@ def saveDataViewSettings():
             try:
                 d_min = float(dmin_text)
                 d_max = float(dmax_text)
-                if d_max <= d_min:
+                if d_max < d_min or (d_max == d_min and not is_doppler_input()):
                     raise ValueError('invalid interval')
                 dataViewSettings['depthAxisMin'] = d_min
                 dataViewSettings['depthAxisMax'] = d_max
             except Exception:
-                ui_warn("Warning",
-                                       "Invalid depth-axis range.\n\n"
-                                       "Fill BOTH fields with numbers (max > min), e.g. 0 and 50,\n"
-                                       "or leave both empty to fit the data automatically.")
+                depth_order = 'max >= min' if is_doppler_input() else 'max > min'
+                ui_warn(
+                    "Warning", "Invalid depth-axis range.\n\n"
+                    "Fill BOTH fields with numbers (%s), e.g. 0 and 50,\n"
+                    "or leave both empty to fit the data automatically."
+                    % depth_order)
                 error_logger.log("Warning: invalid depth-axis range - ignored")
 
         selectedSites = []
@@ -2266,8 +2286,9 @@ def build_step2(parent):
     # Scale settings are per-sheet too: not restored from preferences.
     restore_entry(time_start_entry, USER_PREFS.get('dbv_time_start', ''))
     restore_entry(time_end_entry, USER_PREFS.get('dbv_time_end', ''))
-    restore_entry(depth_min_entry, USER_PREFS.get('dbv_depth_min', ''))
-    restore_entry(depth_max_entry, USER_PREFS.get('dbv_depth_max', ''))
+    if not is_doppler_input():
+        restore_entry(depth_min_entry, USER_PREFS.get('dbv_depth_min', ''))
+        restore_entry(depth_max_entry, USER_PREFS.get('dbv_depth_max', ''))
     restore_entry(latitude_entry, USER_PREFS.get('dbv_latitude', ''))
     restore_entry(longitude_entry, USER_PREFS.get('dbv_longitude', ''))
     # Saved values from older versions may exceed the low-order range now
