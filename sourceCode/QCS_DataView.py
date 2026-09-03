@@ -11,6 +11,16 @@ from matplotlib.ticker import MaxNLocator # type: ignore
 import QCS_Theme as _theme
 
 
+def line_only_legend(legend):
+    """Show line entries without markers, preserving point-only keys and data."""
+    if legend is not None:
+        for handle in legend.legend_handles:
+            if (isinstance(handle, Line2D) and
+                    str(handle.get_linestyle()).strip().lower() not in ('', 'none')):
+                handle.set_marker('None')
+    return legend
+
+
 def show_panels(figures=None, browse=False):
     """Puts the panels produced so far on screen.
 
@@ -637,7 +647,7 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
                          yerr=spread[valid] / 2, fmt='none',
                          ecolor=cParam.get(variable, plot_color), elinewidth=1.0,
                          alpha=0.7, label='Replicate disagreement (bar = max - min)')
-            ax1.legend(loc='best', fontsize=8)
+            line_only_legend(ax1.legend(loc='best', fontsize=8))
 
     #not_nan = np.asarray(qualified_data.index[~np.isnan(qualified_data[variable])])
     #mirror_var = raw_data.copy()
@@ -1096,7 +1106,8 @@ def plot_database_panel2(database, dataViewSettings):
             _elapsed_days_axis(ax1, max_day)
 
             # Legend and layout
-            ax1.legend(loc='upper left', bbox_to_anchor=(1, 1.01), fontsize=7)
+            line_only_legend(ax1.legend(
+                loc='upper left', bbox_to_anchor=(1, 1.01), fontsize=7))
             plt.subplots_adjust(left=0.10, right=0.80, top=0.88, bottom=0.14)  # room for the y label + x labels
 
             # Fixed scale if needed
@@ -1370,9 +1381,9 @@ def plot_scalar_multi_params_across_sites(database, dataViewSettings,
                            else ('-' if fit else 'None')),
                 marker='.' if points or not fit else 'None')
             for site in plotted_sites]
-        ax.legend(
+        line_only_legend(ax.legend(
             legend_handles, plotted_sites, loc='upper left',
-            bbox_to_anchor=(1, 1.01), fontsize=7)
+            bbox_to_anchor=(1, 1.01), fontsize=7))
         fig._qcs_customize_axes = [(display, ax)]
         fig._qcs_axes_names = {ax: display}
         _name_panel(fig, '%s across sites and deployments' % display)
@@ -1543,9 +1554,10 @@ def plot_database_panel3(database, dataViewSettings):
                         ax.set_xlim(dataViewSettings['scaleSettings'][parameter_names[i-1]]['min'], dataViewSettings['scaleSettings'][parameter_names[i-1]]['max'])
 
                 # Add unified legend
-                ax1.legend(handles=legend_handles, labels=legend_labels,
-                          loc='upper center', bbox_to_anchor=(1.1, 1.01),
-                          ncol=1, fontsize=7)
+                line_only_legend(ax1.legend(
+                    handles=legend_handles, labels=legend_labels,
+                    loc='upper center', bbox_to_anchor=(1.1, 1.01),
+                    ncol=1, fontsize=7))
 
                 figure_axes = list(axes.values())
                 fig._qcs_customize_axes = list(
@@ -1587,7 +1599,7 @@ def plot_light_window(lux_info, site=''):
     ax.set_yscale('log')
     ax.set_ylabel('Lux (log scale)')
     ax.grid(alpha=0.3)
-    ax.legend(loc='lower left', fontsize=8)
+    line_only_legend(ax.legend(loc='lower left', fontsize=8))
     ax.set_title('%s - light usable window (fouling)' % (site or 'HOBO'))
     # cutoff parameters visible on the plot itself - they must describe the rule
     # that was ACTUALLY applied (fixed mode still draws the adaptive baseline
@@ -1812,7 +1824,7 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
     ax1.set_title('HOBO parameters for %s' % site)
     axis_start, axis_end = _calendar_axis_bounds(dataViewSettings)
     _format_calendar_datetime_axis(ax1, axis_start, axis_end)
-    ax1.legend(handles=handles, fontsize=8)
+    line_only_legend(ax1.legend(handles=handles, fontsize=8))
     _name_panel(fig, 'HOBO parameters', site)
     plt.savefig('hobo_params_%s.svg' % site, bbox_inches='tight')
     enable_scroll_zoom(fig)
@@ -1924,7 +1936,7 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
             ax.set_ylim(dataViewSettings['scaleSettings'][param]['min'],
                         dataViewSettings['scaleSettings'][param]['max'])
         handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles, labels, fontsize=8, loc='best')
+        line_only_legend(ax.legend(handles, labels, fontsize=8, loc='best'))
         _name_panel(fig, 'HOBO %s across sites' % display)
         param_r = re.sub(r'\([^()]*\)', '', param).strip().replace(' ', '_')
         plt.savefig('hobo_%s_across_sites.svg' % param_r, bbox_inches='tight')
@@ -2085,7 +2097,7 @@ def plot_TS_diagram (database, dataViewSettings):
             custom_handles = []
             for a in range(len(site_names)):
                 custom_handles.append(Line2D([0], [0], linestyle='None', marker=markerList[a], label=site_names[a], markeredgecolor='black', markerfacecolor='black', markersize=6))
-            plt.legend(handles=custom_handles)  # Draw legend
+            line_only_legend(plt.legend(handles=custom_handles))
             ax.set_xlim(smin, smax)   # hold the view on the robust envelope
             ax.set_ylim(tmin, tmax)
             plt.savefig('TS_Diagram_%s_%s_%d.svg'%(sites_label, semester, year))
@@ -2127,7 +2139,7 @@ def plot_replicate_review(replicates, referee, reference=None, label=''):
     ax.set_title('Replicate review - %s\n%s' % (label, referee.get('verdict', '')),
                  fontsize=10)
     ax.grid(alpha=0.3)
-    ax.legend(fontsize=8, loc='best')
+    line_only_legend(ax.legend(fontsize=8, loc='best'))
     ax.xaxis.set_major_formatter(_mdates.DateFormatter('%d/%m/%y'))
     fig.autofmt_xdate()
     return fig, ax
@@ -2453,7 +2465,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
             axes[1].plot(times, north_values, lw=0.9, label='%.1f m' % d)
         axes[0].set_ylabel('East U (cm/s)')
         axes[1].set_ylabel('North V (cm/s)')
-        axes[0].legend(fontsize=8, ncol=len(sel))
+        line_only_legend(axes[0].legend(fontsize=8, ncol=len(sel)))
         axes[0].set_title('Current components (%s) - %s' % (treatment, label))
         fig._qcs_axes_names = {
             axes[0]: 'East component (U)',
@@ -2565,7 +2577,7 @@ def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=Fals
     fig._qcs_customize_axes = [('Mean current speed by depth', ax)]
     _name_panel(fig, 'Mean current speed by depth - across sites')
     ax.grid(alpha=0.3)
-    ax.legend(fontsize=8)
+    line_only_legend(ax.legend(fontsize=8))
     p = os.path.join(out_dir, 'Current mean speed across sites.svg')
     fig.savefig(p, bbox_inches='tight')
     enable_scroll_zoom(fig, fit=False)

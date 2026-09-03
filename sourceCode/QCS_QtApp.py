@@ -673,13 +673,17 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 abs(float(xlim[1]) - float(xlim[0])) * view.ZOOM_OUT_FACTOR,
                 abs(float(ylim[1]) - float(ylim[0])) * view.ZOOM_OUT_FACTOR,
             )
-        # Legend keys use a neutral circle initially when the plotted line has
-        # no marker or uses Matplotlib's tiny dot. This changes only the cloned
-        # legend handle; observations and plotted line markers stay untouched.
+        # Line keys stay marker-free, including figures supplied by review
+        # hooks. Point-only keys retain the neutral-circle default. These are
+        # cloned legend handles; plotted observations stay untouched.
+        for ax in canvas.figure.axes:
+            view.line_only_legend(ax.get_legend())
+        for legend in canvas.figure.legends:
+            view.line_only_legend(legend)
         for ax in default_axes:
             for record in self._collect_legend_labels(ax):
                 handle = self._legend_symbol_handle(record)
-                if (handle is not None and
+                if (handle is not None and not self._is_editable_line(handle) and
                         handle.get_marker() in (None, '', ' ', 'None', 'none', '.')):
                     handle.set_marker('o')
         self._legend_defaults = {

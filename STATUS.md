@@ -9,6 +9,34 @@ leave this file, and only what is still open moves down to the open items,
 dated with when it was last touched. The full text before the 2026-08-18
 pruning is in git (`git show a0994bf:STATUS.md`).
 
+## Open patch - v14.0.1 in development (2026-09-03)
+
+- **Patch opened**: the owner requested an open PATCH version for additional
+  corrections. `QCS_VERSION` is now `v14.0.1`; the line-legend correction below
+  is its first change. Keep subsequent fixes in this open version until the
+  owner requests publication. QC rules are unchanged.
+
+- **Line legend keys**: `QCS_DataView.line_only_legend` removes markers from
+  cloned line keys before SVG export. The Qt toolbar applies the same rule to
+  incoming review figures and no longer adds a circle to line keys. Point-only
+  keys, plotted markers and QC data are preserved. HOBO, scalar Seaguard,
+  profiles and Doppler share this behavior.
+- **Verification executed**: 17 rendered panels through the actual Qt toolbar
+  (PySide6 6.8.3, Matplotlib 3.10.0), using five real qualified products plus a
+  figure-level legend fixture. All line keys were marker-free after Qt; plot
+  markers were unchanged and point keys retained their symbols. HOBO, scalar,
+  profile and Doppler legend images were also inspected. After opening v14.0.1,
+  the full qualification suite passed all 78 tests and Ruff passed (both exit 0).
+  Gate logs: `diagnostics/patch_open_20260903_175549/selftest.log` and `ruff.log`.
+- **Local evidence**: `diagnostics/legend_lines/verify_legends.py`,
+  `verification.json` and `rendered/` (ignored local diagnostics). Run the script
+  with `packaging/v12_env/Scripts/python.exe` and the DATABASE root argument.
+- **Publication pending**: branch `codex/line-legends`; the open version is
+  v14.0.1. No installer rebuild, tag or new release. Reopen the source application
+  and regenerate plots to use the correction; existing exported figures retain
+  their previous appearance. If publication is requested, complete the normal
+  patch version, documentation, build and release procedure.
+
 ## Open items
 
 **Program and release**
