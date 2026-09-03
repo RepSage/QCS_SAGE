@@ -1,0 +1,6 @@
+{
+  "returned_file": null,
+  "returned_folder": null,
+  "error": "HOBO reader (incomplete_export.csv): could not find the header row: expected a line containing 'Data Hora'/'Da",
+  "error_dialog_recorded": true
+}

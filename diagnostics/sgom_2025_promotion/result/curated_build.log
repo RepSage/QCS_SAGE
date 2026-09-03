@@ -1,0 +1,7 @@
+Info: curated corpus catalog: 281 product(s), 640807 source row(s).
+Info: SGOM_2025S1_HOBO_QLF.csv: 2328 rows
+Info: SGOM_2025S2_HOBO_QLF.csv: 1461 rows
+Info: SGOM_2026S1_HOBO_QLF.csv: 2254 rows
+Info: site SGOM: 6043 rows, 2024-09-07 12:45:48 to 2026-03-18 15:36:05
+Info: database built: 3 file(s), 6043 rows, instrument HOBO.
+Info: HOBO calendar/site filter: 6043 -> 4657 row(s); 1386 outside selection.

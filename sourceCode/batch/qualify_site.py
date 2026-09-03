@@ -30,12 +30,23 @@ _t.install_output_redirect = lambda *a, **k: type('S', (), {'history': [], 'set_
 _t.install_crash_handler = lambda *a, **k: None
 import QCS_Main as qm
 import QCS_DataHandler as dh
+import QCS_Replicates as replicas
+import QCS_DatabaseView as dbv
+qm.save_user_prefs = lambda *a, **k: None
+dbv.save_user_prefs = lambda *a, **k: None
 import QCS_DataView as view
 import pandas as pd
 
 ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE"
 SG_RAW, SG_QLF = os.path.join(ROOT, 'SEAGUARD', 'raw'), os.path.join(ROOT, 'SEAGUARD', 'qualified')
 H_RAW, H_QLF = os.path.join(ROOT, 'HOBO', 'raw'), os.path.join(ROOT, 'HOBO', 'qualified')
+H_REFERENCE = H_QLF  # fixed baseline; candidate runs must not depend on processing order
+_candidate = os.environ.get('QCS_QUALIFIED_OUTPUT_ROOT')
+if _candidate:
+    if os.path.normcase(os.path.abspath(_candidate)) == os.path.normcase(os.path.abspath(ROOT)):
+        raise ValueError('Candidate output must differ from the active archive')
+    H_QLF = os.path.join(os.path.abspath(_candidate), 'HOBO', 'qualified')
+    SG_QLF = os.path.join(os.path.abspath(_candidate), 'SEAGUARD', 'qualified')
 # HOBO light cutoff mode for the corpus: 'fixed' (BAD from lux_fixed_days = 60
 # days after deployment) since 2026-08; 'adaptive' was the pre-v9.1 standard
 LIGHT_MODE = 'fixed'
@@ -132,12 +143,9 @@ qm.messagebox.showwarning = lambda *a, **k: DIALOGS.append(('warn', a))
 qm.messagebox.showerror = lambda *a, **k: DIALOGS.append(('error', a))
 qm.messagebox.askyesno = lambda *a, **k: True
 qm.review_light_window = lambda lux, label: lux.get('proposed_cutoff')
-# The replicate-review window is interactive; in batch nobody is there to
-# click, so the referee's recommendation is DECLINED (None -> keep all,
-# average) and the log records it. Replicates the corpus HAS decided to drop
-# are excluded via EXCLUDED_REPLICATES before qualification ever starts -
-# auto-accepting here would silently apply verdicts the operator never
-# ratified (ESQCENTRAL 2024S1 is named by the referee yet deliberately kept).
+# Batch never ratifies an advisory reference recommendation. The ledger supplies
+# recorded exclusions; unresolved sustained disagreement is withheld by the
+# combination policy while isolated suspect means remain explicitly flagged.
 qm.review_replicates = lambda *a, **k: None
 qm.data._show_and_wait = lambda *a, **k: None
 qm.save_user_prefs = lambda *a, **k: None
@@ -161,7 +169,7 @@ def replicate_reference(site, t0, t1):
     if key in _REF_CACHE:
         return _REF_CACHE[key]
     cols = []
-    for p in glob.glob(os.path.join(H_QLF, '*', '**', '*_HOBO*_QLF.csv'), recursive=True):
+    for p in glob.glob(os.path.join(H_REFERENCE, '*', '**', '*_HOBO*_QLF.csv'), recursive=True):
         if os.path.basename(p).startswith(site + '_'):
             continue                       # never let the site arbitrate itself
         try:
@@ -219,10 +227,15 @@ def run_qualification(files, input_type, data_type, site, out_name, co2=None):
         qm.start_qualification()
     except Exception as e:
         return None, None, 'EXC %r' % (e,)
-    hits = glob.glob(os.path.join(outdir, '**', out_name + '.csv'), recursive=True)
-    if not hits:
+    # The pipeline catches errors itself. A successful first replica may have
+    # left a CSV before a later input failed: a glob must never promote that
+    # partial individual file as the completed combined product.
+    if any(kind == 'error' for kind, _ in DIALOGS):
         return None, None, _dialog_reason(DIALOGS)
-    return hits[0], outdir, None
+    final = qm.OUTPUT.get('last_qualified_file')
+    if not final or not os.path.isfile(final) or os.path.basename(final) != out_name + '.csv':
+        return None, None, _dialog_reason(DIALOGS)
+    return final, outdir, None
 
 
 def _clock_lines():
@@ -260,7 +273,10 @@ def _dialog_reason(dialogs):
     if not dialogs:
         return 'no table produced (no dialog)'
     try:
-        args = dialogs[0][1]
+        # An earlier clock warning must not mask the later error that stopped
+        # qualification; warnings remain the fallback when no error was shown.
+        chosen = next((dialog for dialog in dialogs if dialog[0] == 'error'), dialogs[0])
+        args = chosen[1]
         msg = str(args[1]) if len(args) > 1 else str(args)
     except Exception:
         msg = str(dialogs[0])
@@ -419,63 +435,7 @@ def plan(site, sem):
 #  - REJECTED LOGGERS: a lone export the archive owner has ruled unusable. There
 #    is no twin to fall back on, so excluding it means the deployment yields no
 #    product at all - which is the point: a gap is honest, bad data is not.
-EXCLUDED_REPLICATES = {
-    'HOBO1_PLES_A1_17032022_22092022.xlsx':
-        'faulty sensor: from ~2022-05-01 it loses the seasonal signal (flat '
-        '28.5-29.8 degC, even rising to 29.79 in September) while its twin and '
-        'SEVEN contemporaneous loggers at other sites all cool 28.5->24.4 degC. '
-        'Change-correlation with the regional signal 0.10 (twin: 0.92), bias '
-        '+2.42 degC, own seasonal amplitude 0.35x regional. Its own individual '
-        'QC passed it as GOOD - no single-series test catches a sensor stuck '
-        'on a plausible value.',
-    'PAB_RRDM_290120_110521.csv':
-        'replicate referee (v9.0): change-correlation with the independent '
-        'reference -0.24 (twin +0.91), bias +1.07 degC - it does not follow the '
-        'regional signal at all.',
-    'HOBO2_PAB3_A3_181023_220324.xlsx':
-        'replicate referee (v9.0): change-correlation +0.35 (twin +0.94), bias '
-        '+0.90 degC.',
-    'HOBO1_PLES_A1_181023_300324_duvidoso.xlsx':
-        'replicate referee (v9.0): seasonal swing 3.76x the reference (twin '
-        '1.48x) with correlation +0.92 vs +1.00 - an exaggerated amplitude. The '
-        'field name already reads "duvidoso" (doubtful).',
-    'HOBO1_ESQNORTE_B2_290824_180325 (ERRO).xlsx':
-        'replicate referee (v9.0): change-correlation +0.47 (twin +0.88), bias '
-        '+4.81 degC - the largest offset in the corpus. The field name already '
-        'reads "(ERRO)".',
-    'HOBO1_ESQRODO_B1_160325_110925.xlsx':
-        'replicate referee (v9.0): change-correlation -0.20 (twin +0.89), bias '
-        '+3.15 degC - it moves against the regional signal.',
-    # REJECTED LOGGER (archive owner, 2026-08-11): "essencialmente descartavel
-    # agora que vimos que tem tanto erro". Three independent defects stacked on
-    # one logger, confirmed across three separate exports of it:
-    #   1. temperature reads -84.77..156.53 degC - the sensor failed in the
-    #      field and nothing recovers it;
-    #   2. the clock was launched +12 h out of phase, invisible until the
-    #      collapsed 12-hour export was repaired (phase cannot be measured on a
-    #      collapsed clock);
-    #   3. the export itself was collapsed, and it fails the sampling-regularity
-    #      gate anyway (67% of steps on the interval).
-    # It was NOT being blocked: _fail_on_wrong_clock only fires on a clean
-    # +/-12 h accusation, and this logger's light peaks at 4.4 h, so no
-    # accusation was raised and the product shipped with 337 of 366 rows flagged
-    # GOOD. Both exports are named because the .xlsx re-export carries the same
-    # broken sensor. Nothing is lost: 05/02-07/03/2020 is already covered by
-    # ESQSUL_2020S1_HOBO_2_QLF, from a sound logger.
-    'HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv':
-        'rejected logger: temperature -84.77..156.53 degC across three '
-        'independent exports (failed sensor), clock +12 h out of phase, and '
-        'only 67% of steps on the sampling interval. Owner decision 2026-08-11.',
-    'HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.xlsx':
-        'rejected logger: the re-export of the same failed sensor - see the '
-        '.csv entry above. Owner decision 2026-08-11.',
-    # NOT excluded, deliberately: ESQCENTRAL 2024S1 (see the note below the dict)
-    # (HOBO1_ESQCENTRAL_B3_281023_050424.xlsx). The referee names replicate 1 on
-    # the seasonal-swing criterion (the other replicate swings only 0.48x the
-    # reference, i.e. damped), but that replicate has the SLIGHTLY HIGHER
-    # correlation (+0.90 vs +0.88) - the two criteria point opposite ways, so
-    # this one is left for the operator to review rather than auto-dropped.
-}
+EXCLUDED_REPLICATES = replicas.legacy_exclusions()
 
 
 # Clock repairs are DATA, not driver logic: correct_clock.py (same folder)
@@ -892,9 +852,15 @@ def assemble(csv, qlf_root, dest, name):
     final = os.path.join(dest, name + '.csv')
     shutil.copy2(csv, final)
     rep = os.path.join(dest, 'reports'); os.makedirs(rep, exist_ok=True)
+    if glob.glob(os.path.join(qlf_root, '**', 'QCS_replicate_episodes.csv'), recursive=True):
+        replicas.archive_legacy_reports(rep, name)
+    report_sources = []
     for f in glob.glob(os.path.join(qlf_root, '**', 'QCS_*'), recursive=True):
         if os.path.isfile(f):
-            shutil.copy2(f, os.path.join(rep, '%s__%s' % (name, os.path.basename(f))))
+            target = replicas.report_destination(f, qlf_root, csv, name)
+            replicas.copy_report_file(f, os.path.join(rep, target))
+            report_sources.append({'report': target, 'source': os.path.relpath(f, qlf_root)})
+    pd.DataFrame(report_sources).to_csv(os.path.join(rep, name + '__QCS_report_sources.csv'), index=False)
     return final
 
 
@@ -959,6 +925,7 @@ def do_site(site, sem):
         # one product must never take the whole site down with it
         try:
             files = it['files'] if kind == 'HOBO' else it['files'][0]
+            qm.set_replicate_reference(None)  # no reference may leak from the preceding product
             # arm the replicate referee for multi-replicate HOBO deployments
             if kind == 'HOBO' and isinstance(files, list) and len(files) > 1:
                 span = it.get('start')

@@ -1,0 +1,5 @@
+*
+!.gitignore
+!promotion.json
+!product_changes.csv
+!curated_build.log

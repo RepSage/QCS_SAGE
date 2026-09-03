@@ -98,6 +98,14 @@ archive and diff the counts against the previous `qualified_index.csv`.
   Do not write ad-hoc merge logic elsewhere. The Curated Database may package
   several instruments into one workbook, but it must call this engine once per
   layout and keep those layouts in separate sheets.
+- **HOBO replicate decisions are data, not a filename blacklist in code.** The
+  versioned `sourceCode/batch/replicate_decisions.csv` controls the source file,
+  variable and inclusive interval. Diagnostic bad/suspect temperatures must stay
+  available for comparison but never become eligible contributors. A temperature
+  decision does not decide light. Single-contributor spread is empty; unresolved
+  sustained disagreement is withheld with Flag_T=3. Combined reports must count
+  the combined table and retain individual report identity. Reference advice
+  requires ratification; closing a review never accepts its initial recommendation.
 - **HOBO vs. Seaguard**: HOBO files run only the temperature tests plus the light
   fouling-window test (`light_cutoff_window`), and have their own output column
   layout. Layout detection: `detect_qualified_layout()` in `QCS_DataHandler.py`.

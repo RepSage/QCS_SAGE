@@ -2,6 +2,7 @@ import os
 import re
 import numpy as np
 import pandas as pd
+import QCS_Replicates as replicas_policy
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button, RectangleSelector
 import QCS_Theme as _theme
@@ -21,7 +22,7 @@ def _show_plot_info(fig, title, message):
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v13.3.0'
+QCS_VERSION = 'v14.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -3098,7 +3099,8 @@ def build_database(instrument, file_list=None, input_path=None,
     return database, messages
 
 
-def combine_hobo_replicates(replicates, temp_tol=0.5):
+def combine_hobo_replicates(replicates, temp_tol=0.5, *,
+                            diagnostics=None, source_names=None, decisions=None):
     """Combine N (2-4) redundant HOBO replicates of the SAME site/deployment,
     each already qualified independently, into a single series.
 
@@ -3106,7 +3108,9 @@ def combine_hobo_replicates(replicates, temp_tol=0.5):
     each timestamp. The between-replicate spread (max - min) is kept in a
     'Temperature spread (degC)' column; when it exceeds `temp_tol` (with >= 2
     acceptable replicates) the combined Flag_T is SUSPECT (3) - the replicates
-    disagree, which is itself a QC signal.
+    disagree, which is itself a QC signal. Sustained unresolved disagreements
+    (24 elapsed hours, at least three consecutive pairs) retain flag 3 but
+    withhold the mean. A versioned decision can exclude a variable/interval.
 
     Light: the per-timestamp MAX of the NON-fouled readings (Flag_lux != 4).
     Fouling only attenuates light, so the brightest unfouled sensor is the most
@@ -3122,49 +3126,16 @@ def combine_hobo_replicates(replicates, temp_tol=0.5):
         raise ValueError('combine_hobo_replicates: need at least 2 replicates.')
     messages = []
 
-    # A repeated timestamp with identical signals is a harmless duplicated row.
-    # Conflicting values at the same instant are not: the old collapsed 12-hour
-    # clock produced exactly that shape, and choosing the first reading silently
-    # throws away half a record. Condense only identical signal rows and fail
-    # closed on an ambiguous timestamp.
-    clean_replicates = []
-    signal_cols = ['Temperature (degC)', 'Luminosity (lux)', 'Flag_T', 'Flag_lux']
-    for i, replicate in enumerate(replicates):
-        clean = replicate.copy()
-        clean['Datetime'] = pd.to_datetime(clean['Datetime'])
-        clean = clean.sort_values('Datetime', kind='stable')
-        duplicate = clean['Datetime'].duplicated(keep=False)
-        if duplicate.any():
-            repeated = clean.loc[duplicate, ['Datetime'] + signal_cols]
-            conflicts = [stamp for stamp, group in repeated.groupby('Datetime', sort=False)
-                         if any(group[col].nunique(dropna=False) > 1
-                                for col in signal_cols)]
-            n_extra = int(clean['Datetime'].duplicated().sum())
-            if conflicts:
-                raise ValueError(
-                    'HOBO replicate %d has %d repeated timestamp(s) with '
-                    'conflicting values (first: %s). This can indicate a '
-                    'collapsed 12-hour clock; the replicates were not combined.'
-                    % (i + 1, len(conflicts), conflicts[0]))
-            clean = clean.drop_duplicates(subset=['Datetime'], keep='first')
-            messages.append(
-                'Warning: HOBO replicate %d contained %d identical duplicate '
-                'row(s); one copy per timestamp was kept before combination.'
-                % (i + 1, n_extra))
-        clean_replicates.append(clean)
-
-    # align every replicate onto the first replicate's time grid (nearest match
-    # within half the sampling interval, to absorb small clock differences)
-    ref_times = pd.DatetimeIndex(clean_replicates[0]['Datetime'])
-    step = ref_times.to_series().diff().median()
-    tol = (step / 2) if (pd.notna(step) and step > pd.Timedelta(0)) else None
-    aligned = []
-    for r in clean_replicates:
-        a = r.copy()
-        a = a.set_index('Datetime')
-        a = a.sort_index()
-        aligned.append(a.reindex(ref_times, method='nearest', tolerance=tol))
-
+    aligned, clean_replicates, messages = replicas_policy.align_replicates(replicates)
+    ref_times = aligned[0].index
+    original = [r.copy() for r in aligned]
+    if source_names is None:
+        source_names = ['replicate_%d' % (i + 1) for i in range(len(replicates))]
+    if len(set(source_names)) != len(replicates):
+        raise ValueError('Replicate source names must be unique and match input count')
+    if decisions is None:
+        decisions = replicas_policy.load_decisions()
+    aligned, applied = replicas_policy.apply_decisions(aligned, source_names, decisions)
     def stack(name):
         return pd.concat([a[name] for a in aligned], axis=1, ignore_index=True)
 
@@ -3198,6 +3169,37 @@ def combine_hobo_replicates(replicates, temp_tol=0.5):
     flag_t[n_t >= 1] = 1                                # at least one good
     flag_t[(n_t >= 2) & (temp_spread > temp_tol)] = 3   # replicates disagree -> suspect
 
+    # Diagnosis retains automatic bad/suspect values; only the independently
+    # eligible readings can contribute to the combined product.
+    diagnostic = original
+    if diagnostics is not None:
+        diagnostic, _, _ = replicas_policy.align_replicates(diagnostics)
+        diagnostic = [r.reindex(ref_times) for r in diagnostic]
+    observed = pd.concat([pd.to_numeric(r['Temperature (degC)'], errors='coerce')
+                          for r in diagnostic], axis=1, ignore_index=True)
+    observed = observed.where(np.isfinite(observed))
+    for i, r in enumerate(diagnostic):
+        observed.iloc[:, i] = observed.iloc[:, i].where(
+            ~pd.to_numeric(r['Flag_T'], errors='coerce').isin([5, 9]))
+    _, episodes, observed_spread = replicas_policy.disagreement_episodes(observed, temp_tol)
+    # Decisions are applied before testing whether a mean is defensible. A
+    # single eligible survivor is usable; its historical disagreement is still
+    # recorded in the diagnostic report.
+    held, eligible_episodes, _ = replicas_policy.disagreement_episodes(T_ok, temp_tol)
+    temp_mean = temp_mean.mask(held)
+    flag_t[held] = 3
+    diagnostic_rows = pd.DataFrame({'Datetime': ref_times,
+                                    'observed_spread_degC': observed_spread.values,
+                                    'eligible_contributors': n_t.values,
+                                    'withheld_unresolved': held.values})
+    for i, name in enumerate(source_names):
+        diagnostic_rows['source_%d' % (i + 1)] = str(name)
+        diagnostic_rows['temperature_%d_degC' % (i + 1)] = observed.iloc[:, i].values
+        diagnostic_rows['individual_Flag_T_%d' % (i + 1)] = diagnostic[i]['Flag_T'].values
+    messages.append('Info: %d sustained diagnostic episode(s); %d unresolved temperature '
+                    'sample(s) withheld; %d decision(s) applied.' %
+                    (int(episodes['sustained'].sum()), int(held.sum()), len(applied)))
+
     # light: max of the non-fouled (Flag_lux != 4) readings
     l_clean = (FL != 4) & L.notna()
     n_clean = l_clean.sum(axis=1)
@@ -3228,4 +3230,7 @@ def combine_hobo_replicates(replicates, temp_tol=0.5):
     if len(all_fouled):
         messages.append('Info: combined light usable until %s (all replicates fouled after that).'
                         % pd.Timestamp(all_fouled.index[0]))
+    out.attrs['replicate_audit'] = {'samples': diagnostic_rows, 'episodes': episodes,
+                                    'eligible_episodes': eligible_episodes,
+                                    'decisions': applied}
     return out, messages

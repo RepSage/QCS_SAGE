@@ -1,0 +1,10 @@
+*
+!.gitignore
+!sgom_2025_h2_20260903/
+!sgom_2025_promotion/
+!v14_validation/
+!v14_release/
+!v14_corpus_rollout/
+!v14_corpus_promotion/
+!v14_corpus_rollout.log
+!v14_corpus_promotion.log

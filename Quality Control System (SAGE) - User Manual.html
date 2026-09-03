@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v13.3.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v14.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -1373,6 +1373,24 @@
         replicate is fouled — the usable window is <strong>extended to the last replicate to
         foul</strong>. Light is not averaged (that would mix clean and fouled sensors).</li>
     </ul>
+
+    <h3>Disagreement review and recorded decisions</h3>
+    <p>Before averaging, QCS applies the versioned <code>batch/replicate_decisions.csv</code>
+    ledger to the named source file, variable and inclusive time interval. Empty interval
+    bounds mean the whole file. In a combined product, bounds are evaluated on its
+    aligned output timestamps. A temperature exclusion leaves light independent.
+    A reference recommendation is advisory: closing the review does not accept it.</p>
+    <p>An unresolved temperature disagreement above 0.5 &deg;C lasting at least 24 elapsed
+    hours across at least three consecutive eligible pairs is withheld: the temperature
+    is empty and <code>Flag_T=3</code>. Agreement, a missing pair, or a gap longer than
+    1.5 sampling intervals breaks the episode. This initial review policy does not identify
+    which sensor failed. Isolated disagreements retain their suspect mean; a single
+    acceptable contributor remains usable with an empty spread.</p>
+    <p><code>QCS_replicate_samples.csv</code> preserves diagnostic temperatures and individual
+    flags before optional automatic cleaning, with eligible contributor counts and withheld
+    rows. Episode and decision CSVs document why samples were retained or withheld.
+    <code>QCS_report.xlsx</code> counts the actual combined table; individual reports retain
+    their source identity. Reference diagnostics never restore bad readings to the output.</p>
 
     <h3>The clock check</h3>
     <p>A submerged light sensor <strong>must</strong> peak near local noon. Before the fouling

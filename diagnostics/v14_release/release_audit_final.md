@@ -1,0 +1,21 @@
+# v14.0 final pre-tag audit - 2026-09-03 16:59 GMT-03
+
+- PASS version agreement: `sourceCode/QCS_DataHandler.py:25` = v14.0; `packaging/QCS_installer.iss:25` = 14.0; manual HTML `:155` = v14.0; `changelog/v14.0.md:1` = v14.0.
+- PASS interface identity: Qt title `QCS_QtApp.py:2575`, About `:3237`, crash setup `:91` use the central version; status `:2656` has no development banner. The frozen screenshot was inspected and its recorded window title is v14.0 (`frozen_smoke.json`).
+- PASS requested wording: `QCS_Main.py:2424` explicitly says TEMPERATURE DECISION; manual `:1378-1382` explains aligned-output interval bounds. Reading the executable's embedded PYZ independently confirmed v14.0, that new banner and the QCS_Replicates module.
+- NOTE internal history only: `QCS_QtSettings.py:2` and `QCS_QtViz.py:2` retain v12.0 phase-2/phase-3 module descriptions; these are not visible banners. Exact v13.3.0 search under sourceCode returned no hits.
+- PASS branch safety: `git branch --show-current` = `codex/replicate-arbitration`, distinct from tag v14.0.
+- PENDING commit subject: `git log v13.3.0..HEAD` is empty; final commit is not yet made. Require the v14.0: prefix and no attribution, then tag the committed, reviewed tree. Git was not mutated by this audit.
+- PASS attribution inspection: no Co-Authored-By, Generated with or AI-generated attribution found in current source, manual, new changelog, release body or PR body; historical commits were not rewritten.
+- PASS bump class: v13.3.0 -> v14.0 is MAJOR because the sustained disagreement screen and recorded exclusions alter QC output.
+- PASS rule/document consistency: `QCS_Replicates.py:75-98` and DataHandler `:3160-3189` implement >0.5 degC, >=24 elapsed hours, >=3 eligible pairs and agreement/missing/gap breaks. Temperature decisions leave light independent; manual and release notes state the initial policy and its limits.
+- PASS build: current `build.log` ends with successful COLLECT/build completion; `installer.log` ends with successful Inno compile. The initial incomplete build environment is superseded by the clean qcs_build_v14 build.
+- PASS installer independently measured: `packaging/Output/QCS_Setup_v14.0.exe` = 81,775,420 bytes, SHA-256 14F2C1180ADC01E613BAEACA419BC0107F2D8830B6D7EB5914775AA7D2555FA7; release/changelog match exactly.
+- PASS assets independently hashed: source and bundled ledger both SHA-256 870AB989EF617B02F415F8F047E88110B19E515255AADCF5DA79DAC1B02F443F; source and bundled manual hashes also match. Spec `:46` and Replicates `:15` agree on the frozen _internal/batch path.
+- PASS evidence read: final_selftest.log reports 78 passed; final_ruff.log reports all checks passed. frozen_smoke.json records 4.02 s startup, 12 s responsive, exit 0, unchanged operator settings and no crash log; bundle_audit.json has no missing modules and explicitly checks the lazy modules.
+- PASS corpus claims checked against primary CSV: product_diff.csv has 113 compared products / 344,765 output rows, zero changed grids, zero light-value changes and zero light-flag changes. validation_summary.json lists the two active collapsed-clock failures and two additional unindexed invalid-input attempts; release text does not claim they were repaired.
+- PASS release format: live v13.3.0 and v11.6 bodies were fetched from GitHub and compared. The prepared title, SemVer opening, Fixed/New/Note/Verification/Install order and installation prose follow that structure; no hard wrapping in the body.
+- PASS project-lane progress: STATUS no longer contains the completed open-v14.0 entry and identifies the new build environment; main is finalizing the corpus-operation record separately in CORPUS_LOG.
+- PASS whitespace: git diff --check succeeded; only Windows line-ending warnings were emitted.
+- LIMITATIONS: this audit read execution evidence but did not rerun the suite, GUI, qualification or installer. Full qualification inside the frozen executable remains explicitly untested in the release notes. Commit, final corpus-log reconciliation, tag and remote publication remain main-session work.
+- VERDICT: conditionally ready to tag; no release-source or installer blocker found. Finish the corpus log, commit the reviewed tree with the required subject, confirm the commit, then proceed with the tag and publication.

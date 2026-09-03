@@ -1,0 +1,159 @@
+228 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+295 INFO: PyInstaller: 6.22.2, contrib hooks: 2026.7
+295 INFO: Python: 3.13.5 (conda)
+335 INFO: Platform: Windows-11-10.0.26100-SP0
+336 INFO: Python environment: C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14
+340 INFO: Removing temporary files and cleaning cache in C:\Users\LAMB\AppData\Local\pyinstaller
+180 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+174 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+172 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+172 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+6518 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Scripts\\pyinstaller.exe',
+ 'C:\\Users\\LAMB\\anaconda3\\python313.zip',
+ 'C:\\Users\\LAMB\\anaconda3\\DLLs',
+ 'C:\\Users\\LAMB\\anaconda3\\Lib',
+ 'C:\\Users\\LAMB\\anaconda3',
+ 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14',
+ 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages',
+ 'C:\\Users\\LAMB\\Desktop\\qcs_sage\\sourceCode']
+185 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+7155 INFO: Appending 'binaries' from .spec
+7156 INFO: Appending 'datas' from .spec
+7171 INFO: checking Analysis
+7171 INFO: Building Analysis because Analysis-00.toc is non existent
+7171 INFO: Looking for Python shared library...
+7171 INFO: Using Python shared library: C:\Users\LAMB\anaconda3\python313.dll
+7171 INFO: Running Analysis Analysis-00.toc
+7171 INFO: Target bytecode optimization level: 0
+7171 INFO: Initializing module dependency graph...
+7173 INFO: Initializing module graph hook caches...
+7218 INFO: Analyzing modules for base_library.zip ...
+173 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+173 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+174 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+9403 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+176 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+10163 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+10679 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+13363 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+16600 INFO: Caching module dependency graph...
+16681 INFO: Analyzing C:\Users\LAMB\Desktop\qcs_sage\sourceCode\QCS_QtApp.py
+17149 INFO: Processing standard module hook 'hook-matplotlib.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+17810 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+17811 INFO: SetuptoolsInfo: initializing cached setuptools info...
+373 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+18733 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+18997 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+19668 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+19712 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+20100 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+20711 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+22299 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+22842 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+23049 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+27943 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+28482 INFO: Processing standard module hook 'hook-matplotlib.backend_bases.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+28844 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+29133 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+168 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+29840 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+30252 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+32148 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+32353 INFO: Processing standard module hook 'hook-matplotlib.pyplot.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+34084 INFO: Processing standard module hook 'hook-matplotlib.figure.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+34790 INFO: Processing standard module hook 'hook-dateutil.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+34990 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+38322 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+38348 INFO: Processing standard module hook 'hook-matplotlib.backends.backend_qtagg.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+38361 INFO: Processing standard module hook 'hook-matplotlib.backends.qt_compat.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+39009 INFO: hook-matplotlib.backends.qt_compat: selected 'PySide6' as the only available Qt bindings.
+39021 INFO: Processing standard module hook 'hook-PySide6.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+39028 INFO: Processing standard module hook 'hook-shiboken6.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+39411 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+46519 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+53843 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+88949 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+95323 INFO: Processing standard module hook 'hook-PySide6.QtSvg.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+96802 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+96804 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+97964 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+98088 INFO: Processing standard module hook 'hook-sv_ttk.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+98502 INFO: Processing standard module hook 'hook-pandas.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+181 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+100938 INFO: Processing standard module hook 'hook-pytz.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+101632 INFO: Processing standard module hook 'hook-scipy.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+178 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+104014 INFO: Processing standard module hook 'hook-scipy.linalg.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+104350 INFO: Processing standard module hook 'hook-scipy.special._ufuncs.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+104680 INFO: Processing standard module hook 'hook-scipy.special._ellip_harm_2.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+105537 INFO: Processing standard module hook 'hook-scipy.spatial._ckdtree.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+108417 INFO: Processing standard module hook 'hook-scipy.sparse.csgraph.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+109358 INFO: Processing standard module hook 'hook-scipy.spatial.transform.rotation.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+111904 INFO: Processing standard module hook 'hook-scipy.stats._stats.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+121283 INFO: Processing standard module hook 'hook-pandas.io.formats.style.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+125518 INFO: Processing standard module hook 'hook-pandas.plotting.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+126848 INFO: Processing standard module hook 'hook-openpyxl.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+130351 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+184 WARNING: Assuming this is not an Anaconda environment or an additional venv/pipenv/... environment manager is being used on top, because the conda-meta folder C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\conda-meta does not exist.
+130922 INFO: Processing standard module hook 'hook-pandas.io.clipboard.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+131788 INFO: Processing standard module hook 'hook-xml.dom.domreg.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+135778 INFO: Analyzing hidden import 'gsw.freezing'
+135780 INFO: Analyzing hidden import 'certifi.__main__'
+135782 INFO: Analyzing hidden import 'certifi.tests'
+135782 INFO: Analyzing hidden import 'certifi.tests.test_certify'
+135785 INFO: Analyzing hidden import 'tkinterdnd2'
+135787 INFO: Processing standard module hook 'hook-tkinterdnd2.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+135929 INFO: Analyzing hidden import 'matplotlib.backends.backend_svg'
+136045 INFO: Processing module hooks (post-graph stage)...
+136053 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+136054 INFO: Matplotlib backend selection method: automatic discovery of used backends
+136127 INFO: Discovered Matplotlib backend(s) via `matplotlib.use()` call in module 'C:\\Users\\LAMB\\Desktop\\qcs_sage\\sourceCode\\QCS_QtApp.py': ['Agg']
+136142 INFO: The following Matplotlib backends were discovered by scanning for `matplotlib.use()` calls: ['Agg']. If your backend of choice is not in this list, either add a `matplotlib.use()` call to your code, or configure the backend collection via hook options (see: https://pyinstaller.org/en/stable/hooks-config.html#matplotlib-hooks).
+136696 INFO: Selected matplotlib backends: ['Agg']
+136696 INFO: Extra dists for selected matplotlib backends: []
+137858 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+138082 WARNING: Hidden import "scipy.special._cdflib" not found!
+138112 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+138172 INFO: Performing binary vs. data reclassification (2059 entries)
+144900 INFO: Looking for ctypes DLLs
+145119 INFO: Analyzing run-time hooks ...
+145131 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+145137 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+145141 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+145146 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+145149 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+145153 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+145156 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks'
+145161 INFO: Including run-time hook 'pyi_rth_mplconfig.py' from 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+145336 INFO: Creating base_library.zip...
+145374 INFO: Looking for dynamic libraries
+148575 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\shiboken6', 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\numpy.libs', 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\pandas.libs', 'C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\scipy.libs']
+148575 INFO: Extra DLL search directories (PATH): ['C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\PySide6']
+155320 INFO: Warnings written to C:\Users\LAMB\AppData\Local\Temp\qcs_build_work_v14\QCS\warn-QCS.txt
+155607 INFO: Graph cross-reference written to C:\Users\LAMB\AppData\Local\Temp\qcs_build_work_v14\QCS\xref-QCS.html
+155815 INFO: checking PYZ
+155815 INFO: Building PYZ because PYZ-00.toc is non existent
+155815 INFO: Building PYZ (ZlibArchive) C:\Users\LAMB\AppData\Local\Temp\qcs_build_work_v14\QCS\PYZ-00.pyz
+158011 INFO: Building PYZ (ZlibArchive) C:\Users\LAMB\AppData\Local\Temp\qcs_build_work_v14\QCS\PYZ-00.pyz completed successfully.
+158085 INFO: checking PKG
+158085 INFO: Building PKG because PKG-00.toc is non existent
+158085 INFO: Building PKG (CArchive) QCS.pkg
+158260 INFO: Building PKG (CArchive) QCS.pkg completed successfully.
+158262 INFO: Bootloader C:\Users\LAMB\AppData\Local\Temp\qcs_build_v14\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+158262 INFO: checking EXE
+158262 INFO: Building EXE because EXE-00.toc is non existent
+158262 INFO: Building EXE from EXE-00.toc
+158262 INFO: Copying bootloader EXE to C:\Users\LAMB\AppData\Local\Temp\qcs_build_work_v14\QCS\QCS.exe
+158352 INFO: Copying icon to EXE
+158397 INFO: Copying 0 resources to EXE
+158397 INFO: Embedding manifest in EXE
+158441 INFO: Appending PKG archive to EXE
+158666 INFO: Fixing EXE headers
+159169 INFO: Building EXE from EXE-00.toc completed successfully.
+159222 INFO: checking COLLECT
+159222 INFO: Building COLLECT because COLLECT-00.toc is non existent
+159223 INFO: Removing dir C:\Users\LAMB\Desktop\qcs_sage\packaging\dist\QCS
+160465 INFO: Building COLLECT COLLECT-00.toc
+165609 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+165704 INFO: Build complete! The results are available in: C:\Users\LAMB\Desktop\qcs_sage\packaging\dist

@@ -1,0 +1,49 @@
+{
+  "real_qualification_external_packages": [
+    "PIL",
+    "_csparsetools",
+    "_distutils_hack",
+    "_moduleTNC",
+    "_ni_label",
+    "cycler",
+    "dateutil",
+    "et_xmlfile",
+    "kiwisolver",
+    "matplotlib",
+    "mpl_toolkits",
+    "numpy",
+    "openpyxl",
+    "packaging",
+    "pandas",
+    "pyparsing",
+    "pytz",
+    "scipy",
+    "six",
+    "sv_ttk"
+  ],
+  "qcs_modules": [
+    "QCS_DataHandler",
+    "QCS_DataView",
+    "QCS_DatabaseView",
+    "QCS_Main",
+    "QCS_Replicates",
+    "QCS_Tests",
+    "QCS_Theme"
+  ],
+  "missing_packages_or_qcs_modules": [],
+  "extension_aliases_verified_by_file": {
+    "_csparsetools": "C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\scipy\\sparse\\_csparsetools.cp313-win_amd64.pyd",
+    "_moduleTNC": "C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\scipy\\optimize\\_moduleTNC.cp313-win_amd64.pyd",
+    "_ni_label": "C:\\Users\\LAMB\\AppData\\Local\\Temp\\qcs_build_v14\\Lib\\site-packages\\scipy\\ndimage\\_ni_label.cp313-win_amd64.pyd"
+  },
+  "interpreter_startup_only": [
+    "_distutils_hack"
+  ],
+  "critical_lazy_modules_verified": [
+    "QCS_Replicates",
+    "matplotlib.backends.backend_mixed",
+    "matplotlib.backends.backend_svg",
+    "openpyxl.cell._writer"
+  ],
+  "ledger_sha256": "870ab989ef617b02f415f8f047e88110b19e515255aadcf5da79dac1b02f443f"
+}

@@ -43,7 +43,8 @@ for pkg in ('sv_ttk', 'gsw', 'certifi', 'tkinterdnd2'):
 # (dirname(__file__) = _internal when frozen), so they must ship as datas -
 # without this the installed app silently falls back to the Tk feather. The
 # Fluent Regular SVGs are the plot toolbar's own palette-aware icon family.
-datas += [(os.path.join(SRC, 'qcs_icon.ico'), '.'),
+datas += [(os.path.join(SRC, 'batch', 'replicate_decisions.csv'), 'batch'),
+          (os.path.join(SRC, 'qcs_icon.ico'), '.'),
           (os.path.join(SRC, 'qcs_icon.png'), '.'),
           (os.path.join(SRC, 'icons', 'fluent'), 'icons/fluent')]
 # pandas imports its Excel engine lazily; make it explicit (the v2.2-era spec

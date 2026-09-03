@@ -1,0 +1,91 @@
+Warning: rate-of-change window '10M' spans only 10 sample(s) at this sampling interval; using the whole-series sigma instead.
+Warning: rate-of-change window '30M' spans only 0 sample(s) at this sampling interval; using the whole-series sigma instead.
+Info: units read from the file: pressure in kPa.
+Info: AADI binary session decoded: 3 records, 2025-11-17 18:13:20 to 2025-11-17 18:15:20.
+Info: units read from the file: pressure in kPa.
+Info: AADI binary session decoded: 3 records, 2025-11-17 18:13:20 to 2025-11-17 18:13:40.
+Info: AADI binary session decoded: 3 records, 2025-11-17 18:13:20 to 2025-11-17 18:13:40.
+Info: AADI binary session decoded: 3 records, 2025-11-17 18:13:20 to 2025-11-17 18:14:00.
+Info: AADI binary session decoded: 5 records, 2025-11-17 18:13:20 to 2025-11-17 18:14:00.
+Info: 2 sensor groups merged onto the finest time axis: 5 records, 4 columns.
+Info: update check skipped - the connection failed ([WinError 10061] Nenhuma conex�o p�de ser feita porque a m�quina de destino as recusou ativamente).
+OK: range_test (sensor -> BAD)
+OK: range_test (environmental -> SUSPECT)
+OK: outlier_test (spike detected)
+OK: outlier_test (step preserved)
+OK: outlier_test (endpoints not evaluated)
+OK: outlier_test (PAR night zeros excluded from spike scale)
+OK: single_flat_line_test
+OK: single_flat_line_test (stuck with NaNs)
+OK: sigma_rate_of_change_test (jump -> SUSPECT)
+OK: sigma_rate_of_change_test (no contamination between variables)
+OK: sigma_rate_of_change_test (window < interval does not become no-op)
+OK: vertical_gradient_test (dV/dz, anomaly detected)
+OK: density_inversion_test
+OK: light_fouling_baseline (permanent decay -> firm cutoff)
+OK: light_fouling_baseline (recovery -> no cut + warning)
+OK: light_fouling_baseline (recover then permanent -> cut at final decline)
+OK: apply_light_window (flags and short series)
+OK: pressure_to_depth (99.25 m for 100 dbar)
+OK: clean_below_zero (optical + PAR + counts)
+OK: clean_below_zero (nighttime lux preserved)
+OK: handle_output_file (pH/chlorophyll)
+OK: handle_output_file (per-variable Flag_ columns)
+OK: handle_output_file (Flag_lux + removal of bad fouled light)
+OK: handle_output_file (deduplication)
+OK: handle_output_file (density inversion at the last position)
+OK: tscp_stats_table (partial variables)
+OK: order_var hobo (only temp+light+metadata)
+OK: order_var (Lat/Long optional, not created empty)
+OK: order_var (clear error for invalid type)
+OK: build_database (discovery, dedup, provenance, refuse mix, csv ok)
+OK: build_database (Doppler cells are not overlaps; a real cell clash still warns)
+OK: combine_hobo_replicates (T mean+spread, light max-of-clean, window extended)
+OK: read_ctd (units auto-detected from the header; unit-less export refused)
+OK: handle_output_file (manual-cut flag 5 rolls up per variable, no cross-contamination)
+OK: read_ctd (Seaguard raw .bin session decoded and standardized; sniffer detects it)
+OK: read_co2_file + merge_co2_data (interpolation, gap masking, no extrapolation)
+OK: handle_output_file (CO2 bucket rolls up to Flag_CO2; O2/CO2 removals independent)
+OK: handle_output_file (PAR sensor/environment/spike roll up to Flag_PAR)
+OK: read_seaguard_bin (Point outside <SensorData> decodes; pH/optical group unlocked)
+OK: read_seaguard_deployment (sibling sensor groups merged onto finest axis by time interpolation)
+OK: doppler_qc (independent switches / speed / signal / stdev / tilt / manual; Flag_cur rollup)
+OK: is_seaguard_doppler (DCPS template detected; scalar session rejected)
+OK: quality settings (scoped; aligned display order; legacy migration)
+OK: replicate_referee (agreement / names the sound replicate / refuses without a reference)
+OK: light_clock_phase (noon / AM-PM swap = exactly 12 h / collapsed 12 h clock / fouled logger not accused)
+OK: light_fixed_cutoff (start+60d / flags split at the cutoff / short deployment uncut)
+OK: light seasonal normalization (winter decline not read as fouling / real fouling still caught / None = old rule)
+OK: hobo temperature scale (lost decimal separator recovered / sound data untouched / broken sensor not rescaled)
+OK: derived-variable flags (Flag_dens = worst of T+S / Flag_depth = Flag_P / layouts / old+new files stack)
+OK: anomalous light phase (structured verdict / accusation and noon both excluded)
+OK: once-per-run warning dedup (repeat suppressed / next run warns again)
+OK: update version comparison (upgrade yes / same no / downgrade no / junk tag no)
+OK: feedback submission (validation / exact JSON / safe failure)
+OK: writable app dir (source runs unchanged; frozen fallback is install-tested)
+OK: update check (own CA bundle / specific error reasons / raises for the caller to silence)
+OK: read_hobo (.hobo binary: spec round-trip, timebase launch+1s, light lag, refusal)
+OK: DCPS manual review (tilt cuts whole records; per-cell cuts map back through the cell ordering)
+OK: DCPS tilt context (lying-over spans shaded once, QC thresholds drawn)
+OK: mooring/cast detection (long = mooring; short+fast = cast; short+slow or too few records = no forced verdict)
+OK: manual cut: the selection rectangle follows the mouse outside the plot
+OK: manual cut: selection rectangle clears after every completed box
+OK: manual cut: Help uses the shell-replaceable plot dialog facade
+OK: tendency availability: HOBO luminosity alone has no polynomial fit
+OK: data-point availability: HOBO light uses only its daily peaks
+OK: disagreement availability: only HOBO temperature can draw bars
+OK: HOBO light plots exclude Flag_lux=4 before daily peaks
+OK: time tendencies use real datetime intervals; daily light lines retain gaps
+OK: HOBO panels: absolute calendar years; BAD light excluded from every view
+OK: scalar multi-deployments: source-aware calendar panels; single deployments stay separate
+OK: Doppler U/V gaps and plot zoom: distinct panels; 100x zoom-out; Home reset
+OK: visualization instrument identity: strict known layouts; unknown stays editable
+OK: curated database (dynamic filters / cancellation / visualization handoff)
+OK: HOBO sustained versus transient disagreement and gap boundaries
+OK: HOBO variable/interval decisions retain the grid and light
+OK: HOBO diagnostics survive cleaning without restoring bad contributors
+OK: HOBO actual combined counts and collision-free individual reports
+OK: HOBO decision ledger validation and eight legacy exclusions
+OK: HOBO single-file exclusions and legacy report preservation
+
+78 tests passed.

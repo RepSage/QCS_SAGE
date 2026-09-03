@@ -1,0 +1,143 @@
+{"changed_temperatures": 481, "changed_flags": 463, "max_temperature_change_degC": 4.875, "changed_temperature_years": [2025]}
+index: 281 product(s) -> C:\Users\LAMB\Desktop\qcs_sage\diagnostics\sgom_2025_promotion\result\qualified_index.after.csv
+instrument
+DOPPLER      53
+HOBO        115
+SEAGUARD    113
+with CO2 merged: 33
+products read: 281
+
+== 1. SCALE DEFECT (lost decimal separator) ==
+   PAB3_2024S2_HOBO_2_QLF                     Temperature (degC)        68934.00..89384.00   not a scale defect
+   RRDM03_C_2019S2_SEAGUARD_PERFIL_2_QLF      pH                            8.35..10.62      not a scale defect
+   RRDM03_C_2019S2_SEAGUARD_PERFIL_4_QLF      pH                            8.41..10.22      not a scale defect
+   -> 0 of 3 pass ALL THREE gates
+
+== 2. VALUES OUTSIDE THE SENSOR LIMIT ==
+   3354 values across 5 product(s); 3354 (100.0%) carry flag 4
+      PAB3_2024S2_HOBO_2_QLF                     Temperature (degC)      2231 outside,  2231 flagged 4 (worst 89384.00)
+      ESQNORTE_2021S2_HOBO_QLF                   Temperature (degC)      1101 outside,  1101 flagged 4 (worst 78.80)
+      RODORASO_2024S2_HOBO_QLF                   Temperature (degC)        19 outside,    19 flagged 4 (worst 41.23)
+      PAB3_2022S2_HOBO_1_QLF                     Temperature (degC)         2 outside,     2 flagged 4 (worst 49.23)
+      RRDM03_C_2019S1_SEAGUARD_FUNDEIO_QLF       Temperature (degC)         1 outside,     1 flagged 4 (worst 107.21)
+
+== 3. OUT OF RANGE AND NOT MARKED (a pipeline defect) ==
+   none: every out-of-range value came out marked as the rule requires.
+{
+  "before": {
+    "rows": 2254,
+    "columns": 11,
+    "dtypes": {
+      "Sample number": "int64",
+      "Datetime": "object",
+      "Site": "object",
+      "Temperature (degC)": "float64",
+      "Temperature spread (degC)": "float64",
+      "Luminosity (lux)": "float64",
+      "Battery voltage (V)": "float64",
+      "Flag": "float64",
+      "Flag_T": "int64",
+      "Flag_lux": "int64",
+      "QCS version": "object"
+    },
+    "missing": {
+      "Sample number": 0,
+      "Datetime": 0,
+      "Site": 0,
+      "Temperature (degC)": 0,
+      "Temperature spread (degC)": 0,
+      "Luminosity (lux)": 0,
+      "Battery voltage (V)": 2254,
+      "Flag": 2254,
+      "Flag_T": 0,
+      "Flag_lux": 0,
+      "QCS version": 0
+    },
+    "duplicate_timestamps": 0,
+    "temperature_min_degC": 24.351,
+    "temperature_max_degC": 30.549
+  },
+  "after": {
+    "rows": 2254,
+    "columns": 11,
+    "dtypes": {
+      "Sample number": "int64",
+      "Datetime": "object",
+      "Site": "object",
+      "Temperature (degC)": "float64",
+      "Temperature spread (degC)": "float64",
+      "Luminosity (lux)": "float64",
+      "Battery voltage (V)": "float64",
+      "Flag": "float64",
+      "Flag_T": "int64",
+      "Flag_lux": "int64",
+      "QCS version": "object"
+    },
+    "missing": {
+      "Sample number": 0,
+      "Datetime": 0,
+      "Site": 0,
+      "Temperature (degC)": 0,
+      "Temperature spread (degC)": 2254,
+      "Luminosity (lux)": 0,
+      "Battery voltage (V)": 2254,
+      "Flag": 2254,
+      "Flag_T": 0,
+      "Flag_lux": 0,
+      "QCS version": 0
+    },
+    "duplicate_timestamps": 0,
+    "temperature_min_degC": 24.062,
+    "temperature_max_degC": 29.452
+  },
+  "workbook_before": {
+    "rows": 4657,
+    "columns": 12,
+    "dtypes": {
+      "Sample number": "int64",
+      "Datetime": "datetime64[ns]",
+      "Site": "object",
+      "Temperature (degC)": "float64",
+      "Temperature spread (degC)": "float64",
+      "Luminosity (lux)": "float64",
+      "Battery voltage (V)": "float64",
+      "Flag": "float64",
+      "Flag_T": "int64",
+      "Flag_lux": "int64",
+      "QCS version": "object",
+      "Source file": "object"
+    },
+    "missing": {
+      "Sample number": 0,
+      "Datetime": 0,
+      "Site": 0,
+      "Temperature (degC)": 0,
+      "Temperature spread (degC)": 1461,
+      "Luminosity (lux)": 0,
+      "Battery voltage (V)": 4657,
+      "Flag": 3196,
+      "Flag_T": 0,
+      "Flag_lux": 0,
+      "QCS version": 0,
+      "Source file": 0
+    },
+    "duplicate_timestamps": 0,
+    "temperature_min_degC": 24.351,
+    "temperature_max_degC": 31.064
+  },
+  "changed_temperatures": 481,
+  "changed_flags": 463,
+  "max_temperature_change_degC": 4.875,
+  "changed_temperature_years": [
+    2025
+  ],
+  "light_changed": false,
+  "applied": true,
+  "backup": "\\\\Abrolhos\\Projetos\\Seaguard & HOBO\\DATABASE\\_deleted\\sgom_temperature_20260903T162615",
+  "calendar_2025_rows": 3737,
+  "workbook_after_rows": 4657,
+  "index_products": 281,
+  "other_hobo_products_unchanged": true,
+  "raw_unchanged": true,
+  "other_hobo_products_checked": 114
+}

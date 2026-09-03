@@ -1,0 +1,22 @@
+{
+  "diff_rows": 113,
+  "same_grid_products": 113,
+  "changed_temperature_products": 17,
+  "changed_temperatures": 18601,
+  "withheld_temperatures": 18120,
+  "changed_light": 0,
+  "changed_light_flags": 0,
+  "changed_temperature_flags": 463,
+  "diagnostic_episodes": 932,
+  "sustained_diagnostic_episodes": 85,
+  "sgom": {
+    "rows": 2254,
+    "finite_temperature": 2254,
+    "spread_blank": 2254,
+    "min_degC": 24.062,
+    "max_degC": 29.452
+  },
+  "combined_reports_checked": 55,
+  "failures": [],
+  "baseline_matching_products_unified_rows": 344675
+}
