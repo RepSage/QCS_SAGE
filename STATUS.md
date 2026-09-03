@@ -13,15 +13,22 @@ pruning is in git (`git show a0994bf:STATUS.md`).
 
 **Program and release**
 
+- **Bounded replicate decisions** (2026-09-03). Interval bounds use the aligned
+  output grid. Any overlapping recorded temperature decision suppresses reference
+  advice for the deployment; the sustained screen still runs. Revisit advice
+  scope before adding partial-interval decisions. Current ledger entries are
+  whole-file decisions.
+
 - **Pre-v13 Doppler and PAR products still need explicit requalification before
   direct comparison** (deferred 2026-08-20). The current archive contains 53
   DCPS products with four-character flags and 112 Seaguard products containing
   PAR but no `Flag_PAR`; `BURACA_FUNDA_2021S2` is the only current product with
   PAR and `Flag_PAR`. The v13.0 validation was read-only and the publication did
   not rewrite the older products.
-- **v12.3 shipped four paths that were never run in the app** (2026-08-19).
-  None of them blocks anything; each is one run away from being closed:
-  the manual point cut and the replicate review through the worker thread
+- **Remaining v12.3 interaction checks** (2026-08-19).
+  The replicate review was exercised through the real Qt worker/PlotWindow
+  on 2026-09-03; the following remain unrun:
+  the manual point cut through the worker thread
   (the point-cut MACHINERY was exercised on 2026-08-19 by the DCPS review -
   same `manual_cut_panel` and same `_show_and_wait` hop - so what is left
   unrun there is the scalar Check-variables path itself); a
@@ -40,8 +47,8 @@ pruning is in git (`git show a0994bf:STATUS.md`).
   qualified from the exports.
 
 **Data** - the authoritative list is "Still open on the data" in
-`sourceCode/batch/CORPUS_LOG.md`; do not duplicate it here. The root-level
-`qualified_index.csv` was rebuilt on 2026-08-25 and matches direct discovery.
+`sourceCode/batch/CORPUS_LOG.md`; do not duplicate it here. The DATABASE-root
+`qualified_index.csv` was rebuilt on 2026-09-03 and matches direct discovery.
 The former missing-manifest count is no longer actionable:
 the owner deleted both raw manifests on 2026-08-13, and the special collections
 that made up almost all of that count left the active corpus on 2026-08-25.
@@ -53,7 +60,9 @@ that made up almost all of that count left the active corpus on 2026-08-25.
   credential manager. Note that the automation classifier BLOCKS `git push
   --force` and the PR-merge API call; a merge is done with a local
   `git merge --no-ff` + push, and a force-push needs the owner's word first.
-- **The build stack is kept**: `%TEMP%\qcs_build_env` (PyInstaller + the pinned
-  runtime) and `packaging/v12_env` (PySide6 6.8.3, what `QCS.bat` launches).
-  `packaging/dist/` is a build artifact; it rebuilds in about three minutes
-  from `packaging/README.md`.
+- **Build runtime** (2026-09-03): the old `%TEMP%\qcs_build_env` had incomplete
+  packages and failed before building. The verified replacement is
+  `%TEMP%\qcs_build_v14`, with work files in `%TEMP%\qcs_build_work_v14`;
+  direct package pins are in `diagnostics/v14_release/build_requirements.txt`.
+  `packaging/v12_env` still launches `QCS.bat`. Use the recipe in
+  `packaging/README.md` with the verified short environment/work paths.

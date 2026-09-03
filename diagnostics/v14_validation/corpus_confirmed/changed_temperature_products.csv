@@ -1,0 +1,18 @@
+product,status,rows_before,rows_after,same_grid,temperature_blank,temperature_withheld,Temperature (degC)_changed,Luminosity (lux)_changed,Flag_T_changed,Flag_lux_changed,max_temperature_change_degC
+ESQCENTRAL_2024S1_HOBO_QLF.csv,compared,1926,1926,True,1567,1567,1567,0,0,0,0.0
+ESQNORTE_2023S1_HOBO_QLF.csv,compared,2219,2219,True,1472,1452,1452,0,0,0,0.0
+ESQNORTE_2025S2_HOBO_QLF.csv,compared,2127,2127,True,347,296,296,0,0,0,0.0
+ESQRODO_2023S1_HOBO_QLF.csv,compared,2062,2062,True,107,103,103,0,0,0,0.0
+PAB3_2022S1_HOBO_QLF.csv,compared,2539,2539,True,2326,2326,2326,0,0,0,0.0
+PAB3_2022S2_HOBO_2_QLF.csv,compared,2286,2286,True,2091,2091,2091,0,0,0,0.0
+PAB3_2025S2_HOBO_QLF.csv,compared,2157,2157,True,1517,1517,1517,0,0,0,0.0
+PLES_2021S2_HOBO_QLF.csv,compared,1168,1168,True,115,113,113,0,0,0,0.0
+PLES_2025S1_HOBO_QLF.csv,compared,2309,2309,True,1880,1880,1880,0,0,0,0.0
+PNOR_2024S1_HOBO_QLF.csv,compared,1767,1767,True,1290,1289,1289,0,0,0,0.0
+PNOR_2025S2_HOBO_QLF.csv,compared,2167,2167,True,329,329,329,0,0,0,0.0
+PNOR_2026S1_HOBO_QLF.csv,compared,4236,4236,True,1819,1819,1819,0,0,0,0.0
+RODORASO_2025S1_HOBO_QLF.csv,compared,2340,2340,True,1220,1219,1219,0,0,0,0.0
+SGOM_2023S2_HOBO_QLF.csv,compared,2306,2306,True,584,584,584,0,0,0,0.0
+SGOM_2026S1_HOBO_QLF.csv,compared,2254,2254,True,0,0,481,0,463,0,4.875
+TIM2_2025S1_HOBO_QLF.csv,compared,2355,2355,True,192,191,191,0,0,0,0.0
+TIM2_2025S2_HOBO_QLF.csv,compared,2146,2146,True,1344,1344,1344,0,0,0,0.0

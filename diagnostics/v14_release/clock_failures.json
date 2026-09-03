@@ -1,0 +1,217 @@
+[
+  {
+    "site": "ESQNORTE",
+    "results": [
+      [
+        "ESQNORTE_2024S2_HOBO_QLF",
+        null,
+        0,
+        "HOBO replicate 1 has 661 repeated timestamp(s) with conflicting values (first: 2024-04-04 07:52:01). This can "
+      ]
+    ],
+    "dialogs": [
+      [
+        "warn",
+        [
+          "Light clock collapsed onto 12 hours",
+          "No sample in this file falls after 12:59, and about half the timestamps are duplicated.\n\nThe export carries a 12-HOUR clock with the AM/PM marker MISSING (the pt-BR HOBOware format writes \"04h0min0s\"), so every afternoon reading has landed on top of its morning twin. HALF of this series is on the wrong timestamp, and the two readings cannot be told apart by time alone.\n\nRe-export the file with an AM/PM marker (or a 24-hour clock) rather than trusting any time-based result from this one."
+        ]
+      ],
+      [
+        "warn",
+        [
+          "Light clock collapsed onto 12 hours",
+          "No sample in this file falls after 12:59, and about half the timestamps are duplicated.\n\nThe export carries a 12-HOUR clock with the AM/PM marker MISSING (the pt-BR HOBOware format writes \"04h0min0s\"), so every afternoon reading has landed on top of its morning twin. HALF of this series is on the wrong timestamp, and the two readings cannot be told apart by time alone.\n\nRe-export the file with an AM/PM marker (or a 24-hour clock) rather than trusting any time-based result from this one."
+        ]
+      ],
+      [
+        "error",
+        [
+          "Qualification error",
+          "The qualification was interrupted by an error:\n\nHOBO replicate 1 has 661 repeated timestamp(s) with conflicting values (first: 2024-04-04 07:52:01). This can indicate a collapsed 12-hour clock; the replicates were not combined.\n\nLocation: QCS_Replicates.py, line 207, in align_replicates()\n(full traceback in the Execution log)\n\nSome files may have been partially generated in the output folder before the error. Check the input file and the settings and try again."
+        ]
+      ]
+    ],
+    "log": [
+      "=== Replicate 1/2: HOBO1_ESQNORTE_B2_040424_290824.xlsx ===",
+      "Stage 1/5: reading input file (HOBO)...",
+      "Info: region 'Brazil / East / Abrolhos (BA-ES)' -> lat -17.5 (used for the seasonal correction of the light fouling analysis)",
+      "Info: timestamps exported as GMT-03 (from the header). The \"Correct GMT-3\" option would subtract 3 MORE hours - only use it if the export is in GMT+00.",
+      "Info: clock exported as 'HHhMMminSSs'; normalized to HH:MM:SS.",
+      "Info: dates are month-first (a value > 12 in the second field proves it); parsed accordingly.",
+      "Warning: no logger event columns found - deployment window not applied; check the file edges for out-of-water readings.",
+      "Warning: timestamps were not in chronological order; sorted by time.",
+      "Info: HOBO file read: 1766 samples, 2024-04-04 01:52:01 to 2024-08-29 09:52:01, median interval 0 days 02:00:00.",
+      "Warning: 879 duplicated timestamp(s) found in the raw file.",
+      "Info: 147 sampling gap(s) longer than 3x the median interval (largest: 0 days 14:00:00).",
+      "Stage 2/5: preprocessing (units, depth, non-physical values)...",
+      "Stage 3/5: running quality tests (1766 samples)...",
+      "Temperature sensor range: bad 0, suspect 0 (0.0% flagged) [0.00 s]",
+      "Temperature environmental range: bad 0, suspect 0 (0.0% flagged) [0.00 s]",
+      "Temperature spikes: bad 0, suspect 0 (0.0% flagged) [0.00 s]",
+      "Temperature rate of change: bad 0, suspect 0 (0.0% flagged) [0.03 s]",
+      "Temperature flat line: bad 61, suspect 62 (7.0% flagged) [0.00 s]",
+      "WARNING: no sample falls after 12:59 and 50% of the timestamps are duplicated. This export carries a 12-HOUR clock with the AM/PM marker MISSING (the pt-BR HOBOware format writes \"04h0min0s\"), so every afternoon reading has landed on top of its morning twin. Half of this series is on the wrong timestamp and the two readings cannot be told apart by time alone. Do NOT trust any time-based result from this file - it needs the afternoon half reconstructed from the row order first.",
+      "Light cutoff mode: FIXED window - light BAD from 2024-06-03 (60 days after deployment); the adaptive rule would have proposed 2024-04-16 (not applied).",
+      "Light fouling window: bad 1049, suspect 0 (59.4% flagged) [0.03 s]",
+      "Processing time: 0.08 s",
+      "Stage 4/5: creating output table and reports...",
+      "Exported data to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_0_827fly/HOBO1_ESQNORTE_B2_040424_290824_QLF/QCS qualified hobo data/",
+      "Exporting statistics table, reports and flag legend to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_0_827fly/HOBO1_ESQNORTE_B2_040424_290824_QLF/QCS qualified hobo data/",
+      "Light window plot saved to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_0_827fly/HOBO1_ESQNORTE_B2_040424_290824_QLF/QCS qualified hobo data/QCS_light_window.svg",
+      "Stage 5/5: generating DataView plots...",
+      "=== Replicate 2/2: HOBO2_ESQNORTE_B2_04042024-290824.xlsx ===",
+      "Stage 1/5: reading input file (HOBO)...",
+      "Info: region 'Brazil / East / Abrolhos (BA-ES)' -> lat -17.5 (used for the seasonal correction of the light fouling analysis)",
+      "Info: timestamps exported as GMT-03 (from the header). The \"Correct GMT-3\" option would subtract 3 MORE hours - only use it if the export is in GMT+00.",
+      "Info: clock exported as 'HHhMMminSSs'; normalized to HH:MM:SS.",
+      "Info: dates are month-first (a value > 12 in the second field proves it); parsed accordingly.",
+      "Warning: no logger event columns found - deployment window not applied; check the file edges for out-of-water readings.",
+      "Warning: timestamps were not in chronological order; sorted by time.",
+      "Info: HOBO file read: 1766 samples, 2024-04-04 01:53:28 to 2024-08-29 09:53:28, median interval 0 days 02:00:00.",
+      "Warning: 879 duplicated timestamp(s) found in the raw file.",
+      "Info: 147 sampling gap(s) longer than 3x the median interval (largest: 0 days 14:00:00).",
+      "Stage 2/5: preprocessing (units, depth, non-physical values)...",
+      "Stage 3/5: running quality tests (1766 samples)...",
+      "Temperature sensor range: bad 0, suspect 0 (0.0% flagged) [0.00 s]",
+      "Temperature environmental range: bad 0, suspect 0 (0.0% flagged) [0.00 s]",
+      "Temperature spikes: bad 0, suspect 0 (0.0% flagged) [0.00 s]",
+      "Temperature rate of change: bad 0, suspect 0 (0.0% flagged) [0.03 s]",
+      "Temperature flat line: bad 109, suspect 61 (9.6% flagged) [0.00 s]",
+      "WARNING: no sample falls after 12:59 and 50% of the timestamps are duplicated. This export carries a 12-HOUR clock with the AM/PM marker MISSING (the pt-BR HOBOware format writes \"04h0min0s\"), so every afternoon reading has landed on top of its morning twin. Half of this series is on the wrong timestamp and the two readings cannot be told apart by time alone. Do NOT trust any time-based result from this file - it needs the afternoon half reconstructed from the row order first.",
+      "Light cutoff mode: FIXED window - light BAD from 2024-06-03 (60 days after deployment); the adaptive rule would have proposed 2024-04-16 (not applied).",
+      "Light fouling window: bad 1049, suspect 0 (59.4% flagged) [0.03 s]",
+      "Processing time: 0.08 s",
+      "Stage 4/5: creating output table and reports...",
+      "Exported data to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_0_827fly/HOBO2_ESQNORTE_B2_04042024-290824_QLF/QCS qualified hobo data/",
+      "Exporting statistics table, reports and flag legend to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_0_827fly/HOBO2_ESQNORTE_B2_04042024-290824_QLF/QCS qualified hobo data/",
+      "Light window plot saved to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_0_827fly/HOBO2_ESQNORTE_B2_04042024-290824_QLF/QCS qualified hobo data/QCS_light_window.svg",
+      "Stage 5/5: generating DataView plots...",
+      "Combining 2 replicates...",
+      "Warning: Replicate referee: replicate 1 has 392 repeated timestamp(s) with conflicting acceptable temperatures (first: 2024-04-04 07:52:01). This can indicate a collapsed 12-hour clock; no replicate was named and the inputs must be corrected.",
+      "Error: Traceback (most recent call last):",
+      "Error:   File \"C:\\Users\\LAMB\\Desktop\\qcs_sage\\sourceCode\\QCS_Main.py\", line 1343, in start_qualification",
+      "Error:     combined, cmsgs = data.combine_hobo_replicates(",
+      "Error:                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^",
+      "Error:         qualified_dfs, diagnostics=diagnostic_dfs, source_names=names, decisions=decisions)",
+      "Error:         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+      "Error:   File \"C:\\Users\\LAMB\\Desktop\\qcs_sage\\sourceCode\\QCS_DataHandler.py\", line 3129, in combine_hobo_replicates",
+      "Error:     aligned, clean_replicates, messages = replicas_policy.align_replicates(replicates)",
+      "Error:                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^",
+      "Error:   File \"C:\\Users\\LAMB\\Desktop\\qcs_sage\\sourceCode\\QCS_Replicates.py\", line 207, in align_replicates",
+      "Error:     raise ValueError(",
+      "Error:     ...<3 lines>...",
+      "Error:         % (i + 1, len(conflicts), conflicts[0]))",
+      "Error: ValueError: HOBO replicate 1 has 661 repeated timestamp(s) with conflicting values (first: 2024-04-04 07:52:01). This can indicate a collapsed 12-hour clock; the replicates were not combined."
+    ]
+  },
+  {
+    "site": "ESQSUL",
+    "results": [
+      [
+        "ESQSUL_2024S2_HOBO_QLF",
+        null,
+        0,
+        "HOBO replicate 1 has 778 repeated timestamp(s) with conflicting values (first: 2024-04-07 07:26:01). This can "
+      ]
+    ],
+    "dialogs": [
+      [
+        "warn",
+        [
+          "Light clock collapsed onto 12 hours",
+          "No sample in this file falls after 12:59, and about half the timestamps are duplicated.\n\nThe export carries a 12-HOUR clock with the AM/PM marker MISSING (the pt-BR HOBOware format writes \"04h0min0s\"), so every afternoon reading has landed on top of its morning twin. HALF of this series is on the wrong timestamp, and the two readings cannot be told apart by time alone.\n\nRe-export the file with an AM/PM marker (or a 24-hour clock) rather than trusting any time-based result from this one."
+        ]
+      ],
+      [
+        "warn",
+        [
+          "Light clock collapsed onto 12 hours",
+          "No sample in this file falls after 12:59, and about half the timestamps are duplicated.\n\nThe export carries a 12-HOUR clock with the AM/PM marker MISSING (the pt-BR HOBOware format writes \"04h0min0s\"), so every afternoon reading has landed on top of its morning twin. HALF of this series is on the wrong timestamp, and the two readings cannot be told apart by time alone.\n\nRe-export the file with an AM/PM marker (or a 24-hour clock) rather than trusting any time-based result from this one."
+        ]
+      ],
+      [
+        "error",
+        [
+          "Qualification error",
+          "The qualification was interrupted by an error:\n\nHOBO replicate 1 has 778 repeated timestamp(s) with conflicting values (first: 2024-04-07 07:26:01). This can indicate a collapsed 12-hour clock; the replicates were not combined.\n\nLocation: QCS_Replicates.py, line 207, in align_replicates()\n(full traceback in the Execution log)\n\nSome files may have been partially generated in the output folder before the error. Check the input file and the settings and try again."
+        ]
+      ]
+    ],
+    "log": [
+      "=== Replicate 1/2: HOBO1_ESQSUL_B4_070424_300824.xlsx ===",
+      "Stage 1/5: reading input file (HOBO)...",
+      "Info: region 'Brazil / East / Abrolhos (BA-ES)' -> lat -17.5 (used for the seasonal correction of the light fouling analysis)",
+      "Info: timestamps exported as GMT-03 (from the header). The \"Correct GMT-3\" option would subtract 3 MORE hours - only use it if the export is in GMT+00.",
+      "Info: clock exported as 'HHhMMminSSs'; normalized to HH:MM:SS.",
+      "Info: dates are month-first (a value > 12 in the second field proves it); parsed accordingly.",
+      "Warning: no logger event columns found - deployment window not applied; check the file edges for out-of-water readings.",
+      "Warning: timestamps were not in chronological order; sorted by time.",
+      "Info: 1 trailing sample(s) trimmed - temperature deviates more than 1.5 degC from the deployment end (out-of-water reading).",
+      "Info: HOBO file read: 1742 samples, 2024-04-07 01:26:01 to 2024-08-30 09:26:01, median interval 0 days 02:00:00.",
+      "Warning: 867 duplicated timestamp(s) found in the raw file.",
+      "Info: 145 sampling gap(s) longer than 3x the median interval (largest: 0 days 14:00:00).",
+      "Stage 2/5: preprocessing (units, depth, non-physical values)...",
+      "Stage 3/5: running quality tests (1742 samples)...",
+      "Temperature sensor range: bad 0, suspect 0 (0.0% flagged) [0.00 s]",
+      "Temperature environmental range: bad 0, suspect 0 (0.0% flagged) [0.00 s]",
+      "Temperature spikes: bad 0, suspect 0 (0.0% flagged) [0.00 s]",
+      "Temperature rate of change: bad 0, suspect 0 (0.0% flagged) [0.03 s]",
+      "Temperature flat line: bad 9, suspect 21 (1.7% flagged) [0.00 s]",
+      "WARNING: no sample falls after 12:59 and 50% of the timestamps are duplicated. This export carries a 12-HOUR clock with the AM/PM marker MISSING (the pt-BR HOBOware format writes \"04h0min0s\"), so every afternoon reading has landed on top of its morning twin. Half of this series is on the wrong timestamp and the two readings cannot be told apart by time alone. Do NOT trust any time-based result from this file - it needs the afternoon half reconstructed from the row order first.",
+      "Light cutoff mode: FIXED window - light BAD from 2024-06-06 (60 days after deployment); the adaptive rule would have proposed none (not applied).",
+      "Light fouling window: bad 1025, suspect 0 (58.8% flagged) [0.03 s]",
+      "Processing time: 0.08 s",
+      "Stage 4/5: creating output table and reports...",
+      "Exported data to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_k0p6ra1r/HOBO1_ESQSUL_B4_070424_300824_QLF/QCS qualified hobo data/",
+      "Exporting statistics table, reports and flag legend to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_k0p6ra1r/HOBO1_ESQSUL_B4_070424_300824_QLF/QCS qualified hobo data/",
+      "Light window plot saved to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_k0p6ra1r/HOBO1_ESQSUL_B4_070424_300824_QLF/QCS qualified hobo data/QCS_light_window.svg",
+      "Stage 5/5: generating DataView plots...",
+      "=== Replicate 2/2: HOBO2_ESQSUL_B4_070424_300824.xlsx ===",
+      "Stage 1/5: reading input file (HOBO)...",
+      "Info: region 'Brazil / East / Abrolhos (BA-ES)' -> lat -17.5 (used for the seasonal correction of the light fouling analysis)",
+      "Info: timestamps exported as GMT-03 (from the header). The \"Correct GMT-3\" option would subtract 3 MORE hours - only use it if the export is in GMT+00.",
+      "Info: clock exported as 'HHhMMminSSs'; normalized to HH:MM:SS.",
+      "Info: dates are month-first (a value > 12 in the second field proves it); parsed accordingly.",
+      "Warning: no logger event columns found - deployment window not applied; check the file edges for out-of-water readings.",
+      "Warning: timestamps were not in chronological order; sorted by time.",
+      "Info: 1 trailing sample(s) trimmed - temperature deviates more than 1.5 degC from the deployment end (out-of-water reading).",
+      "Info: HOBO file read: 1742 samples, 2024-04-07 01:32:24 to 2024-08-30 09:32:24, median interval 0 days 02:00:00.",
+      "Warning: 867 duplicated timestamp(s) found in the raw file.",
+      "Info: 145 sampling gap(s) longer than 3x the median interval (largest: 0 days 14:00:00).",
+      "Stage 2/5: preprocessing (units, depth, non-physical values)...",
+      "Stage 3/5: running quality tests (1742 samples)...",
+      "Temperature sensor range: bad 0, suspect 0 (0.0% flagged) [0.00 s]",
+      "Temperature environmental range: bad 0, suspect 0 (0.0% flagged) [0.00 s]",
+      "Temperature spikes: bad 0, suspect 1 (0.1% flagged) [0.00 s]",
+      "Temperature rate of change: bad 0, suspect 2 (0.1% flagged) [0.03 s]",
+      "Temperature flat line: bad 19, suspect 22 (2.4% flagged) [0.00 s]",
+      "WARNING: no sample falls after 12:59 and 50% of the timestamps are duplicated. This export carries a 12-HOUR clock with the AM/PM marker MISSING (the pt-BR HOBOware format writes \"04h0min0s\"), so every afternoon reading has landed on top of its morning twin. Half of this series is on the wrong timestamp and the two readings cannot be told apart by time alone. Do NOT trust any time-based result from this file - it needs the afternoon half reconstructed from the row order first.",
+      "Warning: the daily light peak dips below the fouling threshold and then recovers above it on 22% of the following days - not a clean, monotonic biofouling decline. Likely sensor cleaning/redeployment, patchy fouling or cloudy spells - no permanent cutoff was set. Review the cutoff on the plot (drag it or press N for no cutoff) and check whether this file spans more than one deployment.",
+      "Light cutoff mode: FIXED window - light BAD from 2024-06-06 (60 days after deployment); the adaptive rule would have proposed none (not applied).",
+      "Light fouling window: bad 1025, suspect 0 (58.8% flagged) [0.03 s]",
+      "Processing time: 0.08 s",
+      "Stage 4/5: creating output table and reports...",
+      "Exported data to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_k0p6ra1r/HOBO2_ESQSUL_B4_070424_300824_QLF/QCS qualified hobo data/",
+      "Exporting statistics table, reports and flag legend to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_k0p6ra1r/HOBO2_ESQSUL_B4_070424_300824_QLF/QCS qualified hobo data/",
+      "Light window plot saved to: C:\\Users\\LAMB\\AppData\\Local\\Temp\\q_k0p6ra1r/HOBO2_ESQSUL_B4_070424_300824_QLF/QCS qualified hobo data/QCS_light_window.svg",
+      "Stage 5/5: generating DataView plots...",
+      "Combining 2 replicates...",
+      "Warning: Replicate referee: replicate 1 has 506 repeated timestamp(s) with conflicting acceptable temperatures (first: 2024-04-07 07:26:01). This can indicate a collapsed 12-hour clock; no replicate was named and the inputs must be corrected.",
+      "Error: Traceback (most recent call last):",
+      "Error:   File \"C:\\Users\\LAMB\\Desktop\\qcs_sage\\sourceCode\\QCS_Main.py\", line 1343, in start_qualification",
+      "Error:     combined, cmsgs = data.combine_hobo_replicates(",
+      "Error:                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^",
+      "Error:         qualified_dfs, diagnostics=diagnostic_dfs, source_names=names, decisions=decisions)",
+      "Error:         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+      "Error:   File \"C:\\Users\\LAMB\\Desktop\\qcs_sage\\sourceCode\\QCS_DataHandler.py\", line 3129, in combine_hobo_replicates",
+      "Error:     aligned, clean_replicates, messages = replicas_policy.align_replicates(replicates)",
+      "Error:                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^",
+      "Error:   File \"C:\\Users\\LAMB\\Desktop\\qcs_sage\\sourceCode\\QCS_Replicates.py\", line 207, in align_replicates",
+      "Error:     raise ValueError(",
+      "Error:     ...<3 lines>...",
+      "Error:         % (i + 1, len(conflicts), conflicts[0]))",
+      "Error: ValueError: HOBO replicate 1 has 778 repeated timestamp(s) with conflicting values (first: 2024-04-07 07:26:01). This can indicate a collapsed 12-hour clock; the replicates were not combined."
+    ]
+  }
+]

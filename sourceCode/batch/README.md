@@ -91,7 +91,7 @@ untouched — used for light-mode reruns.
   the FIXED 60-day window (`light : fixed-60d window` in provenance) — the
   adaptive threshold is entangled with season. The replicate-review
   recommendation is DECLINED in batch (nobody is present to ratify it);
-  replicates the corpus has decided to drop go through `EXCLUDED_REPLICATES`.
+  ratified exclusions live in `replicate_decisions.csv`.
   Each product's provenance also carries a per-file `clock :` verdict from
   `light_clock_phase`.
 - **Byte-identical re-archives are skipped** (the field archive stores some
@@ -127,3 +127,57 @@ HOBO → the temperature/light panel.
 - The drivers monkeypatch the GUI layer (messageboxes, the light-window
   review accepts the proposed cutoff, prefs are not saved) — the QC itself is
   the real pipeline.
+
+## Candidate requalification and replicate decisions (v14.0)
+
+`QCS_QUALIFIED_OUTPUT_ROOT` redirects qualified outputs while raw inputs and
+regional reference products remain in the active archive. Validation runs must
+use an external candidate directory; the reference baseline stays fixed so
+processing order cannot change recommendations. Both GUI preference writers are
+disabled before the headless shell is built.
+
+`validate_hobo_candidate.py --archive <DATABASE> --output <candidate-directory>`
+replays the active HOBO products, inventories the baseline, records raw and
+qualified hashes, and writes product differences, the integrity sweep result,
+and unification messages. `--site SGOM --semester 2026S1` selects the pilot.
+It does not promote files or rebuild the active index.
+
+The ledger records source filename, variable, inclusive local-time interval,
+action, reason, reviewer and review date. Blank bounds mean the whole file;
+`*` means all variables. Historical all-file exclusions still apply during
+archive discovery; temperature-only decisions apply to single-file qualification and combination. The
+legacy rows were migrated on 2026-09-03; their evidence predates that migration.
+Individual reports receive compact, stable source identities in their names;
+`<product>__QCS_report_sources.csv` maps them to full source-relative paths.
+Obsolete unscoped individual reports are retained under `reports/previous/`. The unqualified
+`<product>__QCS_report.xlsx` always describes the exported product, including
+separate counts of suspect flags, blank values, and withheld temperatures.
+
+The initial sustained screen is >0.5 degC for >=24 elapsed hours and >=3
+consecutive eligible pairs. Missing pairs, agreement and gaps >1.5 median
+sampling intervals split episodes. This one-diurnal-cycle review threshold is
+an explicit provisional policy, not a calibrated sensor-failure criterion.
+The diagnostic episode queue also uses pre-cleaning values, but suspect/bad
+values are never restored as contributors. Excluding a temperature variable
+does not decide light quality. Unresolved episodes preserve originals in the
+sample audit and produce NaN temperature with Flag_T=3. Isolated disagreements
+retain the existing suspect mean. No automatic reference recommendation is
+ratified in batch.
+
+`validate_hobo_corpus.py --archive <DATABASE> --output <fresh-candidate-directory>`
+executes four isolated per-site workers, then assembles their products and review
+queue. It reports incomplete active products separately from invalid extra raw
+inputs; any failed run remains explicit and the process exits nonzero. The
+integrity fallback discovers only `*_QLF.csv`, excluding diagnostic report CSVs.
+
+`promote_hobo_corpus.py --archive <DATABASE> --candidate <validated-replay>
+--output <audit-directory> --workbook <new-HOBO-workbook>` inspects a replay
+without changing the archive. `--apply` verifies full site-folder backups,
+replaces complete validated folders, rebuilds the index, runs the mandatory
+integrity sweep and exports through the canonical curated engine. Any failed
+active product must be named explicitly with `--retain-product <filename>`;
+it stays unchanged and is recorded as unreprocessed, never silently dropped.
+Unexpected product membership, timestamp/flag/light changes, report mismatches
+or concurrent edits stop promotion. This driver is scoped to the v14 sustained
+temperature screen after the separate SGOM correction. The dated operation and
+its exact retained-product list are recorded in `CORPUS_LOG.md`.

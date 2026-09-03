@@ -916,7 +916,7 @@ def replicate_referee(replicates, reference=None, settings=None):
         out['warnings'].append(
             'Replicate referee: the replicates disagree on %.0f%% of the record '
             '(up to %.2f degC), but no independent reference was supplied, so '
-            'neither can be named - both were kept and combined. Provide '
+            'neither can be named automatically. Provide '
             'contemporaneous data from other sites to arbitrate.'
             % (100 * out['frac_over'], out['max_spread']))
         out['verdict'] = 'disagreement, no reference to arbitrate'
@@ -928,7 +928,7 @@ def replicate_referee(replicates, reference=None, settings=None):
     if len(d_ref) < s['min_points']:
         out['warnings'].append(
             'Replicate referee: only %d reference point(s) at %s cadence - too '
-            'short to arbitrate; both replicates kept.' % (len(d_ref), freq))
+            'short to arbitrate; no exclusion recommended.' % (len(d_ref), freq))
         out['verdict'] = 'disagreement, reference too short'
         return out
     ref_amp = float(ref.max() - ref.min())

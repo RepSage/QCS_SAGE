@@ -27,23 +27,11 @@ import pandas as pd
 
 
 def excluded_raw_files():
-    """The keys of qualify_site.EXCLUDED_REPLICATES, read from the SOURCE.
+    """Whole-file exclusions from the versioned ledger, without booting a shell."""
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from QCS_Replicates import legacy_exclusions
+    return set(legacy_exclusions())
 
-    Importing qualify_site would build a Tk root and the whole qualification
-    tab as an import side effect - far too much for reading one dict - so the
-    file is parsed instead of executed.
-    """
-    import ast
-    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'qualify_site.py')
-    with open(src, encoding='utf-8') as fh:
-        tree = ast.parse(fh.read())
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        names = [t.id for t in node.targets if isinstance(t, ast.Name)]
-        if 'EXCLUDED_REPLICATES' in names:
-            return {k.value for k in node.value.keys if isinstance(k, ast.Constant)}
-    raise RuntimeError('EXCLUDED_REPLICATES not found in qualify_site.py')
 
 ROOT = r'\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE'
 INDEX = os.path.join(ROOT, 'qualified_index.csv')

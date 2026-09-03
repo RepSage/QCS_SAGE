@@ -2141,5 +2141,8 @@ with _tempfile.TemporaryDirectory() as _curated_root:
     assert set(_curated_hobo['Source file']) == {_hobo_name}
 ok.append('curated database (dynamic filters / cancellation / visualization handoff)')
 
+from QCS_ReplicateSelfTest import run as _replicate_selftests
+ok.extend(_replicate_selftests())
+
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

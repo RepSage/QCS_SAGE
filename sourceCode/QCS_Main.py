@@ -17,6 +17,7 @@ from scipy import signal
 
 # software modules
 import QCS_DataHandler as data
+import QCS_Replicates as replicas_policy
 import QCS_DataView as view
 import QCS_Tests as QC
 import QCS_Theme as theme
@@ -1064,6 +1065,17 @@ TEMPERATURE
   Flag_T is set to SUSPECT (3) - the replicates disagree, which is itself a QC
   signal. The combined series has the same timestamps (and row count) as the first
   replicate.
+  Ratified decisions in batch/replicate_decisions.csv exclude only the named
+  variable and inclusive time interval (blank bounds mean the whole file).
+  Sustained unresolved disagreement (>0.5 degC for >=24 elapsed hours and >=3
+  consecutive paired samples) is WITHHELD: temperature is empty, Flag_T remains
+  3. Agreement, missing pairs, or gaps >1.5 sampling intervals break an episode.
+  A single acceptable contributor remains usable with an empty spread. Isolated
+  disagreements keep their suspect mean. This is a review policy, not proof of
+  which sensor failed. Automatic reference recommendations require ratification.
+  QCS_replicate_samples.csv preserves pre-cleaning diagnostic values and flags;
+  episode and applied-decision tables document screening and exclusions.
+  QCS_report.xlsx describes THIS combined table; individual reports stay separate.
 
 LIGHT
   Combined value = the per-timestamp MAX of the NON-fouled readings (Flag_lux != 4).
@@ -1115,6 +1127,14 @@ def write_combined_replicates(combined, light_plots=()):
         combined_file = os.path.join(folder, base + '.xlsx')
         data.save_excel_autofit(ordered, combined_file)
     OUTPUT['last_qualified_file'] = combined_file  # so Visualization can pre-select it
+    data.save_excel_autofit(replicas_policy.combined_report(ordered),
+                           os.path.join(folder, 'QCS_report.xlsx'))
+    for label, table in combined.attrs.get('replicate_audit', {}).items():
+        table.to_csv(os.path.join(folder, 'QCS_replicate_%s.csv' % label), index=False)
+    with open(os.path.join(folder, 'QCS_replicate_referee.json'), 'w', encoding='utf-8') as handle:
+        json.dump(combined.attrs.get('referee', {}), handle, indent=2, default=str)
+    stats = ordered[['Temperature (degC)', 'Luminosity (lux)']].describe()
+    data.save_excel_autofit(stats.reset_index(), os.path.join(folder, 'QCS_combined_stat.xlsx'))
     # copy each replicate's light-window plot (kept with the 'QCS_' prefix so
     # build_database keeps ignoring them when scanning folders)
     for plot in light_plots:
@@ -1220,6 +1240,7 @@ def start_qualification():
     batch = n > 1 and not combine_hobo
     try:
         qualified_dfs = []
+        diagnostic_dfs = []
         replicate_roots = []
         light_plots = []
         batch_failures = []
@@ -1233,6 +1254,7 @@ def start_qualification():
             OUTPUT['last_qualified_file'] = None
             OUTPUT['last_output_root'] = None
             OUTPUT['last_qualified_df'] = None
+            OUTPUT['last_diagnostic_df'] = None
             OUTPUT['doppler_run'] = False
             if batch:
                 # each batch file names its own output automatically
@@ -1272,6 +1294,7 @@ def start_qualification():
                 batch_outputs.append(OUTPUT['last_qualified_file'])
             if combine_hobo:
                 qualified_dfs.append(OUTPUT['last_qualified_df'])
+                diagnostic_dfs.append(OUTPUT['last_diagnostic_df'])
                 # the replicate's OWN output folder, so a deployment reduced to a
                 # single sound replicate can point at it instead of re-writing
                 replicate_roots.append(OUTPUT.get('last_output_root'))
@@ -1288,50 +1311,44 @@ def start_qualification():
             # comparison can catch it - and the mean of a sound and a faulty
             # sensor is wrong, not merely uncertain.
             reference = REPLICATE_REFERENCE.get('series')
-            referee = QC.replicate_referee(qualified_dfs, reference=reference)
-            for m in referee['warnings']:
-                log_line('Warning: ' + m if not m.startswith('Replicate referee') else m)
+            # Advisory diagnostics must not lose the drifting sensor's values
+            # merely because its individual QC already flagged them.
+            diagnostic_inputs = [r.drop(columns=['Flag_T']) for r in diagnostic_dfs]
+            referee = QC.replicate_referee(diagnostic_inputs, reference=reference)
+            for message in referee['warnings']:
+                log_line('Warning: ' + message)
+            decisions = replicas_policy.load_decisions()
+            names = [os.path.basename(f) for f in files]
+            relevant = decisions[decisions.source_file.isin(names) &
+                                 decisions.variable.isin(['*', 'Temperature (degC)'])]
+            t0 = min(pd.to_datetime(r.Datetime).min() for r in qualified_dfs)
+            t1 = max(pd.to_datetime(r.Datetime).max() for r in qualified_dfs)
+            registered = any((not row.start or pd.Timestamp(row.start) <= t1) and
+                             (not row.end or pd.Timestamp(row.end) >= t0)
+                             for row in relevant.itertuples())
             keep = None
-            if referee['recommended'] is not None:
-                keep = review_replicates(qualified_dfs, referee, reference,
+            if referee['recommended'] is not None and not registered:
+                keep = review_replicates(diagnostic_inputs, referee, reference,
                                          INPUT.get('site') or '')
             if keep is not None:
-                # A deployment reduced to ONE sound replicate has nothing to
-                # average, but the product must still carry the deployment's
-                # output name and column layout - so write the kept replicate
-                # through the same writer, in the combined schema. The spread
-                # column is left EMPTY, not 0: there is no between-replicate
-                # spread to report, and a 0 would read as 'two loggers agreed
-                # perfectly' - the opposite of what happened here. Empty is also
-                # what every single-logger product already carries.
-                log_line('Info: replicate %d accepted as the only sound one - the other(s) '
-                         'were DROPPED (the combined series is a MEAN, so a faulty '
-                         'replicate would shift it).' % (keep + 1))
-                only = qualified_dfs[keep]
-                single = pd.DataFrame({
-                    'Datetime': pd.to_datetime(only['Datetime']),
-                    'Temperature (degC)': pd.to_numeric(only['Temperature (degC)'], errors='coerce'),
-                    'Temperature spread (degC)': float('nan'),
-                    'Luminosity (lux)': pd.to_numeric(only['Luminosity (lux)'], errors='coerce'),
-                    'Flag_T': pd.to_numeric(only['Flag_T'], errors='coerce').astype(int),
-                    'Flag_lux': pd.to_numeric(only['Flag_lux'], errors='coerce').astype(int),
-                })
-                if 'Site' in only.columns and len(only):
-                    single.insert(1, 'Site', only['Site'].iloc[0])
-                OUTPUT['last_qualified_df'] = single
-                OUTPUT['last_output_root'] = write_combined_replicates(
-                    single, [p for p in ([light_plots[keep]] if keep < len(light_plots) else [])
-                             if p])
-                log_line('Single sound replicate saved to: %s' % OUTPUT['last_output_root'])
-            else:
-                if referee['recommended'] is not None:
-                    log_line('Info: diagnosis declined - all replicates kept and combined.')
-                combined, cmsgs = data.combine_hobo_replicates(qualified_dfs)
-                for m in cmsgs:
-                    log_line(m)
-                OUTPUT['last_output_root'] = write_combined_replicates(
-                    combined, [p for p in light_plots if p])
-                log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
+                # Temperature evidence authorizes a temperature decision only.
+                rows = []
+                for i, name in enumerate(names):
+                    if i != keep:
+                        rows.append(dict(zip(replicas_policy.DECISION_COLUMNS,
+                            ['interactive-%d' % i, name, 'Temperature (degC)', '', '',
+                             'exclude', 'Operator accepted the reference diagnosis: ' + referee['verdict'],
+                             'Interactive operator', pd.Timestamp.now().isoformat()], strict=True)))
+                decisions = pd.concat([decisions, pd.DataFrame(rows)], ignore_index=True)
+            combined, cmsgs = data.combine_hobo_replicates(
+                qualified_dfs, diagnostics=diagnostic_dfs, source_names=names, decisions=decisions)
+            combined.attrs['referee'] = referee
+            for message in cmsgs:
+                log_line(message)
+            OUTPUT['last_qualified_df'] = combined
+            OUTPUT['last_output_root'] = write_combined_replicates(
+                combined, [p for p in light_plots if p])
+            log_line('Combined replicates saved to: %s' % OUTPUT['last_output_root'])
         if batch:
             n_done = n - len(batch_failures)
             msg = ('Done: batch finished - %d of %d files qualified (one _QLF output per file).'
@@ -2387,28 +2404,28 @@ def build_qualification_tab(container, root, shared_log=None):
         """Interactive review of the replicate diagnosis (v9.0). Shows every
         replicate against the independent reference with the referee's scores,
         and asks the operator to confirm. Returns the index of the replicate to
-        KEEP, or None to keep them all (the software never silently discards
+        KEEP for temperature, or None for no exclusion (the software never silently discards
         half a redundant pair - that is a scientific decision).
 
         Same convention as the light-window review: buttons + keys, and closing
         the window keeps the current choice."""
+        from matplotlib.widgets import Button
         fig, ax = view.plot_replicate_review(replicates, referee, reference, site)
         ax.set_title(ax.get_title() +
-                     '\nA = accept (use only the sound one)  |  K = keep all  |  '
-                     'Enter = Done  |  Esc = keep all')
+                     '\nA = accept temperature choice  |  K = no exclusion  |  '
+                     'Enter = Done  |  Esc = no exclusion')
         fig.subplots_adjust(bottom=0.26)
-        state = {'keep': referee['recommended']}      # start on the recommendation
+        state = {'keep': None}  # closing a review never ratifies an exclusion
         banner = {'txt': None}
 
         def redraw():
             if banner['txt'] is not None:
                 banner['txt'].remove()
-            msg = ('DECISION: use only replicate %d' % (state['keep'] + 1)
+            msg = ('TEMPERATURE DECISION: use only replicate %d' % (state['keep'] + 1)
                    if state['keep'] is not None else
-                   'DECISION: keep ALL replicates (they will be averaged)')
+                   'NO EXCLUSION: sustained unresolved disagreement will be withheld')
             banner['txt'] = fig.text(0.5, 0.135, msg, ha='center', fontsize=10,
-                                     color=('#1f7a1f' if state['keep'] is not None
-                                            else '#b30000'))
+                                     color=plt.rcParams['text.color'])
             fig.canvas.draw_idle()
 
         def accept(*_e):
@@ -2438,8 +2455,8 @@ def build_qualification_tab(container, root, shared_log=None):
                 "separates the replicates, or the reference does not describe this\n"
                 "site, nothing is proposed.\n\n"
                 "Controls:\n"
-                "  - 'Accept' (key A): qualify from the sound replicate alone\n"
-                "  - 'Keep all' (key K, or Esc): average every replicate as before\n"
+                "  - 'Accept' (key A): use the recommended temperature; light stays independent\n"
+                "  - 'No exclusion' (key K, or Esc): unresolved episodes are withheld\n"
                 "  - 'Done' (Enter, or closing the window): confirm what is shown",
                 parent=getattr(getattr(fig.canvas, 'manager', None), 'window', None))
 
@@ -2458,7 +2475,7 @@ def build_qualification_tab(container, root, shared_log=None):
                 confirm()
 
         accept_btn = Button(fig.add_axes([0.20, 0.035, 0.16, 0.055]), 'Accept')
-        keep_btn = Button(fig.add_axes([0.38, 0.035, 0.16, 0.055]), 'Keep all')
+        keep_btn = Button(fig.add_axes([0.38, 0.035, 0.16, 0.055]), 'No exclusion')
         help_btn = Button(fig.add_axes([0.56, 0.035, 0.10, 0.055]), 'Help')
         done_btn = Button(fig.add_axes([0.68, 0.035, 0.12, 0.055]), 'Done')
         accept_btn.on_clicked(accept)
@@ -3396,8 +3413,19 @@ def build_qualification_tab(container, root, shared_log=None):
             log_line('Manual cut: %d whole-row and %d per-variable point(s) dismissed (flag 5).'
                      % (len(manual_dismiss_rows), n_val))
 
+        single_decisions = None
+        single_samples = None
+        if INPUT.get('input_type') == 'HOBO' and INPUT.get('n_replicates', 1) == 1:
+            raw_data, flags, single_decisions, single_samples = replicas_policy.dismiss_single(
+                raw_data, flags, flag_layout, data.FLAG_BUCKET_MAP, INPUT['file_name'],
+                replicas_policy.load_decisions())
         log_line('Stage 4/5: creating output table and reports...')
         qualified_data, raw_data, T_bdata, S_bdata, C_bdata, P_bdata, pH_bdata, chl_bdata, O2_bdata, org_bdata, tur_bdata, T_sdata, S_sdata, C_sdata, P_sdata, pH_sdata, chl_sdata, O2_sdata, org_sdata, tur_sdata, T_mdata, S_mdata, C_mdata, P_mdata, pH_mdata, chl_mdata, O2_mdata, org_mdata, tur_mdata = data.handle_output_file (raw_data, flags, flag_layout, remove_suspect=OUTPUT['remove_suspect'], remove_bad=OUTPUT['remove_bad'])
+
+        if INPUT.get('input_type') == 'HOBO':
+            diagnostic = qualified_data.copy()
+            diagnostic['Temperature (degC)'] = raw_data['Temperature (degC)'].to_numpy()
+            OUTPUT['last_diagnostic_df'] = diagnostic
 
         # site metadata (filled before order_var so it is positioned and populated).
         # Coordinates are intentionally NOT written: keeping the column layout
@@ -3504,7 +3532,15 @@ def build_qualification_tab(container, root, shared_log=None):
             report_cols['lux_suspect'] = int((qualified_data['Flag_lux'] == 3).sum())
             report_cols['lux_missing'] = int((qualified_data['Flag_lux'] == 9).sum())
         QCS_report = pd.DataFrame(report_cols, index=[0])
+        if INPUT.get('input_type') == 'HOBO':
+            QCS_report['scope'] = 'individual'
+            QCS_report['source_file'] = INPUT['file_name']
+            QCS_report['T_dismissed'] = int(qualified_data['Flag_T'].eq(5).sum())
+            QCS_report['T_blank'] = int(qualified_data['Temperature (degC)'].isna().sum())
         data.save_excel_autofit(QCS_report, path + '/QCS_report.xlsx')
+        if single_decisions is not None and len(single_decisions):
+            single_decisions.to_csv(path + '/QCS_replicate_decisions.csv', index=False)
+            single_samples.to_csv(path + '/QCS_replicate_samples.csv', index=False)
 
         # HOBO: saves the light usage window plot with the applied cutoff and parameters
         # - the permanent documentation of WHERE and WHY the light was cut.

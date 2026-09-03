@@ -13,6 +13,142 @@ holds **irreversible operations on the archive** — dated, with their evidence.
 
 ---
 
+## 2026-09-03 — v14 sustained-disagreement policy applied across HOBO
+
+After inspecting corrected SGOM, the owner authorized the same v14 policy
+throughout the corpus. The scope is all 115 active HOBO products; the parameter
+does not apply to Seaguard or Doppler. A fresh isolated replay inventoried
+348,273 source rows and produced **113 products / 344,765 rows**, with unchanged
+source code during the replay and no raw, active-product or preference changes.
+
+Exactly **18,120 previously finite suspect temperatures in 16 products** became
+empty under the >0.5 degC, >=24 elapsed hours, >=3 consecutive eligible-pair
+screen. Every matched timestamp, light value, Flag_lux and Flag_T was unchanged.
+The original readings remain in the per-replicate diagnostics. No additional
+logger was selected automatically: unresolved means were withheld with Flag_T=3.
+SGOM's prior temperature correction was retained. All **55 combined reports**
+matched their CSV row, suspect and withheld counts; single-contributor spread
+was empty and no individual file masqueraded as a combined product.
+
+Two active products failed the existing collapsed-clock gate and were explicitly
+retained unchanged: `ESQNORTE_2024S2_HOBO_QLF.csv` (1,766 rows) and
+`ESQSUL_2024S2_HOBO_QLF.csv` (1,742 rows). Their 3,508 rows explain the entire
+replay shortfall. Extra unindexed attempts also failed for PAB3 2019S2 HOBO_2
+(fewer than two valid timestamps) and RODORASO 2023S2 HOBO_2 (no recognized
+temperature column). No replacement product was invented for those inputs.
+The replay exited nonzero and kept all four failures explicit; promotion then
+required the two retained active filenames to be supplied explicitly.
+
+A focused replay with complete dialogs confirmed the precise stop in
+`QCS_Replicates.align_replicates`: replica 1 has **661 conflicting repeated
+timestamps at ESQNORTE** and **778 at ESQSUL**. The earlier log had displayed
+the first clock warning instead of the later error. Batch error reporting now
+prioritizes an error dialog; this changes the reported reason, not qualification.
+The original XLSX inputs are `HOBO1_ESQNORTE_B2_040424_290824.xlsx`,
+`HOBO2_ESQNORTE_B2_04042024-290824.xlsx`,
+`HOBO1_ESQSUL_B4_070424_300824.xlsx` and
+`HOBO2_ESQSUL_B4_070424_300824.xlsx`. Their archived `.hobo` originals exist;
+valid 24-hour replacement exports were not verified. The full errors are in
+`diagnostics/v14_release/clock_failures.json`.
+
+`promote_hobo_corpus.py` inspected every replacement, backed up and verified
+**99 complete site folders**, and prepared every replacement before moving
+the first active folder. The recoverable backup, original index and displaced
+site trees are under:
+
+```
+\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\_deleted\hobo_v14_20260903T164826
+```
+
+The active site folders now contain fresh v14 CSVs, panels and reports. Original
+campaign labels, ordered raw inputs and clock evidence were preserved in
+provenance, with the requalification policy and backup appended. The journal
+records each replaced folder. All **380 files in the HOBO raw tree** and
+**168 untouched qualified CSVs** (166 Seaguard/Doppler plus the two retained
+HOBO products) passed the before/after hash check. All 113 promoted CSVs match
+their validated candidates byte for byte.
+
+The rebuilt index retains **281 products / 640,807 source rows**, including all
+115 HOBO products / 348,273 source rows. The mandatory full integrity sweep
+read all 281 products, found no scale defect, and confirmed that all 3,354
+out-of-sensor-limit values in five products carry BAD flag 4; no violation was
+unmarked. Those pre-existing values were not silently discarded by this round.
+
+The canonical curated engine exported and reread
+`C:\Users\LAMB\Desktop\QCS_HOBO_v14.0.xlsx`: **348,273 source rows became
+348,183 workbook rows** after removing 90 exact duplicates. All 10,654 rows
+sharing Site+Datetime with different values were retained and warned, including
+the two unreprocessed products. The all-site/all-year filter removed zero rows.
+The workbook includes all 115 active HOBO products, with source identities and
+their individual QCS versions; it does not relabel the two retained products
+as successfully requalified. The existing SGOM-only workbook remains available.
+
+Evidence: `diagnostics/v14_corpus_rollout/validation_summary.json`,
+`product_diff.csv`, `source_hashes.json`, `episode_review_queue.csv`, and
+`diagnostics/v14_corpus_promotion/promotion.json`, `product_changes.csv`,
+`before_hashes.json`, `journal.json`, `qualified_index.after.csv`; the complete
+operation log is `diagnostics/v14_corpus_promotion.log`. Source code, release
+verification and installer records remain in the program's separate lanes.
+
+---
+
+## 2026-09-03 — SGOM civil-2025 temperature correction promoted
+
+Owner instruction: correct SGOM 2025 in the active corpus so the corrected
+series can be inspected. The affected recovery product is
+`HOBO/qualified/2026S1/SGOM/SGOM_2026S1_HOBO_QLF.csv`, spanning September 2025
+through March 2026. A fresh v14.0 pipeline replay applied the recorded
+`sgom-2026s1-temperature` decision: exclude HOBO1 temperature throughout its
+source file, retain eligible HOBO2 temperature, and qualify light independently.
+
+`promote_sgom_temperature.py` checked the candidate against the active product
+and verified complete backups before replacing the site folder, index and
+curated workbook. The recoverable backup is:
+
+```
+\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\_deleted\sgom_temperature_20260903T162615
+```
+
+It contains the original site tree under `original/HOBO/qualified/2026S1/SGOM`,
+the displaced original folder, `qualified_index.before.csv` and
+`QCS_curated_database.before.xlsx`. The active product now has the fresh CSV,
+panels, combined and individual reports, and decision audit. Provenance retains
+the original field-campaign label (`RRDM 22a MAR 2026`), inputs and clock records,
+with the v14.0 decision and backup location appended.
+
+Verified result: **2,254 rows and every timestamp preserved; 481 temperatures
+changed, all dated 2025; 463 Flag_T values changed from 3 to 1; zero changes to
+light or Flag_lux**. Temperatures dated 2026 are numerically unchanged. All
+2,254 temperatures are finite (24.062–29.452 degC), and spread is empty because
+only one eligible temperature source contributes. This also replaces the old
+zero-spread metadata on the already single-source rows, including 2026.
+At 2025-10-30 03:36:05 local, the old 29.710 degC / 9.750 degC spread / Flag_T=3
+is now 24.835 degC / no replicate spread / Flag_T=1. No interpolation was used.
+
+The rebuilt index retains **281 products and 640,807 source rows** (115 HOBO,
+113 Seaguard, 53 Doppler). The mandatory full value-integrity sweep reopened
+all 281 products: no scale defect; all 3,354 out-of-sensor-limit values in five
+other products carry BAD flag 4, with no unmarked violation. Hashes confirmed
+that both SGOM raw exports and the other **114 active HOBO CSVs** were unchanged.
+
+The workbook actually selected in the program,
+`C:\Users\LAMB\Desktop\QCS_curated_database.xlsx`, was rebuilt through the
+canonical curated/database engine and reread from disk. Its existing SGOM,
+HOBO, civil-2025/2026 selection remains **4,657 rows from three products**, with
+the same timestamps and source-file identities; exactly 481 temperatures
+changed. The annual comparison uses all **3,737 civil-2025 rows** and excludes
+920 rows dated 2026. Existing deployment gaps remain unfilled. An already
+open visualization must reload the workbook to consume the replacement.
+
+Evidence: `diagnostics/sgom_2025_promotion/staging/validation_summary.json`,
+`promotion.log`, `result/promotion.json`, `result/backup.json`,
+`result/curated_build.log`, `result/qualified_index.after.csv`, and the
+`result/SGOM_2025_before_after.png` / `.svg` comparison. The annual corrected
+table is `result/SGOM_2025_corrected.csv`. Other v14 candidate products remain
+staged; this operation did not promote the full replay or repair other raw data.
+
+---
+
 ## 2026-08-26 — PAB3 2026S1 HOBO exports qualified as replicates
 
 Owner decision: `HOBO1_PAB3_180925_110326.xlsx` and
@@ -374,6 +510,91 @@ light validation reports 0 inconsistent, and the index's duplicate-input
 warning is silent.
 
 ## Still open on the data
+
+**SGOM temperature disagreement (2026-09-03; historical read-only audit,
+resolved by the SGOM-only promotion above).** The civil
+second half of 2025 is covered from September by `SGOM_2026S1_HOBO_QLF.csv`
+(v11.0, September 2025--March 2026 recovery product). Its provenance includes
+`HOBO2_SGOM_A2_110925.xlsx` and `HOBO1_SGOM_A2_110925_ERRO.xlsx`; the latter is
+not in the exclusion list at the time of the initial audit. Both exports require the reader's documented
+division by 1000; their paired timestamps differ by 95 seconds. All 2,254
+archived rows were numerically reconstructed: 481 use both temperatures and
+1,773 use HOBO2 alone. At 2025-10-30 03:36:05 local, HOBO1=34.585 degC and
+HOBO2=24.835 degC produced mean=29.710 degC, spread=9.750 degC, Flag_T=3.
+The civil-2025 subset has 463 suspect rows out of 1,334; filtering only removes
+920 rows dated 2026. After 2025-10-30 07:36:05, every archived value uses HOBO2
+alone; this v11.0 product stores zero spread for those single-input rows.
+This is a reconstruction of the existing product, not a qualification replay
+or a confirmed hardware-failure diagnosis. No raw or qualified file was
+changed. A retrospective run of the current referee inspected 104 other-site
+products, admitted 8 to a 194-day reference and returned no recommendation:
+with output-eligible inputs HOBO2 had six monthly changes but HOBO1 only one;
+using all finite values gave six changes each, but the best correlation was
+HOBO2's +0.09, below the +0.50 reference-fit gate. Thus auto-accepting the
+current referee would not repair this product. A read-only sweep of all 115
+active HOBO products found 39 with at least one spread >0.5 degC, 5 >2 degC and
+4 >5 degC; magnitude is a triage signal, not proof of which replicate failed.
+The owner subsequently authorized implementation and the HOBO1 temperature
+exclusion. The original read-only audit remains reproducible with
+`diagnostics/sgom_2025_h2_20260903/audit.py --archive <DATABASE>
+--output <audit directory> --analyse`.
+
+**v14 candidate requalification (2026-09-03; isolated replay before promotion).**
+The new ledger records the temperature-only exclusion of
+`HOBO1_SGOM_A2_110925_ERRO.xlsx` over the whole file. The real pipeline pilot
+and final replay each preserved 2,254 combined rows and all timestamps, changed
+481 temperatures (maximum 4.875 degC), changed 463 Flag_T values, and left light
+and its flags unchanged. All 2,254 temperatures are finite and all spread cells
+empty: HOBO2 is the sole temperature contributor. Qualified T range is
+24.062--29.452 degC. Opening the excluded HOBO1 alone also honors the ledger:
+2,247 temperature values are dismissed (Flag_T=5) while light remains present.
+Its reader trims six leading and three trailing out-of-water samples from
+2,256 raw rows; the single-file grid is therefore different from HOBO2's grid.
+
+The full isolated replay inventoried 115 active products (348,273 rows) and
+produced 113 (344,765 rows), with identical timestamp grids in every matched
+product. Two active products were refused by the existing collapsed-clock gate:
+`ESQNORTE_2024S2_HOBO_QLF` (1,766 archived rows) and
+`ESQSUL_2024S2_HOBO_QLF` (1,742). Their 3,508 rows explain the entire count
+reduction. Two additional, unindexed raw attempts also failed: PAB3 2019S2
+HOBO_2 has fewer than two usable timestamps; RODORASO 2023S2 HOBO_2 has no
+recognized temperature column. No raw repairs were attempted or inferred.
+
+The initial sustained screen (>0.5 degC for >=24 hours, >=3 consecutive eligible
+pairs) withheld 18,120 existing suspect means in 16 products. With SGOM's 481
+replacement values, 18,601 temperatures changed across 17 products. No light
+value or light flag changed in the 113 matched products. Diagnostic screening
+recorded 932 episodes, 85 sustained; diagnostic values include automatic
+bad/suspect readings and cannot themselves authorize use or identify a failed
+sensor. These are review candidates, not 16 newly ratified logger exclusions.
+
+All 55 combined report summaries were compared with their CSVs and diagnostic
+row counts: no discrepancy, no spread reported for a single contributor, and
+no individual CSV accepted as a combined product. The integrity sweep read all
+113 products: no scale defect or unflagged impossible value. The canonical
+unification engine removed 90 exact duplicate rows, producing 344,675 rows;
+7,162 overlapping rows with different values remain explicitly warned and
+retained. The same matched baseline products give the same unification counts.
+Hashes verified 184 raw files and all 115 inventoried active products unchanged;
+GUI settings were unchanged. The full candidate run deliberately exits nonzero
+because of the four failed raw attempts. It is not ready for whole-corpus
+promotion while two active products are absent.
+
+Evidence: `diagnostics/v14_validation/corpus_confirmed/validation_summary.json`,
+`audit_summary.json`, `product_diff.csv`, `changed_temperature_products.csv`,
+`episode_review_queue.csv`, and both unification logs. The candidate tables and
+per-site logs remain locally in that directory. The code snapshot was unchanged
+during the corpus replay; later review-hook and batch-error-return fixes were
+verified with a new SGOM replay, an explicit malformed-second-input probe, and
+the real Qt worker/PlotWindow test. See `diagnostics/v14_validation/README.md`.
+Next data action: inspect the episode queue to ratify any further source or
+interval decisions, and obtain valid 24-hour exports for the two blocked active
+products. The owner subsequently authorized the sustained screen across HOBO;
+the completed promotion is recorded above.
+No active qualified product, index, raw file, or provenance block was replaced
+during that isolated replay. SGOM alone was subsequently promoted as recorded
+above, followed by the validated full-HOBO round. The two clock-invalid active
+products remain unreprocessed.
 
 | what | files | why it is not automatic |
 |---|---|---|

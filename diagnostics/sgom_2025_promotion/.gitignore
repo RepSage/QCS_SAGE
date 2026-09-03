@@ -1,0 +1,9 @@
+*
+!.gitignore
+!promotion.log
+!result/
+result/*
+!result/promotion.json
+!result/backup.json
+!result/inspection.json
+!result/curated_build.log

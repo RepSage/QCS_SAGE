@@ -1,0 +1,12 @@
+{
+  "decisions": [
+    null,
+    1
+  ],
+  "window_on_gui_thread": [
+    true,
+    true
+  ],
+  "error": null,
+  "settings_unchanged": true
+}

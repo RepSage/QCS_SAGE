@@ -1,0 +1,113 @@
+{
+  "candidate_products": 113,
+  "candidate_rows": 344765,
+  "retained_products": [
+    "ESQNORTE_2024S2_HOBO_QLF.csv",
+    "ESQSUL_2024S2_HOBO_QLF.csv"
+  ],
+  "failed_runs": [
+    [
+      "ESQNORTE_2024S2_HOBO_QLF",
+      null,
+      0,
+      "No sample in this file falls after 12:59, and about half the timestamps are duplicated."
+    ],
+    [
+      "ESQSUL_2024S2_HOBO_QLF",
+      null,
+      0,
+      "No sample in this file falls after 12:59, and about half the timestamps are duplicated."
+    ],
+    [
+      "PAB3_2019S2_HOBO_2_QLF",
+      null,
+      0,
+      "Not enough records to qualify: the file has fewer than 2 valid timestamps (or non-increasing time), so no samp"
+    ],
+    [
+      "RODORASO_2023S2_HOBO_2_QLF",
+      null,
+      0,
+      "HOBO reader (A5_RODORASO_250323_211023_HOBO1.xlsx): no temperature column found (expected \"Temp\"). columns fou"
+    ]
+  ],
+  "changed_products": 16,
+  "changed_temperatures": 18120,
+  "combined_reports_checked": 55,
+  "applied": false
+}
+Verified backups and prepared replacements for 99 site folders.
+Active HOBO replacement complete; rebuilding index and checking integrity.
+index: 281 product(s) -> C:\Users\LAMB\Desktop\qcs_sage\diagnostics\v14_corpus_promotion\qualified_index.after.csv
+instrument
+DOPPLER      53
+HOBO        115
+SEAGUARD    113
+with CO2 merged: 33
+products read: 281
+
+== 1. SCALE DEFECT (lost decimal separator) ==
+   PAB3_2024S2_HOBO_2_QLF                     Temperature (degC)        68934.00..89384.00   not a scale defect
+   RRDM03_C_2019S2_SEAGUARD_PERFIL_2_QLF      pH                            8.35..10.62      not a scale defect
+   RRDM03_C_2019S2_SEAGUARD_PERFIL_4_QLF      pH                            8.41..10.22      not a scale defect
+   -> 0 of 3 pass ALL THREE gates
+
+== 2. VALUES OUTSIDE THE SENSOR LIMIT ==
+   3354 values across 5 product(s); 3354 (100.0%) carry flag 4
+      PAB3_2024S2_HOBO_2_QLF                     Temperature (degC)      2231 outside,  2231 flagged 4 (worst 89384.00)
+      ESQNORTE_2021S2_HOBO_QLF                   Temperature (degC)      1101 outside,  1101 flagged 4 (worst 78.80)
+      RODORASO_2024S2_HOBO_QLF                   Temperature (degC)        19 outside,    19 flagged 4 (worst 41.23)
+      PAB3_2022S2_HOBO_1_QLF                     Temperature (degC)         2 outside,     2 flagged 4 (worst 49.23)
+      RRDM03_C_2019S1_SEAGUARD_FUNDEIO_QLF       Temperature (degC)         1 outside,     1 flagged 4 (worst 107.21)
+
+== 3. OUT OF RANGE AND NOT MARKED (a pipeline defect) ==
+   none: every out-of-range value came out marked as the rule requires.
+Index and hashes verified; exporting the full HOBO curated workbook.
+{
+  "candidate_products": 113,
+  "candidate_rows": 344765,
+  "retained_products": [
+    "ESQNORTE_2024S2_HOBO_QLF.csv",
+    "ESQSUL_2024S2_HOBO_QLF.csv"
+  ],
+  "failed_runs": [
+    [
+      "ESQNORTE_2024S2_HOBO_QLF",
+      null,
+      0,
+      "No sample in this file falls after 12:59, and about half the timestamps are duplicated."
+    ],
+    [
+      "ESQSUL_2024S2_HOBO_QLF",
+      null,
+      0,
+      "No sample in this file falls after 12:59, and about half the timestamps are duplicated."
+    ],
+    [
+      "PAB3_2019S2_HOBO_2_QLF",
+      null,
+      0,
+      "Not enough records to qualify: the file has fewer than 2 valid timestamps (or non-increasing time), so no samp"
+    ],
+    [
+      "RODORASO_2023S2_HOBO_2_QLF",
+      null,
+      0,
+      "HOBO reader (A5_RODORASO_250323_211023_HOBO1.xlsx): no temperature column found (expected \"Temp\"). columns fou"
+    ]
+  ],
+  "changed_products": 16,
+  "changed_temperatures": 18120,
+  "combined_reports_checked": 55,
+  "applied": true,
+  "backup": "\\\\Abrolhos\\Projetos\\Seaguard & HOBO\\DATABASE\\_deleted\\hobo_v14_20260903T164826",
+  "backups_verified": true,
+  "index_products": 281,
+  "source_rows": 640807,
+  "workbook": "C:\\Users\\LAMB\\Desktop\\QCS_HOBO_v14.0.xlsx",
+  "unified_hobo_rows": 348183,
+  "raw_files_unchanged": 380,
+  "untouched_products_verified": 168,
+  "retained_rows": 3508,
+  "completed": true
+}

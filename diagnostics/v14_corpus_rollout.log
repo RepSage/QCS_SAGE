@@ -1,0 +1,68 @@
+ESQCENTRAL finished: exit 0
+CALIFORNIA finished: exit 0
+ESQSUL2 finished: exit 0
+FAROL finished: exit 0
+ESQRODO finished: exit 0
+PAB2 finished: exit 0
+ESQNORTE finished: exit 1
+ESQSUL finished: exit 1
+RODORASO finished: exit 1
+PNOR finished: exit 0
+PLES finished: exit 0
+PAB3 finished: exit 1
+TIM2 finished: exit 0
+SGOM finished: exit 0
+C:\Users\LAMB\Desktop\qcs_sage\sourceCode\batch\validate_hobo_corpus.py:76: FutureWarning: The behavior of DataFrame concatenation with empty or all-NA entries is deprecated. In a future version, this will no longer exclude empty or all-NA columns when determining the result dtypes. To retain the old behavior, exclude the relevant entries before the concat operation.
+  pd.concat(episodes, ignore_index=True).to_csv(output / 'episode_review_queue.csv', index=False)
+{
+  "site_runs": 14,
+  "failed_sites": [
+    "ESQNORTE",
+    "ESQSUL",
+    "PAB3",
+    "RODORASO"
+  ],
+  "baseline_products": 115,
+  "candidate_products": 113,
+  "baseline_rows": 348273,
+  "candidate_rows": 344765,
+  "raw_files_hashed": 184,
+  "integrity_products": 113,
+  "missing_products": [
+    "ESQNORTE_2024S2_HOBO_QLF.csv",
+    "ESQSUL_2024S2_HOBO_QLF.csv"
+  ],
+  "changed_raw": [],
+  "changed_active": [],
+  "scale_defects": [],
+  "unflagged_impossible": [],
+  "failed_runs": [
+    [
+      "ESQNORTE_2024S2_HOBO_QLF",
+      null,
+      0,
+      "No sample in this file falls after 12:59, and about half the timestamps are duplicated."
+    ],
+    [
+      "ESQSUL_2024S2_HOBO_QLF",
+      null,
+      0,
+      "No sample in this file falls after 12:59, and about half the timestamps are duplicated."
+    ],
+    [
+      "PAB3_2019S2_HOBO_2_QLF",
+      null,
+      0,
+      "Not enough records to qualify: the file has fewer than 2 valid timestamps (or non-increasing time), so no samp"
+    ],
+    [
+      "RODORASO_2023S2_HOBO_2_QLF",
+      null,
+      0,
+      "HOBO reader (A5_RODORASO_250323_211023_HOBO1.xlsx): no temperature column found (expected \"Temp\"). columns fou"
+    ]
+  ],
+  "settings_unchanged": true,
+  "source_unchanged": true,
+  "unified_rows": 344675
+}

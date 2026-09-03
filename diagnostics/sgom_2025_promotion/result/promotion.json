@@ -1,0 +1,118 @@
+{
+  "before": {
+    "rows": 2254,
+    "columns": 11,
+    "dtypes": {
+      "Sample number": "int64",
+      "Datetime": "object",
+      "Site": "object",
+      "Temperature (degC)": "float64",
+      "Temperature spread (degC)": "float64",
+      "Luminosity (lux)": "float64",
+      "Battery voltage (V)": "float64",
+      "Flag": "float64",
+      "Flag_T": "int64",
+      "Flag_lux": "int64",
+      "QCS version": "object"
+    },
+    "missing": {
+      "Sample number": 0,
+      "Datetime": 0,
+      "Site": 0,
+      "Temperature (degC)": 0,
+      "Temperature spread (degC)": 0,
+      "Luminosity (lux)": 0,
+      "Battery voltage (V)": 2254,
+      "Flag": 2254,
+      "Flag_T": 0,
+      "Flag_lux": 0,
+      "QCS version": 0
+    },
+    "duplicate_timestamps": 0,
+    "temperature_min_degC": 24.351,
+    "temperature_max_degC": 30.549
+  },
+  "after": {
+    "rows": 2254,
+    "columns": 11,
+    "dtypes": {
+      "Sample number": "int64",
+      "Datetime": "object",
+      "Site": "object",
+      "Temperature (degC)": "float64",
+      "Temperature spread (degC)": "float64",
+      "Luminosity (lux)": "float64",
+      "Battery voltage (V)": "float64",
+      "Flag": "float64",
+      "Flag_T": "int64",
+      "Flag_lux": "int64",
+      "QCS version": "object"
+    },
+    "missing": {
+      "Sample number": 0,
+      "Datetime": 0,
+      "Site": 0,
+      "Temperature (degC)": 0,
+      "Temperature spread (degC)": 2254,
+      "Luminosity (lux)": 0,
+      "Battery voltage (V)": 2254,
+      "Flag": 2254,
+      "Flag_T": 0,
+      "Flag_lux": 0,
+      "QCS version": 0
+    },
+    "duplicate_timestamps": 0,
+    "temperature_min_degC": 24.062,
+    "temperature_max_degC": 29.452
+  },
+  "workbook_before": {
+    "rows": 4657,
+    "columns": 12,
+    "dtypes": {
+      "Sample number": "int64",
+      "Datetime": "datetime64[ns]",
+      "Site": "object",
+      "Temperature (degC)": "float64",
+      "Temperature spread (degC)": "float64",
+      "Luminosity (lux)": "float64",
+      "Battery voltage (V)": "float64",
+      "Flag": "float64",
+      "Flag_T": "int64",
+      "Flag_lux": "int64",
+      "QCS version": "object",
+      "Source file": "object"
+    },
+    "missing": {
+      "Sample number": 0,
+      "Datetime": 0,
+      "Site": 0,
+      "Temperature (degC)": 0,
+      "Temperature spread (degC)": 1461,
+      "Luminosity (lux)": 0,
+      "Battery voltage (V)": 4657,
+      "Flag": 3196,
+      "Flag_T": 0,
+      "Flag_lux": 0,
+      "QCS version": 0,
+      "Source file": 0
+    },
+    "duplicate_timestamps": 0,
+    "temperature_min_degC": 24.351,
+    "temperature_max_degC": 31.064
+  },
+  "changed_temperatures": 481,
+  "changed_flags": 463,
+  "max_temperature_change_degC": 4.875,
+  "changed_temperature_years": [
+    2025
+  ],
+  "light_changed": false,
+  "applied": true,
+  "backup": "\\\\Abrolhos\\Projetos\\Seaguard & HOBO\\DATABASE\\_deleted\\sgom_temperature_20260903T162615",
+  "calendar_2025_rows": 3737,
+  "workbook_after_rows": 4657,
+  "index_products": 281,
+  "other_hobo_products_unchanged": true,
+  "raw_unchanged": true,
+  "other_hobo_products_checked": 114
+}

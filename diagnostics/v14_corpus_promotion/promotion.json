@@ -1,0 +1,48 @@
+{
+  "candidate_products": 113,
+  "candidate_rows": 344765,
+  "retained_products": [
+    "ESQNORTE_2024S2_HOBO_QLF.csv",
+    "ESQSUL_2024S2_HOBO_QLF.csv"
+  ],
+  "failed_runs": [
+    [
+      "ESQNORTE_2024S2_HOBO_QLF",
+      null,
+      0,
+      "No sample in this file falls after 12:59, and about half the timestamps are duplicated."
+    ],
+    [
+      "ESQSUL_2024S2_HOBO_QLF",
+      null,
+      0,
+      "No sample in this file falls after 12:59, and about half the timestamps are duplicated."
+    ],
+    [
+      "PAB3_2019S2_HOBO_2_QLF",
+      null,
+      0,
+      "Not enough records to qualify: the file has fewer than 2 valid timestamps (or non-increasing time), so no samp"
+    ],
+    [
+      "RODORASO_2023S2_HOBO_2_QLF",
+      null,
+      0,
+      "HOBO reader (A5_RODORASO_250323_211023_HOBO1.xlsx): no temperature column found (expected \"Temp\"). columns fou"
+    ]
+  ],
+  "changed_products": 16,
+  "changed_temperatures": 18120,
+  "combined_reports_checked": 55,
+  "applied": true,
+  "backup": "\\\\Abrolhos\\Projetos\\Seaguard & HOBO\\DATABASE\\_deleted\\hobo_v14_20260903T164826",
+  "backups_verified": true,
+  "index_products": 281,
+  "source_rows": 640807,
+  "workbook": "C:\\Users\\LAMB\\Desktop\\QCS_HOBO_v14.0.xlsx",
+  "unified_hobo_rows": 348183,
+  "raw_files_unchanged": 380,
+  "untouched_products_verified": 168,
+  "retained_rows": 3508,
+  "completed": true
+}

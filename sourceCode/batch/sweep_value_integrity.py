@@ -78,7 +78,7 @@ def sweep():
             qualified = os.path.join(ROOT, instrument, 'qualified')
             for folder, _dirs, files in os.walk(qualified):
                 for name in files:
-                    if (not name.lower().endswith('.csv') or
+                    if (not name.lower().endswith('_qlf.csv') or
                             name.lower().startswith('qcs_')):
                         continue
                     path = os.path.join(folder, name)
