@@ -11,6 +11,16 @@ from matplotlib.ticker import MaxNLocator # type: ignore
 import QCS_Theme as _theme
 
 
+def line_only_legend(legend):
+    """Show line entries without markers, preserving point-only keys and data."""
+    if legend is not None:
+        for handle in legend.legend_handles:
+            if (isinstance(handle, Line2D) and
+                    str(handle.get_linestyle()).strip().lower() not in ('', 'none')):
+                handle.set_marker('None')
+    return legend
+
+
 def show_panels(figures=None, browse=False):
     """Puts the panels produced so far on screen.
 
@@ -499,6 +509,11 @@ def darker(hex_color, factor=0.62):
     return '#%02x%02x%02x' % (int(r * factor), int(g * factor), int(b * factor))
 
 
+def getDepthContextColors():
+    """Keep working-depth and handling markers distinct in manual reviews."""
+    return {'working_depth': '#228b22', 'handling': '#b30000'}
+
+
 def getParamColors (parameter_names=None):
     # Fixed variable -> color mapping used by EVERY plot in the software, so the
     # same variable always gets the same color in any panel or output figure.
@@ -637,7 +652,7 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
                          yerr=spread[valid] / 2, fmt='none',
                          ecolor=cParam.get(variable, plot_color), elinewidth=1.0,
                          alpha=0.7, label='Replicate disagreement (bar = max - min)')
-            ax1.legend(loc='best', fontsize=8)
+            line_only_legend(ax1.legend(loc='best', fontsize=8))
 
     #not_nan = np.asarray(qualified_data.index[~np.isnan(qualified_data[variable])])
     #mirror_var = raw_data.copy()
@@ -689,6 +704,11 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
     plt.close(fig)
 
 def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SETTINGS, fixed_scale):
+    depth = pd.to_numeric(qualified_data['Depth (m)'], errors='coerce')
+    values = pd.to_numeric(qualified_data[variable], errors='coerce')
+    if not (np.isfinite(depth) & np.isfinite(values)).any():
+        print('Info: %s profile not drawn: no finite measurement/depth pair.' % variable)
+        return
     cParam, bcParam = getParamColors()
     plot_color = bcParam.get(variable, '#1f77b4')
     display_name = renameParameters([variable])[0]
@@ -1096,7 +1116,8 @@ def plot_database_panel2(database, dataViewSettings):
             _elapsed_days_axis(ax1, max_day)
 
             # Legend and layout
-            ax1.legend(loc='upper left', bbox_to_anchor=(1, 1.01), fontsize=7)
+            line_only_legend(ax1.legend(
+                loc='upper left', bbox_to_anchor=(1, 1.01), fontsize=7))
             plt.subplots_adjust(left=0.10, right=0.80, top=0.88, bottom=0.14)  # room for the y label + x labels
 
             # Fixed scale if needed
@@ -1370,9 +1391,9 @@ def plot_scalar_multi_params_across_sites(database, dataViewSettings,
                            else ('-' if fit else 'None')),
                 marker='.' if points or not fit else 'None')
             for site in plotted_sites]
-        ax.legend(
+        line_only_legend(ax.legend(
             legend_handles, plotted_sites, loc='upper left',
-            bbox_to_anchor=(1, 1.01), fontsize=7)
+            bbox_to_anchor=(1, 1.01), fontsize=7))
         fig._qcs_customize_axes = [(display, ax)]
         fig._qcs_axes_names = {ax: display}
         _name_panel(fig, '%s across sites and deployments' % display)
@@ -1398,6 +1419,9 @@ def plot_database_panel3(database, dataViewSettings):
     points = dataViewSettings['viewDataPoints']
 
     db_raw = database.copy()
+    if not np.isfinite(pd.to_numeric(db_raw['Depth (m)'], errors='coerce')).any():
+        print('Info: vertical profile panels not drawn: no finite depth coordinate.')
+        return
     # limit data to year
     db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
     db_raw = _apply_time_window(db_raw, dataViewSettings)   # plot ONLY the chosen hours (no-op for profiles)
@@ -1543,9 +1567,10 @@ def plot_database_panel3(database, dataViewSettings):
                         ax.set_xlim(dataViewSettings['scaleSettings'][parameter_names[i-1]]['min'], dataViewSettings['scaleSettings'][parameter_names[i-1]]['max'])
 
                 # Add unified legend
-                ax1.legend(handles=legend_handles, labels=legend_labels,
-                          loc='upper center', bbox_to_anchor=(1.1, 1.01),
-                          ncol=1, fontsize=7)
+                line_only_legend(ax1.legend(
+                    handles=legend_handles, labels=legend_labels,
+                    loc='upper center', bbox_to_anchor=(1.1, 1.01),
+                    ncol=1, fontsize=7))
 
                 figure_axes = list(axes.values())
                 fig._qcs_customize_axes = list(
@@ -1587,7 +1612,7 @@ def plot_light_window(lux_info, site=''):
     ax.set_yscale('log')
     ax.set_ylabel('Lux (log scale)')
     ax.grid(alpha=0.3)
-    ax.legend(loc='lower left', fontsize=8)
+    line_only_legend(ax.legend(loc='lower left', fontsize=8))
     ax.set_title('%s - light usable window (fouling)' % (site or 'HOBO'))
     # cutoff parameters visible on the plot itself - they must describe the rule
     # that was ACTUALLY applied (fixed mode still draws the adaptive baseline
@@ -1812,7 +1837,7 @@ def plot_hobo_params_at_site (database, dataViewSettings, site,
     ax1.set_title('HOBO parameters for %s' % site)
     axis_start, axis_end = _calendar_axis_bounds(dataViewSettings)
     _format_calendar_datetime_axis(ax1, axis_start, axis_end)
-    ax1.legend(handles=handles, fontsize=8)
+    line_only_legend(ax1.legend(handles=handles, fontsize=8))
     _name_panel(fig, 'HOBO parameters', site)
     plt.savefig('hobo_params_%s.svg' % site, bbox_inches='tight')
     enable_scroll_zoom(fig)
@@ -1924,7 +1949,7 @@ def plot_hobo_params_across_sites (database, dataViewSettings,
             ax.set_ylim(dataViewSettings['scaleSettings'][param]['min'],
                         dataViewSettings['scaleSettings'][param]['max'])
         handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles, labels, fontsize=8, loc='best')
+        line_only_legend(ax.legend(handles, labels, fontsize=8, loc='best'))
         _name_panel(fig, 'HOBO %s across sites' % display)
         param_r = re.sub(r'\([^()]*\)', '', param).strip().replace(' ', '_')
         plt.savefig('hobo_%s_across_sites.svg' % param_r, bbox_inches='tight')
@@ -1969,6 +1994,9 @@ def plot_TS_diagram (database, dataViewSettings):
         if semester in emptySemester:
             pass
         else:
+            if not np.isfinite(pd.to_numeric(db[semester]['Depth (m)'], errors='coerce')).any():
+                print('Info: depth-colored T-S diagram not drawn: no finite depth coordinate.')
+                continue
             ###### create figure and contour lines
             fig = plt.figure(figsize=(980 / 100, 500 / 100))  # Create figure with specified resolution
             ax = fig.add_subplot(111)  # Create axes
@@ -2085,7 +2113,7 @@ def plot_TS_diagram (database, dataViewSettings):
             custom_handles = []
             for a in range(len(site_names)):
                 custom_handles.append(Line2D([0], [0], linestyle='None', marker=markerList[a], label=site_names[a], markeredgecolor='black', markerfacecolor='black', markersize=6))
-            plt.legend(handles=custom_handles)  # Draw legend
+            line_only_legend(plt.legend(handles=custom_handles))
             ax.set_xlim(smin, smax)   # hold the view on the robust envelope
             ax.set_ylim(tmin, tmax)
             plt.savefig('TS_Diagram_%s_%s_%d.svg'%(sites_label, semester, year))
@@ -2127,7 +2155,7 @@ def plot_replicate_review(replicates, referee, reference=None, label=''):
     ax.set_title('Replicate review - %s\n%s' % (label, referee.get('verdict', '')),
                  fontsize=10)
     ax.grid(alpha=0.3)
-    ax.legend(fontsize=8, loc='best')
+    line_only_legend(ax.legend(fontsize=8, loc='best'))
     ax.xaxis.set_major_formatter(_mdates.DateFormatter('%d/%m/%y'))
     fig.autofmt_xdate()
     return fig, ax
@@ -2265,6 +2293,34 @@ def _direction_compass(fig, slot, align_ax, cmap, label_font=None,
     return wheel
 
 
+def _clear_current_panel_files(out_dir, across_sites=False):
+    """Remove only this generated panel family's files when reusing a destination."""
+    from pathlib import Path
+    import re
+    root = Path(out_dir).resolve()
+    if not root.is_dir():
+        return
+    names = ({'Current mean speed across sites.svg'} if across_sites else {
+        'Current profile (time x depth).svg', 'Current vectors (time x depth).svg',
+        'Current components (U-V).svg', 'Current components (U-V, lines broken).svg',
+        'Current components (U-V, connected).svg', 'Current stick plot.svg',
+        'Progressive vector diagram.svg'})
+    folders = [root]
+    for folder in root.iterdir():
+        owned = (folder.name in {'surface', 'instrument', 'unknown', 'unspecified', 'nan'}
+                 or folder.name.startswith('reference_')) if across_sites else bool(
+                     re.fullmatch(r'\d{2,}_[\w.-]+', folder.name))
+        if owned and folder.is_dir() and not folder.is_symlink():
+            resolved = folder.resolve()
+            if root in resolved.parents:
+                folders.append(resolved)
+    for folder in folders:
+        for name in names:
+            path = folder / name
+            if path.is_file():
+                path.unlink()
+
+
 def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
                         figures=None):
     """Saves the current panels as SVGs into out_dir. Returns file list.
@@ -2295,6 +2351,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
     import os
     import matplotlib.dates as mdates
     s = settings or {}
+    _clear_current_panel_files(out_dir)
     os.makedirs(out_dir, exist_ok=True)
     # A rerun can reuse an existing output folder. Remove only the two files
     # retired from this panel family, otherwise they look newly generated even
@@ -2410,6 +2467,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
     p = os.path.join(out_dir, 'Current profile (time x depth).svg')
     fig.savefig(p, bbox_inches='tight'); files.append(p)
     enable_scroll_zoom(fig, fit=False)
+    fig._qcs_v140_doppler = True
     _keep_or_close(fig, show, figures)
 
     # The complementary panels use the same depths, spread from the shallowest
@@ -2472,6 +2530,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
         fig.savefig(p, bbox_inches='tight')
         files.append(p)
         enable_scroll_zoom(fig, fit=False)
+        fig._qcs_v140_doppler = True
         _keep_or_close(fig, show, figures)
 
     # 3) angle-true vector field at the same depths. The depth is only the
@@ -2516,6 +2575,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
     p = os.path.join(out_dir, 'Current vectors (time x depth).svg')
     fig.savefig(p, bbox_inches='tight'); files.append(p)
     enable_scroll_zoom(fig, fit=False)
+    fig._qcs_v140_doppler = True
     _keep_or_close(fig, show, figures)
     if show and figures is None:
         show_panels(browse=True)      # one window, paged (owner, v13.0)
@@ -2531,6 +2591,7 @@ def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=Fals
     """
     import os
     s = settings or {}
+    _clear_current_panel_files(out_dir, across_sites=True)
     os.makedirs(out_dir, exist_ok=True)
     df = database[database['Flag_cur'] != 4].copy()
     xs, xe = s.get('xAxisStart'), s.get('xAxisEnd')
@@ -2569,6 +2630,7 @@ def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=Fals
     p = os.path.join(out_dir, 'Current mean speed across sites.svg')
     fig.savefig(p, bbox_inches='tight')
     enable_scroll_zoom(fig, fit=False)
+    fig._qcs_v140_doppler = True
     _keep_or_close(fig, show, figures)
     if show and figures is None:
         show_panels(browse=True)

@@ -751,6 +751,8 @@ dop = pd.DataFrame({
     'Horizontal speed (cm/s)': [10.0, 400.0, 0.0, 12.0, 11.0, np.nan],
     'Signal strength (dB)':    [-40.0, -40.0, 0.0, -40.0, -40.0, -40.0],
     'Cell state':              [0, 0, 9408, 0, 0, 0],
+    'Cell state 2': 0, 'Record state': 0,
+    'Native status map': 'TD304-2024',
     'Speed stdev (cm/s)':      [5.0, 5.0, 5.0, 80.0, 5.0, 5.0],
     'Tilt (deg)':              [5.0, 5.0, 5.0, 5.0, 20.0, 5.0],
 })
@@ -2143,6 +2145,9 @@ ok.append('curated database (dynamic filters / cancellation / visualization hand
 
 from QCS_ReplicateSelfTest import run as _replicate_selftests
 ok.extend(_replicate_selftests())
+
+from QCS_DopplerSelfTest import run as _doppler_selftests
+ok.extend(_doppler_selftests())
 
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))

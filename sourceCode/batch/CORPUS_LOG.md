@@ -7,9 +7,147 @@ program. It is kept beside the scripts that did the work, because re-running
 them is how any of it is reproduced.
 
 Lane check, so this file does not compete with the other three: `CLAUDE.md`
-holds durable rules, `STATUS.md` volatile dated state, `DECISIONS.md` the
-numbers behind a parameter choice, and `changelog/` the app releases. This file
-holds **irreversible operations on the archive** — dated, with their evidence.
+holds durable rules, `STATUS.md` volatile program state, this batch README the
+corpus procedure, and `changelog/` the app releases. This file holds
+**operations on the archive** — dated, with their evidence and recovery paths.
+
+---
+
+## 2026-09-08 — Original Doppler presentation restored
+
+The owner rejected the general appearance introduced during the corrections.
+The plotter now uses its pre-correction heatmap time framing, numeric depth
+labels and compact titles. The native reader, coordinates, QC, source/cell
+identity protections and compatible surface grouping remain corrected. This
+operation changes presentation only; it does not restore the old qualified data.
+
+The actual pre-correction plotter was loaded from the retained source backup
+and compared on identical current inputs. All nine panels matched pixel for
+pixel for RH30 2022, RH30 2025 and PLES Column 1 plus Surface; PLES's other
+columns were deliberately outside this appearance comparison to avoid the
+old cross-column averaging defect. RH30's three restored panels were also
+checked in the Qt browser. The heatmap fits drawable-cell timestamps again;
+the U/V series still uses the full selected timeline for its gap treatment.
+
+The replay checked **53 Doppler products / 153,436 rows** and **155,240 plotted
+speed/direction values** against the original cells. All **174 SVGs** in the
+**50 nonempty DataView product folders** were replaced after complete verified
+original/prepared backups. Three products with no drawable cells retain zero
+panels. Recovery copies, displaced folders and the index are preserved under:
+
+```
+\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\_deleted\doppler_visual_restore_20260908T192658
+```
+
+All **281 qualified CSVs / 664,861 rows** remain byte-identical. The canonical
+index/integrity gate passed; the archive still has **1,106 panels** (174 Doppler,
+817 scalar, 115 HOBO). No raw, report, provenance or operator preference file
+was written. Evidence: `diagnostics/doppler_visual_revert_20260908/`, especially
+`comparison.json`, `validation.json`, `qt_verification.json`, `promotion.json`
+and `index_integrity.log`. Source and presentation backups precede every edit.
+
+## 2026-09-08 — Surface cells restored to shared Doppler panels
+
+The owner's RH30 2022 review identified an excessive split: its native Surface
+cell and Column 1 both use the surface reference and have distinct coordinates.
+The surface cell now accompanies compatible columns in the same three panels.
+Distinct regular columns retain their identities; instrument-referenced columns
+remain separate from surface cells. No coordinate conversion or cell averaging
+was performed.
+
+Plotting was replayed over all **53 Doppler tables / 153,436 rows**. All
+**155,240 plotted speed/direction values** matched their original cells. RH30
+2022's three panels were inspected in the real Qt browser; PLES's compatible
+columns and TIM2's different references were also visually checked. The
+resulting **174 SVGs replace 321**: 49 products lose the redundant standalone
+surface group. All **50 nonempty DataView product folders** were replaced;
+three products with no drawable current cells still have zero panels.
+
+Every original folder and prepared replacement was verified by SHA-256 before
+the first swap. Original/displaced graphs and the previous index are retained at:
+
+```
+\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\_deleted\doppler_surface_20260908T190646
+```
+
+All **281 qualified CSVs remain byte-identical**, retaining **664,861 rows**.
+The operation writes only Doppler DataView folders and the checked index;
+raw inputs, reports, provenance and operator preferences are unchanged. The
+rebuilt index has **1,106 panels** (174 Doppler, 817 scalar, 115 HOBO). Canonical
+integrity passed: zero scale defects and all 3,354 preexisting out-of-range
+values remain flagged 4. No requalification or additional data exclusion ran.
+
+Evidence and reproducible drivers: `diagnostics/doppler_surface_20260908/`
+(`validation.json`, `qt_verification.json`, `promotion.json`,
+`index_integrity.log`, `validate_panels.py`, `promote_panels.py`). An initial
+diagnostic timestamp parse was corrected to accept mixed timestamp precision;
+a promotion preflight stopped on legitimate zero-panel folders before any
+archive mutation. Both initial logs are retained separately.
+
+## 2026-09-08 — v14.0.1 Doppler, scalar/PAR and native-clock corrections promoted
+
+The owner requested the pending corrections within the open v14.0.1 patch.
+`promote_v1401_candidates.py` validated isolated replays, prepared and verified
+**62 complete site-folder backups**, then replaced **168 qualified products**:
+53 Doppler, 113 scalar Seaguard and the two HOBO products retained in September's
+earlier rollout. This operation also replaced four independently verified
+clock-corrected XLSX exports; all original native binaries remain untouched.
+The backup, original index, displaced site folders and clock manifest are under:
+
+```
+\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\_deleted\qcs_v1401_20260908T114504
+```
+
+The Doppler replay recovered **24,054 cell-time rows**: 129,382 became 153,436,
+with no old rows removed and no matched velocity measurements changed. Native
+configured coordinates changed in 112,170 matched rows and Flag_cur changed in
+50,130. All 53 products now carry five-position flags, both native cell states
+and coordinate-reference metadata. The corrected framing was checked against
+7,740 native records, including 88 legitimate partial records, with 6,493,622
+independent Point comparisons; vendor CSV subsets matched 19,099 numeric values.
+There are 321 regenerated current panels, separated by source/column/reference.
+
+All **113 scalar products / 163,152 rows** retain their measurement values and
+timestamp grids, with current flags including Flag_PAR. Original sessions, CO2
+pairing and local timebase were preserved. There are 817 scalar panels. The
+three-row RH2 2020S1 PERFIL_2 table has no finite depth; it was retained after
+fixing a plotting-only NaN-limit failure, without inventing a vertical panel.
+
+The ESQNORTE/ESQSUL 2024S2 repairs disambiguated **3,504 AM/PM cells across four
+XLSX exports** from their matched native clocks. All 21,086 nonclock cells were
+verified unchanged. Export-only launch readings were retained; no GMT conversion
+or new source exclusion was applied. The resulting products retain 1,766 and
+1,742 rows, respectively, with no sustained mean withheld. This validates the
+stored clock reconstruction, not synchronization to an external clock.
+`clock_export_manifest.json` records original/new hashes and sizes, immutable
+binary hashes and row counts. The legacy raw manifests are absent from the
+current archive and were not recreated. Original clock/provenance fields remain
+historical evidence; the appended clock_repair field states the correction.
+
+After replacement, all **1,098 raw-file hashes** matched their original values
+except the four expected XLSX changes; every promoted CSV matched its candidate,
+and the other **113 HOBO CSVs** were unchanged. Obsolete product reports were
+retained under reports/previous; original campaign, ordered input, cast, CO2
+and station fields were preserved. Complete prepared trees also passed readback.
+
+The rebuilt active index and independent CSV readback agree on **281 products /
+664,861 source rows / 1,253 SVGs**. All 33 products with CO2 retain their pairing
+and point counts. The mandatory integrity sweep read all 281: zero scale defects,
+and all 3,354 pre-existing out-of-sensor-limit values in five products carry BAD
+flag 4. Canonical unification retained all 153,436 Doppler and 163,152 scalar
+rows; HOBO's 348,273 source rows became 348,183 after removing 90 exact duplicates.
+The 7,162 HOBO rows sharing Site+Datetime with different values remain warned and
+retained. No curated workbook was overwritten by this operation.
+
+Evidence root: `diagnostics/patch_pending_20260908/`. Replays and comparisons:
+`full_candidate/`, `scalar_candidate/`, `clock_candidate/`, `native_reference/`,
+`clock_binaries/` and `clock_exports_qa/`. Transaction evidence:
+`promotion_applied/{result.json,before_hashes.json,backup_manifest.json,journal.json,
+clock_export_manifest.json,qualified_index.after.csv,active_readback.json}` and
+`promotion_applied.log`. The complete dry-run passed before applying; two injected
+local failures independently verified rollback (`promotion_rollback_verification.json`).
+The program patch and executable verification remain in STATUS.md; no release
+was published by this data operation.
 
 ---
 
@@ -509,102 +647,47 @@ Every repair is gated per file (see each script's header). Final state:
 light validation reports 0 inconsistent, and the index's duplicate-input
 warning is silent.
 
-## Still open on the data
+## Still open on the data (verified 2026-09-08)
 
-**SGOM temperature disagreement (2026-09-03; historical read-only audit,
-resolved by the SGOM-only promotion above).** The civil
-second half of 2025 is covered from September by `SGOM_2026S1_HOBO_QLF.csv`
-(v11.0, September 2025--March 2026 recovery product). Its provenance includes
-`HOBO2_SGOM_A2_110925.xlsx` and `HOBO1_SGOM_A2_110925_ERRO.xlsx`; the latter is
-not in the exclusion list at the time of the initial audit. Both exports require the reader's documented
-division by 1000; their paired timestamps differ by 95 seconds. All 2,254
-archived rows were numerically reconstructed: 481 use both temperatures and
-1,773 use HOBO2 alone. At 2025-10-30 03:36:05 local, HOBO1=34.585 degC and
-HOBO2=24.835 degC produced mean=29.710 degC, spread=9.750 degC, Flag_T=3.
-The civil-2025 subset has 463 suspect rows out of 1,334; filtering only removes
-920 rows dated 2026. After 2025-10-30 07:36:05, every archived value uses HOBO2
-alone; this v11.0 product stores zero spread for those single-input rows.
-This is a reconstruction of the existing product, not a qualification replay
-or a confirmed hardware-failure diagnosis. No raw or qualified file was
-changed. A retrospective run of the current referee inspected 104 other-site
-products, admitted 8 to a 194-day reference and returned no recommendation:
-with output-eligible inputs HOBO2 had six monthly changes but HOBO1 only one;
-using all finite values gave six changes each, but the best correlation was
-HOBO2's +0.09, below the +0.50 reference-fit gate. Thus auto-accepting the
-current referee would not repair this product. A read-only sweep of all 115
-active HOBO products found 39 with at least one spread >0.5 degC, 5 >2 degC and
-4 >5 degC; magnitude is a triage signal, not proof of which replicate failed.
-The owner subsequently authorized implementation and the HOBO1 temperature
-exclusion. The original read-only audit remains reproducible with
-`diagnostics/sgom_2025_h2_20260903/audit.py --archive <DATABASE>
---output <audit directory> --analyse`.
+**Unresolved HOBO source choices.** The sustained-disagreement review packet
+identifies 104 eligible sustained subepisodes and 18,120 withheld temperatures
+in 16 products. The corresponding temperatures remain missing with Flag_T=3;
+diagnostic BAD/SUSPECT values cannot become contributors. No additional source
+or interval exclusion was ratified in this round. Historical recommendations
+lack an archived independent-reference lineage and coverage record. The next
+scientific action is to supply that evidence and ratify a source/interval
+decision for a named episode, then replay that bounded product. The ledger is
+currently whole-file; partial decisions first require revisiting advice scope.
 
-**v14 candidate requalification (2026-09-03; isolated replay before promotion).**
-The new ledger records the temperature-only exclusion of
-`HOBO1_SGOM_A2_110925_ERRO.xlsx` over the whole file. The real pipeline pilot
-and final replay each preserved 2,254 combined rows and all timestamps, changed
-481 temperatures (maximum 4.875 degC), changed 463 Flag_T values, and left light
-and its flags unchanged. All 2,254 temperatures are finite and all spread cells
-empty: HOBO2 is the sole temperature contributor. Qualified T range is
-24.062--29.452 degC. Opening the excluded HOBO1 alone also honors the ledger:
-2,247 temperature values are dismissed (Flag_T=5) while light remains present.
-Its reader trims six leading and three trailing out-of-water samples from
-2,256 raw rows; the single-file grid is therefore different from HOBO2's grid.
+Evidence: diagnostics/patch_pending_20260908/episode_review/REVIEW.md,
+review_packet.json and the per-product/episode/source tables. The packet
+reconciled 39 report sets and 401 protected inputs without inconsistency.
+The native-clock quartet above introduces no further sustained withheld mean.
 
-The full isolated replay inventoried 115 active products (348,273 rows) and
-produced 113 (344,765 rows), with identical timestamp grids in every matched
-product. Two active products were refused by the existing collapsed-clock gate:
-`ESQNORTE_2024S2_HOBO_QLF` (1,766 archived rows) and
-`ESQSUL_2024S2_HOBO_QLF` (1,742). Their 3,508 rows explain the entire count
-reduction. Two additional, unindexed raw attempts also failed: PAB3 2019S2
-HOBO_2 has fewer than two usable timestamps; RODORASO 2023S2 HOBO_2 has no
-recognized temperature column. No raw repairs were attempted or inferred.
+**Retired items in the former open list.** The old table mixed resolved,
+excluded and inactive sources. It was reconciled using the current canonical
+reader, export selection, ledger, active index and native comparisons:
 
-The initial sustained screen (>0.5 degC for >=24 hours, >=3 consecutive eligible
-pairs) withheld 18,120 existing suspect means in 16 products. With SGOM's 481
-replacement values, 18,601 temperatures changed across 17 products. No light
-value or light flag changed in the 113 matched products. Diagnostic screening
-recorded 932 episodes, 85 sustained; diagnostic values include automatic
-bad/suspect readings and cannot themselves authorize use or identify a failed
-sensor. These are review candidates, not 16 newly ratified logger exclusions.
+- ESQSUL 2021S1 / HOBO#02 remains excluded by legacy-07/08; neither export is
+  selected and there is no active product. Its old re-export request is closed.
+- ESQRODO 2025S1 / HOBO1 uses the clean XLSX: all 4,138 exported timestamps
+  and temperatures match its binary, and light matches within 0.11 lux.
+  The collapsed CSV is unselected. A light-phase anomaly remains (16.8497 h);
+  the diagnostic prescribes no shift. The historical provenance's 'OK' wording
+  is not a current clock diagnostic and must not justify a new correction.
+- PAB3 PAREDE's selected CSV now has zero duplicate timestamps; its active
+  TEMP_ONLY product has 17,670 rows. The former 8,833-duplicate claim is obsolete.
+  There is no light channel or same-stem binary to independently certify clock
+  phase; that absence does not authorize another reconstruction.
+- HOBO-incubacao_rodolito.csv is absent from the active raw inventory; its
+  special-collection history is outside the active qualification scope.
 
-All 55 combined report summaries were compared with their CSVs and diagnostic
-row counts: no discrepancy, no spread reported for a single contributor, and
-no individual CSV accepted as a combined product. The integrity sweep read all
-113 products: no scale defect or unflagged impossible value. The canonical
-unification engine removed 90 exact duplicate rows, producing 344,675 rows;
-7,162 overlapping rows with different values remain explicitly warned and
-retained. The same matched baseline products give the same unification counts.
-Hashes verified 184 raw files and all 115 inventoried active products unchanged;
-GUI settings were unchanged. The full candidate run deliberately exits nonzero
-because of the four failed raw attempts. It is not ready for whole-corpus
-promotion while two active products are absent.
-
-Evidence: `diagnostics/v14_validation/corpus_confirmed/validation_summary.json`,
-`audit_summary.json`, `product_diff.csv`, `changed_temperature_products.csv`,
-`episode_review_queue.csv`, and both unification logs. The candidate tables and
-per-site logs remain locally in that directory. The code snapshot was unchanged
-during the corpus replay; later review-hook and batch-error-return fixes were
-verified with a new SGOM replay, an explicit malformed-second-input probe, and
-the real Qt worker/PlotWindow test. See `diagnostics/v14_validation/README.md`.
-Next data action: inspect the episode queue to ratify any further source or
-interval decisions, and obtain valid 24-hour exports for the two blocked active
-products. The owner subsequently authorized the sustained screen across HOBO;
-the completed promotion is recorded above.
-No active qualified product, index, raw file, or provenance block was replaced
-during that isolated replay. SGOM alone was subsequently promoted as recorded
-above, followed by the validated full-HOBO round. The two clock-invalid active
-products remain unreprocessed.
-
-| what | files | why it is not automatic |
-|---|---|---|
-| light channel anomalous, clock roughly right | `HOBO#02_Ref.EsquecidoSul_RRDM_04022020_240221.csv` | light peaks 4.4 h but TEMPERATURE peaks 12.0 h (corpus median 13.7 h); also fails the sampling-regularity gate (67% of steps on the interval) |
-| light and temperature disagree by ~8 h | `HOBO1_ESQRODO_B1_050424_160325.xlsx` | dates are correct; no single rotation fixes both channels |
-| sensor dark from the start | `PAB3_30062016_PAREDE.csv` | nothing decides morning from afternoon; 8,833 duplicated timestamps remain |
-| several sites stacked in one hand-made sheet | `HOBO-incubacao_rodolito.csv` | the product structure would have to be invented |
-
-The inference-free route for all four is a **HOBOware re-export from the
-`.hobo` binary** with a 24-hour clock.
+These are read-only reconciliations, not newly performed repairs or exclusions.
+See diagnostics/patch_pending_20260908/remaining_clock_audit/REPORT.md,
+findings.json and main_confirmation/ (independent rerun, 20 hashes unchanged).
+The two ESQNORTE/ESQSUL 2024S2 products formerly retained are now repaired and
+requalified by the dated operation above. Legacy binary-decoder work remains
+a program limitation in STATUS.md; it is not a reason to rewrite sound exports.
 
 ---
 

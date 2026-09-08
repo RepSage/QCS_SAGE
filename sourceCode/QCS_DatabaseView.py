@@ -694,13 +694,7 @@ def _param_data_extreme(param, kind):
     wide one - which the operator can narrow by typing Min/Max anyway."""
     if database is None or param not in database.columns:
         return ''
-    df = database
-    sites = [s for s, v in site_vars.items() if v.get()] if site_vars else []
-    years = [y for y, v in year_vars.items() if v.get()] if year_vars else []
-    if sites:
-        df = df[df['Site'].isin(sites)]
-    if years and 'Datetime' in df.columns:
-        df = df[df['Datetime'].dt.year.isin(years)]
+    df = selected_database()
     col = df[param].dropna()
     if col.empty:
         return ''

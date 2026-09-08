@@ -70,8 +70,10 @@ def main(out_csv):
         except Exception as e:
             n_rows, t0, t1, co2_pts = -1, None, None, 0
             print('Warning: unreadable product %s (%s)' % (name, str(e)[:50]))
+        # Earlier Doppler layouts used panel subfolders; include their generated
+        # figures when indexing products that have not yet been redrawn.
         n_panels = len(glob.glob(os.path.join(os.path.dirname(p), 'DataView',
-                                              name, '*.svg')))
+                                              name, '**', '*.svg'), recursive=True))
         rows.append({
             'product': name, 'instrument': kind, 'semester': semester,
             'site': site, 'bucket': bucket, 'tipo': prov.get('tipo', ''),
