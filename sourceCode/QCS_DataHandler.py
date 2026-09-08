@@ -595,7 +595,7 @@ def is_seaguard_doppler(file_path):
         return False
 
 
-def _decode_dcps_bin(file_path):
+def _decode_dcps_bin(file_path, *, diagnostics=None, metadata=None):
     """Decodes ONE DCPS DataNNN.bin. Returns (records, slots, columns):
     records = [(Timestamp, {slot_index: value}, vector_or_None), ...];
     slots[i] = (descr, unit, column_descr, cell_index, depth_m) with
@@ -624,6 +624,8 @@ def _decode_dcps_bin(file_path):
         return el.tag.split('}')[-1]
 
     slots = []
+    slot_sensors = []
+    native_columns = {}
     columns = []                        # (descr, start, cellsize, numcells)
 
     def cell_defs(column_el):
@@ -636,12 +638,32 @@ def _decode_dcps_bin(file_path):
                                                      pt.attrib.get('Unit', ''))
         return defs
 
-    def collect(el, col=None, cell=None, defs=None):
+    def collect(el, col=None, cell=None, defs=None, sensor=None):
         tag = local(el)
+        if tag == 'SensorData':
+            sensor = dict(el.attrib)
         if tag == 'Column':
-            col = (el.attrib.get('Descr', '?'),
-                   float(el.attrib.get('ColumnStart', 0) or 0),
-                   float(el.attrib.get('CellSize', 0) or 0))
+            size = float(el.attrib.get('CellSize', 0) or 0)
+            surface = el.attrib.get('SurfaceCellColumn', '').lower() == 'true'
+            center = (float(el.attrib['ColumnStartCellCenter'])
+                      if 'ColumnStartCellCenter' in el.attrib
+                      else 0.0 if surface
+                      else float(el.attrib.get('ColumnStart', 0) or 0) + size / 2)
+            spacing = (float(el.attrib['CellCenterSpacing'])
+                       if 'CellCenterSpacing' in el.attrib
+                       else size * (1 - float(el.attrib.get('CellOverlap', 0) or 0) / 100))
+            if size <= 0 or spacing <= 0 or not np.isfinite([center, size, spacing]).all():
+                raise ValueError('DCPS reader: invalid native cell geometry.')
+            col = (el.attrib.get('Descr', '?'), center, spacing)
+            if col[0] in native_columns:
+                raise ValueError('DCPS reader: duplicate native column identity %r.' % col[0])
+            reference = el.attrib.get('SurfaceReferred', '').lower()
+            native_columns[col[0]] = {
+                'Depth reference': {'true': 'surface', 'false': 'instrument'}.get(reference, 'unknown'),
+                'Cell size (m)': size, 'Cell spacing (m)': spacing,
+                'Transducer direction': el.attrib.get('TransducerDirection', 'unknown'),
+                'Surface cell': surface,
+            }
             columns.append((col[0], col[1], col[2], int(el.attrib.get('NumCells', 0) or 0)))
             defs = cell_defs(el)
         elif tag == 'Cell':
@@ -652,11 +674,32 @@ def _decode_dcps_bin(file_path):
                               None, None, None))
             else:
                 d, u = (defs or {}).get(el.attrib.get('ID'), ('?', ''))
-                depth = (col[1] + col[2] * (cell + 0.5)) if col else None
+                depth = (col[1] + col[2] * cell) if col else None
                 slots.append((d, u, col[0] if col else None, cell, depth))
+            slot_sensors.append(sensor)
         for ch in el:
-            collect(ch, col, cell, defs)
+            collect(ch, col, cell, defs, sensor)
     collect(root)
+
+    if metadata is not None:
+        metadata['columns'] = native_columns
+        metadata['record_slots'] = {}
+        for i, (slot, sensor) in enumerate(zip(slots, slot_sensors, strict=True)):
+            if slot[2] is None and sensor and (
+                    'Doppler Current' in sensor.get('ProdName', '')
+                    or sensor.get('Descr', '').startswith('DCPS')):
+                if slot[0] in metadata['record_slots']:
+                    raise ValueError('DCPS reader: duplicate DCPS record parameter %r.' % slot[0])
+                metadata['record_slots'][slot[0]] = i
+        config_path = os.path.join(os.path.dirname(file_path), 'Config.xml')
+        metadata['configuration'] = {}
+        if os.path.isfile(config_path):
+            config = ET.parse(config_path)
+            nodes = [node for node in config.iter() if local(node) == 'NodeConfig' and (
+                'Doppler Current' in node.get('ProdName', '') or node.get('Descr', '').startswith('DCPS'))]
+            if len(nodes) == 1:
+                metadata['configuration'] = {p.get('Descr'): p.text for p in nodes[0].iter()
+                                             if local(p) == 'Property'}
 
     point_values = [i for i in value_ids if parent_name(i) == 'Point']
     if len(point_values) != len(slots):
@@ -667,77 +710,101 @@ def _decode_dcps_bin(file_path):
 
     records = []
     def walk_record(pos, vec_dim_size):
-        """Walks one record. Returns (rt, vals, vector) when the fields land
-        EXACTLY on the checksum boundary, else None."""
+        """Validate field kinds, counts and payload bounds, including partial records."""
         q = pos + 8
-        rec_len, _nf = struct.unpack_from('<II', blob, q)
+        if q + 8 > len(blob):
+            return None
+        rec_len, n_fields = struct.unpack_from('<II', blob, q)
         q += 8
         field_end = pos + rec_len - 4          # 4-char checksum closes the record
-        if field_end > len(blob):
+        if rec_len < 20 or field_end > len(blob) or n_fields > (field_end - q) // 4:
             return None
         rt = None
         vals = {}
         vector = None
-        while q + 2 <= field_end:
+        seen = set()
+        for _ in range(n_fields):
+            if q + 2 > field_end:
+                return None
             ident = struct.unpack_from('<H', blob, q)[0]
             q += 2
             ent = entries.get(ident)
-            if ent is None:
+            if ent is None or ident in seen:
                 return None
+            seen.add(ident)
             name, parent, tc = ent
             if name == 'Value' and parent_name(ident) == 'Vector':
-                # the element-count prefix is u32 on most deployments but u16
-                # on some (same type code) - the size is detected per file by
-                # requiring the walk to land exactly on the record boundary
+                if tc != 0x04 or q + vec_dim_size > field_end:
+                    return None
                 if vec_dim_size == 2:
                     dim = struct.unpack_from('<H', blob, q)[0]
                 else:
                     dim = struct.unpack_from('<I', blob, q)[0]
                 q += vec_dim_size
-                if dim > 64:
+                if dim > 64 or q + 4 * dim > field_end:
                     return None
                 vector = [struct.unpack_from('<i', blob, q + 4 * j)[0] for j in range(dim)]
                 q += 4 * dim
-            elif tc == 0x28:                    # 8-byte .NET ticks
+            elif name == 'Time' and tc == 0x28:  # 8-byte .NET ticks
+                if q + 8 > field_end:
+                    return None
                 ticks = struct.unpack_from('<q', blob, q)[0]
                 q += 8
-                if name == 'Time' and parent != 1:
-                    rt = pd.Timestamp(_AADI_TICK0 + _dt.timedelta(microseconds=ticks // 10))
-            elif tc == 0x02:                    # 2-byte int16
-                v = struct.unpack_from('<h', blob, q)[0]
-                q += 2
-                if name == 'Value' and ident in vid2slot:
-                    vals[vid2slot[ident]] = float(v)
-            else:                               # 4-byte float32 / int32
-                raw = blob[q:q + 4]
-                q += 4
+                if parent_name(ident) == 'Data':
+                    try:
+                        rt = pd.Timestamp(_AADI_TICK0 + _dt.timedelta(microseconds=ticks // 10))
+                    except (OverflowError, ValueError):
+                        return None
+            elif ((name == 'Value' and ident in vid2slot)
+                  or name in ('StatusCode', 'RecordNumber')) and tc in (0x02, 0x04, 0x14):
+                width = 2 if tc == 0x02 else 4
+                if q + width > field_end:
+                    return None
+                value = struct.unpack_from({0x02: '<h', 0x04: '<i', 0x14: '<f'}[tc], blob, q)[0]
+                q += width
                 if name == 'Value' and ident in vid2slot:
                     si = vid2slot[ident]
-                    vals[si] = (struct.unpack('<f', raw)[0] if tc == 0x14
-                                else float(struct.unpack('<i', raw)[0]))
+                    vals[si] = float(value)
+            else:
+                # Dictionary containers are not scalar payloads. Accepting one
+                # can reach the right byte boundary while swallowing real fields.
+                return None
         if rt is None or q != field_end:
             return None
         return rt, vals, vector
 
-    vec_dim_size = None                        # detected on the first record
+    rejected = []
+    partial = []
+    widths = {2: 0, 4: 0}
     pos = blob.find(_AADI_SYNC)
     while pos != -1:
-        if vec_dim_size is None:
-            got = walk_record(pos, 4)
-            if got is not None:
-                vec_dim_size = 4
-            else:
-                got = walk_record(pos, 2)
-                if got is not None:
-                    vec_dim_size = 2
-        else:
-            got = walk_record(pos, vec_dim_size)
+        trials = [(width, walk_record(pos, width)) for width in (2, 4)]
+        valid = [(width, result) for width, result in trials if result is not None]
+        if len(valid) == 2 and valid[0][1][2] is not None:
+            raise ValueError('DCPS reader (%s): ambiguous vector width at byte %d.'
+                             % (os.path.basename(file_path), pos))
+        got = valid[0][1] if valid else None
         if got is not None:
             records.append(got)
+            widths[valid[0][0]] += 1
+            if len(got[1]) < len(slots):
+                partial.append({'offset': pos, 'time': str(got[0]),
+                                'missing_slots': sorted(set(range(len(slots))) - got[1].keys())})
+        else:
+            rejected.append(pos)
         pos = blob.find(_AADI_SYNC, pos + 1)
     if not records:
         raise ValueError('DCPS reader (%s): no data records found.'
                          % os.path.basename(file_path))
+    if diagnostics is not None:
+        diagnostics.update(records=len(records), partial_records=partial,
+                           rejected_offsets=rejected, vector_width_counts=widths)
+    print('Info: DCPS binary %s: %d accepted records, %d partial, %d rejected.'
+          % (os.path.basename(file_path), len(records), len(partial), len(rejected)))
+    if rejected:
+        # Do not export an apparently complete qualification after a parse error.
+        raise ValueError('DCPS reader (%s): %d malformed records at byte offsets %s.'
+                         % (os.path.basename(file_path), len(rejected), rejected[:10]))
     return records, slots, columns
 
 
@@ -752,6 +819,7 @@ _DCPS_CELL_PARAMS = [
     ('SP Stdev Horizontal', 'Speed stdev (cm/s)'),
     ('Strength', 'Signal strength (dB)'),
     ('Cell State1', 'Cell state'),
+    ('Cell State2', 'Cell state 2'),
 ]
 # record-level context repeated on every cell row
 _DCPS_RECORD_PARAMS = [
@@ -760,6 +828,8 @@ _DCPS_RECORD_PARAMS = [
     ('Roll', 'Roll (deg)'),
     ('Abs Tilt', 'Tilt (deg)'),
     ('Ping Count', 'Ping count'),
+    ('Record State', 'Record state'),
+    ('Depth', 'Instrument depth (m)'),
 ]
 
 
@@ -775,16 +845,18 @@ def read_seaguard_doppler(file_path):
     if not siblings:
         siblings = [os.path.basename(file_path)]
     all_rows = []
+    decode_reports = []
     for fname in siblings:
-        records, slots, columns = _decode_dcps_bin(os.path.join(folder, fname))
+        metadata, report = {}, {}
+        records, slots, columns = _decode_dcps_bin(os.path.join(folder, fname),
+                                                 metadata=metadata, diagnostics=report)
+        decode_reports.append(dict(file=fname, **report))
         # index slots per (column, cell) and record-level by descr
-        rec_level = {}                  # descr -> slot index
+        rec_level = metadata['record_slots']
         cell_level = {}                 # (column_descr, cell) -> {descr: slot}
         depths = {}                     # (column_descr, cell) -> depth
         for si, (d, _u, col, cell, depth) in enumerate(slots):
-            if col is None:
-                rec_level.setdefault(d, si)
-            else:
+            if col is not None:
                 cell_level.setdefault((col, cell), {})[d] = si
                 depths[(col, cell)] = depth
         for rt, vals, _vector in records:
@@ -792,10 +864,31 @@ def read_seaguard_doppler(file_path):
             for (col, cell), sl in sorted(cell_level.items()):
                 row = {'Datetime': rt, 'Column': col, 'Cell': cell,
                        'Depth (m)': depths[(col, cell)]}
+                row.update(metadata['columns'][col])
+                config = metadata['configuration']
+                row['DCPS firmware'] = (config.get('SW Version') or '').replace(';', '.')
+                row['AutoBeam replacement'] = (
+                    config.get('Enable 4-Beam Auto Replacement', '').lower() == 'true'
+                    or config.get('AutoBeam Speed Type') == 'Replace 4-Beam Data')
+                row['AutoBeam mode'] = config.get('AutoBeam Speed Type', 'unknown')
+                if row['Transducer direction'] == 'unknown':
+                    row['Transducer direction'] = {'false': 'Up', 'true': 'Down'}.get(
+                        config.get('Enable Upside Down'), 'unknown')
+                row['Native status map'] = 'unknown'
+                try:
+                    if tuple(map(int, row['DCPS firmware'].split('.'))) >= (8, 3, 6):
+                        row['Native status map'] = 'TD304-2024'
+                except ValueError:
+                    pass
                 row.update(ctx)
                 for d, out in _DCPS_CELL_PARAMS:
                     si = sl.get(d)
                     row[out] = vals.get(si) if si is not None else np.nan
+                for status_col, mask in (('Cell state', 0xffff), ('Cell state 2', 0xffff),
+                                         ('Record state', 0xffffffff)):
+                    value = row.get(status_col)
+                    if value is not None and np.isfinite(value):
+                        row[status_col] = int(value) & mask
                 all_rows.append(row)
     if not all_rows:
         raise ValueError('DCPS session %r has no current cells - the profile '
@@ -805,6 +898,7 @@ def read_seaguard_doppler(file_path):
     frame = pd.DataFrame(all_rows)
     frame = frame.sort_values(['Datetime', 'Column', 'Cell'], kind='stable')
     frame.index = np.arange(len(frame))
+    frame.attrs['dcps_decode'] = decode_reports
     n_rec = frame['Datetime'].nunique()
     n_cells = frame.groupby('Datetime').size().max()
     print('Info: DCPS session decoded: %d records x %d cells = %d rows, %s to %s.'
@@ -2430,6 +2524,9 @@ def draw_depth_context(ax, x, depth, times):
     entry and exit, so the operator sees WHERE the instrument was still being
     handled instead of reading it off the parameter's own noise (owner, v12.1).
     Returns the number of windows drawn."""
+    from QCS_DataView import getDepthContextColors
+
+    colors = getDepthContextColors()
     windows = depth_transit_windows(depth, times)
     if not windows:
         return 0
@@ -2454,7 +2551,7 @@ def draw_depth_context(ax, x, depth, times):
         if right - left < floor_w:
             mid = 0.5 * (left + right)
             left, right = mid - floor_w / 2, mid + floor_w / 2
-        ax.axvspan(left, right, color='#b30000', alpha=0.10, zorder=0,
+        ax.axvspan(left, right, color=colors['handling'], alpha=0.10, zorder=0,
                    label=once('Being lowered / hauled up'))
         # WHICH manoeuvre it is comes from the direction, never from the
         # position in the record: most deployments here start logging already
@@ -2465,10 +2562,10 @@ def draw_depth_context(ax, x, depth, times):
         if abs(net) < TRANSIT_MARK_NET_M:
             continue          # handled in place: shaded, but neither in nor out
         if net > 0:
-            ax.axvline(x[i1], color='#b30000', linestyle='--', linewidth=1,
+            ax.axvline(x[i1], color=colors['working_depth'], linestyle='--', linewidth=1,
                        zorder=1, label=once('At working depth'))
         else:
-            ax.axvline(x[i0], color='#b30000', linestyle='--', linewidth=1,
+            ax.axvline(x[i0], color=colors['handling'], linestyle='--', linewidth=1,
                        zorder=1, label=once('Recovery starts'))
     ax.legend(loc='best', fontsize=8)
     return len(windows)

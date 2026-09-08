@@ -181,3 +181,39 @@ Unexpected product membership, timestamp/flag/light changes, report mismatches
 or concurrent edits stop promotion. This driver is scoped to the v14 sustained
 temperature screen after the separate SGOM correction. The dated operation and
 its exact retained-product list are recorded in `CORPUS_LOG.md`.
+
+## Bounded v14.0.1 promotion
+
+`promote_v1401_candidates.py --archive <DATABASE> --evidence <replay-root>
+--output <fresh-audit-directory>` checks the completed `full_candidate` (53
+Doppler), `scalar_candidate` (113 Seaguard/PAR), and `clock_candidate` (two
+HOBO) replays plus the four native-clock-verified XLSX exports. It checks the
+replay input hashes, inventories all active raw files and qualified tables,
+builds a local 281-table stage, and runs canonical integrity and unification.
+Original input/session, campaign, CO2 and station provenance must agree.
+
+`--apply` prepares and hash-verifies complete affected site-folder backups
+before replacing anything active. Old product reports remain under
+`reports/previous/`, and the four original XLSX exports and their immutable
+native binaries have an explicit before/after clock-repair manifest in the
+operation backup. The binary files are never rewritten. The operation journals
+folder replacements, rebuilds the index, rechecks all protected files, runs
+the mandatory integrity sweep, and rolls back on a post-replacement failure.
+The dated backup path and measured outcome belong in `CORPUS_LOG.md`.
+
+The four XLSX changes disambiguate 12-hour timestamps from independently
+matched native clocks; they do not apply a GMT shift, alter exported
+measurements, certify external synchronization, or ratify a replicate source.
+Historical clock verdicts in the original provenance describe the pre-repair
+export; the appended `clock_repair` field records the correction. A missing
+legacy raw `manifest.csv` must not be silently recreated with invented coverage;
+the bounded operation's `clock_export_manifest.json` records its four files.
+
+Doppler uses the owner-selected v14.0 display: one panel set combines columns,
+surface cells and coordinate references. Coincident time/depth values may be
+averaged for display; the qualified table retains native measurements and
+identities. The index counts SVGs recursively, including subfolders left by
+earlier display revisions. The plotting routine clears its obsolete generated
+SVGs when reusing an output directory, leaving unrelated files alone.
+A scalar profile with no finite depth legitimately has no vertical panels;
+its measurements and flags still belong in the qualified table.

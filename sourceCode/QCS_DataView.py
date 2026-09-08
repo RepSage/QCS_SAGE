@@ -509,6 +509,11 @@ def darker(hex_color, factor=0.62):
     return '#%02x%02x%02x' % (int(r * factor), int(g * factor), int(b * factor))
 
 
+def getDepthContextColors():
+    """Keep working-depth and handling markers distinct in manual reviews."""
+    return {'working_depth': '#228b22', 'handling': '#b30000'}
+
+
 def getParamColors (parameter_names=None):
     # Fixed variable -> color mapping used by EVERY plot in the software, so the
     # same variable always gets the same color in any panel or output figure.
@@ -699,6 +704,11 @@ def plot_variable(qualified_data, raw_data, variable, dataview_path, SETTINGS, f
     plt.close(fig)
 
 def plot_variable_profile(qualified_data, raw_data, variable, dataview_path, SETTINGS, fixed_scale):
+    depth = pd.to_numeric(qualified_data['Depth (m)'], errors='coerce')
+    values = pd.to_numeric(qualified_data[variable], errors='coerce')
+    if not (np.isfinite(depth) & np.isfinite(values)).any():
+        print('Info: %s profile not drawn: no finite measurement/depth pair.' % variable)
+        return
     cParam, bcParam = getParamColors()
     plot_color = bcParam.get(variable, '#1f77b4')
     display_name = renameParameters([variable])[0]
@@ -1409,6 +1419,9 @@ def plot_database_panel3(database, dataViewSettings):
     points = dataViewSettings['viewDataPoints']
 
     db_raw = database.copy()
+    if not np.isfinite(pd.to_numeric(db_raw['Depth (m)'], errors='coerce')).any():
+        print('Info: vertical profile panels not drawn: no finite depth coordinate.')
+        return
     # limit data to year
     db_raw = db_raw[(db_raw['Datetime'].dt.year == year)]
     db_raw = _apply_time_window(db_raw, dataViewSettings)   # plot ONLY the chosen hours (no-op for profiles)
@@ -1981,6 +1994,9 @@ def plot_TS_diagram (database, dataViewSettings):
         if semester in emptySemester:
             pass
         else:
+            if not np.isfinite(pd.to_numeric(db[semester]['Depth (m)'], errors='coerce')).any():
+                print('Info: depth-colored T-S diagram not drawn: no finite depth coordinate.')
+                continue
             ###### create figure and contour lines
             fig = plt.figure(figsize=(980 / 100, 500 / 100))  # Create figure with specified resolution
             ax = fig.add_subplot(111)  # Create axes
@@ -2277,6 +2293,34 @@ def _direction_compass(fig, slot, align_ax, cmap, label_font=None,
     return wheel
 
 
+def _clear_current_panel_files(out_dir, across_sites=False):
+    """Remove only this generated panel family's files when reusing a destination."""
+    from pathlib import Path
+    import re
+    root = Path(out_dir).resolve()
+    if not root.is_dir():
+        return
+    names = ({'Current mean speed across sites.svg'} if across_sites else {
+        'Current profile (time x depth).svg', 'Current vectors (time x depth).svg',
+        'Current components (U-V).svg', 'Current components (U-V, lines broken).svg',
+        'Current components (U-V, connected).svg', 'Current stick plot.svg',
+        'Progressive vector diagram.svg'})
+    folders = [root]
+    for folder in root.iterdir():
+        owned = (folder.name in {'surface', 'instrument', 'unknown', 'unspecified', 'nan'}
+                 or folder.name.startswith('reference_')) if across_sites else bool(
+                     re.fullmatch(r'\d{2,}_[\w.-]+', folder.name))
+        if owned and folder.is_dir() and not folder.is_symlink():
+            resolved = folder.resolve()
+            if root in resolved.parents:
+                folders.append(resolved)
+    for folder in folders:
+        for name in names:
+            path = folder / name
+            if path.is_file():
+                path.unlink()
+
+
 def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
                         figures=None):
     """Saves the current panels as SVGs into out_dir. Returns file list.
@@ -2307,6 +2351,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
     import os
     import matplotlib.dates as mdates
     s = settings or {}
+    _clear_current_panel_files(out_dir)
     os.makedirs(out_dir, exist_ok=True)
     # A rerun can reuse an existing output folder. Remove only the two files
     # retired from this panel family, otherwise they look newly generated even
@@ -2422,6 +2467,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
     p = os.path.join(out_dir, 'Current profile (time x depth).svg')
     fig.savefig(p, bbox_inches='tight'); files.append(p)
     enable_scroll_zoom(fig, fit=False)
+    fig._qcs_v140_doppler = True
     _keep_or_close(fig, show, figures)
 
     # The complementary panels use the same depths, spread from the shallowest
@@ -2465,7 +2511,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
             axes[1].plot(times, north_values, lw=0.9, label='%.1f m' % d)
         axes[0].set_ylabel('East U (cm/s)')
         axes[1].set_ylabel('North V (cm/s)')
-        line_only_legend(axes[0].legend(fontsize=8, ncol=len(sel)))
+        axes[0].legend(fontsize=8, ncol=len(sel))
         axes[0].set_title('Current components (%s) - %s' % (treatment, label))
         fig._qcs_axes_names = {
             axes[0]: 'East component (U)',
@@ -2484,6 +2530,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
         fig.savefig(p, bbox_inches='tight')
         files.append(p)
         enable_scroll_zoom(fig, fit=False)
+        fig._qcs_v140_doppler = True
         _keep_or_close(fig, show, figures)
 
     # 3) angle-true vector field at the same depths. The depth is only the
@@ -2528,6 +2575,7 @@ def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
     p = os.path.join(out_dir, 'Current vectors (time x depth).svg')
     fig.savefig(p, bbox_inches='tight'); files.append(p)
     enable_scroll_zoom(fig, fit=False)
+    fig._qcs_v140_doppler = True
     _keep_or_close(fig, show, figures)
     if show and figures is None:
         show_panels(browse=True)      # one window, paged (owner, v13.0)
@@ -2543,6 +2591,7 @@ def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=Fals
     """
     import os
     s = settings or {}
+    _clear_current_panel_files(out_dir, across_sites=True)
     os.makedirs(out_dir, exist_ok=True)
     df = database[database['Flag_cur'] != 4].copy()
     xs, xe = s.get('xAxisStart'), s.get('xAxisEnd')
@@ -2577,10 +2626,11 @@ def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=Fals
     fig._qcs_customize_axes = [('Mean current speed by depth', ax)]
     _name_panel(fig, 'Mean current speed by depth - across sites')
     ax.grid(alpha=0.3)
-    line_only_legend(ax.legend(fontsize=8))
+    ax.legend(fontsize=8)
     p = os.path.join(out_dir, 'Current mean speed across sites.svg')
     fig.savefig(p, bbox_inches='tight')
     enable_scroll_zoom(fig, fit=False)
+    fig._qcs_v140_doppler = True
     _keep_or_close(fig, show, figures)
     if show and figures is None:
         show_panels(browse=True)

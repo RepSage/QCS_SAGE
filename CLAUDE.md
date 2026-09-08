@@ -92,6 +92,10 @@ archive and diff the counts against the previous `qualified_index.csv`.
   robust scale from positive irradiance and treats stable night-zero runs as
   good. Including night zeros collapses MAD and creates mass false positives;
   never remove this exception without a full corpus replay.
+- **A scalar profile without finite depth still has an exportable table.**
+  Skip its vertical plots with an explicit message; never invent a depth or
+  abort qualification because a plot limit cannot be computed. A depth-colored
+  T-S plot also needs a finite depth coordinate.
 - **`build_database()`** (`QCS_DataHandler.py`) is the single unification engine
   for merging qualified files. It detects HOBO vs. Seaguard layouts and refuses
   to mix them; it deduplicates exact rows and warns on Site+Datetime overlaps.
@@ -110,8 +114,10 @@ archive and diff the counts against the previous `qualified_index.csv`.
   fouling-window test (`light_cutoff_window`), and have their own output column
   layout. Layout detection: `detect_qualified_layout()` in `QCS_DataHandler.py`.
 - **A DCPS (current profiler) product is TIDY: one row per record x depth
-  CELL**, and three of its columns are traps. `Depth (m)` is the CELL depth - a
-  handful of fixed values repeated on every record - so nothing may treat it as
+  CELL**, and three of its columns are traps. `Depth (m)` is the configured
+  CELL coordinate, interpreted with `Depth reference` (surface or instrument),
+  not always depth below surface. A handful of fixed values repeats on every
+  record, so nothing may treat it as
   a profile axis or as a deployment depth series; `Site+Datetime` repeats once
   per cell BY CONSTRUCTION (`build_database` keys its overlap warning on
   `Site+Datetime+Column+Cell` for this layout); and `Heading/Pitch/Roll/Tilt/
@@ -120,6 +126,26 @@ archive and diff the counts against the previous `qualified_index.csv`.
   `DOPPLER_TEST_SEQUENCE` (`QCS_Tests.py`), five positions since v13.0, with
   its own legend file - `FLAG_BUCKET_MAP` and the scalar sequence do not apply
   to it.
+- **DCPS framing and geometry are native metadata.** A vector-width trial must
+  validate field kinds, declared counts and payload bounds, not just its final
+  offset. Legitimate partial slot sets stay explicit; malformed records stop
+  decoding. Explicit cell centers/spacing override legacy size/overlap geometry.
+  Qualified tables retain Column/Cell identities and coordinate references.
+  The owner-selected v14.0 display is a compatibility exception: one panel set
+  per site combines columns/sources/references; heatmaps average coincident
+  time/depth coordinates and cross-site curves average by site/depth. These
+  display aggregates are not individual native cells or a moving absolute-depth
+  profile. Keep reader/QC/table corrections independent from visual rollback;
+  never rewrite native measurements to reproduce a historical picture.
+- **DCPS native status is not a Boolean.** The supported TD304-2024 map retains
+  both cell states and the DCPS record state: warnings become SUSPECT, invalid
+  solutions BAD. A single unavailable beam requires configured AutoBeam
+  replacement even to remain SUSPECT. Native quality unavailable/unmapped is
+  not evaluated and cannot certify GOOD: `cur_signal=2` rolls up to SUSPECT.
+  This differs from the non-contributing `cur_manual=2` (no manual review).
+  Never infer quality from strength alone or read a same-named platform field
+  as the profiler's record metadata. Thresholds remain separate from native
+  status validity. The map and examples live beside `doppler_native_quality`.
 - **A DCPS manual dismissal is never partial** (v13.0): the cell values of one
   record are a single velocity solution, so a cut writes 5 over EVERY flag
   position of the row and blanks every measurement; a TILT cut takes the whole

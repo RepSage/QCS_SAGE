@@ -2735,6 +2735,12 @@ def build_qualification_tab(container, root, shared_log=None):
             f.write('\nFlag codes: 1 good, 2 not evaluated, 3 suspect, 4 bad, '
                     '5 dismissed, 9 missing.\n')
             f.write('Flag_cur = worst flag of the row (4 > 3 > 9 > 1).\n')
+            f.write('Exception: unavailable or unmapped native signal quality '
+                    '(cur_signal=2) makes Flag_cur SUSPECT (3).\n'
+                    'An unreviewed manual position (cur_manual=2) alone does '
+                    'not change the automatic rollup.\n'
+                    'Native warnings are SUSPECT; native invalidity is BAD. '
+                    'Both cell states and the DCPS record state are evaluated.\n')
             # v13.0: position 5 is the operator's review, and a dismissal is
             # never partial - the legend has to say so, or a reader meets a
             # blank row of measurements with no explanation in the sheet

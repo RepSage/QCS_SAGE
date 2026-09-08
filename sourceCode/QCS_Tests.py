@@ -711,6 +711,41 @@ DOPPLER_DEFAULTS = {
 }
 
 
+def doppler_native_quality(frame):
+    """Map TD304 June 2024 sections 7.3/7.4 to the QCS signal position.
+
+    This is QCS policy, not a vendor GOOD/BAD classification: invalid cell
+    geometry/unavailable data is BAD; native warning levels are SUSPECT.
+    Missing status or an unverified firmware map stays not evaluated (2).
+    A single invalid beam with configured AutoBeam replacement is SUSPECT,
+    never automatically GOOD; two invalid beams cannot form a 3-beam solution.
+    """
+    result = np.full(len(frame), QC_flags.UNKNOWN, dtype=int)
+    for i, row in enumerate(frame.to_dict('records')):
+        if row.get('Native status map') != 'TD304-2024':
+            continue
+        values = [row.get(c) for c in ('Cell state', 'Cell state 2', 'Record state')]
+        available = [v is not None and np.isfinite(v) and float(v).is_integer() for v in values]
+        state1, state2, record = [int(v) & mask if valid else None
+                                 for v, valid, mask in zip(values, available,
+                                                         (0xffff, 0xffff, 0xffffffff), strict=True)]
+        bad = state1 is not None and bool(state1 & 0xf000)
+        warning = state1 is not None and bool(state1 & 0x0fff)
+        if state2 is not None:
+            invalid_beams = ((state2 & 0xf) | ((state2 >> 4) & 0xf)).bit_count()
+            replacement = row.get('AutoBeam replacement') in (True, 'True', 'true')
+            bad |= invalid_beams > 1 or (invalid_beams == 1 and not replacement)
+            warning |= bool(state2)
+        if record is not None:
+            bad |= bool(record & ((1 << 0) | (1 << 19)))
+            bad |= bool(record & (1 << 20)) and row.get('Depth reference') != 'instrument'
+            bad |= bool(record & (1 << 21)) and row.get('Surface cell') in (True, 'True', 'true')
+            warning |= bool(record)
+        result[i] = (QC_flags.BAD_DATA if bad else QC_flags.SUSPECT if warning
+                     else QC_flags.GOOD_DATA if all(available) else QC_flags.UNKNOWN)
+    return result
+
+
 def doppler_qc(frame, settings=None, enabled=None, manual_reviewed=False):
     """Qualifies a Doppler current frame. Returns (flags, Flag_cur):
     flags = list of 5-char strings (one per row, DOPPLER_TEST_SEQUENCE order);
@@ -733,7 +768,7 @@ def doppler_qc(frame, settings=None, enabled=None, manual_reviewed=False):
 
     speed = frame['Horizontal speed (cm/s)'].to_numpy(float)
     strength = frame['Signal strength (dB)'].to_numpy(float)
-    state = frame['Cell state'].to_numpy(float)
+    native_quality = doppler_native_quality(frame)
     stdev = frame['Speed stdev (cm/s)'].to_numpy(float)
     tilt = frame['Tilt (deg)'].to_numpy(float)
     missing = np.isnan(speed)
@@ -753,14 +788,15 @@ def doppler_qc(frame, settings=None, enabled=None, manual_reviewed=False):
             'cur_range',
             QC_flags.BAD_DATA if (speed[i] < 0 or speed[i] > s['max_speed'])
             else QC_flags.GOOD_DATA))
-        # 2) signal quality: cell state != 0 (out of range / no echo), return
-        #    strength below the noise floor, or strength >= 0 dB - genuine
-        #    echoes are always negative dB; 0.0 is the 'no ping' placeholder
-        bad_sig = (not np.isnan(state[i]) and state[i] != 0) or \
-                  (not np.isnan(strength[i]) and
-                   (strength[i] < s['min_strength'] or strength[i] >= 0.0))
-        row_flags.append(test_flag(
-            'cur_signal', QC_flags.BAD_DATA if bad_sig else QC_flags.GOOD_DATA))
+        # 2) native invalidity and warning levels, plus the existing acoustic
+        # threshold. Missing native quality must not silently certify a cell.
+        signal_flag = native_quality[i]
+        if np.isfinite(strength[i]):
+            if strength[i] < s['min_strength'] or strength[i] >= 0.0:
+                signal_flag = QC_flags.BAD_DATA
+        elif signal_flag == QC_flags.GOOD_DATA:
+            signal_flag = QC_flags.UNKNOWN
+        row_flags.append(test_flag('cur_signal', signal_flag))
         # 3) noisy measurement: single-ping stdev too high
         row_flags.append(test_flag(
             'cur_stdev',
@@ -785,7 +821,7 @@ def doppler_qc(frame, settings=None, enabled=None, manual_reviewed=False):
         chars = row_flags
         if QC_flags.BAD_DATA in chars:
             rollup[i] = QC_flags.BAD_DATA
-        elif QC_flags.SUSPECT in chars:
+        elif QC_flags.SUSPECT in chars or row_flags[1] == QC_flags.UNKNOWN:
             rollup[i] = QC_flags.SUSPECT
         else:
             rollup[i] = QC_flags.GOOD_DATA

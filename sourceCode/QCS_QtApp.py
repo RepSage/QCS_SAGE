@@ -673,17 +673,18 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 abs(float(xlim[1]) - float(xlim[0])) * view.ZOOM_OUT_FACTOR,
                 abs(float(ylim[1]) - float(ylim[0])) * view.ZOOM_OUT_FACTOR,
             )
-        # Line keys stay marker-free, including figures supplied by review
-        # hooks. Point-only keys retain the neutral-circle default. These are
-        # cloned legend handles; plotted observations stay untouched.
-        for ax in canvas.figure.axes:
-            view.line_only_legend(ax.get_legend())
-        for legend in canvas.figure.legends:
-            view.line_only_legend(legend)
+        # Doppler uses the owner's requested v14.0 legend appearance. Other
+        # families retain line-only keys. Only cloned legend handles change.
+        v140_doppler = getattr(canvas.figure, '_qcs_v140_doppler', False)
+        if not v140_doppler:
+            for ax in canvas.figure.axes:
+                view.line_only_legend(ax.get_legend())
+            for legend in canvas.figure.legends:
+                view.line_only_legend(legend)
         for ax in default_axes:
             for record in self._collect_legend_labels(ax):
                 handle = self._legend_symbol_handle(record)
-                if (handle is not None and not self._is_editable_line(handle) and
+                if (handle is not None and (v140_doppler or not self._is_editable_line(handle)) and
                         handle.get_marker() in (None, '', ' ', 'None', 'none', '.')):
                     handle.set_marker('o')
         self._legend_defaults = {

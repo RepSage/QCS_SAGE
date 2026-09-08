@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v14.0</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v14.0.1</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -280,7 +280,8 @@
             <strong>TSCP Doppler</strong> and runs the CURRENT pipeline instead:
             one row per record &times; depth cell, a manual review (see
             <em>Check variables</em> below), four current quality tests (speed range;
-            signal quality &mdash; cell state, return strength, 'no ping' placeholders; speed
+            signal quality &mdash; both native cell states, record validity, return strength
+            and 'no ping' placeholders; speed
             standard deviation; instrument tilt) and a fifth flag position recording the
             manual review, output in
             <code>&lt;session&gt;_DOPPLER_QLF</code> (qualified current table with a Site
@@ -293,7 +294,8 @@
             through with <em>&lt; Previous</em> and <em>Next &gt;</em>. The current panels
             honour the <strong>time window</strong> and the <strong>depth range</strong>;
             <strong>Fixed scale (one speed colour scale)</strong> gives every heatmap one
-            shared speed color scale so sites/years compare 1:1 &mdash; nothing is typed for
+            shared speed color scale calculated from non-BAD cells in the selected years,
+            including sites and cells outside the displayed time/depth selection &mdash; nothing is typed for
             it, unlike the scalar Min/Max; and selecting two or more sites adds a cross-site
             <em>"Current mean speed across sites"</em> panel. The direction heatmap carries a
             <strong>compass wheel</strong> instead of a colour bar, so the colour reads as a
@@ -763,7 +765,9 @@
             scale across profiles and selects the cell-depth band in Doppler panels; it is
             grayed out for scalar moorings. The label below shows the available range. For a
             Doppler database this means depths with at least one complete, non-BAD current
-            cell, because rejected or blank solutions cannot enter all three panels.</td>
+            cell, because rejected or blank solutions cannot enter all three panels.
+            Doppler restores saved depth bounds and retains them when Site/Year filters
+            change. Max must exceed Min; clear both fields to fit the selected data.</td>
         </tr>
         <tr>
             <td>Filter by Site</td>
@@ -1634,10 +1638,22 @@
     profiler uses the same three views everywhere, so there is nothing to choose
     (the panel checkboxes, the parameter filter, the Scale settings column, the data
     points and the tendency lines are not shown for this instrument). The three panels
-    are generated per selected site, and they open in <strong>one window</strong> that
+    are generated per selected site using the v14.0 presentation: surface cells and
+    all configured columns appear together. For example, RH30 2022 shows the surface
+    cell at 0 m and Column 1 in the same three panels. They open in <strong>one window</strong> that
     is paged with <em>&lt; Previous</em> and <em>Next &gt;</em>. The mouse wheel zooms
     around the cursor and a middle-button drag pans the current view. When changing a heavy
     panel, the wait cursor stays visible while its canvas is brought on screen.</p>
+    <p><strong>Historical grouping.</strong> The v14.0 heatmaps use the table's numeric
+    Depth (m) values on one axis and average rows with the same datetime and depth,
+    including direction by arithmetic mean. Distinct columns, sources or coordinate
+    references are not separated. Cross-site mean-speed curves average by site and
+    depth; U/V lines with gap breaks keep the first value at a repeated datetime/depth.
+    These display values need not represent one native cell. Consult Column, Cell and
+    Depth reference in the qualified table to distinguish depth below surface from
+    distance to the transducer. Native measurements and QC remain in that table.
+    Heatmaps fit the times with drawable current cells; U/V gap treatment uses the
+    selected timeline. These coordinates do not provide a moving absolute-depth profile.</p>
     <p>They answer three different questions about the same deployment. Every panel
     omits cells flagged BAD; manually dismissed measurements are blank, and
     <em>Remove dismissed data</em> may remove their rows entirely. A blank is therefore
@@ -1758,7 +1774,8 @@
     entry from its displayed label and
     edits the text actually drawn in line legends, color scales and the direction compass.
     Line-legend entries additionally offer symbol, symbol color and symbol size. Their neutral
-    initial symbol is <em>Circle</em>; <em>(None)</em> stays first in the option list and
+    initial symbol is <em>Circle</em> for Doppler v14.0 panels and point-only keys;
+    other line keys start without a symbol. <em>(None)</em> stays first in the option list and
     <em>Dot</em> remains available explicitly. Those
     controls change the legend key only, never the plotted observations. The tab is omitted
     when that plot has no legend or key to edit. Applying a style while the
@@ -1771,15 +1788,20 @@
     same native Qt/Fusion treatment as the Figure options tabs, with the active main tab
     identified by a bold label and enough reserved width to show that label in full.</p>
     <h4>Reading the blanks</h4>
-    <p>Large blank areas in the heatmaps are normal. A DCPS writes its own quality word
-    for every cell of every record (<em>Cell state</em>), and the current tests reject
-    the cells it already condemns. On the uncut reference session, 8,636 of 13,408 cell
-    samples are BAD and <strong>every one of them</strong> was rejected by the
-    instrument's own word &mdash; of the 4,772 cells it calls good, QCS rejected none.
-    The pattern is geometry and handling: the cells nearest the transducer (blanking
-    distance) and the farthest one (out of acoustic range) are rejected almost
-    entirely, and any period when the instrument was tilted over, hauled up or on deck
-    is rejected as a block.</p>
+    <p>Blank heatmap areas can reflect native invalidity, a QCS test, dismissal or absent
+    values. The native <em>Cell state</em>, <em>Cell state 2</em> and <em>Record state</em>
+    are retained. Native warnings produce SUSPECT; invalid velocity solutions produce BAD.
+    One unavailable beam can remain SUSPECT only with AutoBeam replacement configured;
+    multiple unavailable beams are BAD. Missing or unmapped native quality cannot certify
+    GOOD: an unevaluated signal position makes the current rollup SUSPECT. An unreviewed
+    manual position alone does not. The native map follows
+    <a href="https://www.xylem.com/siteassets/brand/aanderaa/resources/manual/td304-manual-dcps2.pdf">Aanderaa TD304 (June 2024), sections 7.3&ndash;7.4</a>;
+    translating its warnings into QCS severity is the QCS policy. Speed, strength,
+    standard-deviation and tilt thresholds remain independently applicable.</p>
+    <p><strong>Requalify older Doppler products.</strong> v14.0.1 corrects record decoding,
+    configured coordinates and native-status interpretation, so it changes current QC
+    results. Regenerating figures alone cannot repair an older qualified table. Structural
+    decoding errors now stop the reader; legitimate partial records remain explicit.</p>
     <p>To distinguish cases, inspect the qualified row: <code>Flag_cur = 4</code> means
     an automatic test rejected a cell that is still traceable in the table;
     <code>Flag_cur = 5</code> means the operator dismissed it. If a whole instant has no
