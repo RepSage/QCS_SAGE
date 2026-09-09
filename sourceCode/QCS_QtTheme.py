@@ -14,8 +14,8 @@ import math
 import sys
 import traceback
 
-from PySide6.QtCore import (QEasingCurve, QEventLoop, QPropertyAnimation, Qt)
-from PySide6.QtGui import QColor, QFontMetrics, QPalette
+from PySide6.QtCore import (QAbstractNativeEventFilter, QEasingCurve, QEventLoop, QPropertyAnimation, Qt)
+from PySide6.QtGui import QColor, QCursor, QFontMetrics, QPalette
 from PySide6.QtWidgets import (QAbstractButton, QAbstractSpinBox, QApplication,
                                QDockWidget,
                                QGraphicsOpacityEffect,
@@ -139,9 +139,59 @@ def refresh_clear_buttons(root):
                 break
 
 
+_native_wait_filters = []
+
+
+class _WindowsWaitCursor(QAbstractNativeEventFilter):
+    """Keep Windows' animated busy cursor on this window's client area only.
+
+    Qt's stock Wait/Busy shapes use LoadImage on IDC resources, which can
+    return the classic static hourglass. Loading the native .ani file retains
+    OS animation even while synchronous Python work occupies the GUI thread.
+    """
+    _resource = None
+
+    def __init__(self, window):
+        super().__init__()
+        import ctypes
+        from ctypes import wintypes
+        import os
+        from pathlib import Path
+
+        if self._resource is None:
+            user = ctypes.WinDLL('user32', use_last_error=True)
+            user.LoadCursorFromFileW.argtypes = [wintypes.LPCWSTR]
+            user.LoadCursorFromFileW.restype = wintypes.HANDLE
+            user.SetCursor.argtypes = [wintypes.HANDLE]
+            user.SetCursor.restype = wintypes.HANDLE
+            user.IsChild.argtypes = [wintypes.HWND, wintypes.HWND]
+            user.IsChild.restype = wintypes.BOOL
+            path = Path(os.environ['WINDIR']) / 'Cursors' / 'aero_busy.ani'
+            handle = user.LoadCursorFromFileW(str(path))
+            type(self)._resource = (user, handle)
+        self.user, self.handle = self._resource
+        self.window = window
+        self.hwnd = int(window.winId())
+        self._ctypes, self._msg_type = ctypes, wintypes.MSG
+
+    def apply_under_pointer(self):
+        target = QApplication.widgetAt(QCursor.pos())
+        if self.handle and target is not None and (target is self.window or self.window.isAncestorOf(target)):
+            self.user.SetCursor(self.handle)
+
+    def nativeEventFilter(self, event_type, message):
+        if self.handle and bytes(event_type) in (b'windows_generic_MSG', b'windows_dispatcher_MSG'):
+            msg = self._ctypes.cast(int(message), self._ctypes.POINTER(self._msg_type)).contents
+            if (msg.message == 0x20 and msg.lParam & 0xffff == 1  # WM_SETCURSOR, HTCLIENT
+                    and (msg.hWnd == self.hwnd or self.user.IsChild(self.hwnd, msg.hWnd))):
+                self.user.SetCursor(self.handle)
+                return True, 1
+        return False, 0
+
+
 @contextmanager
 def wait_cursor(widget):
-    """Shows Qt's wait cursor on one window during synchronous UI work.
+    """Shows the native working cursor on one window during synchronous work.
 
     Cursor changes need one event-loop pass before expensive work blocks the
     interface. User input is excluded from those passes so the visual feedback
@@ -154,19 +204,32 @@ def wait_cursor(widget):
     if app is None or widget is None:
         yield
         return
+    widget = widget.window()  # also cover the visible tab during a page handoff
     had_own_cursor = widget.testAttribute(Qt.WidgetAttribute.WA_SetCursor)
     previous_cursor = widget.cursor()
-    widget.setCursor(Qt.CursorShape.WaitCursor)
-    app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+    widget.setCursor(Qt.CursorShape.BusyCursor)
+    native = None
     try:
+        if sys.platform == 'win32' and app.platformName() == 'windows':
+            native = _WindowsWaitCursor(widget)
+            app.installNativeEventFilter(native)
+            _native_wait_filters.append(native)
+        app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        if native is not None:
+            native.apply_under_pointer()
         yield
     finally:
         app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        if native is not None:
+            app.removeNativeEventFilter(native)
+            _native_wait_filters.remove(native)
         if had_own_cursor:
             widget.setCursor(previous_cursor)
         else:
             widget.unsetCursor()
         app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        for active in _native_wait_filters:
+            active.apply_under_pointer()
 
 
 class AccentStyle(QProxyStyle):

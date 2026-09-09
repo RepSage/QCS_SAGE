@@ -3,6 +3,7 @@ import re
 import json
 from datetime import datetime
 import pandas as pd
+import numpy as np
 import QCS_DataHandler as data
 import QCS_DataView as view
 import QCS_Theme as theme
@@ -40,6 +41,33 @@ TOOLTIPS = {
     'uv_gap_mode': "How the U/V component lines treat missing or BAD current cells\n"
                    "Break = show the discontinuity; Connect = join the surviving points;\n"
                    "Both = generate the two versions for direct comparison",
+    'currentBinMinutes': "Time represented by each current cell\n"
+                         "Native = one recorded sample; 15/30 minutes = mean U/V,\n"
+                         "then speed and direction of that mean vector",
+    'currentQuality': "Stored current flags eligible for the display\n"
+                      "GOOD + SUSPECT includes flags 1 and 3; GOOD only includes 1\n"
+                      "Outer plot limits fit eligible values; internal gaps remain",
+    'currentContrast': "How speed values map to colours\n"
+                       "Linear = equal colour spacing per cm/s; sqrt highlights low speeds\n"
+                       "The velocity values and stored flags do not change",
+    'currentShowQuality': "Adds the stored-quality and coverage panels\n"
+                          "Quality shows the most restrictive flag in each time bin\n"
+                          "Coverage = eligible samples / expected samples (%)",
+    'currentTemporalPreview': "Optional experimental spike, change-rate and flat-line diagnostics\n"
+                              "Uses native U/V samples within each configured cell\n"
+                              "Thresholds need calibration; stored flags stay unchanged",
+    'currentSpikeLimit': "Candidate spike threshold for U/V (cm/s)\n"
+                         "Largest component difference from the mean of its two neighbours\n"
+                         "Both neighbouring samples must be GOOD; gaps are not crossed",
+    'currentRateLimit': "Candidate U/V change-rate threshold (cm/s/min)\n"
+                        "Largest component change divided by elapsed minutes\n"
+                        "The preceding sample must be GOOD; gaps are not crossed",
+    'currentFlatTolerance': "Allowed range of each U/V component within a stable run (cm/s)\n"
+                            "Both component ranges must stay within this tolerance\n"
+                            "Missing or rejected samples end the run",
+    'currentFlatMinutes': "Minimum stable-run duration flagged by the preview (min)\n"
+                          "Used together with Flat-line tolerance\n"
+                          "Only a diagnostic candidate; stored flags stay unchanged",
     'panel1': "Panel 1: parameters compared at the same site",
     'panel2': "Panel 2: one parameter compared between sites\nMulti-deployment moorings retain absolute datetime; sites do not need matching timestamps",
     'panel3': "Panel 3: parameters compared at the same site (vertical profile)",
@@ -382,7 +410,7 @@ def depth_availability_text(frame=None):
     depths = available_depths(source)
     if depths.empty:
         if is_doppler_input():
-            return 'Depth available: no complete non-BAD current cells'
+            return 'Depth available: no finite configured cell depths'
         return 'Depth available: no valid depths'
     return 'Depth available: %.2f to %.2f m' % (depths.min(), depths.max())
 
@@ -878,6 +906,7 @@ def apply_selected_files(filenames):
     """Shared tail of the database-file selection (Browse or drag-and-drop,
     v11.5): fills the entry, switches to single-file mode and auto-detects
     the instrument."""
+    _pending_step2.clear()  # new files invalidate any earlier qualification handoff
     fileNames_entry.delete(0, END)
     fileNames_entry.insert(0, ";".join(filenames))
     join.set(False)
@@ -902,27 +931,55 @@ def apply_selected_files(filenames):
         USER_PREFS['dbv_output_name'] = os.path.splitext(os.path.basename(filenames[0]))[0]
     save_user_prefs()
 
+def selected_curated_sheet():
+    widget = globals().get('curated_sheet_combobox')
+    return widget.get() or None if widget is not None else None
+
+
+def reset_curated_selection():
+    widget = globals().get('curated_sheet_combobox')
+    if widget is not None:
+        widget.set('')
+        widget.configure(values=(), state='disabled')
+    _preview_cache['key'] = None
+
+
+def select_curated_sheet(name=None):
+    from QCS_ProductTypes import SHEET_TYPES
+    name = name or selected_curated_sheet()
+    if name in curated_sheet_combobox.cget('values'):
+        curated_sheet_combobox.set(name)
+        instrument_combobox.set(SHEET_TYPES[name][0])
+        set_instrument_locked(True)
+        _preview_cache['key'] = None
+
+
 def autodetect_instrument(paths):
     """Lock Instrument only when every selected qualified header agrees."""
     if isinstance(paths, (str, os.PathLike)):
         paths = [str(paths)]
+    reset_curated_selection()
     detected = []
     for path in paths:
         try:
-            curated_instruments = data.curated_workbook_instruments(path)
-            if len(curated_instruments) > 1:
+            curated_sheets = data.curated_workbook_sheets(path)
+            if curated_sheets and globals().get('curated_sheet_combobox') is not None:
+                curated_sheet_combobox.configure(values=curated_sheets, state='readonly')
+                if len(curated_sheets) == 1:
+                    select_curated_sheet(curated_sheets[0])
+            if len(curated_sheets) > 1:
                 instrument_combobox.set('')
                 set_instrument_locked(False)
                 print(
-                    'Info: curated workbook contains multiple instrument sheets; '
-                    'select the one to visualize.')
+                    'Info: curated workbook contains multiple collections; '
+                    'select the collection to visualize.')
                 return False
             head = (
                 pd.read_csv(path, nrows=0)
                 if path.lower().endswith('.csv')
                 else pd.read_excel(
-                    path, sheet_name=(curated_instruments[0]
-                                      if curated_instruments else 0), nrows=0))
+                    path, sheet_name=(curated_sheets[0]
+                                      if curated_sheets else 0), nrows=0))
             instrument = data.detect_known_qualified_instrument(head)
             if instrument is None:
                 raise ValueError('header is not a recognized qualified QCS layout')
@@ -976,6 +1033,10 @@ def saveInputSettings():
     # Doppler belongs here too: every other piece of the tab already handles it
     # (autodetect, is_doppler_input, the current panels), and only this gate
     # refused - a qualified DCPS database could not leave Step 1 (owner, v12.2.4)
+    if (not join.get() and curated_sheet_combobox.cget('values')
+            and not selected_curated_sheet()):
+        ui_warn('Select collection', 'Select the curated collection to visualize.')
+        return False
     if instrument_combobox.get() not in ('Seaguard', 'HOBO', 'Doppler'):
         ui_warn("Warning", "Select the instrument that produced the files\n('Instrument' field).")
         return
@@ -1011,6 +1072,7 @@ def saveInputSettings():
     inputSettings['inputPath'] = inputPath_entry.get()
     inputSettings['sortByTime'] = sort.get()
     inputSettings['instrument'] = instrument_combobox.get()
+    inputSettings['curatedSheet'] = selected_curated_sheet() if not join.get() else None
 
     # store the latest choices
     USER_PREFS.update({
@@ -1024,8 +1086,30 @@ def saveInputSettings():
     save_user_prefs()
     return True  # validation passed and settings stored -> Step 2 may proceed
 
+current_view_widgets = {}
+current_temporal_entries = {}
+
+
+def current_view_settings():
+    """One settings contract shared by Tk, Qt, persistence and the renderer."""
+    from QCS_CurrentPanels import VIEW_OPTIONS, TEMPORAL_OPTIONS
+    result = {}
+    for key, (_, options, default) in VIEW_OPTIONS.items():
+        widget = current_view_widgets.get(key)
+        result[key] = options.get(widget.get(), default) if widget is not None else default
+    for key, (_, default) in TEMPORAL_OPTIONS.items():
+        widget = current_temporal_entries.get(key)
+        result[key] = float(widget.get()) if widget is not None else default
+        if not np.isfinite(result[key]) or result[key] <= 0:
+            raise ValueError('Temporal preview thresholds must be finite positive numbers.')
+    return result
+
+
 def saveDataViewSettings():
     try:
+        if not dType_combobox.get():
+            ui_warn('Select collection type', 'The scalar collection type is unknown or mixed. Select Mooring or Profile.')
+            return False
         dataViewSettings['dataType'] = dType_combobox.get()
         selectedYears = [y for y in year_vars.keys() if year_vars[y].get() == True]
         dataViewSettings['filterByYears'] = selectedYears
@@ -1035,6 +1119,8 @@ def saveDataViewSettings():
         dataViewSettings['fixedScale'] = fixedScale.get()
         dataViewSettings['uvGapMode'] = uv_gap_mode_from_display(
             uvGap_combobox.get())
+        if is_doppler_input():
+            dataViewSettings['currentSettings'] = current_view_settings()
         
         dataViewSettings['tsDiagram'] = tsDiagram.get()
         if dataViewSettings['tsDiagram'] == True:
@@ -1097,7 +1183,7 @@ def saveDataViewSettings():
             try:
                 d_min = float(dmin_text)
                 d_max = float(dmax_text)
-                if d_max <= d_min:
+                if d_max < d_min or (d_max == d_min and not is_doppler_input()):
                     raise ValueError('invalid interval')
                 dataViewSettings['depthAxisMin'] = d_min
                 dataViewSettings['depthAxisMax'] = d_max
@@ -1161,6 +1247,8 @@ def saveDataViewSettings():
             # NOTE: parameter selection and scale values are per-imported-sheet
             # (defaults recomputed from the data each time) and are NOT persisted.
         })
+        if is_doppler_input():
+            USER_PREFS['dbv_current_settings'] = dataViewSettings['currentSettings'].copy()
         save_user_prefs()
 
         error_logger.log("Info: view settings saved.")
@@ -1170,11 +1258,32 @@ def saveDataViewSettings():
         return False
 
 def generatePanels():
+    return _generate_panels(database)
+
+
+def _generate_panels(database):
     error_logger.clear()  # Clear the log before generating new panels
     # implicitly saves the current interface choices: generating panels with
     # stale settings was a pitfall of the 2-click save->generate flow
     if not saveDataViewSettings():
         return
+    from QCS_ProductTypes import collection_rows
+    before = len(database)
+    database = collection_rows(database, dataViewSettings['dataType'])
+    if len(database) != before:
+        error_logger.log('Info: collection filter: %d -> %d rows; other or unknown collections omitted.' %
+                         (before, len(database)))
+    if database.empty:
+        ui_warn('No matching collection', 'No rows match the selected collection type.')
+        return
+    if len(database) != before:
+        # A legacy mixed sheet may list sites that only have the other type.
+        available_sites = set(database['Site'])
+        selected_sites = dataViewSettings.get('siteList', [])
+        dataViewSettings['siteList'] = [site for site in selected_sites if site in available_sites]
+        omitted = [site for site in selected_sites if site not in available_sites]
+        if omitted:
+            error_logger.log('Info: sites without the selected collection omitted: %s.' % ', '.join(omitted))
 
     # Close panels from a previous VALID run only after the new settings pass
     # validation. A mistyped date must not destroy the product the warning asks
@@ -1254,24 +1363,27 @@ def generatePanels():
                 # the current panels honour the time window and the depth band.
                 # 'Fixed scale' ON = every heatmap shares one speed color scale
                 # so different sites/years compare 1:1; OFF = each panel
-                # autoscales. The scale spans what the panels DRAW - every cell
-                # except BAD, the same rows plot_doppler_panels keeps - for the
-                # reason the scalar scales changed in v12.3: a scale built on
-                # the GOOD cells alone saturates the suspect ones it is drawing.
-                speed_max = None
-                if dataViewSettings.get('fixedScale') and 'Horizontal speed (cm/s)' in sub.columns:
-                    drawn = sub[sub.get('Flag_cur', 1) != 4]['Horizontal speed (cm/s)']
-                    drawn = pd.to_numeric(drawn, errors='coerce').dropna()
-                    if len(drawn):
-                        speed_max = float(drawn.max()) * 1.05
+                # autoscales. Reuse the actual filtered/aggregated display
+                # values so an excluded site or BAD cell cannot set the scale.
                 dop_settings = {
                     'xAxisStart': dataViewSettings.get('xAxisStart'),
                     'xAxisEnd': dataViewSettings.get('xAxisEnd'),
                     'depthAxisMin': dataViewSettings.get('depthAxisMin'),
                     'depthAxisMax': dataViewSettings.get('depthAxisMax'),
-                    'currentSpeedMax': speed_max,
+                    'currentSpeedMax': None,
                     'uvGapMode': dataViewSettings.get('uvGapMode', 'break'),
                 }
+                dop_settings.update(dataViewSettings.get('currentSettings', {}))
+                if dataViewSettings.get('fixedScale'):
+                    from QCS_CurrentPanels import prepare
+                    maxima = []
+                    for site in selected_sites:
+                        prepared = prepare(sub[sub['Site'] == site], dop_settings)
+                        if prepared is not None:
+                            values = prepared['arrays']['speed']
+                            if np.isfinite(values).any():
+                                maxima.append(float(np.nanmax(values)))
+                    dop_settings['currentSpeedMax'] = max(maxima) * 1.05 if maxima else None
                 # every panel of every selected site goes into ONE browsable
                 # window at the end (v13.0), instead of one window per figure
                 dop_figs = []
@@ -1288,7 +1400,7 @@ def generatePanels():
                             error_logger.log("Info: %d current panel(s) generated for %s." % (len(files), site))
                             n_ok += len(files)
                         else:
-                            error_logger.log("Warning: %s has no non-BAD current rows - nothing to plot." % site)
+                            error_logger.log("Warning: %s has no current cell rows in the selected time/depth range." % site)
                     except Exception as e:
                         error_logger.log("Error generating current panels for %s: %s" % (site, e))
                 # cross-site comparison (mean speed by depth) when >= 2 sites
@@ -1444,6 +1556,7 @@ def build_step1(parent):
     switch are owned by the host shell."""
     global fileNames_entry, inputPath_entry, browse_file_btn, browse_input_btn
     global join, sort, sort_cb, instrument_combobox, outputName_entry, outputPath_entry
+    global curated_sheet_combobox
 
     # Main container
     main_frame = ttk.Frame(parent, padding="16")
@@ -1470,7 +1583,7 @@ def build_step1(parent):
     fileNames_entry = ttk.Entry(input_frame, width=24)
     fileNames_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
     ToolTip(fileNames_entry, TOOLTIPS['database_files'])
-    fileNames_entry.bind('<KeyRelease>', lambda _e: set_instrument_locked(False))
+    fileNames_entry.bind('<KeyRelease>', lambda _e: [reset_curated_selection(), set_instrument_locked(False)])
 
     browse_file_btn = ttk.Button(input_frame, text="Browse...", command=selectFiles, width=10)
     browse_file_btn.grid(row=1, column=1, padx=5)
@@ -1508,6 +1621,11 @@ def build_step1(parent):
     instrument_combobox.set("Seaguard")
     instrument_combobox.grid(row=7, column=0, sticky='w', pady=(0,5))
     ToolTip(instrument_combobox, TOOLTIPS['instrument'])
+
+    ttk.Label(input_frame, text='Curated collection:').grid(row=10, column=0, sticky='w')
+    curated_sheet_combobox = ttk.Combobox(input_frame, values=(), state='disabled', width=29)
+    curated_sheet_combobox.grid(row=11, column=0, columnspan=2, sticky='ew')
+    curated_sheet_combobox.bind('<<ComboboxSelected>>', lambda _e: select_curated_sheet())
 
     # Recent selections: one click reopens the last database file choices
     global _recent_combobox
@@ -1611,10 +1729,8 @@ def load_database():
                 if file_paths[0].lower().endswith('.csv'):
                     head = pd.read_csv(file_paths[0], nrows=1)
                 else:
-                    curated_instruments = data.curated_workbook_instruments(
-                        file_paths[0])
-                    sheet_name = (instrument if instrument in curated_instruments
-                                  else 0)
+                    sheet_name = data.resolve_curated_sheet(
+                        file_paths[0], instrument, inputSettings.get('curatedSheet'))
                     head = pd.read_excel(
                         file_paths[0], sheet_name=sheet_name, nrows=1)
                 lay = data.detect_qualified_layout(head)
@@ -1630,7 +1746,8 @@ def load_database():
                         pass
             except Exception:
                 pass          # unreadable head: let build_database report it
-            database, db_build_messages = data.build_database(instrument, file_list=file_paths)
+            database, db_build_messages = data.build_database(instrument, file_list=file_paths,
+                sheet_name=inputSettings.get('curatedSheet'))
             # several files = a NEW unified database: SAVE it, like the
             # folder-scan mode always did (v12.0 - before, the combination
             # existed only in memory)
@@ -1690,7 +1807,8 @@ def _current_source_label():
         return 'built from folder "%s"' % folder if folder else '(built database)'
     paths = [p.strip() for p in inputSettings.get('databaseFileName', '').split(';') if p.strip()]
     if len(paths) == 1:
-        return os.path.basename(paths[0])
+        sheet = inputSettings.get('curatedSheet')
+        return os.path.basename(paths[0]) + (' | ' + sheet if sheet else '')
     if len(paths) > 1:
         return '%d files (%s, ...)' % (len(paths), os.path.basename(paths[0]))
     return '(unknown)'
@@ -1703,6 +1821,7 @@ def build_step2(parent):
     global tsDiagram, ts_cb, latitude_entry, longitude_entry, tsParam_combobox
     global tendency, tendency_cb, tendency_entry, dataPoints, points_cb, fixedScale, fixed_scale_cb
     global uvGap_combobox, time_avail_lbl, depth_avail_lbl
+    global current_view_widgets, current_temporal_entries
     global disagreement
     global year_vars, year_widgets, time_start_entry, time_end_entry, depth_min_entry, depth_max_entry
     global site_names, site_vars, site_widgets, parameter_names, parameter_vars, parameter_widgets
@@ -1828,6 +1947,35 @@ def build_step2(parent):
     if not is_doppler_input():
         uv_gap_lbl.grid_remove()
         uvGap_combobox.grid_remove()
+
+    current_view_widgets, current_temporal_entries = {}, {}
+    if is_doppler_input():
+        from QCS_CurrentPanels import VIEW_OPTIONS, TEMPORAL_OPTIONS
+        current_frame = ttk.LabelFrame(vis_frame, text='Current display')
+        current_frame.grid(row=25, column=0, columnspan=2, sticky='ew', pady=10)
+        saved = USER_PREFS.get('dbv_current_settings', {})
+        for row, (key, (label, options, default)) in enumerate(VIEW_OPTIONS.items()):
+            ttk.Label(current_frame, text=label + ':').grid(row=row, column=0, sticky='w')
+            widget = ttk.Combobox(current_frame, values=list(options), state='readonly', width=29)
+            choice = saved.get(key, default)
+            if key == 'currentBinMinutes' and key not in saved:
+                span = database['Datetime'].max() - database['Datetime'].min()
+                if span < pd.Timedelta(hours=6):
+                    choice = 0
+            widget.set(next((text for text, value in options.items() if value == choice),
+                            next(text for text, value in options.items() if value == default)))
+            widget.grid(row=row, column=1, sticky='w')
+            ToolTip(widget, TOOLTIPS[key])
+            current_view_widgets[key] = widget
+        for row, (key, (label, default)) in enumerate(TEMPORAL_OPTIONS.items(), len(VIEW_OPTIONS)):
+            ttk.Label(current_frame, text=label + ':').grid(row=row, column=0, sticky='w')
+            widget = ttk.Entry(current_frame, width=12)
+            widget.insert(0, str(saved.get(key, default)))
+            widget.grid(row=row, column=1, sticky='w')
+            ToolTip(widget, TOOLTIPS[key])
+            current_temporal_entries[key] = widget
+        ttk.Label(current_frame, text='Temporal thresholds are experimental; stored flags are unchanged.',
+                  wraplength=310).grid(row=10, column=0, columnspan=2, sticky='w', pady=5)
 
     # TS Diagram
     tsDiagram = BooleanVar(value=False)
@@ -2273,9 +2421,11 @@ def build_step2(parent):
         tsParam_combobox.set(USER_PREFS['dbv_ts_param'])
     # Data type: if a qualification handed it over, use it and LOCK the field
     # (the qualified file already IS a profile / mooring / HOBO, so choosing the
-    # wrong one would only cause errors); otherwise restore the last choice.
+    # wrong one would only cause errors); ambiguity requires an explicit choice.
     global _pending_step2
     handoff_type = _pending_step2.get('data_type')
+    from QCS_ProductTypes import SCALAR_TYPES, TYPE_COLUMN
+    scalar_types = set(database[TYPE_COLUMN].dropna()) if TYPE_COLUMN in database else set()
     if is_hobo_input():
         dType_combobox.set('HOBO')
         dType_combobox.config(state='disabled')  # HOBO has only one option
@@ -2284,13 +2434,18 @@ def build_step2(parent):
         dType_combobox.set(handoff_type)
         dType_combobox.config(state='disabled')  # locked: comes from the file
         toggle_data_type()
-    elif USER_PREFS.get('dbv_data_type') in dType_values:
-        dType_combobox.set(USER_PREFS['dbv_data_type'])
+    elif is_doppler_input():
+        dType_combobox.set('TSCP Doppler')
+        dType_combobox.config(state='disabled')
+        toggle_data_type()
+    elif len(scalar_types) == 1 and scalar_types.issubset(SCALAR_TYPES):
+        dType_combobox.set(next(iter(scalar_types)))
+        dType_combobox.config(state='disabled')
         toggle_data_type()
     else:
-        # opened a file directly (no qualification handoff, no valid saved
-        # choice): default to TSCP Mooring instead of leaving the field blank
-        dType_combobox.set(dType_values[0])
+        # A saved display preference cannot establish the collection's type.
+        dType_combobox.set('')
+        dType_combobox.config(state='readonly')
         toggle_data_type()
 
     # coordinates from the qualification region (the file does not store them);
@@ -2381,7 +2536,8 @@ def _settings_key():
             inputSettings.get('joinFiles', False),
             inputSettings.get('inputPath', ''),
             inputSettings.get('sortByTime', False),
-            inputSettings.get('instrument', ''))
+            inputSettings.get('instrument', ''),
+            inputSettings.get('curatedSheet'))
 
 def _summarize_database(db):
     """One-paragraph summary shown in the Step 1 preview panel."""

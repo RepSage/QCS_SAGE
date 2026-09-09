@@ -706,6 +706,18 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
             font.setBold(True)
             self.locLabel.setFont(font)
 
+    def set_message(self, message):
+        """Keep the toolbar compact; detailed current QC lives in a hover tip."""
+        if getattr(self.canvas.figure, '_qcs_current_product', None) is not None:
+            from html import escape
+            self.canvas.setToolTip('<qt>%s</qt>' % escape(message).replace(' | ', '<br>')
+                                   if message else '')
+            width = max(160, self.width() - 300)
+            if hasattr(self, 'locLabel'):
+                self.locLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+                message = self.locLabel.fontMetrics().elidedText(message, Qt.ElideRight, width)
+        super().set_message(message)
+
     def _icon(self, name):
         """Render the selected Fluent Regular asset in the active palette."""
         stem = os.path.splitext(os.path.basename(name))[0]
@@ -918,6 +930,9 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                 columns = coordinates.shape[1] - 1
                 if values.size != rows * columns:
                     continue
+                detail = getattr(item, '_qcs_current_hover', None)
+                if detail is not None:
+                    return detail(y_index, x_index)
                 value = values.reshape(rows, columns)[y_index, x_index]
                 if np.ma.is_masked(value) or not np.isfinite(float(value)):
                     return ''
@@ -947,6 +962,9 @@ class QCSNavigationToolbar(NavigationToolbar2QT):
                     index = int(np.argmin(distances))
                     if distances[index] > 8.0 ** 2:
                         continue
+                detail = getattr(item, '_qcs_current_vector_hover', None)
+                if detail is not None:
+                    return detail(index)
                 x_value, y_value = anchors[index]
                 return '%s: %s | %s: %s | East U (cm/s): %s | ' \
                        'North V (cm/s): %s' % (
@@ -3121,8 +3139,9 @@ class QtShell(QMainWindow):
 
     def open_curated_visualization(self, path, instrument):
         """Hand one curated sheet to Visualization and land on Step 2."""
-        self.viz_tab.apply_curated_workbook(path, instrument, advance=True)
-        self.tabs.setCurrentWidget(self._viz_page)
+        with qtheme.wait_cursor(self):
+            self.viz_tab.apply_curated_workbook(path, instrument, advance=True)
+            self.tabs.setCurrentWidget(self._viz_page)
 
     def _tab_changed(self, _index):
         page = self.tabs.currentWidget()

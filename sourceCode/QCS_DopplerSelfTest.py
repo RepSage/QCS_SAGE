@@ -107,13 +107,14 @@ def run():
         note.write_text('retain')
         figures = []
         paths = view.plot_doppler_panels(frame, folder, label='Example', figures=figures)
-        assert len(paths) == len(figures) == 3
+        assert len(paths) == len(figures) == 4
         assert not retired.exists() and note.read_text() == 'retain'
-        # Historical display compatibility, explicitly requested by the owner:
-        # v14.0 averages coincident coordinates. This is not a native-cell truth
-        # assertion; the underlying qualified table must remain unchanged.
+        # Distinct configured columns remain distinct rows in the same figure;
+        # neither their directions nor their native source rows are averaged.
         actual = np.asarray(figures[0].axes[1].collections[0].get_array())
-        assert np.allclose(actual, (8.125 + 343.331) / 2.)
+        assert actual.shape[0] == 2
+        assert np.allclose(actual[0, np.isfinite(actual[0])], 8.125)
+        assert np.allclose(actual[1, np.isfinite(actual[1])], 343.331)
         assert all(fig._qcs_v140_doppler for fig in figures)
         assert figures[0]._suptitle.get_text() == 'Current profile - Example'
         for fig in figures:
@@ -123,20 +124,23 @@ def run():
                                         settings={'depthAxisMin': 6, 'depthAxisMax': 7})
         assert paths == [] and not list(Path(folder).rglob('*.svg'))
         assert note.read_text() == 'retain'
-    checks.append('DCPS v14.0 display: historical grouping, unchanged source rows and obsolete-panel cleanup')
+    checks.append('DCPS display: distinct cells in one figure, unchanged source rows and obsolete-panel cleanup')
     with tempfile.TemporaryDirectory() as folder:
         profile = pd.concat([frame, frame.assign(**{'Depth (m)': 10.})], ignore_index=True)
         comparison = pd.concat([profile, profile.assign(Site='second')], ignore_index=True)
         figures = []
         paths = view.plot_doppler_across_sites(comparison, folder, ['selected', 'second'], figures=figures)
         assert len(paths) == len(figures) == 1
-        assert len(figures[0].axes[0].lines) == 2 and figures[0]._qcs_v140_doppler
-        assert {line.get_label() for line in figures[0].axes[0].lines} == {'selected', 'second'}
+        assert len(figures[0].axes[0].lines) == 4 and figures[0]._qcs_v140_doppler
+        assert {line.get_label() for line in figures[0].axes[0].lines} == {
+            '%s | %s | surface' % (site, column) for site in ['selected', 'second'] for column in ['A', 'B']}
         for line in figures[0].axes[0].lines:
             assert np.array_equal(line.get_ydata(), [5., 10.])
-            assert np.array_equal(line.get_xdata(), [10., 10.])
+            assert np.allclose(line.get_xdata(), [10., 10.])
         view.plt.close(figures[0])
-    checks.append('DCPS v14.0 comparison: one temporal mean profile per site')
+        assert view.plot_doppler_across_sites(comparison.assign(Flag_cur=3), folder,
+            ['selected', 'second'], settings={'currentQuality': 'good'}) == []
+    checks.append('DCPS comparison: separate source/column profiles and consistent GOOD-only filtering')
     with tempfile.TemporaryDirectory() as folder:
         no_depth = pd.DataFrame({'Depth (m)': [np.nan] * 3,
                                  'Temperature (degC)': [26.1523, 26.1522, 26.1515]})
@@ -144,4 +148,6 @@ def run():
         view.plot_variable_profile(no_depth, no_depth, 'Temperature (degC)', folder, {}, False)
         assert not list(Path(folder).iterdir()) and view.plt.get_fignums() == figures_before
     checks.append('Scalar profile: missing depth preserves the table without inventing a vertical panel')
+    from QCS_CurrentPanelsSelfTest import run as current_checks
+    checks.extend(current_checks())
     return checks

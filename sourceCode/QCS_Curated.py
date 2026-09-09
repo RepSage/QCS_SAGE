@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Read-only catalog and export engine for the qualified QCS corpus.
 
-The corpus contains three incompatible table layouts.  A curated database is
-therefore one workbook with one data sheet per selected layout, plus an
+The corpus contains three incompatible table layouts. A curated database is
+one workbook with separate collection sheets, including scalar Mooring/Profile, plus an
 included-products sheet that keeps every row traceable to its source product.
 Each layout is unified only through :func:`QCS_DataHandler.build_database`.
 """
@@ -17,21 +17,23 @@ from pathlib import Path
 import pandas as pd
 
 import QCS_DataHandler as data
+from QCS_ProductTypes import CATEGORIES, UNKNOWN_CATEGORY, qualified_scalar_type
 
 
 DEFAULT_CORPUS_ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE"
-INSTRUMENT_ORDER = ("Seaguard", "Doppler", "HOBO")
-INSTRUMENT_LABELS = {
-    "Seaguard": "Seaguard",
-    "Doppler": "Seaguard current profiler (Doppler)",
-    "HOBO": "HOBO",
-}
+INSTRUMENT_ORDER = (*CATEGORIES, UNKNOWN_CATEGORY)
+INSTRUMENT_LABELS = {name: name for name in INSTRUMENT_ORDER}
 _FAMILY_FOLDERS = (("SEAGUARD", "Seaguard"), ("HOBO", "HOBO"))
 _QUALIFIED_SUFFIXES = ("_qlf.csv", "_qlf.xlsx")
 _EXCLUDED_COLLECTION_FOLDERS = frozenset({
     "_EXPERIMENTOS", "_PISCINAS", "_SEM_SITIO",
 })
 _EXCLUDED_SITE_PREFIXES = ("PISCINA_",)
+
+
+def collection_layout(category):
+    """Internal measurement layout for a user-facing collection category."""
+    return CATEGORIES.get(category, ('Seaguard', None))[0]
 
 
 class CuratedDatabaseError(ValueError):
@@ -88,10 +90,16 @@ def _product_context(root: Path, path: Path, family_instrument: str) -> dict:
     instrument = family_instrument
     if family_instrument == "Seaguard" and "_DOPPLER_" in path.stem.upper():
         instrument = "Doppler"
+    data_type = ('HOBO' if instrument == 'HOBO' else
+                 'TSCP Doppler' if instrument == 'Doppler' else qualified_scalar_type(path))
+    category = next((name for name, identity in CATEGORIES.items()
+                     if identity == (instrument, data_type)), UNKNOWN_CATEGORY)
     return {
         "product": path.stem,
         "source_file": path.name,
-        "instrument": instrument,
+        "instrument": category,
+        "layout_instrument": instrument,
+        "data_type": data_type or 'Unknown',
         "semester": semester,
         "bucket": bucket,
         "path_site": path_site,
@@ -147,7 +155,7 @@ def discover_qualified_corpus(
         try:
             frame = _read_identity_columns(path)
             context = _product_context(root, path, family_instrument)
-        except CuratedDatabaseError as exc:
+        except (CuratedDatabaseError, ValueError) as exc:
             messages.append("Warning: %s" % exc)
             continue
         _check_cancel(should_cancel)
@@ -290,6 +298,7 @@ def _included_products(
     included = included.rename(columns={
         "product": "Product",
         "instrument": "Instrument",
+        "data_type": "Collection type",
         "semester": "Campaign semester",
         "bucket": "Bucket",
         "path_site": "Path site",
@@ -304,7 +313,7 @@ def _included_products(
         "relative_path": "Corpus path",
     })
     return included[[
-        "Product", "Instrument", "Campaign semester", "Bucket", "Path site",
+        "Product", "Instrument", "Collection type", "Campaign semester", "Bucket", "Path site",
         "Data sites", "Calendar years", "Source rows", "Selected rows",
         "Contribution", "Invalid datetimes", "Data start", "Data end", "Corpus path",
     ]].reset_index(drop=True)
@@ -332,15 +341,17 @@ def build_curated_tables(
     tables: dict[str, pd.DataFrame] = {}
     messages: list[str] = []
     selected_rows: dict[tuple[str, str], int] = {}
-    for instrument in instruments:
+    # Scalar collections share one measurement layout, unified once, then
+    # partitioned by their proven product identity into separate sheets.
+    for layout_instrument in ('Seaguard', 'Doppler', 'HOBO'):
         _check_cancel(should_cancel)
-        group = selected[selected["instrument"] == instrument]
+        group = selected[selected['layout_instrument'] == layout_instrument]
         if group.empty:
             continue
         if progress:
-            progress("Unifying %s: %d product(s)..." % (INSTRUMENT_LABELS[instrument], len(group)))
+            progress("Unifying %s: %d product(s)..." % (layout_instrument, len(group)))
         frame, build_messages = data.build_database(
-            instrument, file_list=group["path"].astype(str).tolist(),
+            layout_instrument, file_list=group["path"].astype(str).tolist(),
             should_cancel=should_cancel)
         _check_cancel(should_cancel)
         messages.extend(build_messages)
@@ -353,18 +364,24 @@ def build_curated_tables(
         frame = frame.sort_values(["Site", "Datetime"], kind="stable").reset_index(drop=True)
         messages.append(
             "Info: %s calendar/site filter: %d -> %d row(s); %d outside selection."
-            % (instrument, before, len(frame), before - len(frame)))
+            % (layout_instrument, before, len(frame), before - len(frame)))
         if frame.empty:
             continue
-        tables[instrument] = frame
+        for category in instruments:
+            sources = group.loc[group['instrument'].eq(category), 'source_file']
+            partition = frame[frame['Source file'].isin(sources)].copy()
+            if len(partition):
+                tables[category] = partition.reset_index(drop=True)
+                messages.append('Info: %s collection partition: %d row(s).' % (category, len(partition)))
         counts = frame["Source file"].value_counts()
         for product in group.itertuples(index=False):
-            selected_rows[(instrument, product.source_file)] = int(
+            selected_rows[(product.instrument, product.source_file)] = int(
                 counts.get(product.source_file, 0))
 
     if not tables:
         raise CuratedDatabaseError(
             "Curated database: matching products were found, but no data rows remain after the calendar-year filter.")
+    tables = {name: tables[name] for name in INSTRUMENT_ORDER if name in tables}
     included = _included_products(selected, selected_rows)
     summary = {
         "products": int(len(included)),
@@ -390,7 +407,7 @@ def _readme_table(corpus_root: str, summary: dict) -> pd.DataFrame:
         ("Included products", str(summary["products"])),
         ("Contributing products", str(summary["contributing_products"])),
         ("Selected rows", str(summary["rows"])),
-        ("Structure", "One data sheet per instrument layout; incompatible flag and column layouts are never stacked."),
+        ("Structure", "One data sheet per collection category; scalar profiles and moorings stay separate, as do incompatible flag/column layouts."),
         ("Year filter", "Rows are selected by Datetime calendar year, not by the campaign-semester folder."),
         ("Provenance", "Included products maps every data sheet back to its qualified corpus product."),
         ("Flags", "1 = good; 2 = not evaluated; 3 = suspect; 4 = bad; 5 = dismissed; 9 = missing."),

@@ -3,20 +3,23 @@
 Volatile state. Durable rules: CLAUDE.md. Released program changes: changelog/.
 Archive operations: sourceCode/batch/CORPUS_LOG.md.
 
-## Current state (2026-09-08)
+## Current state (2026-09-09)
 
-- No open program patch. The owner accepted the v14.0 Doppler display and
-  requested closure of v14.0.1. Changes and release checks belong in
-  changelog/v14.0.1.md; full pre-closure status is retained under
-  diagnostics/release_v1401_20260908/before/STATUS.md and in Git history.
-- Release evidence: diagnostics/release_v1401_20260908/. The final frozen
-  executable and installer supersede the earlier development bundles under
-  diagnostics/patch_pending_20260908/. The installed operator copy was not
-  upgraded as part of release verification.
-- The active archive's Doppler SVGs still reflect the preceding partial visual
-  restoration. New generation uses the accepted v14.0 display; publication
-  does not regenerate archived figures. The latest archive operation and its
-  backups are recorded in CORPUS_LOG.md.
+- No open program patch. Owner requested publication of v14.0.2. Completed
+  changes and release checks belong in changelog/v14.0.2.md. Full pre-closure
+  status is retained under diagnostics/release_v1402_20260909/before/STATUS.md
+  and in Git history.
+- Release evidence: diagnostics/release_v1402_20260909/. Its final frozen
+  executable and installer supersede development bundles. The installed
+  operator copy was not upgraded during verification.
+- Archived Doppler SVGs have not been regenerated for this release. New panel
+  generation uses v14.0.2; the archive's latest operation remains in CORPUS_LOG.md.
+
+## Open scientific work (2026-09-09)
+
+- Doppler temporal spike/rate/flat-line thresholds remain exploratory display
+  diagnostics. Calibrate against independent evidence and the real corpus before
+  promoting any check into official qualification; stored flags are unchanged.
 
 ## Carried-over evidence limits (2026-09-08)
 
@@ -39,10 +42,10 @@ Archive operations: sourceCode/batch/CORPUS_LOG.md.
   splice is evidence only. Pending source/interval decisions still require
   their independent evidence and owner ratification.
 
-## Environment (verified 2026-09-08)
+## Environment (verified 2026-09-09)
 
 - Absolute Anaconda base for QC/batch; packaging/v12_env for the source Qt
-  launcher QCS.bat. The final build used %TEMP%/qcs_build_v14 and the fresh work
-  directory %TEMP%/qcs_build_work_release1401. Recipe: packaging/README.md.
+  launcher QCS.bat. Final release build: %TEMP%/qcs_build_v14; fresh work directory
+  %TEMP%/qcs_build_work_release1402. Recipe: packaging/README.md.
 - No machine shutdown was requested. Earlier shutdown authorization was
   one-time and must not be reused.
