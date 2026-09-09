@@ -67,7 +67,9 @@ both `QCS_DatabaseView` and `QCS_Main` before touching anything. They write
 `qcs_user_settings.json` on ordinary actions (selecting files, advancing to
 step 2), so a test run silently rewrites the operator's own settings —
 and backing the file up first is worse: restoring it overwrites whatever
-the RUNNING app saved meanwhile.
+the RUNNING app saved meanwhile. Keep automated GUI checks offscreen unless
+the owner has agreed to an interactive desktop test; do not take over their
+screen, mouse or keyboard as an implicit part of publication.
 
 **Passing the suite is necessary, not sufficient** — the global rule, with
 force here: every non-trivial defect in new analysis code was found by sweeping
@@ -234,6 +236,10 @@ archive and diff the counts against the previous `qualified_index.csv`.
 - **User settings** live in `sourceCode/qcs_user_settings.json` (auto-generated,
   gitignored, version-gated: a version bump may intentionally reset QC criteria
   to new defaults while preserving file paths).
+- **Visualization depth bounds belong to the imported collection.** On each
+  Step 2 rebuild, clear the depth-mode cache and default to that database's
+  available depths; do not restore global depth preferences. Keep manual bounds
+  during edits within the view. Qt mirrors this state from `QCS_DatabaseView`.
 - **One preferences dict per shell.** `QCS_Main.USER_PREFS` and
   `QCS_DatabaseView.USER_PREFS` are separate module globals, and each
   `save_user_prefs()` rewrites the WHOLE settings file from its own copy. A
@@ -244,6 +250,9 @@ archive and diff the counts against the previous `qualified_index.csv`.
   own close handler; a shell without one loses it entirely.
 - **Version**: `QCS_VERSION` in `QCS_DataHandler.py` is the single source of
   truth for the app version.
+- **Show the main Qt window before startup notices.** An upgrade's criteria-reset
+  dialog must have a visible parent. Blocking on that notice before `shell.show()`
+  makes the installer's successful relaunch look absent. Keep `--shot` windowless.
 
 ## Timebase — getting this wrong corrupts the whole corpus
 
@@ -307,6 +316,9 @@ archive and diff the counts against the previous `qualified_index.csv`.
   update the HTML user manual (`Quality Control System (SAGE) - User Manual.html`)
   with the version and changes, and tag the version in Git. The installer is
   rebuilt and smoke-tested before the tag — recipe in `packaging/README.md`.
+- **Finish payload staging before starting Inno Setup.** A successful compiler
+  can omit files still being copied. Await the copy and compare the compiler's
+  input manifest with the complete tested bundle before tagging.
 - **Before tagging, read what the interface says about ITSELF.** A branch
   banner hides there and ships silently: v12.0 was tagged with the window
   title carrying '(v12.0 shell)' and the status bar announcing a

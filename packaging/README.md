@@ -48,8 +48,14 @@ $env:PATH = "C:\Users\LAMB\anaconda3\Library\bin;" + $env:PATH
 #    from the frozen module)
 Copy-Item "Quality Control System (SAGE) - User Manual.html" packaging\dist\QCS\
 
-# 4. smoke test: launch, confirm the window appears in a few seconds, close
-packaging\dist\QCS\QCS.exe
+# 4. unattended smoke: render without a desktop window. Use a fresh writable
+#    test bundle and empty test preferences; never copy operator preferences.
+#    QT_QPA_FONTDIR lets the offscreen backend find the Windows fonts.
+$env:QT_QPA_PLATFORM = 'offscreen'
+$env:QT_QPA_FONTDIR = Join-Path $env:WINDIR 'Fonts'
+Start-Process -FilePath (Resolve-Path 'packaging\dist\QCS\QCS.exe').Path -ArgumentList @('--shot', ('"{0}"' -f (Join-Path $env:TEMP 'qcs_release_smoke.png'))) -WindowStyle Hidden -Wait
+#    Check exit status, the PNG and crash logs; restore these process-local
+#    environment overrides after the test. A live desktop test needs agreement.
 
 # 5. the installer -> packaging\Output\QCS_Setup_vX.Y.exe
 #    (Inno Setup installed per-user - no admin - via: innosetup-6.x.exe /VERYSILENT /CURRENTUSER)
@@ -58,6 +64,12 @@ packaging\dist\QCS\QCS.exe
 
 `packaging\dist\`, `packaging\Output\` and the venv are build artifacts —
 gitignored, rebuilt at will. Only the two recipes and this README are tracked.
+
+When staging a separately tested bundle into `packaging\dist\QCS`, wait for
+the copy to finish before compiling. Compare every compiler input against the
+tested bundle by relative path, size and SHA256. A successful Inno compile can
+still be incomplete if it enumerated the directory while files were being
+copied. Preferences and crash logs must remain excluded.
 
 ## When a new version is released
 

@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v14.0.2</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v14.0.3</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -766,8 +766,10 @@
             grayed out for scalar moorings. The label below shows the available range. For a
             Doppler database this includes every finite configured cell depth, including
             cells whose velocities are entirely rejected or blank.
-            Doppler restores saved depth bounds and retains them when Site/Year filters
-            change. In Doppler, equal bounds select one cell depth; in scalar profiles,
+            Each imported database or collection starts with its own available minimum
+            and maximum depth. Manual bounds remain in the current visualization,
+            including when Site/Year filters change, but are not reused on the next import.
+            In Doppler, equal bounds select one cell depth; in scalar profiles,
             Max must exceed Min. Clear both fields to fit the selected data.</td>
         </tr>
         <tr>
@@ -960,7 +962,8 @@
     </ul>
     <p>The quality criteria are the one exception, by design: see the note below.</p>
     <div class="note">
-        <p>The first launch after a program update shows a dialog when your saved QC criteria were
+        <p>The first launch after a program update shows the main window before displaying a
+        dialog when your saved QC criteria were
         reset to the new version's defaults. The reset is deliberate — a version may change
         criteria on purpose, and keeping old saved values would silently mask that. Folders, file
         choices and visualization preferences are always kept, and custom criteria can be set
