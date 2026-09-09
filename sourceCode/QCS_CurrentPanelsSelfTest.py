@@ -55,6 +55,38 @@ def run():
     assert np.isnan(cancelled['arrays']['direction'][0, 0])
     checks.append('Current resolution: single discarded cell, 30-minute expected count and undefined cancelling direction')
 
+    outer = pd.concat([frame([10.] * 7, flags=[4, 1, 4, 1, 1, 4, 4]).assign(
+        **{'Depth (m)': depth, 'Cell': i, 'Surface cell': depth == 0.,
+           'Flag_cur': [4] * 7 if depth == 8. else [4, 1, 4, 1, 1, 4, 4]})
+        for i, depth in enumerate([0., 4., 8.])], ignore_index=True)
+    original = outer.copy(deep=True)
+    p = current.prepare(outer, {'currentBinMinutes': 0})
+    assert current.display_extent(p) == (0, 1, 1, 4)
+    assert np.isnan(p['arrays']['speed'][:, 2]).all()  # internal BAD gap stays
+    assert p['labels'] == ['Surface', '4 m', '8 m']
+    assert p['tick_labels'] == ['Surface', '4', '8']
+    assert current.display_extent(good) is None
+    assert current.display_extent(cancelled) == (0, 0, 0, 0)  # calm is eligible
+    pd.testing.assert_frame_equal(outer, original)
+    with tempfile.TemporaryDirectory() as folder:
+        import matplotlib.dates as mdates
+        import matplotlib.pyplot as plt
+        figures = []
+        current.plot_panels(outer, folder, settings={'currentBinMinutes': 0}, figures=figures)
+        for fig in figures:
+            for _, ax in fig._qcs_customize_axes:
+                footer = [record for record in fig._qcs_legend_labels[ax] if record['name'] == 'Figure footer']
+                assert len(footer) == 1 and footer[0]['artist'] is fig._qcs_footer
+        ax = figures[0].axes[0]
+        assert ax.get_ylabel() == 'Configured cell (m)'
+        assert ax.get_ylim() == (1.5, -.5)
+        assert np.allclose(ax.get_xlim(), mdates.date2num(p['edges'][[1, 5]].to_pydatetime()))
+        assert [label.get_text() for label in ax.get_yticklabels()] == ['Surface', '4']
+        for fig in figures:
+            plt.close(fig)
+        assert current.plot_panels(outer.assign(Flag_cur=4), folder) == []
+    checks.append('Current plot extent: eligible outer bounds, internal gaps, calm/single bin, unit ticks and editable footer')
+
     f = frame([10., 10., 110., 10., 10., 10., 10., 10., 10.])
     p = current.prepare(f, {'currentBinMinutes': 0, 'currentTemporalPreview': True,
                            'currentFlatTolerance': .1})

@@ -1647,8 +1647,12 @@
     <p><strong>Cell geometry and velocity consistency.</strong> Each equal-height heatmap
     row identifies one configured cell, retaining its column, source and coordinate
     reference. The row height is not a sampled layer thickness: a surface acquisition
-    window is not a layer average. Fully rejected depths and empty time intervals remain
-    visible, so missing 2/4 m cells cannot enlarge their neighbours. Consult
+    window is not a layer average. Outer time and cell limits fit the values eligible
+    under the selected quality filter. Empty edges are cropped; rejected cells and
+    missing intervals between usable values remain visible, so missing 2/4 m cells
+    cannot enlarge their neighbours. No source rows or flags are changed. If no current
+    is eligible, the app reports this and skips empty panels. The axis title is
+    <em>Configured cell (m)</em>; tick labels omit the repeated unit. Consult
     <em>Depth reference</em> to distinguish depth below surface from distance to the
     transducer; the display is not a moving absolute-depth profile. Display U and V are
     derived from the native horizontal speed and direction, making the heatmaps, component
@@ -1670,6 +1674,13 @@
     unknown north is stated on the figures. Existing archive products obtain that label
     only from an exact provenance link to their native configuration. Missing or ambiguous
     metadata stays unknown; no magnetic correction is applied by the plotter.</p>
+    <p><strong>Figure footer.</strong> The line describing time resolution, quality
+    selection and north reference can be edited through <em>Customize &rarr; select
+    a plot &rarr; Legends &rarr; Figure footer</em>. Apply or OK changes its text;
+    clearing the field hides it. The reset control restores the original wording.
+    Toolbar Save exports the current figure with the edited footer. Regenerating
+    panels creates the standard footer again; these edits do not alter the selected
+    data or previously generated files.</p>
     <p>They answer three different questions about the same deployment. Every panel
     omits cells flagged BAD; manually dismissed measurements are blank, and
     <em>Remove dismissed data</em> may remove their rows entirely. A blank is therefore
@@ -2074,6 +2085,8 @@
     <strong>Go to visualization</strong> appear below the build button. A workbook containing more
     than one collection asks which collection to visualize; Data Visualization then opens
     that exact sheet directly on Step 2 and uses its proven Mooring/Profile/Doppler/HOBO type.
+    The animated Windows loading cursor appears throughout workbook loading and
+    panel generation, then returns to the normal pointer; selection dialogs remain interactive.
     Opening the workbook directly exposes the same collection selector on Step 1.
     Legacy Seaguard/Doppler/HOBO sheets remain readable; explicit source-product names can
     recover their scalar collection types. An unknown or mixed scalar table requires an

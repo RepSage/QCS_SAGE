@@ -3139,8 +3139,9 @@ class QtShell(QMainWindow):
 
     def open_curated_visualization(self, path, instrument):
         """Hand one curated sheet to Visualization and land on Step 2."""
-        self.viz_tab.apply_curated_workbook(path, instrument, advance=True)
-        self.tabs.setCurrentWidget(self._viz_page)
+        with qtheme.wait_cursor(self):
+            self.viz_tab.apply_curated_workbook(path, instrument, advance=True)
+            self.tabs.setCurrentWidget(self._viz_page)
 
     def _tab_changed(self, _index):
         page = self.tabs.currentWidget()

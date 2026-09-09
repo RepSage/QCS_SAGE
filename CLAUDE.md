@@ -143,6 +143,8 @@ archive and diff the counts against the previous `qualified_index.csv`.
   native fields, and never overwrite them for a visual correction. Average
   consistent U/V for temporal display bins, retain valid/expected counts, and
   never average direction degrees arithmetically or stretch cells across gaps.
+  Fit outer plot limits to eligible current while retaining internal gaps and
+  cell identities; do not drop archived rows or change QC/coverage to crop a plot.
 - **Current direction reference must have provenance.** New native reads retain
   declination/reference metadata. Old qualified products may resolve it only
   through their exact adjacent provenance block and uniquely matched native
@@ -194,6 +196,11 @@ archive and diff the counts against the previous `qualified_index.csv`.
   awareness) and `QCS_QtTheme.py` for the Qt shell. Plot colors are centralized
   in `getParamColors()` / `getSiteColors()` in `QCS_DataView.py`. Never
   hardcode colors or fonts in windows or plots.
+- **Synchronous Qt loading uses `QCS_QtTheme.wait_cursor`.** Start it before
+  workbook inspection, on the initiating window. Qt's stock Windows Wait/Busy
+  resources can be static hourglasses; the helper loads the native animated
+  cursor and limits it to that window. Keep dialogs interactive and restore
+  cursor/filter state on nested calls and exceptions.
 - **Never set an UNQUALIFIED Qt stylesheet on a widget.** A rule without a
   selector (`widget.setStyleSheet('margin-left: 18px')`) is inherited by that
   widget's own TOOLTIP, which then opens with an empty strip on the side -

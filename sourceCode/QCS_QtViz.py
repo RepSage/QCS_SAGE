@@ -543,6 +543,7 @@ class VisualizationTab(QWidget):
             from QCS_CurrentPanels import VIEW_OPTIONS, TEMPORAL_OPTIONS
             for key, (label, options, _) in VIEW_OPTIONS.items():
                 combo = QComboBox()
+                combo.setToolTip(TOOLTIPS[key])
                 combo.addItems(list(options))
                 combo.currentTextChanged.connect(
                     lambda text, name=key: dbv.current_view_widgets[name].set(text))
@@ -552,6 +553,7 @@ class VisualizationTab(QWidget):
             tf = QFormLayout(self.temporal_group)
             for key, (label, _) in TEMPORAL_OPTIONS.items():
                 entry = QLineEdit()
+                entry.setToolTip(TOOLTIPS[key])
                 self._entry_pair(entry, dbv.current_temporal_entries[key])
                 self.current_thresholds[key] = entry
                 tf.addRow(label + ':', entry)

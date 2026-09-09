@@ -276,7 +276,7 @@ def prepare(frame, settings=None):
                 values = metrics.loc[sub.index, key]
                 temporal[key][cell, j] = values.max() if values.notna().any() else np.nan
         details[cell, j] = detail
-    labels = []
+    labels, tick_labels = [], []
     multiple = cells['Column'].nunique() > 2 or cells.loc[~cells['Surface cell'].eq(True), 'Column'].nunique() > 1
     duplicate_depths = cells['Depth (m)'].duplicated(keep=False)
     refs = set(cells['Depth reference'].dropna())
@@ -291,13 +291,22 @@ def prepare(frame, settings=None):
         if len(refs) > 1:
             label += ' (%s ref.)' % row['Depth reference']
         labels.append(label)
+        tick_labels.append(label if surface else label.replace('%g m' % row['Depth (m)'], '%g' % row['Depth (m)'], 1))
     ref_values = set(cells['Direction reference'].fillna('unknown'))
     reference = next(iter(ref_values)) if len(ref_values) == 1 else 'mixed/unknown'
-    return dict(frame=work, cells=cells, labels=labels, edges=edges, arrays=arrays,
+    return dict(frame=work, cells=cells, labels=labels, tick_labels=tick_labels, edges=edges, arrays=arrays,
                 details=details, temporal=temporal, limits=limits, minutes=minutes,
                 cadence_seconds=cadence, reference=reference,
                 selected_rows=len(work), eligible_rows=int(work['_eligible'].sum()),
                 original_rows=len(frame), time_snapped_to_seconds=snap)
+
+
+def display_extent(product):
+    """Outer cell/bin indices containing eligible current; inner gaps stay put."""
+    rows, columns = np.where(np.isfinite(product['arrays']['speed']))
+    if not len(rows):
+        return None
+    return int(rows.min()), int(rows.max()), int(columns.min()), int(columns.max())
 
 
 def hover_text(product, cell, time_bin):
@@ -328,12 +337,18 @@ def plot_panels(frame, out_dir, label='', settings=None, show=False, figures=Non
     p = prepare(frame, s)
     if p is None:
         return []
+    extent = display_extent(p)
+    if extent is None:
+        print('Warning: %s has no eligible current under the selected time, cell and quality filters; no empty panels generated.' % label)
+        return []
+    first_cell, last_cell, first_bin, last_bin = extent
     colors = view.getCurrentColors()
     arrays = p['arrays']
     x = mdates.date2num(p['edges'].to_pydatetime())
+    time_limits = (x[first_bin], x[last_bin + 1])
     centers = (x[:-1] + x[1:]) / 2
     y = np.arange(len(p['cells']) + 1) - .5
-    data_ylim = (len(p['cells']) - .5, -.5)
+    data_ylim = (last_cell + .5, first_cell - .5)
     reference = p['reference']
     resolution = '%d-min vector mean' % p['minutes'] if p['minutes'] else 'Native samples'
     quality = 'GOOD only' if s.get('currentQuality') == 'good' else 'GOOD + SUSPECT'
@@ -342,11 +357,11 @@ def plot_panels(frame, out_dir, label='', settings=None, show=False, figures=Non
     files = []
 
     def axes_format(ax, max_labels=17):
-        ax.set_xlim(x[0], x[-1])
+        ax.set_xlim(*time_limits)
         ax.set_ylim(*data_ylim)
-        indices = np.unique(np.rint(np.linspace(0, len(p['cells'])-1, min(max_labels, len(p['cells'])))).astype(int))
-        ax.set_yticks(indices, [p['labels'][i] for i in indices])
-        ax.set_ylabel('Configured cell')
+        indices = np.unique(np.rint(np.linspace(first_cell, last_cell, min(max_labels, last_cell-first_cell+1))).astype(int))
+        ax.set_yticks(indices, [p['tick_labels'][i] for i in indices])
+        ax.set_ylabel('Configured cell (m)')
         ax.set_facecolor(colors['missing'])
         ax.format_coord = lambda tx, ty: hover_text(p, int(np.clip(round(ty), 0, len(p['cells'])-1)),
             int(np.clip(np.searchsorted(x, tx, side='right')-1, 0, len(centers)-1)))
@@ -360,7 +375,12 @@ def plot_panels(frame, out_dir, label='', settings=None, show=False, figures=Non
     def finish(fig, panel, filename):
         fig._qcs_current_product = p
         fig._qcs_v140_doppler = True  # retained circular line legend handles
-        fig.text(.5, .015, getattr(fig, '_qcs_caption', caption), ha='center', fontsize='small')
+        footer = fig.text(.5, .015, getattr(fig, '_qcs_caption', caption), ha='center', fontsize='small')
+        fig._qcs_footer = footer
+        keys = getattr(fig, '_qcs_legend_labels', {})
+        for _, axis in fig._qcs_customize_axes:
+            keys.setdefault(axis, []).append({'name': 'Figure footer', 'artist': footer})
+        fig._qcs_legend_labels = keys
         view._name_panel(fig, panel, label)
         view.enable_scroll_zoom(fig, fit=False)
         path = str(Path(out_dir) / filename)
@@ -426,7 +446,7 @@ def plot_panels(frame, out_dir, label='', settings=None, show=False, figures=Non
                         color=colors['lines'][i], label=p['labels'][cell])
         for ax in axes:
             ax.axhline(0, color=colors['zero'], lw=.6, zorder=0)
-            ax.set_xlim(x[0], x[-1])
+            ax.set_xlim(*time_limits)
             ax.grid(alpha=.15)
         axes[0].set_ylabel('East U [cm/s]')
         axes[1].set_ylabel('North V [cm/s]')
@@ -444,7 +464,7 @@ def plot_panels(frame, out_dir, label='', settings=None, show=False, figures=Non
     anchors, tnum, u, v, hover = [], [], [], [], []
     # Shared time positions, including missing intervals, never a different
     # stride through each row's filtered samples.
-    shared = np.rint(np.linspace(0, len(centers)-1, min(28, len(centers)))).astype(int)
+    shared = np.rint(np.linspace(first_bin, last_bin, min(28, last_bin-first_bin+1))).astype(int)
     # Include a representative observation for even a sparsely available cell;
     # the resulting positions are then used by every row (at most 32 times).
     first_valid = [np.flatnonzero(np.isfinite(arrays['speed'][cell]))[0] for cell in selected]
@@ -467,11 +487,11 @@ def plot_panels(frame, out_dir, label='', settings=None, show=False, figures=Non
         ax.quiverkey(quiver, .89, 1.06, ref_speed, '%g cm/s' % ref_speed, coordinates='axes')
     axes_format(ax)
     # Space around boundary anchors prevents surface arrows being cut in half.
-    margin = max(1., len(p['cells']) * .08)
-    ax.set_ylim(len(p['cells']) - 1 + margin, -margin)
-    time_margin = (x[-1] - x[0]) * .03
-    ax.set_xlim(x[0] - time_margin, x[-1] + time_margin)
-    ax.set_yticks(selected, [p['labels'][i] for i in selected])
+    margin = max(1., (last_cell - first_cell + 1) * .08)
+    ax.set_ylim(last_cell + margin, first_cell - margin)
+    time_margin = (time_limits[1] - time_limits[0]) * .03
+    ax.set_xlim(time_limits[0] - time_margin, time_limits[1] + time_margin)
+    ax.set_yticks(selected, [p['tick_labels'][i] for i in selected])
     dates(ax)
     ax.set_title('Current vectors - %s\nArrows: N up, E right (%s); rows identify cells' % (label, reference))
     fig._qcs_customize_axes = [('Current vectors', ax)]
@@ -536,6 +556,8 @@ def plot_panels(frame, out_dir, label='', settings=None, show=False, figures=Non
         finish(fig, 'Experimental temporal QC', 'Current temporal QC preview.svg')
     print('Info: Current display %s: %d input -> %d selected -> %d eligible cell-time rows; %s, %d cells.' %
           (label, p['original_rows'], p['selected_rows'], p['eligible_rows'], resolution, len(p['cells'])))
+    print('Info: %s plot bounds fit eligible current: %s to %s; %d of %d configured rows visible. Source rows unchanged.' %
+          (label, p['edges'][first_bin], p['edges'][last_bin+1], last_cell-first_cell+1, len(p['cells'])))
     if show and figures is None:
         view.show_panels(browse=True)
     return files

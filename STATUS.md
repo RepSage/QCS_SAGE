@@ -11,7 +11,7 @@ Archive operations: sourceCode/batch/CORPUS_LOG.md.
   reasons, linear/sqrt contrast, and proven/unknown north references.
 - Temporal spike/rate/flat-line diagnostics are an experimental, editable
   preview; official five-position flags remain unchanged. No release requested.
-- Full suite: 92 checks passed; Ruff passed. Read-only Doppler replay: all 53 indexed
+- Full suite: 93 checks passed; Ruff passed. Read-only Doppler replay: all 53 indexed
   Doppler products / 153,436 observations loaded with matching row counts,
   consistent display vectors and coverage, unchanged input/index hashes, and
   no errors. All 53 north labels resolve to magnetic through exact provenance.
@@ -35,17 +35,30 @@ Archive operations: sourceCode/batch/CORPUS_LOG.md.
   625 rows. Legacy mixed scalar workbook: 716 -> 625 profile rows; 91 Mooring
   rows excluded explicitly. Both settings writers were disabled; preferences
   and pilot source hashes unchanged. Final suite and Ruff passed after fixes.
-- The direction compass W now aligns with the speed bar centre, including
-  resize. RH30 2025 review is linear, 15-minute vector means, GOOD+SUSPECT,
-  all 16 cells including Surface; 13,408 -> 6,557 eligible cell-time rows.
-  Its empty tail preserves BAD records after the last usable current at
-  2025-04-03 07:50 through 2025-04-04 08:25 local GMT-3: 295 records / 4,720
-  cell-time rows, 294 records with native sensor-in-air status. No crop applied.
-- Current evidence, preview and reproducible Qt/whole-catalog checks:
-  diagnostics/curated_types_patch_20260909/REPORT.md. The first follow-up QA
-  inherited a Profile depth bound and hid Surface; the corrected final harness
-  resets review bounds between collections and asserts Surface remains present.
-- Next: owner visual validation of the revised RH30 preview and four Curated
+- The direction compass W aligns with the upper speed bar centre, including
+  resize. The owner subsequently requested cropping outer BAD/empty areas.
+  Display limits now fit eligible current; internal gaps and native cell rows
+  retain their identities. All-BAD selections are reported, without empty figures.
+  RH30 2025 remains linear/15-minute/GOOD+SUSPECT, 16 cells including Surface,
+  all 6,557 eligible cell-time rows retained. Visible bins: 2025-04-01 11:15 to
+  2025-04-03 08:00 GMT-3; 4,816 ineligible rows lie outside that view. Source
+  records remain intact, including the sensor-in-air tail through April 4.
+- Configured-cell axes now carry (m) in their title and omit it in ticks.
+  Nine Doppler settings/threshold tooltips follow the shared Qt/Tk standard.
+  Customize -> Legends -> Figure footer edits the footer text, including
+  clearing/reset; toolbar export preserves it. Regeneration restores standard text.
+- Curated handoff now shows loading feedback before workbook inspection.
+  Generate panels uses the same window-local native animated Windows cursor.
+  Qt's stock Wait/Busy shapes reproduced static hourglasses; native aero_busy.ani
+  has eight distinct tested frames. Actual Windows messages, nested calls,
+  exception cleanup and dialog exclusion passed. Settings writers stayed disabled.
+- Final replay: 53 products / 153,436 rows; all prepared velocities, QC, coverage,
+  cells and edges exactly match the preceding code; source/index hashes unchanged.
+  Three products have no eligible current and now produce no empty panels.
+  Real Qt verified loading scopes, 9 tooltips, 5 RH30 panels and footer edit/reset/
+  export. Current preview and evidence: diagnostics/doppler_display_polish_20260909/REPORT.md.
+  Previous Curated evidence: diagnostics/curated_types_patch_20260909/REPORT.md.
+- Next: owner visual validation of the cropped RH30 preview and four Curated
   categories. Temporal limits require calibration before changing qualification.
   No archive regeneration, installer or release was requested.
 

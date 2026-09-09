@@ -41,6 +41,33 @@ TOOLTIPS = {
     'uv_gap_mode': "How the U/V component lines treat missing or BAD current cells\n"
                    "Break = show the discontinuity; Connect = join the surviving points;\n"
                    "Both = generate the two versions for direct comparison",
+    'currentBinMinutes': "Time represented by each current cell\n"
+                         "Native = one recorded sample; 15/30 minutes = mean U/V,\n"
+                         "then speed and direction of that mean vector",
+    'currentQuality': "Stored current flags eligible for the display\n"
+                      "GOOD + SUSPECT includes flags 1 and 3; GOOD only includes 1\n"
+                      "Outer plot limits fit eligible values; internal gaps remain",
+    'currentContrast': "How speed values map to colours\n"
+                       "Linear = equal colour spacing per cm/s; sqrt highlights low speeds\n"
+                       "The velocity values and stored flags do not change",
+    'currentShowQuality': "Adds the stored-quality and coverage panels\n"
+                          "Quality shows the most restrictive flag in each time bin\n"
+                          "Coverage = eligible samples / expected samples (%)",
+    'currentTemporalPreview': "Optional experimental spike, change-rate and flat-line diagnostics\n"
+                              "Uses native U/V samples within each configured cell\n"
+                              "Thresholds need calibration; stored flags stay unchanged",
+    'currentSpikeLimit': "Candidate spike threshold for U/V (cm/s)\n"
+                         "Largest component difference from the mean of its two neighbours\n"
+                         "Both neighbouring samples must be GOOD; gaps are not crossed",
+    'currentRateLimit': "Candidate U/V change-rate threshold (cm/s/min)\n"
+                        "Largest component change divided by elapsed minutes\n"
+                        "The preceding sample must be GOOD; gaps are not crossed",
+    'currentFlatTolerance': "Allowed range of each U/V component within a stable run (cm/s)\n"
+                            "Both component ranges must stay within this tolerance\n"
+                            "Missing or rejected samples end the run",
+    'currentFlatMinutes': "Minimum stable-run duration flagged by the preview (min)\n"
+                          "Used together with Flat-line tolerance\n"
+                          "Only a diagnostic candidate; stored flags stay unchanged",
     'panel1': "Panel 1: parameters compared at the same site",
     'panel2': "Panel 2: one parameter compared between sites\nMulti-deployment moorings retain absolute datetime; sites do not need matching timestamps",
     'panel3': "Panel 3: parameters compared at the same site (vertical profile)",
@@ -1938,12 +1965,14 @@ def build_step2(parent):
             widget.set(next((text for text, value in options.items() if value == choice),
                             next(text for text, value in options.items() if value == default)))
             widget.grid(row=row, column=1, sticky='w')
+            ToolTip(widget, TOOLTIPS[key])
             current_view_widgets[key] = widget
         for row, (key, (label, default)) in enumerate(TEMPORAL_OPTIONS.items(), len(VIEW_OPTIONS)):
             ttk.Label(current_frame, text=label + ':').grid(row=row, column=0, sticky='w')
             widget = ttk.Entry(current_frame, width=12)
             widget.insert(0, str(saved.get(key, default)))
             widget.grid(row=row, column=1, sticky='w')
+            ToolTip(widget, TOOLTIPS[key])
             current_temporal_entries[key] = widget
         ttk.Label(current_frame, text='Temporal thresholds are experimental; stored flags are unchanged.',
                   wraplength=310).grid(row=10, column=0, columnspan=2, sticky='w', pady=5)
