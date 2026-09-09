@@ -20,6 +20,19 @@ Archive operations: sourceCode/batch/CORPUS_LOG.md.
   Full suite: 93 tests passed; Ruff passed. Only the version constant changed
   in QCS_DataHandler.py; qualification/QC code is unchanged.
   Evidence and verified backups: diagnostics/postinstall_startup_20260909/.
+- Depth-axis import fix added (2026-09-09): switching from a 0-30 m Doppler
+  database to a 0.5-11.5 m Profile retained the old axis. Reproduced both global
+  preference restoration and the surviving mode cache through the real Qt
+  curated shortcut; the generated Profile also retained 0-30 m before the fix.
+  Each new Step 2 now defaults depth bounds from its own database/collection,
+  ignoring legacy global bounds and clearing the depth cache. Manual edits
+  remain within the current view. Shared tooltips and the manual are updated.
+  Seven offscreen state checks and the actual Profile plot passed after the fix
+  (0.5-11.5 m); 6 Doppler / 3 Profile fixture rows preserved on loading.
+  Full suite rerun: 93 passed; Ruff passed. Preference/input hashes unchanged.
+  Evidence, rerunnable driver and backups: diagnostics/depth_axis_import_20260909/.
+  The operator's original workbook was not opened; this is an import-state fix,
+  with no QC/measurement changes or corpus replay required.
 - Version sites and preview manual identify v14.0.3. No new installer or
   publication yet; the operator installed v14.0.2 through the updater after its
   release. Do not replace that published release or its tag. The corrected source

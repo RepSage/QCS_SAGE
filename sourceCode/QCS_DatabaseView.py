@@ -36,8 +36,8 @@ TOOLTIPS = {
     'filter_year': "Year(s) to visualize\nMulti-deployment scalar panels keep one absolute datetime axis spanning the full selected calendar years; only rows from checked years are drawn",
     'time_start': "Optional finer datetime crop inside the selected year range\n(DD/MM/YYYY HH:MM, e.g. 15/04/2019 09:00)\nMulti-deployment scalar panels otherwise open on the full selected calendar years",
     'time_end': "Optional finer datetime crop inside the selected year range\n(DD/MM/YYYY HH:MM, e.g. 16/04/2019 09:00)\nMulti-deployment scalar panels otherwise open on the full selected calendar years",
-    'depth_min': "Optional: upper limit of the depth axis in profile/current plots (m)\nEmpty = fit the data",
-    'depth_max': "Optional: lower limit of the depth axis in profile/current plots (m)\nEmpty = fit the data",
+    'depth_min': "Optional: upper limit of the depth axis in profile/current plots (m)\nDefaults to the available minimum on each import.\nClear both depth limits to fit the selected data.",
+    'depth_max': "Optional: lower limit of the depth axis in profile/current plots (m)\nDefaults to the available maximum on each import.\nClear both depth limits to fit the selected data.",
     'uv_gap_mode': "How the U/V component lines treat missing or BAD current cells\n"
                    "Break = show the discontinuity; Connect = join the surviving points;\n"
                    "Both = generate the two versions for direct comparison",
@@ -1228,8 +1228,6 @@ def saveDataViewSettings():
             'dbv_selected_years': selectedYears,
             'dbv_time_start': time_start_entry.get(),
             'dbv_time_end': time_end_entry.get(),
-            'dbv_depth_min': depth_min_entry.get(),
-            'dbv_depth_max': depth_max_entry.get(),
             'dbv_latitude': latitude_entry.get(),
             'dbv_longitude': longitude_entry.get(),
             'dbv_degree': tendency_entry.get(),
@@ -1244,7 +1242,7 @@ def saveDataViewSettings():
             'dbv_fixed_scale': fixedScale.get(),
             'dbv_uv_gap_mode': dataViewSettings['uvGapMode'],
             'dbv_selected_sites': selectedSites,
-            # NOTE: parameter selection and scale values are per-imported-sheet
+            # NOTE: parameter selection, scales and depth bounds are per-imported-sheet
             # (defaults recomputed from the data each time) and are NOT persisted.
         })
         if is_doppler_input():
@@ -1829,6 +1827,11 @@ def build_step2(parent):
     global params_with_data   # what this sheet actually carries, read by both
     global min_scale_entries, max_scale_entries, error_logger
 
+    # Depth bounds belong to this imported collection. Mode switches may stash
+    # them within Step 2, but a new import must not inherit another sheet's axis.
+    _field_cache.pop('depth_min', None)
+    _field_cache.pop('depth_max', None)
+
     # Create main container with scrollbar
     container = ttk.Frame(parent)
     canvas = tk.Canvas(container, bg=theme.surface_color(), highlightthickness=0)
@@ -2405,11 +2408,9 @@ def build_step2(parent):
     # SECONDARY parameters (rarely used) always start unchecked.
     for param, var in parameter_vars.items():
         var.set(param in params_with_data and param not in secondary_params)
-    # Scale settings are per-sheet too: not restored from preferences.
+    # Scales and depth bounds are per-sheet too: never restore global values.
     restore_entry(time_start_entry, USER_PREFS.get('dbv_time_start', ''))
     restore_entry(time_end_entry, USER_PREFS.get('dbv_time_end', ''))
-    restore_entry(depth_min_entry, USER_PREFS.get('dbv_depth_min', ''))
-    restore_entry(depth_max_entry, USER_PREFS.get('dbv_depth_max', ''))
     restore_entry(latitude_entry, USER_PREFS.get('dbv_latitude', ''))
     restore_entry(longitude_entry, USER_PREFS.get('dbv_longitude', ''))
     # Saved values from older versions may exceed the low-order range now

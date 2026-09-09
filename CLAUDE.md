@@ -236,6 +236,10 @@ archive and diff the counts against the previous `qualified_index.csv`.
 - **User settings** live in `sourceCode/qcs_user_settings.json` (auto-generated,
   gitignored, version-gated: a version bump may intentionally reset QC criteria
   to new defaults while preserving file paths).
+- **Visualization depth bounds belong to the imported collection.** On each
+  Step 2 rebuild, clear the depth-mode cache and default to that database's
+  available depths; do not restore global depth preferences. Keep manual bounds
+  during edits within the view. Qt mirrors this state from `QCS_DatabaseView`.
 - **One preferences dict per shell.** `QCS_Main.USER_PREFS` and
   `QCS_DatabaseView.USER_PREFS` are separate module globals, and each
   `save_user_prefs()` rewrites the WHOLE settings file from its own copy. A

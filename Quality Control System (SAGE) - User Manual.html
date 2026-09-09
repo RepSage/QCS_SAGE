@@ -766,8 +766,10 @@
             grayed out for scalar moorings. The label below shows the available range. For a
             Doppler database this includes every finite configured cell depth, including
             cells whose velocities are entirely rejected or blank.
-            Doppler restores saved depth bounds and retains them when Site/Year filters
-            change. In Doppler, equal bounds select one cell depth; in scalar profiles,
+            Each imported database or collection starts with its own available minimum
+            and maximum depth. Manual bounds remain in the current visualization,
+            including when Site/Year filters change, but are not reused on the next import.
+            In Doppler, equal bounds select one cell depth; in scalar profiles,
             Max must exceed Min. Clear both fields to fit the selected data.</td>
         </tr>
         <tr>
