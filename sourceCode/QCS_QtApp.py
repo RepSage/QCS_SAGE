@@ -4285,6 +4285,10 @@ def main():
         app.processEvents()
         shell.grab().save(out_path)
         return 0
+    # The first launch after an upgrade may wait for criteria-reset
+    # acknowledgement. Give that dialog a visible main window: otherwise the
+    # installer appears not to have reopened QCS until the notice is dismissed.
+    shell.show()
     shell.start_background_update_check()   # silent unless a newer release exists
     if qm.SETTINGS_RESET_FROM:
         QMessageBox.information(
@@ -4293,7 +4297,6 @@ def main():
             'and this is %s: the criteria were reset to the new defaults.\n\n'
             'File paths and interface choices were kept.'
             % (qm.SETTINGS_RESET_FROM, data.QCS_VERSION))
-    shell.show()
     return app.exec()
 
 

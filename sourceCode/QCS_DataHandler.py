@@ -22,7 +22,7 @@ def _show_plot_info(fig, title, message):
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v14.0.2'
+QCS_VERSION = 'v14.0.3'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
