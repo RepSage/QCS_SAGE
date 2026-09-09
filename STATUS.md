@@ -3,44 +3,6 @@
 Volatile state. Durable rules: CLAUDE.md. Released program changes: changelog/.
 Archive operations: sourceCode/batch/CORPUS_LOG.md.
 
-## Open patch v14.0.3 (2026-09-09)
-
-- Owner reports the post-install launch appeared only after a manual launch,
-  producing two instances. Branch: codex/fix-postinstall-startup.
-- Actual v14.0.2 update log confirms successful installation at 16:21:42 and
-  an Original user Exec of the installed QCS.exe at 16:21:44. The remaining
-  manually started instance began at 16:23:20 from Explorer. This contradicts
-  a missing [Run] action; the exact visibility/delay sequence is not recoverable.
-- Reproduced a startup defect with real Qt on the offscreen platform: the
-  criteria-reset dialog was visible while its main window stayed hidden until
-  acknowledgement. The patch shows the main window first. Normal startup and
-  --shot retain their behavior; official QC and installer launch flags unchanged.
-- Three post-fix Qt cases passed (upgrade, normal, windowless --shot); both
-  preference writers disabled and operator preference hashes unchanged.
-  Full suite: 93 tests passed; Ruff passed. Only the version constant changed
-  in QCS_DataHandler.py; qualification/QC code is unchanged.
-  Evidence and verified backups: diagnostics/postinstall_startup_20260909/.
-- Depth-axis import fix added (2026-09-09): switching from a 0-30 m Doppler
-  database to a 0.5-11.5 m Profile retained the old axis. Reproduced both global
-  preference restoration and the surviving mode cache through the real Qt
-  curated shortcut; the generated Profile also retained 0-30 m before the fix.
-  Each new Step 2 now defaults depth bounds from its own database/collection,
-  ignoring legacy global bounds and clearing the depth cache. Manual edits
-  remain within the current view. Shared tooltips and the manual are updated.
-  Seven offscreen state checks and the actual Profile plot passed after the fix
-  (0.5-11.5 m); 6 Doppler / 3 Profile fixture rows preserved on loading.
-  Full suite rerun: 93 passed; Ruff passed. Preference/input hashes unchanged.
-  Evidence, rerunnable driver and backups: diagnostics/depth_axis_import_20260909/.
-  The operator's original workbook was not opened; this is an import-state fix,
-  with no QC/measurement changes or corpus replay required.
-- Version sites and preview manual identify v14.0.3. No new installer or
-  publication yet; the operator installed v14.0.2 through the updater after its
-  release. Do not replace that published release or its tag. The corrected source
-  still needs validation through a future packaged upgrade; the reproduced hidden
-  parent does not prove the sole cause of the reported duplicate opening.
-- Archived Doppler SVGs have not been regenerated for this release. New panel
-  generation uses v14.0.2; the archive's latest operation remains in CORPUS_LOG.md.
-
 ## Open scientific work (2026-09-09)
 
 - Doppler temporal spike/rate/flat-line thresholds remain exploratory display
@@ -72,6 +34,6 @@ Archive operations: sourceCode/batch/CORPUS_LOG.md.
 
 - Absolute Anaconda base for QC/batch; packaging/v12_env for the source Qt
   launcher QCS.bat. Final release build: %TEMP%/qcs_build_v14; fresh work directory
-  %TEMP%/qcs_build_work_release1402. Recipe: packaging/README.md.
+  %TEMP%/qcs_build_work_release1403. Recipe: packaging/README.md.
 - No machine shutdown was requested. Earlier shutdown authorization was
   one-time and must not be reused.

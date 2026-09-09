@@ -316,6 +316,9 @@ archive and diff the counts against the previous `qualified_index.csv`.
   update the HTML user manual (`Quality Control System (SAGE) - User Manual.html`)
   with the version and changes, and tag the version in Git. The installer is
   rebuilt and smoke-tested before the tag — recipe in `packaging/README.md`.
+- **Finish payload staging before starting Inno Setup.** A successful compiler
+  can omit files still being copied. Await the copy and compare the compiler's
+  input manifest with the complete tested bundle before tagging.
 - **Before tagging, read what the interface says about ITSELF.** A branch
   banner hides there and ships silently: v12.0 was tagged with the window
   title carrying '(v12.0 shell)' and the status bar announcing a
