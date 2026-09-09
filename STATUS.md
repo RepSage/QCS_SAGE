@@ -3,108 +3,23 @@
 Volatile state. Durable rules: CLAUDE.md. Released program changes: changelog/.
 Archive operations: sourceCode/batch/CORPUS_LOG.md.
 
-## Open patch v14.0.2 (2026-09-09)
+## Current state (2026-09-09)
 
-- Owner authorized branch `codex/doppler-visual-review` and the assessment's
-  suggestions. Implementation uses one polar-derived display velocity solution,
-  explicit cell rows/gaps, native/15/30-minute means, quality/coverage and hover
-  reasons, linear/sqrt contrast, and proven/unknown north references.
-- Temporal spike/rate/flat-line diagnostics are an experimental, editable
-  preview; official five-position flags remain unchanged. No release requested.
-- Full suite: 93 checks passed; Ruff passed. Read-only Doppler replay: all 53 indexed
-  Doppler products / 153,436 observations loaded with matching row counts,
-  consistent display vectors and coverage, unchanged input/index hashes, and
-  no errors. All 53 north labels resolve to magnetic through exact provenance.
-- Real Qt controls, settings round-trip and masked-cell QC hover passed with
-  both preference writers disabled; source/preferences hashes stayed unchanged.
-  RH30 2025 and RH30 2022S2 were rendered for visual inspection. Evidence,
-  reproducible scripts, plan and verified backups:
-  diagnostics/patch_doppler_visual_20260909/REPORT.md.
-- Owner authorized and implemented four Curated categories: Seaguard (Mooring),
-  Seaguard (Profile), Seaguard (Doppler), HOBO. Proven type now reaches separate
-  workbook sheets and the exact-sheet visualization handoff. Profile opens as a
-  vertical profile despite stale saved/handoff settings. Legacy mixed/unknown
-  scalar sheets expose an explicit choice; mixed plots filter and report rows
-  and sites belonging to other collections. A Seaguard table with a luminosity
-  column is no longer misidentified as HOBO when it also contains salinity.
-- Full catalog/header replay matched all 281 indexed products: 48 Mooring,
-  65 Profile, 53 Doppler, 115 HOBO; 664,861 source rows. Full Curated build:
-  664,861 -> 664,771 rows (90 exact HOBO duplicates removed by the existing
-  unifier; no Seaguard rows lost). All 281 source hashes and index unchanged.
-- Real Qt round-trip generated all four plot types; direct Profile sheet loaded
-  625 rows. Legacy mixed scalar workbook: 716 -> 625 profile rows; 91 Mooring
-  rows excluded explicitly. Both settings writers were disabled; preferences
-  and pilot source hashes unchanged. Final suite and Ruff passed after fixes.
-- The direction compass W aligns with the upper speed bar centre, including
-  resize. The owner subsequently requested cropping outer BAD/empty areas.
-  Display limits now fit eligible current; internal gaps and native cell rows
-  retain their identities. All-BAD selections are reported, without empty figures.
-  RH30 2025 remains linear/15-minute/GOOD+SUSPECT, 16 cells including Surface,
-  all 6,557 eligible cell-time rows retained. Visible bins: 2025-04-01 11:15 to
-  2025-04-03 08:00 GMT-3; 4,816 ineligible rows lie outside that view. Source
-  records remain intact, including the sensor-in-air tail through April 4.
-- Configured-cell axes now carry (m) in their title and omit it in ticks.
-  Nine Doppler settings/threshold tooltips follow the shared Qt/Tk standard.
-  Customize -> Legends -> Figure footer edits the footer text, including
-  clearing/reset; toolbar export preserves it. Regeneration restores standard text.
-- Curated handoff now shows loading feedback before workbook inspection.
-  Generate panels uses the same window-local native animated Windows cursor.
-  Qt's stock Wait/Busy shapes reproduced static hourglasses; native aero_busy.ani
-  has eight distinct tested frames. Actual Windows messages, nested calls,
-  exception cleanup and dialog exclusion passed. Settings writers stayed disabled.
-- Final replay: 53 products / 153,436 rows; all prepared velocities, QC, coverage,
-  cells and edges exactly match the preceding code; source/index hashes unchanged.
-  Three products have no eligible current and now produce no empty panels.
-  Real Qt verified loading scopes, 9 tooltips, 5 RH30 panels and footer edit/reset/
-  export. Current preview and evidence: diagnostics/doppler_display_polish_20260909/REPORT.md.
-  Previous Curated evidence: diagnostics/curated_types_patch_20260909/REPORT.md.
-- Next: owner visual validation of the cropped RH30 preview and four Curated
-  categories. Temporal limits require calibration before changing qualification.
-  No archive regeneration, installer or release was requested.
+- No open program patch. Owner requested publication of v14.0.2. Completed
+  changes and release checks belong in changelog/v14.0.2.md. Full pre-closure
+  status is retained under diagnostics/release_v1402_20260909/before/STATUS.md
+  and in Git history.
+- Release evidence: diagnostics/release_v1402_20260909/. Its final frozen
+  executable and installer supersede development bundles. The installed
+  operator copy was not upgraded during verification.
+- Archived Doppler SVGs have not been regenerated for this release. New panel
+  generation uses v14.0.2; the archive's latest operation remains in CORPUS_LOG.md.
 
-## Release baseline (2026-09-08)
+## Open scientific work (2026-09-09)
 
-- The owner accepted the v14.0 Doppler display and
-  requested closure of v14.0.1. Changes and release checks belong in
-  changelog/v14.0.1.md; full pre-closure status is retained under
-  diagnostics/release_v1401_20260908/before/STATUS.md and in Git history.
-- Release evidence: diagnostics/release_v1401_20260908/. The final frozen
-  executable and installer supersede the earlier development bundles under
-  diagnostics/patch_pending_20260908/. The installed operator copy was not
-  upgraded as part of release verification.
-- The active archive's Doppler SVGs still reflect the preceding partial visual
-  restoration. New generation uses the accepted v14.0 display; publication
-  does not regenerate archived figures. The latest archive operation and its
-  backups are recorded in CORPUS_LOG.md.
-
-## Assessment informing this patch (2026-09-09)
-
-- RH30 2025: the same v14.0 renderer gives ordinary depth bands 29.4% less
-  height on the corrected table, because its plotting span now includes the
-  surface and deeper usable cells. Time cells remain about 1.28 px wide at
-  the default 1,100 x 700 px canvas. Surface speeds raise the shared maximum
-  from 60.09 to 125.21 cm/s, reducing contrast in the regular column.
-- The earlier assessment and local height/6-hour zoom previews are retained in
-  diagnostics/rh30_2025_visual_assessment_20260909/REPORT.md. That assessment
-  preceded the owner's authorization of the open patch above.
-- Follow-up confirmed native surface size 5 m versus ordinary 2 m, while the
-  display draws the first two bands as 6 and 4 m because all 2/4 m cells are
-  BAD and disappear before edge calculation. `current_wider.png` tests +31.8%
-  canvas width without resampling; time cells grow from 1.277 to 1.684 px.
-  Evidence: the same report and width_and_edges.json.
-- The owner found width enlargement unhelpful. The next priority is velocity
-  consistency: read-only `inspect_quality.py` found 1,325 of 6,557 drawable
-  RH30 rows where native speed/direction match a three-beam solution but the
-  named North/East fields used by arrows differ. All 1,325 are already SUSPECT;
-  all 1,462 GOOD rows are consistent. No native field was replaced. Evidence:
-  quality_inspection.json plus the report's QC/representation review.
-- All 13,408 stored QC strings/rollups reproduce exactly. The display contains
-  5,095 SUSPECT rows (77.70% of drawable rows). Native invalidity explains every
-  BAD row. The discarded tail includes 294 records with sensor-in-air/BAD tilt.
-  RH30 Config.xml has declination disabled (native Deg.M); clarify magnetic north.
-- These observations motivated the open patch above. The surface's 5 m
-  acquisition window does not represent a 5 m layer average (TD304 June 2024).
-  The patch's equal-height rows identify cells, not sampled layer thickness.
+- Doppler temporal spike/rate/flat-line thresholds remain exploratory display
+  diagnostics. Calibrate against independent evidence and the real corpus before
+  promoting any check into official qualification; stored flags are unchanged.
 
 ## Carried-over evidence limits (2026-09-08)
 
@@ -127,10 +42,10 @@ Archive operations: sourceCode/batch/CORPUS_LOG.md.
   splice is evidence only. Pending source/interval decisions still require
   their independent evidence and owner ratification.
 
-## Environment (verified 2026-09-08)
+## Environment (verified 2026-09-09)
 
 - Absolute Anaconda base for QC/batch; packaging/v12_env for the source Qt
-  launcher QCS.bat. The final build used %TEMP%/qcs_build_v14 and the fresh work
-  directory %TEMP%/qcs_build_work_release1401. Recipe: packaging/README.md.
+  launcher QCS.bat. Final release build: %TEMP%/qcs_build_v14; fresh work directory
+  %TEMP%/qcs_build_work_release1402. Recipe: packaging/README.md.
 - No machine shutdown was requested. Earlier shutdown authorization was
   one-time and must not be reused.
