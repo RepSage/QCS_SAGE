@@ -101,7 +101,11 @@ archive and diff the counts against the previous `qualified_index.csv`.
   to mix them; it deduplicates exact rows and warns on Site+Datetime overlaps.
   Do not write ad-hoc merge logic elsewhere. The Curated Database may package
   several instruments into one workbook, but it must call this engine once per
-  layout and keep those layouts in separate sheets.
+  layout and keep those layouts in separate sheets. Scalar Mooring/Profile
+  share a layout but occupy separate collection sheets. Carry proven collection
+  identity through catalog, export and the exact-sheet visualization handoff;
+  a saved display preference cannot establish that identity. Legacy mixed or
+  unknown scalar sheets need an explicit type choice, with excluded rows logged.
 - **HOBO replicate decisions are data, not a filename blacklist in code.** The
   versioned `sourceCode/batch/replicate_decisions.csv` controls the source file,
   variable and inclusive interval. Diagnostic bad/suspect temperatures must stay

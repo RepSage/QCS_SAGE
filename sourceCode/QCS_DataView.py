@@ -2295,6 +2295,32 @@ def getCurrentColors():
             'lines': ['#2878b5', '#d97716', '#228b22', '#9c3d70']}
 
 
+def align_compass_west(fig, wheel, speed_bar):
+    """Align the W label's centre to the speed bar; retain manual key moves."""
+    last_position = [None]
+
+    def align(event=None):
+        position = wheel.get_position(original=True)
+        if event is not None and last_position[0] is not None:
+            if not np.allclose(position.bounds, last_position[0]):
+                return  # the operator moved this key in Subplots
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        west = next(t for t in wheel.get_xticklabels() if t.get_text() == 'W')
+        west_box = west.get_window_extent(renderer)
+        bar_box = speed_bar.get_window_extent(renderer)
+        offset = ((bar_box.x0 + bar_box.x1) - (west_box.x0 + west_box.x1)) / (2 * fig.bbox.width)
+        position = wheel.get_position(original=True)
+        wheel.set_position([position.x0 + offset, position.y0, position.width, position.height])
+        last_position[0] = wheel.get_position(original=True).bounds
+        if event is not None:
+            fig.canvas.draw_idle()
+
+    align()
+    fig.canvas.mpl_connect('resize_event', align)
+    fig._qcs_align_compass_west = align
+
+
 def _clear_current_panel_files(out_dir, across_sites=False):
     """Remove only this generated panel family's files when reusing a destination."""
     from pathlib import Path

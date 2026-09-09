@@ -395,6 +395,7 @@ def plot_panels(frame, out_dir, label='', settings=None, show=False, figures=Non
     wheel = view._direction_compass(fig, unused.ax, axes[1], colors['direction_map'],
                                     label_font=bar.ax.yaxis.label.get_fontsize(), tick_font=view._bar_tick_size(bar))
     wheel.set_title('Direction (toward)\nNorth: %s' % reference, fontsize='small', pad=20)
+    view.align_compass_west(fig, wheel, bar.ax)
     dates(axes[1])
     fig.suptitle('Current profile - %s' % label)
     axes[0].set_title('Horizontal speed' + (' of the mean vector' if p['minutes'] else ''), fontsize='medium')

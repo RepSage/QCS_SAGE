@@ -2025,7 +2025,12 @@
     do not occur with the current combination
     remain visible but turn gray and are automatically unchecked. Broadening another filter makes
     compatible options selectable again, but never silently restores a previously hidden check.
-    Instruments are ordered as Seaguard, Seaguard current profiler (Doppler), then HOBO.
+    Instruments are ordered as <strong>Seaguard (Mooring)</strong>,
+    <strong>Seaguard (Profile)</strong>, <strong>Seaguard (Doppler)</strong>, then
+    <strong>HOBO</strong>. Scalar collection type comes from exact product provenance
+    and the explicit QCS collection token in its name. Conflicting evidence is
+    reported; an unidentified scalar product appears as <em>Seaguard (Unspecified)</em>
+    when present, rather than being assigned to Mooring.
     The matching-product line is a quick catalog estimate; exact row counts are reported after the
     workbook is built.</p>
     <div class="note">
@@ -2038,18 +2043,20 @@
     <h3>Workbook structure</h3>
     <p>The output is one <code>.xlsx</code> workbook. Its data remain scientifically explicit:</p>
     <ul>
-      <li><strong>Seaguard</strong>, <strong>Doppler</strong> and <strong>HOBO</strong> each get
-      their own data sheet when selected. Their column sets and flag layouts are incompatible,
-      so they are never stacked into one ambiguous table.</li>
+      <li>Each selected category gets its own sheet: <strong>Seaguard (Mooring)</strong>,
+      <strong>Seaguard (Profile)</strong>, <strong>Seaguard (Doppler)</strong> and
+      <strong>HOBO</strong>. Scalar profiles and moorings share a measurement layout but
+      remain separate collections. Incompatible instrument layouts are never stacked.</li>
       <li><strong>Included products</strong> records the campaign semester, corpus path, full
-      data interval, source-row count and selected-row contribution of every product.</li>
+      data interval, collection type, source-row count and selected-row contribution of every product.</li>
       <li><strong>Read me</strong> records the QCS version, generation time, selected filters,
       output counts, structure and flag-code legend.</li>
     </ul>
-    <p>Within each instrument sheet, products are merged by the same
+    <p>Within each instrument layout, products are merged by the same
     <code>build_database()</code> engine used by Data Visualization. Exact duplicate rows are
     removed with a warning; rows sharing Site and Datetime but carrying different values are
-    kept and listed as a possible overlap. The output folder and name are remembered for the
+    kept and listed as a possible overlap. Scalar rows are then partitioned into their
+    proven collection sheets. The output folder and name are remembered for the
     next session. If that filename already exists, the app asks before replacing it. A selection
     representing at least 250,000 source rows is identified as large in the Selection summary;
     before building it, the app reports its product and source-row counts and asks whether to
@@ -2065,8 +2072,13 @@
     is presented as complete.</p>
     <p>After a successful build, <strong>Open output folder</strong> and
     <strong>Go to visualization</strong> appear below the build button. A workbook containing more
-    than one instrument asks which instrument sheet to visualize; Data Visualization then opens
-    that exact sheet directly on Step 2 while retaining the original product provenance. Loading
+    than one collection asks which collection to visualize; Data Visualization then opens
+    that exact sheet directly on Step 2 and uses its proven Mooring/Profile/Doppler/HOBO type.
+    Opening the workbook directly exposes the same collection selector on Step 1.
+    Legacy Seaguard/Doppler/HOBO sheets remain readable; explicit source-product names can
+    recover their scalar collection types. An unknown or mixed scalar table requires an
+    editable type choice instead of inheriting a saved Mooring setting. For a mixed table,
+    plots use the matching known collection and report excluded rows. Loading
     or refreshing the catalog hides shortcuts left by the preceding build because that workbook
     belongs to the previous catalog state.</p>
 

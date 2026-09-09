@@ -88,6 +88,7 @@ class _CuratedWorker(QThread):
                     requested = set(self.payload["instruments"])
                     active = [name for name in curated.INSTRUMENT_ORDER
                               if name in requested]
+                active = list(dict.fromkeys(curated.collection_layout(name) for name in active))
                 total_stages = len(active) + 2
                 stage = [1]
                 self.progress.emit(
@@ -252,8 +253,8 @@ class CuratedDatabaseTab(QWidget):
         self.output_name.textEdited.connect(self._persist_output)
         output_form.addRow("Output name:", self.output_name)
         note = QLabel(
-            "One workbook is created. Seaguard, Doppler and HOBO remain in separate "
-            "data sheets because their columns and quality flags are not stackable.")
+            "One workbook is created. Mooring, Profile, Doppler and HOBO have separate "
+            "data sheets, preserving each collection and its correct visualization.")
         note.setWordWrap(True)
         qtheme.muted(note)
         output_form.addRow("Structure:", note)
@@ -294,7 +295,7 @@ class CuratedDatabaseTab(QWidget):
         self.visualize_button = QPushButton("Go to visualization")
         self.visualize_button.setToolTip(
             "Opens the curated workbook in Data visualization; choose the "
-            "instrument sheet when the workbook contains more than one")
+            "collection when the workbook contains more than one")
         self.visualize_button.clicked.connect(self._go_to_visualization)
         postbuild_layout.addWidget(self.open_output_button)
         postbuild_layout.addWidget(self.visualize_button)
@@ -687,7 +688,7 @@ class CuratedDatabaseTab(QWidget):
         if len(instruments) > 1:
             labels = [curated.INSTRUMENT_LABELS[name] for name in instruments]
             label, accepted = QInputDialog.getItem(
-                self, "Go to visualization", "Instrument sheet:",
+                self, "Go to visualization", "Collection:",
                 labels, 0, False)
             if not accepted:
                 return
@@ -732,7 +733,7 @@ class CuratedDatabaseTab(QWidget):
         active_instruments = [
             instrument for instrument in curated.INSTRUMENT_ORDER
             if instrument in set(selected["instrument"])]
-        total_stages = len(active_instruments) + 2
+        total_stages = len({curated.collection_layout(name) for name in active_instruments}) + 2
         source_rows = int(selected["n_rows"].sum())
         if source_rows >= LARGE_SELECTION_ROW_THRESHOLD:
             answer = QMessageBox.question(

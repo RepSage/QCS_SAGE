@@ -3029,7 +3029,8 @@ def detect_known_qualified_instrument(df):
         return None
     if {'Flag_cur', 'Horizontal speed (cm/s)'}.issubset(cols):
         return 'Doppler'
-    if {'Temperature (degC)', 'Luminosity (lux)'}.issubset(cols):
+    if ({'Temperature (degC)', 'Luminosity (lux)'}.issubset(cols)
+            and 'Salinity (PSU)' not in cols):
         return 'HOBO'
     scalar_markers = {
         'Salinity (PSU)', 'Conductivity (mS/cm)', 'Pressure (dbar)',
@@ -3055,8 +3056,9 @@ def parse_qualified_datetimes(values):
         return values.map(lambda value: pd.to_datetime(value, errors='coerce'))
 
 
-def curated_workbook_instruments(file_path):
-    """Return QCS instrument sheets when *file_path* is a curated workbook."""
+def curated_workbook_sheets(file_path):
+    """Exact collection sheet names, including legacy instrument-only sheets."""
+    from QCS_ProductTypes import SHEET_TYPES
     if not str(file_path).lower().endswith('.xlsx'):
         return []
     try:
@@ -3066,11 +3068,33 @@ def curated_workbook_instruments(file_path):
         return []
     if not {'Included products', 'Read me'}.issubset(sheets):
         return []
-    return [name for name in ('Seaguard', 'Doppler', 'HOBO') if name in sheets]
+    return [name for name in SHEET_TYPES if name in sheets]
+
+
+def curated_workbook_instruments(file_path):
+    """Internal layout instruments; keep the legacy public return contract."""
+    from QCS_ProductTypes import SHEET_TYPES
+    present = {SHEET_TYPES[name][0] for name in curated_workbook_sheets(file_path)}
+    return [name for name in ('Seaguard', 'Doppler', 'HOBO') if name in present]
+
+
+def resolve_curated_sheet(file_path, instrument, sheet_name=None):
+    """Require an exact choice when a workbook has multiple compatible sheets."""
+    from QCS_ProductTypes import SHEET_TYPES
+    sheets = curated_workbook_sheets(file_path)
+    if not sheets:
+        return 0
+    compatible = [name for name in sheets if SHEET_TYPES[name][0] == instrument]
+    if sheet_name in compatible:
+        return sheet_name
+    if sheet_name or len(compatible) != 1:
+        raise ValueError('build_database: select a %s collection sheet in %s. Available: %s.' %
+                         (instrument, os.path.basename(file_path), ', '.join(compatible) or 'none'))
+    return compatible[0]
 
 
 def build_database(instrument, file_list=None, input_path=None,
-                   should_cancel=None):
+                   should_cancel=None, sheet_name=None):
     """Single unification engine for qualified spreadsheets (Seaguard and HOBO).
 
     Input (one of the two):
@@ -3121,15 +3145,10 @@ def build_database(instrument, file_list=None, input_path=None,
         if base.startswith('QCS_') and not curated_instruments:
             messages.append('Info: report file skipped: %s' % base)
             continue
-        if curated_instruments and instrument not in curated_instruments:
-            raise ValueError(
-                'build_database: curated workbook %s has no %s sheet. '
-                'Available instrument sheets: %s.'
-                % (base, instrument, ', '.join(curated_instruments)))
+        selected_sheet = resolve_curated_sheet(file_path, instrument, sheet_name)
         try:
             if file_path.lower().endswith('.xlsx'):
-                sheet_name = instrument if curated_instruments else 0
-                df = pd.read_excel(file_path, sheet_name=sheet_name, header=0)
+                df = pd.read_excel(file_path, sheet_name=selected_sheet, header=0)
             else:
                 df = pd.read_csv(file_path, header=0)
         except Exception as e:
@@ -3149,6 +3168,9 @@ def build_database(instrument, file_list=None, input_path=None,
                              % (base, layout.upper(), instrument))
         if 'Source file' not in df.columns:
             df['Source file'] = base
+        if layout == 'tscp':
+            from QCS_ProductTypes import annotate_scalar_collection
+            df = annotate_scalar_collection(df, file_path, selected_sheet)
         if layout == 'doppler':
             from QCS_CurrentPanels import enrich_direction_metadata
             df = enrich_direction_metadata(df, file_path)

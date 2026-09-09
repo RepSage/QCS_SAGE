@@ -879,6 +879,7 @@ def apply_selected_files(filenames):
     """Shared tail of the database-file selection (Browse or drag-and-drop,
     v11.5): fills the entry, switches to single-file mode and auto-detects
     the instrument."""
+    _pending_step2.clear()  # new files invalidate any earlier qualification handoff
     fileNames_entry.delete(0, END)
     fileNames_entry.insert(0, ";".join(filenames))
     join.set(False)
@@ -903,27 +904,55 @@ def apply_selected_files(filenames):
         USER_PREFS['dbv_output_name'] = os.path.splitext(os.path.basename(filenames[0]))[0]
     save_user_prefs()
 
+def selected_curated_sheet():
+    widget = globals().get('curated_sheet_combobox')
+    return widget.get() or None if widget is not None else None
+
+
+def reset_curated_selection():
+    widget = globals().get('curated_sheet_combobox')
+    if widget is not None:
+        widget.set('')
+        widget.configure(values=(), state='disabled')
+    _preview_cache['key'] = None
+
+
+def select_curated_sheet(name=None):
+    from QCS_ProductTypes import SHEET_TYPES
+    name = name or selected_curated_sheet()
+    if name in curated_sheet_combobox.cget('values'):
+        curated_sheet_combobox.set(name)
+        instrument_combobox.set(SHEET_TYPES[name][0])
+        set_instrument_locked(True)
+        _preview_cache['key'] = None
+
+
 def autodetect_instrument(paths):
     """Lock Instrument only when every selected qualified header agrees."""
     if isinstance(paths, (str, os.PathLike)):
         paths = [str(paths)]
+    reset_curated_selection()
     detected = []
     for path in paths:
         try:
-            curated_instruments = data.curated_workbook_instruments(path)
-            if len(curated_instruments) > 1:
+            curated_sheets = data.curated_workbook_sheets(path)
+            if curated_sheets and globals().get('curated_sheet_combobox') is not None:
+                curated_sheet_combobox.configure(values=curated_sheets, state='readonly')
+                if len(curated_sheets) == 1:
+                    select_curated_sheet(curated_sheets[0])
+            if len(curated_sheets) > 1:
                 instrument_combobox.set('')
                 set_instrument_locked(False)
                 print(
-                    'Info: curated workbook contains multiple instrument sheets; '
-                    'select the one to visualize.')
+                    'Info: curated workbook contains multiple collections; '
+                    'select the collection to visualize.')
                 return False
             head = (
                 pd.read_csv(path, nrows=0)
                 if path.lower().endswith('.csv')
                 else pd.read_excel(
-                    path, sheet_name=(curated_instruments[0]
-                                      if curated_instruments else 0), nrows=0))
+                    path, sheet_name=(curated_sheets[0]
+                                      if curated_sheets else 0), nrows=0))
             instrument = data.detect_known_qualified_instrument(head)
             if instrument is None:
                 raise ValueError('header is not a recognized qualified QCS layout')
@@ -977,6 +1006,10 @@ def saveInputSettings():
     # Doppler belongs here too: every other piece of the tab already handles it
     # (autodetect, is_doppler_input, the current panels), and only this gate
     # refused - a qualified DCPS database could not leave Step 1 (owner, v12.2.4)
+    if (not join.get() and curated_sheet_combobox.cget('values')
+            and not selected_curated_sheet()):
+        ui_warn('Select collection', 'Select the curated collection to visualize.')
+        return False
     if instrument_combobox.get() not in ('Seaguard', 'HOBO', 'Doppler'):
         ui_warn("Warning", "Select the instrument that produced the files\n('Instrument' field).")
         return
@@ -1012,6 +1045,7 @@ def saveInputSettings():
     inputSettings['inputPath'] = inputPath_entry.get()
     inputSettings['sortByTime'] = sort.get()
     inputSettings['instrument'] = instrument_combobox.get()
+    inputSettings['curatedSheet'] = selected_curated_sheet() if not join.get() else None
 
     # store the latest choices
     USER_PREFS.update({
@@ -1046,6 +1080,9 @@ def current_view_settings():
 
 def saveDataViewSettings():
     try:
+        if not dType_combobox.get():
+            ui_warn('Select collection type', 'The scalar collection type is unknown or mixed. Select Mooring or Profile.')
+            return False
         dataViewSettings['dataType'] = dType_combobox.get()
         selectedYears = [y for y in year_vars.keys() if year_vars[y].get() == True]
         dataViewSettings['filterByYears'] = selectedYears
@@ -1194,11 +1231,32 @@ def saveDataViewSettings():
         return False
 
 def generatePanels():
+    return _generate_panels(database)
+
+
+def _generate_panels(database):
     error_logger.clear()  # Clear the log before generating new panels
     # implicitly saves the current interface choices: generating panels with
     # stale settings was a pitfall of the 2-click save->generate flow
     if not saveDataViewSettings():
         return
+    from QCS_ProductTypes import collection_rows
+    before = len(database)
+    database = collection_rows(database, dataViewSettings['dataType'])
+    if len(database) != before:
+        error_logger.log('Info: collection filter: %d -> %d rows; other or unknown collections omitted.' %
+                         (before, len(database)))
+    if database.empty:
+        ui_warn('No matching collection', 'No rows match the selected collection type.')
+        return
+    if len(database) != before:
+        # A legacy mixed sheet may list sites that only have the other type.
+        available_sites = set(database['Site'])
+        selected_sites = dataViewSettings.get('siteList', [])
+        dataViewSettings['siteList'] = [site for site in selected_sites if site in available_sites]
+        omitted = [site for site in selected_sites if site not in available_sites]
+        if omitted:
+            error_logger.log('Info: sites without the selected collection omitted: %s.' % ', '.join(omitted))
 
     # Close panels from a previous VALID run only after the new settings pass
     # validation. A mistyped date must not destroy the product the warning asks
@@ -1471,6 +1529,7 @@ def build_step1(parent):
     switch are owned by the host shell."""
     global fileNames_entry, inputPath_entry, browse_file_btn, browse_input_btn
     global join, sort, sort_cb, instrument_combobox, outputName_entry, outputPath_entry
+    global curated_sheet_combobox
 
     # Main container
     main_frame = ttk.Frame(parent, padding="16")
@@ -1497,7 +1556,7 @@ def build_step1(parent):
     fileNames_entry = ttk.Entry(input_frame, width=24)
     fileNames_entry.grid(row=1, column=0, sticky='ew', pady=(0,5))
     ToolTip(fileNames_entry, TOOLTIPS['database_files'])
-    fileNames_entry.bind('<KeyRelease>', lambda _e: set_instrument_locked(False))
+    fileNames_entry.bind('<KeyRelease>', lambda _e: [reset_curated_selection(), set_instrument_locked(False)])
 
     browse_file_btn = ttk.Button(input_frame, text="Browse...", command=selectFiles, width=10)
     browse_file_btn.grid(row=1, column=1, padx=5)
@@ -1535,6 +1594,11 @@ def build_step1(parent):
     instrument_combobox.set("Seaguard")
     instrument_combobox.grid(row=7, column=0, sticky='w', pady=(0,5))
     ToolTip(instrument_combobox, TOOLTIPS['instrument'])
+
+    ttk.Label(input_frame, text='Curated collection:').grid(row=10, column=0, sticky='w')
+    curated_sheet_combobox = ttk.Combobox(input_frame, values=(), state='disabled', width=29)
+    curated_sheet_combobox.grid(row=11, column=0, columnspan=2, sticky='ew')
+    curated_sheet_combobox.bind('<<ComboboxSelected>>', lambda _e: select_curated_sheet())
 
     # Recent selections: one click reopens the last database file choices
     global _recent_combobox
@@ -1638,10 +1702,8 @@ def load_database():
                 if file_paths[0].lower().endswith('.csv'):
                     head = pd.read_csv(file_paths[0], nrows=1)
                 else:
-                    curated_instruments = data.curated_workbook_instruments(
-                        file_paths[0])
-                    sheet_name = (instrument if instrument in curated_instruments
-                                  else 0)
+                    sheet_name = data.resolve_curated_sheet(
+                        file_paths[0], instrument, inputSettings.get('curatedSheet'))
                     head = pd.read_excel(
                         file_paths[0], sheet_name=sheet_name, nrows=1)
                 lay = data.detect_qualified_layout(head)
@@ -1657,7 +1719,8 @@ def load_database():
                         pass
             except Exception:
                 pass          # unreadable head: let build_database report it
-            database, db_build_messages = data.build_database(instrument, file_list=file_paths)
+            database, db_build_messages = data.build_database(instrument, file_list=file_paths,
+                sheet_name=inputSettings.get('curatedSheet'))
             # several files = a NEW unified database: SAVE it, like the
             # folder-scan mode always did (v12.0 - before, the combination
             # existed only in memory)
@@ -1717,7 +1780,8 @@ def _current_source_label():
         return 'built from folder "%s"' % folder if folder else '(built database)'
     paths = [p.strip() for p in inputSettings.get('databaseFileName', '').split(';') if p.strip()]
     if len(paths) == 1:
-        return os.path.basename(paths[0])
+        sheet = inputSettings.get('curatedSheet')
+        return os.path.basename(paths[0]) + (' | ' + sheet if sheet else '')
     if len(paths) > 1:
         return '%d files (%s, ...)' % (len(paths), os.path.basename(paths[0]))
     return '(unknown)'
@@ -2328,9 +2392,11 @@ def build_step2(parent):
         tsParam_combobox.set(USER_PREFS['dbv_ts_param'])
     # Data type: if a qualification handed it over, use it and LOCK the field
     # (the qualified file already IS a profile / mooring / HOBO, so choosing the
-    # wrong one would only cause errors); otherwise restore the last choice.
+    # wrong one would only cause errors); ambiguity requires an explicit choice.
     global _pending_step2
     handoff_type = _pending_step2.get('data_type')
+    from QCS_ProductTypes import SCALAR_TYPES, TYPE_COLUMN
+    scalar_types = set(database[TYPE_COLUMN].dropna()) if TYPE_COLUMN in database else set()
     if is_hobo_input():
         dType_combobox.set('HOBO')
         dType_combobox.config(state='disabled')  # HOBO has only one option
@@ -2339,13 +2405,18 @@ def build_step2(parent):
         dType_combobox.set(handoff_type)
         dType_combobox.config(state='disabled')  # locked: comes from the file
         toggle_data_type()
-    elif USER_PREFS.get('dbv_data_type') in dType_values:
-        dType_combobox.set(USER_PREFS['dbv_data_type'])
+    elif is_doppler_input():
+        dType_combobox.set('TSCP Doppler')
+        dType_combobox.config(state='disabled')
+        toggle_data_type()
+    elif len(scalar_types) == 1 and scalar_types.issubset(SCALAR_TYPES):
+        dType_combobox.set(next(iter(scalar_types)))
+        dType_combobox.config(state='disabled')
         toggle_data_type()
     else:
-        # opened a file directly (no qualification handoff, no valid saved
-        # choice): default to TSCP Mooring instead of leaving the field blank
-        dType_combobox.set(dType_values[0])
+        # A saved display preference cannot establish the collection's type.
+        dType_combobox.set('')
+        dType_combobox.config(state='readonly')
         toggle_data_type()
 
     # coordinates from the qualification region (the file does not store them);
@@ -2436,7 +2507,8 @@ def _settings_key():
             inputSettings.get('joinFiles', False),
             inputSettings.get('inputPath', ''),
             inputSettings.get('sortByTime', False),
-            inputSettings.get('instrument', ''))
+            inputSettings.get('instrument', ''),
+            inputSettings.get('curatedSheet'))
 
 def _summarize_database(db):
     """One-paragraph summary shown in the Step 1 preview panel."""

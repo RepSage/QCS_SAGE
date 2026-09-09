@@ -11,7 +11,7 @@ Archive operations: sourceCode/batch/CORPUS_LOG.md.
   reasons, linear/sqrt contrast, and proven/unknown north references.
 - Temporal spike/rate/flat-line diagnostics are an experimental, editable
   preview; official five-position flags remain unchanged. No release requested.
-- Full suite: 88 checks passed; Ruff passed. Read-only replay: all 53 indexed
+- Full suite: 92 checks passed; Ruff passed. Read-only Doppler replay: all 53 indexed
   Doppler products / 153,436 observations loaded with matching row counts,
   consistent display vectors and coverage, unchanged input/index hashes, and
   no errors. All 53 north labels resolve to magnetic through exact provenance.
@@ -20,9 +20,34 @@ Archive operations: sourceCode/batch/CORPUS_LOG.md.
   RH30 2025 and RH30 2022S2 were rendered for visual inspection. Evidence,
   reproducible scripts, plan and verified backups:
   diagnostics/patch_doppler_visual_20260909/REPORT.md.
-- Remaining owner review: compare the patch appearance and choose preferred
-  aggregation/contrast. Temporal limits require calibration before changing
-  qualification. No archive regeneration, installer or release was requested.
+- Owner authorized and implemented four Curated categories: Seaguard (Mooring),
+  Seaguard (Profile), Seaguard (Doppler), HOBO. Proven type now reaches separate
+  workbook sheets and the exact-sheet visualization handoff. Profile opens as a
+  vertical profile despite stale saved/handoff settings. Legacy mixed/unknown
+  scalar sheets expose an explicit choice; mixed plots filter and report rows
+  and sites belonging to other collections. A Seaguard table with a luminosity
+  column is no longer misidentified as HOBO when it also contains salinity.
+- Full catalog/header replay matched all 281 indexed products: 48 Mooring,
+  65 Profile, 53 Doppler, 115 HOBO; 664,861 source rows. Full Curated build:
+  664,861 -> 664,771 rows (90 exact HOBO duplicates removed by the existing
+  unifier; no Seaguard rows lost). All 281 source hashes and index unchanged.
+- Real Qt round-trip generated all four plot types; direct Profile sheet loaded
+  625 rows. Legacy mixed scalar workbook: 716 -> 625 profile rows; 91 Mooring
+  rows excluded explicitly. Both settings writers were disabled; preferences
+  and pilot source hashes unchanged. Final suite and Ruff passed after fixes.
+- The direction compass W now aligns with the speed bar centre, including
+  resize. RH30 2025 review is linear, 15-minute vector means, GOOD+SUSPECT,
+  all 16 cells including Surface; 13,408 -> 6,557 eligible cell-time rows.
+  Its empty tail preserves BAD records after the last usable current at
+  2025-04-03 07:50 through 2025-04-04 08:25 local GMT-3: 295 records / 4,720
+  cell-time rows, 294 records with native sensor-in-air status. No crop applied.
+- Current evidence, preview and reproducible Qt/whole-catalog checks:
+  diagnostics/curated_types_patch_20260909/REPORT.md. The first follow-up QA
+  inherited a Profile depth bound and hid Surface; the corrected final harness
+  resets review bounds between collections and asserts Surface remains present.
+- Next: owner visual validation of the revised RH30 preview and four Curated
+  categories. Temporal limits require calibration before changing qualification.
+  No archive regeneration, installer or release was requested.
 
 ## Release baseline (2026-09-08)
 

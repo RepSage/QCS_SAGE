@@ -173,6 +173,11 @@ class VisualizationTab(QWidget):
         self.instrument.currentTextChanged.connect(
             lambda t: dbv.instrument_combobox.set(t))
         fin.addRow('Instrument:', self.instrument)
+        self.collection = QComboBox()
+        self.collection.setPlaceholderText('Select collection')
+        self.collection.currentTextChanged.connect(self._collection_changed)
+        self.collection_label = QLabel('Curated collection:')
+        fin.addRow(self.collection_label, self.collection)
 
         self.sort = QCheckBox('Sort data chronologically')
         self.sort.setToolTip(TOOLTIPS['sort_time'])
@@ -264,6 +269,14 @@ class VisualizationTab(QWidget):
             else:
                 self.instrument.setCurrentIndex(-1)
             self.instrument.setEnabled(_tk_enabled(dbv.instrument_combobox))
+        choices = list(dbv.curated_sheet_combobox.cget('values'))
+        with QSignalBlocker(self.collection):
+            self.collection.clear()
+            self.collection.addItems(choices)
+            selected = dbv.selected_curated_sheet()
+            self.collection.setCurrentIndex(choices.index(selected) if selected in choices else -1)
+        self.collection.setVisible(bool(choices))
+        self.collection_label.setVisible(bool(choices))
         with QSignalBlocker(self.recent):
             self.recent.clear()
             self.recent.addItems([dbv._recent_display(r)
@@ -316,6 +329,9 @@ class VisualizationTab(QWidget):
     def _files_edited(self, text):
         _tk_set_entry(dbv.fileNames_entry, text)
         dbv.set_instrument_locked(False)
+        dbv.reset_curated_selection()
+        self.collection.hide()
+        self.collection_label.hide()
         self.instrument.setEnabled(True)
         if not text.strip():
             dbv.instrument_combobox.set('')
@@ -342,16 +358,21 @@ class VisualizationTab(QWidget):
         dbv.apply_selected_files(names)   # fills tk fields + autodetects
         self.refresh_step1()
 
+    def _collection_changed(self, name):
+        dbv.select_curated_sheet(name)
+        self.refresh_step1()
+
     def apply_curated_workbook(self, path, instrument, advance=False):
-        """Open a specific instrument sheet from a curated multi-sheet file.
+        """Open an exact collection sheet from a curated multi-sheet file.
 
         ``advance`` gives the curated tab's explicit shortcut the same meaning
         as Qualification's Go to visualization button: load the new workbook
         and land on Step 2, never on an older database's settings.
         """
         dbv.apply_selected_files([path])
-        dbv.instrument_combobox.set(instrument)
-        dbv.set_instrument_locked(True)
+        # The curated shortcut carries the exact category sheet; legacy
+        # instrument names are also sheet names and remain accepted.
+        dbv.select_curated_sheet(instrument)
         self.stack.setCurrentIndex(0)
         self.refresh_step1()
         qtheme.scroll_to_top(self)
@@ -439,6 +460,13 @@ class VisualizationTab(QWidget):
         self.dtype_label.setToolTip(TOOLTIPS['data_type'])
         qtheme.muted(self.dtype_label)
         fd.addRow('Data type:', self.dtype_label)
+        self.dtype_choice = QComboBox()
+        self.dtype_choice.addItems(list(dbv.dType_combobox.cget('values')))
+        self.dtype_choice.setPlaceholderText('Unknown or mixed collection — select type')
+        self.dtype_choice.setCurrentIndex(-1)
+        self.dtype_choice.currentTextChanged.connect(self._choose_data_type)
+        fd.addRow('Collection to plot:', self.dtype_choice)
+        self._data_form = fd
         grid.addWidget(gdata, 0, 0, 1, 3, Qt.AlignTop)
 
         gvis = QGroupBox('Visualization settings')
@@ -794,6 +822,11 @@ class VisualizationTab(QWidget):
         gs.setRowStretch(r + 1, 1)     # r counts the heading row too
         return gscale
 
+    def _choose_data_type(self, value):
+        dbv.dType_combobox.set(value)
+        dbv.toggle_data_type()
+        self.refresh_step2()
+
     def refresh_step2(self):
         # T-S rows exist only for profile data (owner: the diagram makes no
         # sense for HOBO, Doppler or moorings); hiding also unchecks it
@@ -807,6 +840,10 @@ class VisualizationTab(QWidget):
         for w in self._depth_rows:
             self._fv.setRowVisible(w, not dbv.is_hobo_input())
         self.dtype_label.setText(self._data_type_text())
+        self._data_form.setRowVisible(self.dtype_choice, _tk_enabled(dbv.dType_combobox))
+        with QSignalBlocker(self.dtype_choice):
+            value = dbv.dType_combobox.get()
+            self.dtype_choice.setCurrentIndex(self.dtype_choice.findText(value))
         for qt, tk in self._entries:
             with QSignalBlocker(qt):
                 qt.setText(tk.get())

@@ -2074,35 +2074,35 @@ with _tempfile.TemporaryDirectory() as _curated_root:
     ], _catalog_progress
     assert len(_catalog) == 3 and int(_catalog['n_rows'].sum()) == 6, _catalog
     _filters = _curated.available_filters(_catalog)
-    assert _filters['instruments'] == ['Seaguard', 'Doppler', 'HOBO'], _filters
+    assert _filters['instruments'] == ['Seaguard (Mooring)', 'Seaguard (Doppler)', 'HOBO'], _filters
     assert _filters['sites'] == ['PAB3', 'PAB4', 'RH30']
     assert _filters['years'] == [2025, 2026], _filters['years']
     _pab3_filters = _curated.available_filters(
         _catalog, sites=['PAB3'])
     assert _pab3_filters == {
-        'instruments': ['Seaguard', 'HOBO'],
+        'instruments': ['Seaguard (Mooring)', 'HOBO'],
         'sites': ['PAB3', 'PAB4', 'RH30'],
         'years': [2025, 2026],
     }, _pab3_filters
     _year_2025_filters = _curated.available_filters(
         _catalog, years=[2025])
     assert _year_2025_filters == {
-        'instruments': ['Seaguard'], 'sites': ['PAB3'],
+        'instruments': ['Seaguard (Mooring)'], 'sites': ['PAB3'],
         'years': [2025, 2026],
     }, _year_2025_filters
     _doppler_filters = _curated.available_filters(
-        _catalog, instruments=['Doppler'])
+        _catalog, instruments=['Seaguard (Doppler)'])
     assert _doppler_filters == {
-        'instruments': ['Seaguard', 'Doppler', 'HOBO'],
+        'instruments': ['Seaguard (Mooring)', 'Seaguard (Doppler)', 'HOBO'],
         'sites': ['RH30'], 'years': [2026],
     }, _doppler_filters
     assert _curated.select_catalog(
-        _catalog, ['Seaguard'], ['PAB3'], [2026]).empty
+        _catalog, ['Seaguard (Mooring)'], ['PAB3'], [2026]).empty
     _tables, _included, _summary, _curated_messages = _curated.build_curated_tables(
         _catalog, _filters['instruments'], _filters['sites'], [2026])
-    assert list(_tables) == ['Seaguard', 'Doppler', 'HOBO'], list(_tables)
+    assert list(_tables) == ['Seaguard (Mooring)', 'Seaguard (Doppler)', 'HOBO'], list(_tables)
     assert {name: len(frame) for name, frame in _tables.items()} == {
-        'Seaguard': 1, 'Doppler': 2, 'HOBO': 2,
+        'Seaguard (Mooring)': 1, 'Seaguard (Doppler)': 2, 'HOBO': 2,
     }
     assert (_summary['products'] == 3
             and _summary['contributing_products'] == 3
@@ -2113,7 +2113,7 @@ with _tempfile.TemporaryDirectory() as _curated_root:
         _workbook, _curated_root, _tables, _included, _summary)
     with pd.ExcelFile(_workbook) as _xls:
         assert _xls.sheet_names == [
-            'Seaguard', 'Doppler', 'HOBO', 'Included products', 'Read me'], \
+            'Seaguard (Mooring)', 'Seaguard (Doppler)', 'HOBO', 'Included products', 'Read me'], \
             _xls.sheet_names
     _cancel_calls = [0]
     def _cancel_during_write():
@@ -2127,7 +2127,7 @@ with _tempfile.TemporaryDirectory() as _curated_root:
     except (_curated.CuratedOperationCancelled, InterruptedError):
         pass
     with pd.ExcelFile(_workbook) as _xls:
-        assert _xls.sheet_names[:3] == ['Seaguard', 'Doppler', 'HOBO']
+        assert _xls.sheet_names[:3] == ['Seaguard (Mooring)', 'Seaguard (Doppler)', 'HOBO']
     assert not any(name.startswith('.QCS_curated-')
                    for name in _os.listdir(_curated_root))
     try:
@@ -2149,6 +2149,9 @@ ok.extend(_replicate_selftests())
 
 from QCS_DopplerSelfTest import run as _doppler_selftests
 ok.extend(_doppler_selftests())
+
+from QCS_ProductTypesSelfTest import run as _product_type_selftests
+ok.extend(_product_type_selftests())
 
 print('\n'.join('OK: ' + t for t in ok))
 print('\n%d tests passed.' % len(ok))
