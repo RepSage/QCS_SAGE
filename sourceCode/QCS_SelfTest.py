@@ -1937,7 +1937,8 @@ _gap_frame = pd.DataFrame({
 with _tempfile.TemporaryDirectory() as _gap_out:
     _gap_figs = []
     _gap_files = _data_view.plot_doppler_panels(
-        _gap_frame, _gap_out, label='PAB3', settings={'uvGapMode': 'both'},
+        _gap_frame, _gap_out, label='PAB3', settings={'uvGapMode': 'both',
+            'currentBinMinutes': 0, 'currentShowQuality': False},
         figures=_gap_figs)
     assert len(_gap_files) == 4 and len(_gap_figs) == 4, _gap_files
     _broken_y = np.asarray(_gap_figs[1].axes[0].lines[0].get_ydata(), dtype=float)

@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v14.0.1</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v14.0.2 (patch preview)</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -294,8 +294,8 @@
             through with <em>&lt; Previous</em> and <em>Next &gt;</em>. The current panels
             honour the <strong>time window</strong> and the <strong>depth range</strong>;
             <strong>Fixed scale (one speed colour scale)</strong> gives every heatmap one
-            shared speed color scale calculated from non-BAD cells in the selected years,
-            including sites and cells outside the displayed time/depth selection &mdash; nothing is typed for
+            shared speed color scale calculated from the displayed velocities after site,
+            time, depth, quality and averaging selections &mdash; nothing is typed for
             it, unlike the scalar Min/Max; and selecting two or more sites adds a cross-site
             <em>"Current mean speed across sites"</em> panel. The direction heatmap carries a
             <strong>compass wheel</strong> instead of a colour bar, so the colour reads as a
@@ -764,10 +764,11 @@
             <td>(Optional) Minimum and maximum depth, in meters. It standardizes the depth
             scale across profiles and selects the cell-depth band in Doppler panels; it is
             grayed out for scalar moorings. The label below shows the available range. For a
-            Doppler database this means depths with at least one complete, non-BAD current
-            cell, because rejected or blank solutions cannot enter all three panels.
+            Doppler database this includes every finite configured cell depth, including
+            cells whose velocities are entirely rejected or blank.
             Doppler restores saved depth bounds and retains them when Site/Year filters
-            change. Max must exceed Min; clear both fields to fit the selected data.</td>
+            change. In Doppler, equal bounds select one cell depth; in scalar profiles,
+            Max must exceed Min. Clear both fields to fit the selected data.</td>
         </tr>
         <tr>
             <td>Filter by Site</td>
@@ -1634,26 +1635,41 @@
     are only the axis grid.</p>
 
     <h3>Visualization Panels (Doppler / current-profiler databases)</h3>
-    <p>With <strong>Instrument = Doppler</strong> the panel content is fixed: a current
-    profiler uses the same three views everywhere, so there is nothing to choose
+    <p>With <strong>Instrument = Doppler</strong> the three main views are fixed
     (the panel checkboxes, the parameter filter, the Scale settings column, the data
-    points and the tendency lines are not shown for this instrument). The three panels
-    are generated per selected site using the v14.0 presentation: surface cells and
+    points and the tendency lines are not shown for this instrument). A quality/coverage
+    panel and an experimental temporal-QC preview can also be enabled. Surface cells and
     all configured columns appear together. For example, RH30 2022 shows the surface
     cell at 0 m and Column 1 in the same three panels. They open in <strong>one window</strong> that
     is paged with <em>&lt; Previous</em> and <em>Next &gt;</em>. The mouse wheel zooms
     around the cursor and a middle-button drag pans the current view. When changing a heavy
     panel, the wait cursor stays visible while its canvas is brought on screen.</p>
-    <p><strong>Historical grouping.</strong> The v14.0 heatmaps use the table's numeric
-    Depth (m) values on one axis and average rows with the same datetime and depth,
-    including direction by arithmetic mean. Distinct columns, sources or coordinate
-    references are not separated. Cross-site mean-speed curves average by site and
-    depth; U/V lines with gap breaks keep the first value at a repeated datetime/depth.
-    These display values need not represent one native cell. Consult Column, Cell and
-    Depth reference in the qualified table to distinguish depth below surface from
-    distance to the transducer. Native measurements and QC remain in that table.
-    Heatmaps fit the times with drawable current cells; U/V gap treatment uses the
-    selected timeline. These coordinates do not provide a moving absolute-depth profile.</p>
+    <p><strong>Cell geometry and velocity consistency.</strong> Each equal-height heatmap
+    row identifies one configured cell, retaining its column, source and coordinate
+    reference. The row height is not a sampled layer thickness: a surface acquisition
+    window is not a layer average. Fully rejected depths and empty time intervals remain
+    visible, so missing 2/4 m cells cannot enlarge their neighbours. Consult
+    <em>Depth reference</em> to distinguish depth below surface from distance to the
+    transducer; the display is not a moving absolute-depth profile. Display U and V are
+    derived from the native horizontal speed and direction, making the heatmaps, component
+    lines and arrows consistent. Original North/East fields remain unchanged.</p>
+    <p><strong>Time resolution and contrast.</strong> Choose Native samples, a 15-minute
+    or a 30-minute vector mean. Means are calculated separately per cell from U/V;
+    speed is the magnitude of that mean vector and direction its bearing. Opposing
+    currents can cancel, so this speed differs from the mean of individual speeds.
+    Circular degrees are never averaged arithmetically. Partial bins remain visible;
+    coverage and hover report used/expected samples, with expectation estimated from
+    the cell's median cadence. Bins are aligned to local clock boundaries. Native
+    timestamps remain unchanged; millisecond jitter may be snapped only for drawing.
+    Short profiles initially use Native samples and longer series use 15 minutes;
+    an explicitly saved choice is retained. Linear and labelled square-root speed
+    contrast share the same zero and maximum; square-root contrast makes lower speeds
+    easier to distinguish without clipping the surface.</p>
+    <p><strong>Quality and north reference.</strong> Switch between GOOD + SUSPECT and
+    GOOD only; this filters the display without requalifying data. Magnetic, true or
+    unknown north is stated on the figures. Existing archive products obtain that label
+    only from an exact provenance link to their native configuration. Missing or ambiguous
+    metadata stays unknown; no magnetic correction is applied by the plotter.</p>
     <p>They answer three different questions about the same deployment. Every panel
     omits cells flagged BAD; manually dismissed measurements are blank, and
     <em>Remove dismissed data</em> may remove their rows entirely. A blank is therefore
@@ -1669,7 +1685,7 @@
             <td>Current profile (time &times; depth)</td>
             <td><strong>The whole deployment at a glance.</strong> Two heatmaps sharing the
                 time axis: colour is the current SPEED in the upper one and the DIRECTION it
-                flows TOWARDS in the lower one, with depth increasing downwards. Read it in
+                flows TOWARDS in the lower one, with configured cell centres ordered downwards. Read it in
                 columns (one instant, the whole water column: is the current faster at the
                 surface than at the bottom?) and in rows (one depth through time: tides,
                 fronts, a storm). The direction key is a <strong>compass wheel</strong>: the
@@ -1686,7 +1702,8 @@
                 negative in both. This is the panel to read when you want numbers rather
                 than a picture - the amplitude of the tidal oscillation, whether the deep
                 cells follow the shallow ones, when a component changes sign</td>
-            <td><code>Current components (U-V).svg</code></td>
+            <td><code>Current components (U-V, lines broken).svg</code> and/or
+                <code>Current components (U-V, connected).svg</code></td>
         </tr>
         <tr>
             <td>Current vectors (time &times; depth)</td>
@@ -1696,16 +1713,39 @@
                 distributed from the shallowest to the deepest valid cell in the selected
                 depth band, matching the depths in the U/V panel. Depth is only the row where
                 an arrow is anchored: an arrow pointing up means northward flow, not upward
-                water motion. Long deployments are sampled only for drawing so that arrows
-                remain readable; no rows or values are changed in the qualified table</td>
+                water motion. Up to 32 shared time positions are selected after the chosen
+                aggregation so arrows remain readable; gaps are retained at the same
+                positions for every cell. No qualified rows or values are changed</td>
             <td><code>Current vectors (time x depth).svg</code></td>
         </tr>
         <tr>
             <td>Current mean speed across sites</td>
             <td>Added when two or more sites are selected: the mean horizontal speed of each
-                site as a profile against depth, over the good cells - which site is more
-                energetic, and at which depths</td>
+                site as a profile against configured depth. Separate lines retain each
+                source, column and depth reference. The quality filter and temporal
+                aggregation match the per-site panels; the final profile is a scalar
+                mean of speeds over occupied display bins, not net transport</td>
             <td><code>Current mean speed across sites.svg</code></td>
+        </tr>
+        <tr>
+            <td>Current quality and coverage</td>
+            <td>Stored QC shows the most restrictive flag among observed samples in each
+                bin, even if some usable values remain. Coverage shows used/expected
+                samples under the selected quality filter. Grey means no observations;
+                zero coverage means observations exist but none was used</td>
+            <td><code>Current quality and coverage.svg</code></td>
+        </tr>
+        <tr>
+            <td>Experimental temporal QC</td>
+            <td>Optional diagnostics on native U/V: maximum component residual against
+                the adjacent-sample mean; maximum component change per minute; and the
+                duration of a bounded-range flat line. Spike references and the preceding
+                rate reference must be GOOD. Rejected samples and cadence gaps interrupt
+                comparisons. Display bins show each metric's maximum, with candidate
+                exceedances marked. Editable starting limits are 50 cm/s, 10 cm/s/min,
+                and 30 minutes within 0.1 cm/s. These are uncalibrated exploratory limits,
+                not validated rejection criteria; stored five-position flags never change</td>
+            <td><code>Current temporal QC preview.svg</code></td>
         </tr>
     </table>
     <h3>Plot Toolbar</h3>
@@ -1722,7 +1762,9 @@
     include mouse-wheel zoom or middle-button pan. The live cursor readout at the right
     is bold and reports only an actual plotted point marker under the cursor; a line segment
     or empty plot area produces no readout. Doppler heatmap cells and vector arrows count as
-    data glyphs and report their current values. If several scalar variables have points
+    data glyphs and report their current values. Doppler also explains masked cells:
+    hover gives native/QCS reasons, quality counts and used/expected samples in a full
+    tooltip, while the toolbar stays compact. If several scalar variables have points
     there, each value is named. PAR is always written as a complete positional decimal, never
     in scientific notation, rounded to the nearest whole unit. In a manual cut, the separate <strong>Reset</strong> action
     still restores the dismissed points; it is not the Home command.</p>
@@ -1774,7 +1816,7 @@
     entry from its displayed label and
     edits the text actually drawn in line legends, color scales and the direction compass.
     Line-legend entries additionally offer symbol, symbol color and symbol size. Their neutral
-    initial symbol is <em>Circle</em> for Doppler v14.0 panels and point-only keys;
+    initial symbol is <em>Circle</em> for Doppler panels and point-only keys;
     other line keys start without a symbol. <em>(None)</em> stays first in the option list and
     <em>Dot</em> remains available explicitly. Those
     controls change the legend key only, never the plotted observations. The tab is omitted
@@ -1806,8 +1848,8 @@
     an automatic test rejected a cell that is still traceable in the table;
     <code>Flag_cur = 5</code> means the operator dismissed it. If a whole instant has no
     row, either the raw record was absent or <em>Remove dismissed data</em> removed it;
-    comparison with the raw timestamps settles which. White horizontal bands are
-    usually depth cells outside the usable acoustic range, while a white vertical band
+    comparison with the raw timestamps settles which. Grey horizontal bands can be
+    depth cells outside the usable acoustic range, while a grey vertical band
     means that one instant failed or is absent across depths.</p>
 
     <h3>Scale Configuration</h3>

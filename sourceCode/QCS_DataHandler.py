@@ -22,7 +22,7 @@ def _show_plot_info(fig, title, message):
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v14.0.1'
+QCS_VERSION = 'v14.0.2'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -866,6 +866,8 @@ def read_seaguard_doppler(file_path):
                        'Depth (m)': depths[(col, cell)]}
                 row.update(metadata['columns'][col])
                 config = metadata['configuration']
+                from QCS_CurrentPanels import direction_metadata
+                row.update(direction_metadata(config))
                 row['DCPS firmware'] = (config.get('SW Version') or '').replace(';', '.')
                 row['AutoBeam replacement'] = (
                     config.get('Enable 4-Beam Auto Replacement', '').lower() == 'true'
@@ -3147,6 +3149,9 @@ def build_database(instrument, file_list=None, input_path=None,
                              % (base, layout.upper(), instrument))
         if 'Source file' not in df.columns:
             df['Source file'] = base
+        if layout == 'doppler':
+            from QCS_CurrentPanels import enrich_direction_metadata
+            df = enrich_direction_metadata(df, file_path)
         frames.append(df)
         messages.append('Info: %s: %d rows' % (base, len(df)))
 

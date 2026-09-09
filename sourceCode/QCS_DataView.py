@@ -2225,19 +2225,11 @@ def _coordinate_edges(values, singleton_width):
 
 
 def doppler_available_depths(frame):
-    """Depth cells with at least one complete, non-BAD current solution."""
+    """Configured cell centres, including rejected cells shown by the QC grid."""
     if frame is None or 'Depth (m)' not in frame.columns:
         return pd.Series(dtype=float)
     depth = pd.to_numeric(frame['Depth (m)'], errors='coerce')
-    usable = depth.notna()
-    if 'Flag_cur' in frame.columns:
-        usable &= frame['Flag_cur'] != 4
-    current_cols = [col for col in ('Horizontal speed (cm/s)', 'Direction (deg)',
-                                    'East speed (cm/s)', 'North speed (cm/s)')
-                    if col in frame.columns]
-    if current_cols:
-        usable &= frame[current_cols].notna().all(axis=1)
-    return depth[usable]
+    return depth[depth.notna()]
 
 
 def _direction_compass(fig, slot, align_ax, cmap, label_font=None,
@@ -2293,6 +2285,16 @@ def _direction_compass(fig, slot, align_ax, cmap, label_font=None,
     return wheel
 
 
+def getCurrentColors():
+    """Shared palette for current values, coverage and independent QC layers."""
+    return {'speed_map': 'viridis', 'direction_map': 'twilight',
+            'coverage_map': 'Blues', 'diagnostic_map': 'YlOrRd',
+            'missing': '#eeeeee', 'good': '#228b22', 'suspect': '#e6a000',
+            'bad': '#b30000', 'unknown': '#bdbdbd', 'dismissed': '#6a51a3',
+            'zero': '#777777', 'vector': '#2878b5', 'candidate': '#111111',
+            'lines': ['#2878b5', '#d97716', '#228b22', '#9c3d70']}
+
+
 def _clear_current_panel_files(out_dir, across_sites=False):
     """Remove only this generated panel family's files when reusing a destination."""
     from pathlib import Path
@@ -2304,7 +2306,8 @@ def _clear_current_panel_files(out_dir, across_sites=False):
         'Current profile (time x depth).svg', 'Current vectors (time x depth).svg',
         'Current components (U-V).svg', 'Current components (U-V, lines broken).svg',
         'Current components (U-V, connected).svg', 'Current stick plot.svg',
-        'Progressive vector diagram.svg'})
+        'Progressive vector diagram.svg', 'Current quality and coverage.svg',
+        'Current temporal QC preview.svg'})
     folders = [root]
     for folder in root.iterdir():
         owned = (folder.name in {'surface', 'instrument', 'unknown', 'unspecified', 'nan'}
@@ -2323,310 +2326,64 @@ def _clear_current_panel_files(out_dir, across_sites=False):
 
 def plot_doppler_panels(frame, out_dir, label='', settings=None, show=False,
                         figures=None):
-    """Saves the current panels as SVGs into out_dir. Returns file list.
-
-    The normal output has three figures. `uvGapMode='both'` adds a second U/V
-    components figure so connected and interrupted lines can be compared.
-
-    show=True also puts them ON SCREEN, like every other panel family does
-    (plot_database_panel1/2/3, the HOBO panels and the T-S diagram all end in
-    plt.show()). It is the CALLER's choice: the Visualization tab shows them,
-    while the qualification and the batch drivers write the files silently -
-    the panels were being generated and never displayed, which read as 'no
-    panels at all' (owner, v12.2.4).
-
-    settings (all optional; None -> the v8.0 behavior) lets the Visualization
-    tab steer the panels:
-      xAxisStart / xAxisEnd  keep only this datetime window (also on the X axis)
-      depthAxisMin / Max     keep only cells in this depth band (m)
-      currentSpeedMax        fix the heatmap speed color scale (cm/s), so
-                             several sites/years compare 1:1; None -> autoscale
-      uvGapMode              'break', 'connect' or 'both' for the U/V lines
-
-    figures: a list to APPEND every figure to instead of showing or closing it.
-    The caller then owns them - which is how the Visualization tab collects the
-    panels of all the selected sites and opens them in ONE browsable window
-    (v13.0) instead of one window per site per panel.
-    """
-    import os
-    import matplotlib.dates as mdates
-    s = settings or {}
-    _clear_current_panel_files(out_dir)
-    os.makedirs(out_dir, exist_ok=True)
-    # A rerun can reuse an existing output folder. Remove only the two files
-    # retired from this panel family, otherwise they look newly generated even
-    # though the browser correctly contains only the current run's panels.
-    for retired_name in ('Current stick plot.svg',
-                         'Progressive vector diagram.svg',
-                         'Current components (U-V).svg',
-                         'Current components (U-V, lines broken).svg',
-                         'Current components (U-V, connected).svg'):
-        retired_path = os.path.join(out_dir, retired_name)
-        if os.path.isfile(retired_path):
-            os.remove(retired_path)
-    selected = frame.copy()
-    # time window + depth band (no-ops when the bounds are None)
-    xs, xe = s.get('xAxisStart'), s.get('xAxisEnd')
-    if xs is not None and xe is not None:
-        selected = selected[(selected['Datetime'] >= pd.Timestamp(xs)) &
-                            (selected['Datetime'] <= pd.Timestamp(xe))]
-    dmin, dmax = s.get('depthAxisMin'), s.get('depthAxisMax')
-    if dmin is not None and dmax is not None:
-        selected = selected[(selected['Depth (m)'] >= float(dmin)) &
-                            (selected['Depth (m)'] <= float(dmax))]
-    ok = selected[selected['Flag_cur'] != 4].copy()
-    if not len(ok):
-        return []
-    files = []
-    speed_max = s.get('currentSpeedMax')
-    panel_times = pd.Index(selected['Datetime'].dropna().drop_duplicates().sort_values())
-    depth_reference = np.sort(doppler_available_depths(frame).unique())
-
-    # 1) time x depth heatmaps: speed + direction
-    fig, axes = plt.subplots(2, 1, figsize=(11, 7), sharex=True, sharey=True)
-    speed_bar = None
-    direction_key = None
-    for ax, col, cmap, unit, vmx in (
-            (axes[0], 'Horizontal speed (cm/s)', 'viridis', 'cm/s', speed_max),
-            (axes[1], 'Direction (deg)', 'twilight', 'deg', 360)):
-        piv = ok.pivot_table(index='Depth (m)', columns='Datetime', values=col)
-        if piv.size:
-            kw = {'vmin': 0, 'vmax': float(vmx)} if vmx else {}
-            if len(piv.index) == 1:
-                depth = float(piv.index[0])
-                neighbours = np.abs(depth_reference - depth)
-                neighbours = neighbours[neighbours > 0]
-                cell_width = float(neighbours.min()) if len(neighbours) else 1.0
-                x_values = mdates.date2num(piv.columns.to_pydatetime())
-                x_edges = _coordinate_edges(x_values, 1.0 / (24 * 60))
-                y_edges = _coordinate_edges([depth], cell_width)
-                m = ax.pcolormesh(x_edges, y_edges, piv.values, cmap=cmap,
-                                  shading='flat', **kw)
-            else:
-                m = ax.pcolormesh(piv.columns, piv.index, piv.values, cmap=cmap,
-                                  shading='nearest', **kw)
-            m.set_label('%s heatmap' % col.split(' (')[0])
-            bar = fig.colorbar(m, ax=ax, label='%s [%s]' % (col.split(' (')[0], unit))
-            bar.ax.set_navigate(False)   # scrolling the key must not zoom it
-            if col.startswith('Horizontal speed'):
-                speed_bar = bar          # the compass copies its lettering
-            if col.startswith('Direction'):
-                # the bar still RESERVES the space (both subplots must keep the
-                # same width or the shared time axis stops lining up), but the
-                # key drawn in it is a compass wheel
-                bar.ax.set_visible(False)
-                direction_key = (bar.ax, cmap,
-                                 speed_bar.ax.yaxis.label.get_fontsize()
-                                 if speed_bar is not None else None,
-                                 _bar_tick_size(speed_bar))
-        ax.set_ylabel('Depth (m)')
-    axes[0].invert_yaxis()  # shared Y keeps Pan/Zoom synchronous on both plots
-    # One shared formatter keeps all three time-based current panels in the
-    # same day/month/year hour:minute notation as the scalar panels.
-    _date_axis(axes[1], fig)
-    direction_compass = None
-    if direction_key is not None:
-        slot, cmap, label_font, tick_font = direction_key
-        direction_compass = _direction_compass(
-            fig, slot, axes[1], cmap,
-            label_font=label_font, tick_font=tick_font)
-    fig.suptitle('Current profile - %s' % label)
-    fig._qcs_axes_names = {
-        axes[0]: 'Horizontal speed heatmap',
-        axes[1]: 'Direction heatmap',
-    }
-    fig._qcs_customize_axes = [
-        ('Horizontal speed heatmap', axes[0]),
-        ('Direction heatmap', axes[1]),
-    ]
-    fig._qcs_layout_keys = []
-    fig._qcs_legend_labels = {axes[0]: [], axes[1]: []}
-    if speed_bar is not None:
-        fig._qcs_layout_keys.append({
-            'name': 'Horizontal speed color scale',
-            'axes': speed_bar.ax,
-            'anchor': axes[0],
-            'vertical': 'match',
-        })
-        fig._qcs_legend_labels[axes[0]].append({
-            'name': 'Horizontal speed color scale',
-            'artist': speed_bar.ax.yaxis.label,
-        })
-    if direction_compass is not None:
-        fig._qcs_layout_keys.append({
-            'name': 'Direction compass',
-            'axes': direction_compass,
-            'anchor': axes[1],
-            'vertical': 'center',
-        })
-        fig._qcs_legend_labels[axes[1]].append({
-            'name': 'Direction compass',
-            'artist': direction_compass.title,
-        })
-    _name_panel(fig, 'Current profile', label)
-    p = os.path.join(out_dir, 'Current profile (time x depth).svg')
-    fig.savefig(p, bbox_inches='tight'); files.append(p)
-    enable_scroll_zoom(fig, fit=False)
-    fig._qcs_v140_doppler = True
-    _keep_or_close(fig, show, figures)
-
-    # The complementary panels use the same depths, spread from the shallowest
-    # to the deepest available cell. This avoids the old arbitrary single-depth
-    # stick plot while keeping four traces/rows readable.
-    vector_ok = ok.dropna(subset=['Depth (m)', 'East speed (cm/s)',
-                                  'North speed (cm/s)'])
-    depths = sorted(vector_ok['Depth (m)'].unique())
-    if not depths:
-        return files
-    if len(depths) <= 4:
-        sel = depths
-    else:
-        indices = np.rint(np.linspace(0, len(depths) - 1, 4)).astype(int)
-        sel = [depths[i] for i in indices]
-
-    # 2) U/V component series at up to 4 depths. The operator may view the
-    # surviving points as one connected trajectory, interrupt every missing/BAD
-    # cell, or generate both figures side by side for comparison.
-    gap_mode = s.get('uvGapMode', 'break')
-    if gap_mode not in ('break', 'connect', 'both'):
-        gap_mode = 'break'
-    component_modes = (('break', 'connect') if gap_mode == 'both'
-                       else (gap_mode,))
-    for component_mode in component_modes:
-        break_gaps = component_mode == 'break'
-        treatment = 'lines broken at data gaps' if break_gaps else 'connected across data gaps'
-        fig, axes = plt.subplots(2, 1, figsize=(11, 6), sharex=True)
-        for d in sel:
-            sub = vector_ok[vector_ok['Depth (m)'] == d].sort_values('Datetime')
-            if break_gaps:
-                sub = sub.drop_duplicates(subset='Datetime', keep='first').set_index('Datetime')
-                times = panel_times
-                east_values = sub['East speed (cm/s)'].reindex(times)
-                north_values = sub['North speed (cm/s)'].reindex(times)
-            else:
-                times = sub['Datetime']
-                east_values = sub['East speed (cm/s)']
-                north_values = sub['North speed (cm/s)']
-            axes[0].plot(times, east_values, lw=0.9, label='%.1f m' % d)
-            axes[1].plot(times, north_values, lw=0.9, label='%.1f m' % d)
-        axes[0].set_ylabel('East U (cm/s)')
-        axes[1].set_ylabel('North V (cm/s)')
-        axes[0].legend(fontsize=8, ncol=len(sel))
-        axes[0].set_title('Current components (%s) - %s' % (treatment, label))
-        fig._qcs_axes_names = {
-            axes[0]: 'East component (U)',
-            axes[1]: 'North component (V)',
-        }
-        fig._qcs_customize_axes = [
-            ('East component (U)', axes[0]),
-            ('North component (V)', axes[1]),
-        ]
-        _date_axis(axes[1], fig)
-        panel_name = 'U/V components - %s' % treatment
-        _name_panel(fig, panel_name, label)
-        filename = ('Current components (U-V, lines broken).svg' if break_gaps
-                    else 'Current components (U-V, connected).svg')
-        p = os.path.join(out_dir, filename)
-        fig.savefig(p, bbox_inches='tight')
-        files.append(p)
-        enable_scroll_zoom(fig, fit=False)
-        fig._qcs_v140_doppler = True
-        _keep_or_close(fig, show, figures)
-
-    # 3) angle-true vector field at the same depths. The depth is only the
-    # arrow's anchor row: vertical arrow direction means north/south, never
-    # vertical water motion. Temporal decimation caps each row at about 60
-    # arrows, so a long deployment stays legible without changing the data.
-    max_samples = max((vector_ok['Depth (m)'] == d).sum() for d in sel)
-    stride = max(1, int(np.ceil(max_samples / 60.0)))
-    tnum, anchor, east, north = [], [], [], []
-    for d in sel:
-        sub = vector_ok[vector_ok['Depth (m)'] == d].sort_values('Datetime').iloc[::stride]
-        tnum.extend(mdates.date2num(sub['Datetime'].to_numpy()))
-        anchor.extend(np.full(len(sub), d))
-        east.extend(sub['East speed (cm/s)'].to_numpy())
-        north.extend(sub['North speed (cm/s)'].to_numpy())
-    east = np.asarray(east, dtype=float)
-    north = np.asarray(north, dtype=float)
-    vmax = float(np.nanmax(np.hypot(east, north)))
-    if not np.isfinite(vmax) or vmax <= 0:
-        vmax = 1.0
-    fig, ax = plt.subplots(figsize=(11, 5.5))
-    q = ax.quiver(tnum, anchor, east, north, angles='uv', scale_units='width',
-                  scale=vmax * 12.5, width=0.0025, color='tab:blue', pivot='middle')
-    ref = max(10, int(round(vmax / 2 / 10)) * 10)
-    ax.quiverkey(q, 0.86, 0.94, ref, '%d cm/s' % ref, labelpos='E', coordinates='axes')
-    ax.text(0.01, 0.96, 'Arrow direction: N ↑   E →', transform=ax.transAxes,
-            ha='left', va='top', fontsize=9)
-    ax.set_yticks(sel)
-    ax.set_ylabel('Depth (m)')
-    if len(sel) > 1:
-        row_gap = float(np.min(np.diff(sel)))
-        pad = max(1.0, row_gap * 0.75)
-    else:
-        pad = 1.0
-    ax.set_ylim(float(max(sel)) + pad, float(min(sel)) - pad)
-    ax.grid(axis='y', alpha=0.18)
-    ax.set_title('Current vectors by depth - %s' % label)
-    fig._qcs_axes_names = {ax: 'Current vectors by depth'}
-    fig._qcs_customize_axes = [('Current vectors by depth', ax)]
-    _name_panel(fig, 'Current vectors by depth', label)
-    _date_axis(ax, fig)
-    p = os.path.join(out_dir, 'Current vectors (time x depth).svg')
-    fig.savefig(p, bbox_inches='tight'); files.append(p)
-    enable_scroll_zoom(fig, fit=False)
-    fig._qcs_v140_doppler = True
-    _keep_or_close(fig, show, figures)
-    if show and figures is None:
-        show_panels(browse=True)      # one window, paged (owner, v13.0)
-    return files
+    """Current panels sharing one velocity solution, cell grid and QC context."""
+    from QCS_CurrentPanels import plot_panels
+    return plot_panels(frame, out_dir, label, settings, show, figures)
 
 
 def plot_doppler_across_sites(database, out_dir, sites, settings=None, show=False,
                               figures=None):
-    """Cross-site current comparison (the current analogue of the scalar
-    'parameter across sites'): mean horizontal speed vs depth, one line per
-    site, over GOOD cells. Returns the file list ([] if <2 sites have data).
-    Honours the same time-window / depth-band settings as the per-site panels.
+    """Mean displayed speed by native cell, preserving source/column identity.
+
+    Shares the per-site quality, time, depth and vector-averaging settings.
+    The final mean is scalar across occupied display bins, not net transport.
     """
     import os
+    from QCS_CurrentPanels import prepare
     s = settings or {}
     _clear_current_panel_files(out_dir, across_sites=True)
     os.makedirs(out_dir, exist_ok=True)
-    df = database[database['Flag_cur'] != 4].copy()
-    xs, xe = s.get('xAxisStart'), s.get('xAxisEnd')
-    if xs is not None and xe is not None:
-        df = df[(df['Datetime'] >= pd.Timestamp(xs)) & (df['Datetime'] <= pd.Timestamp(xe))]
-    dmin, dmax = s.get('depthAxisMin'), s.get('depthAxisMax')
-    if dmin is not None and dmax is not None:
-        df = df[(df['Depth (m)'] >= float(dmin)) & (df['Depth (m)'] <= float(dmax))]
-    df = df.dropna(subset=['Depth (m)', 'Horizontal speed (cm/s)'])
-
     colors = getSiteColors(sites)
     fig, ax = plt.subplots(figsize=(6.5, 8))
     n = 0
+    references = set()
     for site in sites:
-        sd = df[df['Site'] == site]
-        if not len(sd):
+        product = prepare(database[database['Site'] == site], dict(s, currentTemporalPreview=False))
+        if product is None or not product['eligible_rows']:
             continue
-        prof = sd.groupby('Depth (m)')['Horizontal speed (cm/s)'].mean().sort_index()
-        if len(prof) < 2:
-            continue
-        ax.plot(prof.to_numpy(), prof.index.to_numpy(), '-o', ms=3, lw=1.2,
-                color=colors.get(site), label=site)
+        cells = product['cells'].copy()
+        values = product['arrays']['speed']
+        counts = np.isfinite(values).sum(axis=1)
+        cells['_mean'] = np.divide(np.nansum(values, axis=1), counts,
+                                   out=np.full(len(cells), np.nan), where=counts > 0)
+        keys = [key for key in ['Source file', 'Column', 'Depth reference'] if key in cells]
+        for i, (identity, group) in enumerate(cells.groupby(keys, dropna=False, sort=False)):
+            if not group['_mean'].notna().any():
+                continue
+            references.update(group['Depth reference'])
+            parts = [site] + [str(value) for value in identity]
+            group = group.sort_values('Depth (m)')
+            ax.plot(group['_mean'], group['Depth (m)'], marker='o', ms=3, lw=1.2,
+                    linestyle=['-', '--', ':', '-.'][i % 4],
+                    color=colors.get(site), label=' | '.join(parts))
         n += 1
     if n < 2:
         plt.close(fig)
         return []
     ax.invert_yaxis()
-    ax.set_xlabel('Mean horizontal speed (cm/s)')
-    ax.set_ylabel('Depth (m)')
+    ax.set_xlabel('Mean displayed horizontal speed (cm/s)')
+    ax.set_ylabel('Configured depth / distance (m); reference in legend' if len(references) > 1
+                  else 'Configured depth / distance (m; %s reference)' % next(iter(references)))
     ax.set_title('Mean current speed by depth - across sites')
     fig._qcs_axes_names = {ax: 'Mean current speed by depth'}
     fig._qcs_customize_axes = [('Mean current speed by depth', ax)]
     _name_panel(fig, 'Mean current speed by depth - across sites')
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8)
+    resolution = '%d-min vector means' % s['currentBinMinutes'] if s.get('currentBinMinutes') else 'native samples'
+    quality = 'GOOD only' if s.get('currentQuality') == 'good' else 'GOOD + SUSPECT'
+    fig.text(.5, .015, 'Scalar mean of occupied display bins | %s | %s' % (resolution, quality),
+             ha='center', fontsize='small')
     p = os.path.join(out_dir, 'Current mean speed across sites.svg')
     fig.savefig(p, bbox_inches='tight')
     enable_scroll_zoom(fig, fit=False)

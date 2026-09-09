@@ -3,6 +3,7 @@ import re
 import json
 from datetime import datetime
 import pandas as pd
+import numpy as np
 import QCS_DataHandler as data
 import QCS_DataView as view
 import QCS_Theme as theme
@@ -382,7 +383,7 @@ def depth_availability_text(frame=None):
     depths = available_depths(source)
     if depths.empty:
         if is_doppler_input():
-            return 'Depth available: no complete non-BAD current cells'
+            return 'Depth available: no finite configured cell depths'
         return 'Depth available: no valid depths'
     return 'Depth available: %.2f to %.2f m' % (depths.min(), depths.max())
 
@@ -1024,6 +1025,25 @@ def saveInputSettings():
     save_user_prefs()
     return True  # validation passed and settings stored -> Step 2 may proceed
 
+current_view_widgets = {}
+current_temporal_entries = {}
+
+
+def current_view_settings():
+    """One settings contract shared by Tk, Qt, persistence and the renderer."""
+    from QCS_CurrentPanels import VIEW_OPTIONS, TEMPORAL_OPTIONS
+    result = {}
+    for key, (_, options, default) in VIEW_OPTIONS.items():
+        widget = current_view_widgets.get(key)
+        result[key] = options.get(widget.get(), default) if widget is not None else default
+    for key, (_, default) in TEMPORAL_OPTIONS.items():
+        widget = current_temporal_entries.get(key)
+        result[key] = float(widget.get()) if widget is not None else default
+        if not np.isfinite(result[key]) or result[key] <= 0:
+            raise ValueError('Temporal preview thresholds must be finite positive numbers.')
+    return result
+
+
 def saveDataViewSettings():
     try:
         dataViewSettings['dataType'] = dType_combobox.get()
@@ -1035,6 +1055,8 @@ def saveDataViewSettings():
         dataViewSettings['fixedScale'] = fixedScale.get()
         dataViewSettings['uvGapMode'] = uv_gap_mode_from_display(
             uvGap_combobox.get())
+        if is_doppler_input():
+            dataViewSettings['currentSettings'] = current_view_settings()
         
         dataViewSettings['tsDiagram'] = tsDiagram.get()
         if dataViewSettings['tsDiagram'] == True:
@@ -1097,7 +1119,7 @@ def saveDataViewSettings():
             try:
                 d_min = float(dmin_text)
                 d_max = float(dmax_text)
-                if d_max <= d_min:
+                if d_max < d_min or (d_max == d_min and not is_doppler_input()):
                     raise ValueError('invalid interval')
                 dataViewSettings['depthAxisMin'] = d_min
                 dataViewSettings['depthAxisMax'] = d_max
@@ -1161,6 +1183,8 @@ def saveDataViewSettings():
             # NOTE: parameter selection and scale values are per-imported-sheet
             # (defaults recomputed from the data each time) and are NOT persisted.
         })
+        if is_doppler_input():
+            USER_PREFS['dbv_current_settings'] = dataViewSettings['currentSettings'].copy()
         save_user_prefs()
 
         error_logger.log("Info: view settings saved.")
@@ -1254,24 +1278,27 @@ def generatePanels():
                 # the current panels honour the time window and the depth band.
                 # 'Fixed scale' ON = every heatmap shares one speed color scale
                 # so different sites/years compare 1:1; OFF = each panel
-                # autoscales. The scale spans what the panels DRAW - every cell
-                # except BAD, the same rows plot_doppler_panels keeps - for the
-                # reason the scalar scales changed in v12.3: a scale built on
-                # the GOOD cells alone saturates the suspect ones it is drawing.
-                speed_max = None
-                if dataViewSettings.get('fixedScale') and 'Horizontal speed (cm/s)' in sub.columns:
-                    drawn = sub[sub.get('Flag_cur', 1) != 4]['Horizontal speed (cm/s)']
-                    drawn = pd.to_numeric(drawn, errors='coerce').dropna()
-                    if len(drawn):
-                        speed_max = float(drawn.max()) * 1.05
+                # autoscales. Reuse the actual filtered/aggregated display
+                # values so an excluded site or BAD cell cannot set the scale.
                 dop_settings = {
                     'xAxisStart': dataViewSettings.get('xAxisStart'),
                     'xAxisEnd': dataViewSettings.get('xAxisEnd'),
                     'depthAxisMin': dataViewSettings.get('depthAxisMin'),
                     'depthAxisMax': dataViewSettings.get('depthAxisMax'),
-                    'currentSpeedMax': speed_max,
+                    'currentSpeedMax': None,
                     'uvGapMode': dataViewSettings.get('uvGapMode', 'break'),
                 }
+                dop_settings.update(dataViewSettings.get('currentSettings', {}))
+                if dataViewSettings.get('fixedScale'):
+                    from QCS_CurrentPanels import prepare
+                    maxima = []
+                    for site in selected_sites:
+                        prepared = prepare(sub[sub['Site'] == site], dop_settings)
+                        if prepared is not None:
+                            values = prepared['arrays']['speed']
+                            if np.isfinite(values).any():
+                                maxima.append(float(np.nanmax(values)))
+                    dop_settings['currentSpeedMax'] = max(maxima) * 1.05 if maxima else None
                 # every panel of every selected site goes into ONE browsable
                 # window at the end (v13.0), instead of one window per figure
                 dop_figs = []
@@ -1288,7 +1315,7 @@ def generatePanels():
                             error_logger.log("Info: %d current panel(s) generated for %s." % (len(files), site))
                             n_ok += len(files)
                         else:
-                            error_logger.log("Warning: %s has no non-BAD current rows - nothing to plot." % site)
+                            error_logger.log("Warning: %s has no current cell rows in the selected time/depth range." % site)
                     except Exception as e:
                         error_logger.log("Error generating current panels for %s: %s" % (site, e))
                 # cross-site comparison (mean speed by depth) when >= 2 sites
@@ -1703,6 +1730,7 @@ def build_step2(parent):
     global tsDiagram, ts_cb, latitude_entry, longitude_entry, tsParam_combobox
     global tendency, tendency_cb, tendency_entry, dataPoints, points_cb, fixedScale, fixed_scale_cb
     global uvGap_combobox, time_avail_lbl, depth_avail_lbl
+    global current_view_widgets, current_temporal_entries
     global disagreement
     global year_vars, year_widgets, time_start_entry, time_end_entry, depth_min_entry, depth_max_entry
     global site_names, site_vars, site_widgets, parameter_names, parameter_vars, parameter_widgets
@@ -1828,6 +1856,33 @@ def build_step2(parent):
     if not is_doppler_input():
         uv_gap_lbl.grid_remove()
         uvGap_combobox.grid_remove()
+
+    current_view_widgets, current_temporal_entries = {}, {}
+    if is_doppler_input():
+        from QCS_CurrentPanels import VIEW_OPTIONS, TEMPORAL_OPTIONS
+        current_frame = ttk.LabelFrame(vis_frame, text='Current display')
+        current_frame.grid(row=25, column=0, columnspan=2, sticky='ew', pady=10)
+        saved = USER_PREFS.get('dbv_current_settings', {})
+        for row, (key, (label, options, default)) in enumerate(VIEW_OPTIONS.items()):
+            ttk.Label(current_frame, text=label + ':').grid(row=row, column=0, sticky='w')
+            widget = ttk.Combobox(current_frame, values=list(options), state='readonly', width=29)
+            choice = saved.get(key, default)
+            if key == 'currentBinMinutes' and key not in saved:
+                span = database['Datetime'].max() - database['Datetime'].min()
+                if span < pd.Timedelta(hours=6):
+                    choice = 0
+            widget.set(next((text for text, value in options.items() if value == choice),
+                            next(text for text, value in options.items() if value == default)))
+            widget.grid(row=row, column=1, sticky='w')
+            current_view_widgets[key] = widget
+        for row, (key, (label, default)) in enumerate(TEMPORAL_OPTIONS.items(), len(VIEW_OPTIONS)):
+            ttk.Label(current_frame, text=label + ':').grid(row=row, column=0, sticky='w')
+            widget = ttk.Entry(current_frame, width=12)
+            widget.insert(0, str(saved.get(key, default)))
+            widget.grid(row=row, column=1, sticky='w')
+            current_temporal_entries[key] = widget
+        ttk.Label(current_frame, text='Temporal thresholds are experimental; stored flags are unchanged.',
+                  wraplength=310).grid(row=10, column=0, columnspan=2, sticky='w', pady=5)
 
     # TS Diagram
     tsDiagram = BooleanVar(value=False)

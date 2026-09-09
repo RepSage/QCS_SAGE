@@ -503,6 +503,8 @@ class VisualizationTab(QWidget):
                          after=(dbv.toggle_scale_controls,))
         fv.addRow(self.fixed_scale)
         self.uv_gap = None
+        self.current_options = {}
+        self.current_thresholds = {}
         if dbv.is_doppler_input():
             self.uv_gap = QComboBox()
             self.uv_gap.addItems(list(dbv.UV_GAP_OPTIONS.values()))
@@ -510,6 +512,27 @@ class VisualizationTab(QWidget):
             self.uv_gap.currentTextChanged.connect(
                 lambda text: dbv.uvGap_combobox.set(text))
             fv.addRow('U/V gap treatment:', self.uv_gap)
+            from QCS_CurrentPanels import VIEW_OPTIONS, TEMPORAL_OPTIONS
+            for key, (label, options, _) in VIEW_OPTIONS.items():
+                combo = QComboBox()
+                combo.addItems(list(options))
+                combo.currentTextChanged.connect(
+                    lambda text, name=key: dbv.current_view_widgets[name].set(text))
+                self.current_options[key] = combo
+                fv.addRow(label + ':', combo)
+            self.temporal_group = QGroupBox('Experimental temporal thresholds')
+            tf = QFormLayout(self.temporal_group)
+            for key, (label, _) in TEMPORAL_OPTIONS.items():
+                entry = QLineEdit()
+                self._entry_pair(entry, dbv.current_temporal_entries[key])
+                self.current_thresholds[key] = entry
+                tf.addRow(label + ':', entry)
+            note = QLabel('Preview only. These thresholds need calibration; stored flags stay unchanged.')
+            note.setWordWrap(True)
+            tf.addRow(note)
+            fv.addRow(self.temporal_group)
+            self.current_options['currentTemporalPreview'].currentTextChanged.connect(
+                lambda text: self.temporal_group.setVisible(text != 'Off'))
         # 'Show data points' and the tendency rows draw ON a series the
         # operator chose; the current panels are heatmaps, component
         # series and vectors, with nothing to mark or fit. They were built disabled
@@ -812,6 +835,14 @@ class VisualizationTab(QWidget):
         if self.uv_gap is not None:
             with QSignalBlocker(self.uv_gap):
                 self.uv_gap.setCurrentText(dbv.uvGap_combobox.get())
+        for key, combo in self.current_options.items():
+            with QSignalBlocker(combo):
+                combo.setCurrentText(dbv.current_view_widgets[key].get())
+        for key, entry in self.current_thresholds.items():
+            with QSignalBlocker(entry):
+                entry.setText(dbv.current_temporal_entries[key].get())
+        if self.current_options:
+            self.temporal_group.setVisible(self.current_options['currentTemporalPreview'].currentText() != 'Off')
         self.data_available.setText(_coverage_text())
         self.depth_available.setText(_depth_text())
         qtheme.refresh_clear_buttons(self)
