@@ -68,7 +68,13 @@ def run():
                                        Path('run'), Path('run/combined/out.csv'), 'product')
              for rep in ['one', 'two', 'combined']]
     assert len(set(paths)) == 3 and paths[-1] == 'product__QCS_report.xlsx'
-    assert len(policy.legacy_exclusions()) == 8
+    # every whole-file row of the ledger is an archive-discovery exclusion, and
+    # the eight migrated historical decisions are still among them (later
+    # dated rows, e.g. RRDM 23a 2026-11-12, add to them)
+    ledger = policy.load_decisions()
+    whole = ledger[(ledger.variable == '*') & (ledger.start == '') & (ledger.end == '')]
+    assert len(policy.legacy_exclusions()) == len(whole)
+    assert whole.decision_id.str.startswith('legacy-').sum() == 8
     dismissed, flags, applied, samples = policy.dismiss_single(
         b, ['111111'] * len(b), ['T'] * 5 + ['lux'], data.FLAG_BUCKET_MAP,
         'bad.xlsx', decisions)

@@ -798,7 +798,25 @@ with _tempfile.TemporaryDirectory() as tmp:
     with open(p_scalar, 'wb') as f:
         f.write(_build_mini_aadi())
     assert data.is_seaguard_doppler(p_scalar) is False
-ok.append('is_seaguard_doppler (DCPS template detected; scalar session rejected)')
+    # v14.1.0 (GitHub issue #49): a DCPS SPREADSHEET export is recognised -
+    # it used to be read as a scalar profile - and a scalar export is not.
+    # Header rows as the AADI export writes them (CENTROIDE13, RRDM 23a).
+    _meta = 'Description;Seaguard II Platform\nProduct Name;SeaGuard II\n'
+    _dcps_csv = _os.path.join(tmp, 'adcp_export.csv')
+    with open(_dcps_csv, 'w', encoding='utf-8') as f:
+        f.write(_meta + ';;DCPS #930;;;\n;;;;Vector;;Profile\n;;;;;Surface;;Column 1\n'
+                ';;;;EventReg Values[Flags];Cell State1(0..0);Horizontal Speed(0..0)[cm/s]\n'
+                'Record Time;Record Number;Sensor Status;Heading[Deg.M]\n')
+    _scalar_csv = _os.path.join(tmp, 'scalar_export.csv')
+    with open(_scalar_csv, 'w', encoding='utf-8') as f:
+        f.write(_meta + 'Record Time;Record Number;Temperature[DegC];Pressure[kPa]\n'
+                '19.09.2026 15:16:10;1;25.1;101.3\n')
+    assert data.is_dcps_export(_dcps_csv) is True
+    assert data.is_dcps_export(_scalar_csv) is False
+    assert data.is_dcps_export(p_dcps) is False          # a .bin is not an export
+    assert 'Data000.bin' in data.DCPS_EXPORT_REFUSAL and 'Config.xml' in data.DCPS_EXPORT_REFUSAL
+ok.append('is_seaguard_doppler (DCPS template detected; scalar session rejected); '
+          'is_dcps_export (DCPS spreadsheet recognised; scalar export not)')
 
 # 22) Settings -> current QC plumbing (v8.1). Before v8.1 the pipeline read a
 # CONFIG['dopplerSettings'] that nothing ever wrote, so the Settings window
@@ -1475,7 +1493,30 @@ with _tempfile2.TemporaryDirectory() as tmp:
         raise AssertionError('an unrecognized layout was not refused')
     except ValueError as e:
         assert 'does not fit the deciphered layout' in str(e), e
-ok.append('read_hobo (.hobo binary: spec round-trip, timebase launch+1s, light lag, refusal)')
+    # v14.1.0 save-time check: a decode running past the file's save time is
+    # WARNED about, never cut - the save time is the clock of a PC, which in
+    # 12 of 157 export-verified corpus pairs was earlier than the genuine
+    # data. Samples 12:10:31 .. 14:00:31 local (GMT-03); saved at 12:20 local.
+    with open(p, 'wb') as f:
+        f.write(_build_mini_hobo(_tcodes, _lcodes))
+    _saved_utc = pd.Timestamp(2026, 3, 10, 15, 20, 0)          # = 12:20 local
+    _epoch = (_saved_utc - pd.Timestamp(1970, 1, 1)).total_seconds()
+    _os2.utime(p, (_epoch, _epoch))
+    d, info = data.read_hobo({'raw_data_path': tmp,
+                              'file_name': 'HOBO_TEST_010326.hobo'}, {})
+    assert len(d) == len(_tcodes), 'the save-time check must not remove samples'
+    after = info.get('after_save')
+    assert after and after['saved_inside_series'] and after['samples_after'] == 11, after
+    assert any('after the file was saved' in m and 'Nothing was removed' in m
+               for m in info['messages'])
+    # saved before the first sample: the PC clock is unusable - warn, keep all
+    _epoch = (pd.Timestamp(2026, 3, 10, 13, 0) - pd.Timestamp(1970, 1, 1)).total_seconds()
+    _os2.utime(p, (_epoch, _epoch))                             # = 10:00 local
+    d, info = data.read_hobo({'raw_data_path': tmp, 'file_name': 'HOBO_TEST_010326.hobo'}, {})
+    assert len(d) == len(_tcodes) and not info['after_save']['saved_inside_series']
+    assert any('before the first decoded sample' in m for m in info['messages'])
+ok.append('read_hobo (.hobo binary: spec round-trip, timebase launch+1s, light lag, refusal, '
+          'save-time warning without removal)')
 
 # ------------------------------------------- 34. DCPS manual review (v13.0)
 # The current pipeline gained an interactive stop, and its two cuts reach the
@@ -1898,6 +1939,51 @@ try:
         for fig in _scalar_across_figs
         for name in fig._qcs_line_names.values())
 
+    # v14.1.0 (GitHub issue #50): Depth is a Mooring panel parameter. It must
+    # have its own colour (Panel 1 indexed the colour table and raised
+    # KeyError), and like Pressure it is tidal, so it is drawn as a dashed raw
+    # line and never fitted, even with tendency lines on.
+    _depth_frame = _scalar_frame.assign(
+        **{'Depth (m)': _scalar_frame['Pressure (dbar)'] * 0.99})
+    _depth_settings = dict(_scalar_settings,
+                           parameterList=['Temperature (degC)', 'Depth (m)'])
+    _depth_figs = []
+    assert _data_view.plot_scalar_multi_params_at_site(
+        _depth_frame, _depth_settings, 'A',
+        figures=_depth_figs, show=False) == 1
+    _depth_lines = [line for line in _depth_figs[0].axes[1].lines
+                    if len(line.get_xdata())]
+    assert _depth_lines and all(line.get_linestyle() == '--' for line in _depth_lines), \
+        [line.get_linestyle() for line in _depth_lines]
+    _depth_across = []
+    assert _data_view.plot_scalar_multi_params_across_sites(
+        _depth_frame, _depth_settings, figures=_depth_across, show=False) == 2
+    # ...but a profile's Y axis is depth: Panel 3 never takes it as a parameter
+    assert _data_view.plot_database_panel3(
+        _depth_frame, dict(_depth_settings, parameterList=['Depth (m)'])) is None
+    assert 'Depth (m)' in _data_view.getParamColors()[0]
+    assert 'Depth (m)' in _data_view.TIDAL_PARAMS
+    # the interface gate both shells share (Qt mirrors the tk widget state).
+    # QCS_DatabaseView installs the app's output redirect on import, which
+    # would swallow the rest of this suite's output: stub it, as for QCS_Main.
+    _orig_rdr2 = _thm.install_output_redirect
+    _thm.install_output_redirect = lambda *a, **k: type(
+        'S', (), {'history': [], 'set_sink': lambda *a, **k: None,
+                  'write': lambda *a, **k: None, 'flush': lambda *a, **k: None})()
+    try:
+        import QCS_DatabaseView as _dbv_gate
+    finally:
+        _thm.install_output_redirect = _orig_rdr2
+    _saved_combo = getattr(_dbv_gate, 'dType_combobox', None)
+    try:
+        for _dtype, _expected in (('TSCP Mooring', True), ('TSCP Profile', False),
+                                  ('TSCP Doppler', False), ('', False)):
+            _dbv_gate.dType_combobox = type('C', (), {'get': lambda self, v=_dtype: v})()
+            assert _dbv_gate.param_applies('Depth (m)') is _expected, _dtype
+            assert _dbv_gate.param_applies('Pressure (dbar)')
+    finally:
+        _dbv_gate.dType_combobox = _saved_combo
+
     _broad_frame = pd.concat([
         pd.DataFrame({
             'Datetime': pd.to_datetime(['2025-01-01', '2025-01-02'])
@@ -2011,9 +2097,6 @@ with _tempfile.TemporaryDirectory() as _curated_root:
     _special_dir = _os.path.join(
         _curated_root, 'HOBO', 'qualified', '2026S1',
         '_PISCINAS', 'SGOM_NA')
-    _pool_site_dir = _os.path.join(
-        _curated_root, 'SEAGUARD', 'qualified', '2026S1',
-        'PISCINA_SGOM_FORA')
     _unknown_site_dir = _os.path.join(
         _curated_root, 'SEAGUARD', 'qualified', '2026S1',
         '_SEM_SITIO')
@@ -2021,7 +2104,6 @@ with _tempfile.TemporaryDirectory() as _curated_root:
         _os.makedirs(_folder)
     _os.makedirs(_raw_dir)
     _os.makedirs(_special_dir)
-    _os.makedirs(_pool_site_dir)
     _os.makedirs(_unknown_site_dir)
     pd.DataFrame({
         'Datetime': ['2026-01-01 00:00'], 'Site': ['SHOULD_NOT_APPEAR'],
@@ -2032,13 +2114,6 @@ with _tempfile.TemporaryDirectory() as _curated_root:
         'Flag_T': [1], 'Flag_lux': [1],
     }).to_csv(_os.path.join(
         _special_dir, 'SGOM_NA_2026S1_HOBO_QLF.csv'), index=False)
-    pd.DataFrame({
-        'Datetime': ['2026-01-01 00:00'], 'Site': ['PISCINA_SGOM_FORA'],
-        'Temperature (degC)': [30.0], 'Salinity (PSU)': [36.0],
-        'Flag': ['1'],
-    }).to_csv(_os.path.join(
-        _pool_site_dir,
-        'PISCINA_SGOM_FORA_2026S1_SEAGUARD_FUNDEIO_QLF.csv'), index=False)
     pd.DataFrame({
         'Datetime': ['2026-01-01 00:00'], 'Site': ['_SEM_SITIO'],
         'Temperature (degC)': [30.0], 'Salinity (PSU)': [36.0],
@@ -2142,7 +2217,26 @@ with _tempfile.TemporaryDirectory() as _curated_root:
         'HOBO', file_list=[_workbook])
     assert len(_curated_hobo) == 2
     assert set(_curated_hobo['Source file']) == {_hobo_name}
-ok.append('curated database (dynamic filters / cancellation / visualization handoff)')
+# v14.1.0: pool data are ordinary SITES (owner, 2026-11-12) - PISCINA_SGOM and
+# PISCINA_PLES sit beside the monitoring sites in the same sheets. Only the
+# old special-collection folders (_PISCINAS, _EXPERIMENTOS, _SEM_SITIO) stay
+# out, as the block above checks.
+with _tempfile.TemporaryDirectory() as _pool_root:
+    for _family, _name, _cols in (
+            ('SEAGUARD', 'PISCINA_SGOM_2026S1_SEAGUARD_FUNDEIO_QLF.csv',
+             {'Salinity (PSU)': [36.0], 'Flag': ['1']}),
+            ('HOBO', 'PISCINA_SGOM_2026S1_HOBO_QLF.csv',
+             {'Luminosity (lux)': [100.0], 'Flag_T': [1], 'Flag_lux': [1]})):
+        _pool_dir = _os.path.join(_pool_root, _family, 'qualified', '2026S1', 'PISCINA_SGOM')
+        _os.makedirs(_pool_dir)
+        pd.DataFrame(dict({'Datetime': ['2026-03-20 12:00'], 'Site': ['PISCINA_SGOM'],
+                           'Temperature (degC)': [30.0]}, **_cols)).to_csv(
+            _os.path.join(_pool_dir, _name), index=False)
+    _pool_catalog, _ = _curated.discover_qualified_corpus(_pool_root)
+    assert sorted(_pool_catalog['instrument']) == ['HOBO', 'Seaguard (Mooring)'], _pool_catalog
+    assert _curated.available_filters(_pool_catalog)['sites'] == ['PISCINA_SGOM']
+ok.append('curated database (dynamic filters / cancellation / visualization handoff; '
+          'pool sites catalogued as ordinary sites)')
 
 from QCS_ReplicateSelfTest import run as _replicate_selftests
 ok.extend(_replicate_selftests())

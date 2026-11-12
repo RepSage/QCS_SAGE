@@ -28,7 +28,10 @@ _QUALIFIED_SUFFIXES = ("_qlf.csv", "_qlf.xlsx")
 _EXCLUDED_COLLECTION_FOLDERS = frozenset({
     "_EXPERIMENTOS", "_PISCINAS", "_SEM_SITIO",
 })
-_EXCLUDED_SITE_PREFIXES = ("PISCINA_",)
+# Pool data were refused here from 2026-08-25; since v14.1.0 they are ordinary
+# sites (PISCINA_SGOM, PISCINA_PLES) of the monitoring corpus (owner,
+# 2026-11-12). Only the old special-collection folders above stay out.
+_EXCLUDED_SITE_PREFIXES = ()
 
 
 def collection_layout(category):

@@ -509,6 +509,13 @@ def darker(hex_color, factor=0.62):
     return '#%02x%02x%02x' % (int(r * factor), int(g * factor), int(b * factor))
 
 
+# Mooring variables dominated by the tide: never fitted (a low-degree
+# polynomial through a tidal signal is meaningless), drawn as a dashed raw
+# line instead. Depth is derived from pressure and carries the same signal
+# (v14.1.0, GitHub issue #50: Depth became a Mooring panel parameter).
+TIDAL_PARAMS = ('Pressure (dbar)', 'Depth (m)')
+
+
 def getDepthContextColors():
     """Keep working-depth and handling markers distinct in manual reviews."""
     return {'working_depth': '#228b22', 'handling': '#b30000'}
@@ -535,6 +542,7 @@ def getParamColors (parameter_names=None):
                 'Dissolved organic matter (ppb)': '#cccc29',   # olive
                 'Soundspeed (m/s)': '#8585ad',                 # gray-blue
                 'Pressure (dbar)': '#808080',                  # dark gray
+                'Depth (m)': '#5c6bc0',                        # indigo
                 'Luminosity (lux)': '#f2c14e'                  # amber (HOBO light)
                 }
     bcParam = {'Temperature (degC)': '#b30000',
@@ -552,6 +560,7 @@ def getParamColors (parameter_names=None):
                 'Dissolved organic matter (ppb)': '#666614',
                 'Soundspeed (m/s)': '#3d3d5c',
                 'Pressure (dbar)': '#1a1a1a',
+                'Depth (m)': '#283593',
                 'Luminosity (lux)': '#a3781f'
                 }
 
@@ -901,7 +910,7 @@ def plot_database_panel1 (database, dataViewSettings):
                 # tide, so a low-degree polynomial through it is meaningless. Its
                 # raw series is drawn as a dashed line instead (same rule as the
                 # twin axes below).
-                if fit_lin_regression == True and y_list[0].name != 'Pressure (dbar)':
+                if fit_lin_regression == True and y_list[0].name not in TIDAL_PARAMS:
                     xp, yp = linear_regression (y, degree=deg)
                     yp = _floor_fit(yp)
                     if points == True:
@@ -912,7 +921,7 @@ def plot_database_panel1 (database, dataViewSettings):
                         # data points visible the axis must NOT be clamped to the
                         # fit, or genuine (approved) data gets clipped out of view.
                         ax1.set_ylim(([max(0.0, yp.min() - 0.05 * np.abs(yp.max()-yp.min())), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
-                elif y_list[0].name == 'Pressure (dbar)':
+                elif y_list[0].name in TIDAL_PARAMS:
                     ax1.plot(x, y, color=bcParam[y_list[0].name], linestyle='--', marker='None', label=rParam[0])
                 else:
                     ax1.plot(x, y, color=bcParam[y_list[0].name],
@@ -945,7 +954,7 @@ def plot_database_panel1 (database, dataViewSettings):
                     #defining x
                     x = y.index
                     # plot adicional axis
-                    if fit_lin_regression == True and y_list[i-1].name != 'Pressure (dbar)':
+                    if fit_lin_regression == True and y_list[i-1].name not in TIDAL_PARAMS:
                         xp, yp = linear_regression (y, degree=deg)
                         yp = _floor_fit(yp)
                         if points == True:
@@ -957,7 +966,7 @@ def plot_database_panel1 (database, dataViewSettings):
                             ax.set_ylim(([max(0.0, yp.min() - 0.05 * np.abs(yp.max()-yp.min())), yp.max() + 0.05 * np.abs(yp.max()-yp.min())]))
 
                     else:
-                        if y_list[i-1].name == 'Pressure (dbar)':
+                        if y_list[i-1].name in TIDAL_PARAMS:
                             ax.plot(x, y, linestyle='--', marker='None', c=bcParam[y_list[i-1].name], label=rParam[i-1])
                         else:
                             ax.plot(x, y, linestyle='None', marker='.',
@@ -1088,7 +1097,7 @@ def plot_database_panel2(database, dataViewSettings):
                 # Plotting the data. Pressure is NEVER fitted (tidal signal: a
                 # polynomial through it is meaningless) - its raw series is drawn
                 # as a dashed line instead, the same rule used in Panel 1.
-                if fit_lin_regression and parameter == 'Pressure (dbar)':
+                if fit_lin_regression and parameter in TIDAL_PARAMS:
                     ax1.plot(x_days, y, linestyle='--', marker='None',
                             color=colors[site], label=f'{site} data')
                 elif fit_lin_regression:
@@ -1240,7 +1249,7 @@ def plot_scalar_multi_params_at_site(database, dataViewSettings, site,
             if not series.notna().any():
                 continue
             plotted = True
-            if parameter == 'Pressure (dbar)':
+            if parameter in TIDAL_PARAMS:
                 line, = ax.plot(
                     series.index, series.values, linestyle='--', marker='None',
                     color=bold_colors[parameter])
@@ -1348,7 +1357,7 @@ def plot_scalar_multi_params_across_sites(database, dataViewSettings,
                 if not series.notna().any():
                     continue
                 site_plotted = True
-                if parameter == 'Pressure (dbar)':
+                if parameter in TIDAL_PARAMS:
                     line, = ax.plot(
                         series.index, series.values, linestyle='--',
                         marker='None', color=colors[site])
@@ -1387,7 +1396,7 @@ def plot_scalar_multi_params_across_sites(database, dataViewSettings,
         legend_handles = [
             Line2D(
                 [0], [0], color=colors[site],
-                linestyle=('--' if parameter == 'Pressure (dbar)'
+                linestyle=('--' if parameter in TIDAL_PARAMS
                            else ('-' if fit else 'None')),
                 marker='.' if points or not fit else 'None')
             for site in plotted_sites]
@@ -1411,6 +1420,17 @@ def plot_scalar_multi_params_across_sites(database, dataViewSettings,
     return figure_count
 
 def plot_database_panel3(database, dataViewSettings):
+    # depth is this panel's Y axis, never one of its parameters (v14.1.0: it
+    # became a selectable Mooring parameter, and the interface greys it out
+    # for profiles - this is the safety net behind that gate). A copy, so the
+    # caller's settings are untouched.
+    if 'Depth (m)' in dataViewSettings['parameterList']:
+        dataViewSettings = dict(dataViewSettings, parameterList=[
+            p for p in dataViewSettings['parameterList'] if p != 'Depth (m)'])
+        if not dataViewSettings['parameterList']:
+            print('Info: profile panel not drawn: depth is its vertical axis, '
+                  'not a parameter.')
+            return
     site_names = dataViewSettings['siteList']
     parameter_names = dataViewSettings['parameterList']
     year = dataViewSettings['filterByYear']

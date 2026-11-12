@@ -22,7 +22,7 @@ def _show_plot_info(fig, title, message):
 # Software version: single source of truth, shown in window titles,
 # 'About' dialogs and in the 'QCS version' column of qualified files.
 # Update ONLY here when releasing a new version.
-QCS_VERSION = 'v14.0.3'
+QCS_VERSION = 'v14.1.0'
 
 ################################# Description ##################################
 # QCS_DataHandler consists in a series of function to open and handle data files
@@ -593,6 +593,38 @@ def is_seaguard_doppler(file_path):
         return bool(re.search(r'Descr="DCPS|Doppler Current Profiler', head))
     except Exception:
         return False
+
+
+DCPS_EXPORT_REFUSAL = (
+    'This spreadsheet was exported from a Doppler current profiler (DCPS). '
+    'QCS reads current data only from the native session: the Data000.bin '
+    'file with its Config.xml beside it. An export carries neither the cell '
+    'geometry of the binary nor the configuration the current QC needs '
+    '(firmware status map, AutoBeam mode, direction reference), so it cannot '
+    'be qualified - as Doppler or as a scalar profile.')
+
+
+def is_dcps_export(file_path):
+    """True when a .csv/.xlsx is a Seaguard export of a DCPS / Doppler current
+    profiler (GitHub issue #49, v14.1.0): its multi-row header names the DCPS
+    node ('DCPS #930') and per-cell columns ('Cell State1(0..0)',
+    'Horizontal Speed(0..0)[cm/s]'). Only the first rows are read."""
+    name = str(file_path).lower()
+    try:
+        if name.endswith('.csv'):
+            with open(file_path, encoding='utf-8', errors='replace') as f:
+                head = ' '.join(next(f, '') for _ in range(40))
+        elif name.endswith('.xlsx'):
+            sample = pd.read_excel(file_path, header=None, nrows=40)
+            head = ' '.join(str(v) for v in sample.to_numpy().ravel() if pd.notna(v))
+        else:
+            return False
+    except Exception:
+        return False
+    if re.search(r'\bDCPS\s*#\s*\d+', head):
+        return True
+    return bool(re.search(r'Cell State\s*1?\s*\(\d+\.\.\d+\)', head)
+                and re.search(r'Horizontal Speed\s*\(\d+\.\.\d+\)', head))
 
 
 def _decode_dcps_bin(file_path, *, diagnostics=None, metadata=None):
@@ -1704,6 +1736,56 @@ def _read_hobo_binary(file_path, say):
     return df
 
 
+def _hobo_check_save_time(df, file_path, say, info):
+    """Warns - never cuts, never refuses - when the native decode of a .hobo
+    runs past the moment the file was SAVED (its modification time) (v14.1.0,
+    owner decision 2026-11-12).
+
+    A 64 KB .hobo is a dump of the whole logger memory: a launch does not
+    clear it and the header carries no sample count, so when the deployment's
+    terminator is lost the decoder runs on into the previous deployment's
+    bytes, relabelled on the new clock (4 of 39 64 KB dumps in 157 Database
+    export pairs; diagnostics/abrolhos2_sweep_20261112). But the save time is
+    NOT proof by itself: it is the clock of the PC that saved the file, and in
+    12 of the same 157 export-verified pairs the GENUINE data ends after it -
+    7 by years (a PC clock reset to 2017-2018) and 4 by 11-23 h - while every
+    proven stale tail overruns by 9 days or more. Cutting would have destroyed
+    real data, so the operator decides (manual cut, or the HOBOware export).
+    Stale samples can also sit BEFORE the save time (a logger that stopped
+    early, or one that never recorded and decodes wholly as its previous
+    deployment); the warning says so. Sets info['after_save']."""
+    if df.empty:
+        return
+    times = pd.to_datetime(df['Datetime'])
+    step = times.diff().median() if len(times) > 1 else pd.Timedelta(0)
+    # the series is on GMT-03 (the reader shifts any other logger offset to
+    # it), and so is this archive's clock: Brazil has kept no daylight saving
+    # since 2019
+    saved = pd.Timestamp(os.path.getmtime(file_path), unit='s') - pd.Timedelta(hours=3)
+    if times.max() <= saved + max(step, pd.Timedelta(hours=1)):
+        return
+    past_h = (times.max() - saved).total_seconds() / 3600
+    inside = bool(saved >= times.min())
+    info['after_save'] = {'saved': saved, 'decoded_end': times.max(),
+                          'hours_past': past_h, 'saved_inside_series': inside,
+                          'samples_after': int((times > saved).sum())}
+    if not inside:
+        say('Warning: the file was saved (%s) before the first decoded sample '
+            '(%s): the clock of the PC that saved it was wrong, so the save '
+            'time cannot be used to check this binary for stale memory. '
+            'Compare it with a HOBOware export or its replicate.'
+            % (saved.floor('min'), times.min()))
+        return
+    say('Warning: the native decode runs to %s, %.0f h after the file was saved '
+        '(%s); %d sample(s) are dated after the save time. Either they are stale '
+        'memory of an older deployment (a 64 KB .hobo is a whole-memory dump) or '
+        'the clock of the PC that launched or saved the logger was wrong. Nothing '
+        'was removed: compare with a HOBOware export or the replicate and cut '
+        'manually what does not belong (the samples before the save time may '
+        'also be stale when the logger stopped early).'
+        % (times.max(), past_h, saved.floor('min'), int((times > saved).sum())))
+
+
 def read_hobo(INPUT, tsSettings):
     """Reads HOBOware exports (.xlsx/.csv) from Pendant Temp/Light sensors.
 
@@ -1724,6 +1806,7 @@ def read_hobo(INPUT, tsSettings):
     # so no deployment window - exactly like an export without event columns).
     if file_name.lower().endswith('.hobo'):
         df = _read_hobo_binary(file_path, say)
+        _hobo_check_save_time(df, file_path, say, info)
         return _hobo_finish(df, tsSettings, say, info, file_name)
 
     # ---------- raw read with header line detection ----------

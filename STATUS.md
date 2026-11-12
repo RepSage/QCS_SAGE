@@ -3,6 +3,81 @@
 Volatile state. Durable rules: CLAUDE.md. Released program changes: changelog/.
 Archive operations: sourceCode/batch/CORPUS_LOG.md.
 
+## Release state (checked 2026-11-12)
+
+- Last release: v14.0.3. It is tagged at `6ab1df6` = `origin/master`, the
+  GitHub Release was published 2026-09-09, and v14.0.3 is installed on this
+  machine. `QCS_VERSION` is still `'v14.0.3'` on the v14.1.0 branch.
+
+## v14.1.0 - open on branch `pools-and-field-issues` (2026-11-12)
+
+Scope (owner, 2026-11-12): the app's stale-.hobo warning, pools as a separate
+collection, the updated ledger, and GitHub issues #49 and #50. The branch is
+not pushed, so nothing is on GitHub yet. `gh` is NOT installed; issues were
+read through the public REST API.
+
+Done (committed; suite 93/93, ruff clean):
+- `4a84f93` 23a batch work.
+- `1ffb6b5` stale .hobo: the app WARNS, never cuts. The owner revised
+  'cut and warn' after the corpus sweep: in 12 of 157 export-verified pairs
+  genuine data ends after the file save time (7 with PC clocks years
+  behind, 4 by 11-23 h), while proven stale tails overrun by >= 9 days. The
+  batch refuses only above 48 h with the save time inside the series. All
+  188 corpus decodes are unchanged, and the 23a replay is 9/9
+  byte-identical. Evidence: `hobo_savetime_margin.py`,
+  `hobo_tail_check_v1410.csv`.
+- `97657a7` installer: the 'open the user manual' checkbox is translated
+  (#49). The manual stays in English.
+- `7d7f0ab` #50: Depth (m) is an opt-in Mooring panel parameter, with its
+  own colour, tidal (dashed, never fitted), and greyed out for profiles
+  (`param_applies`). Panel 3 drops it.
+- `4074f66` #49: DCPS spreadsheet exports are refused with the reason
+  (`is_dcps_export`); one instance per user, with a splash before the heavy
+  imports (`QCS_QtStartup`). Offscreen checks in
+  `diagnostics/v1410_single_instance/`: 5/5, and the shell boots with prefs
+  untouched. NOT verified: a real clean-install launch from the installer
+  (needs the owner's screen).
+
+Next:
+1. **Pools: done 2026-11-12.** They are ordinary sites `PISCINA_SGOM` /
+   `PISCINA_PLES`, with the Seaguard FORA under `SGOM` / `PLES`: 14 products,
+   27,478 rows, index 289 -> 303, integrity clean. The record is in
+   CORPUS_LOG 2026-11-12. Still owner-unconfirmed: the forced replicate
+   groups PISCINA_PLES/2026S2 and PISCINA_SGOM/2026S1, where one logger
+   stopped early (my call, on the PLES/PAB3 precedent).
+2. Release ritual (2026-11-12). Done:
+   - `QCS_VERSION` and `AppVersion` set to v14.1.0;
+   - `changelog/v14.1.0.md`, with the Verification section lacking the
+     installer lines;
+   - the manual updated (version, startup, DCPS refusal, .hobo warning,
+     Depth, pool sites).
+   Suite 93/93. The owner authorized the build download; the owner
+   publishes the PR and Release on GitHub by hand (`gh` stays uninstalled).
+   - **Built 2026-11-12.** venv `%TEMP%\qcs_build_env` (freeze in
+     `%TEMP%\qcs_build_env_freeze.txt`), PyInstaller `--clean`, workpath
+     `%TEMP%\qcs_build_work_1410`. Bundle: 2,950 files, 303.7 MB. 604 more
+     files than v14.0.3 are `tzdata`, pulled in by newer dependencies.
+     `QCS_Setup_v14.1.0.exe`: 83,474,019 bytes, SHA-256 `d2fdafb5…723a`.
+   - Frozen offscreen smoke test PASS (`diagnostics/release_v1410/frozen_smoke.json`):
+     the toc contains `QCS_QtStartup` and `QtNetwork`; `--shot` exits 0; a
+     second instance exits in 0.9 s; no crash log. All 2,950 compiler inputs
+     match the bundle. The PR and Release bodies are drafted in
+     `diagnostics/release_v1410/{pr_body,release_body}.md`.
+   - **Next:** read the release-audit (running). Then add the installer
+     lines to the changelog Verification, push the branch, and the owner
+     opens the PR (closes #49/#50) and merges. Then tag `v14.1.0` on the
+     merge commit (push `refs/tags/v14.1.0` explicitly), and the owner
+     publishes the Release with the .exe.
+
+## RRDM 23a SET 2026 - imported (2026-11-12; record in CORPUS_LOG, code in `4a84f93`)
+
+- Still open: the SGOM H1 and A5 H2 stale exclusions were reported to the
+  owner but not explicitly ratified (ledger rows `rrdm23a-*`, reviewer
+  "Batch evidence, reported to the owner").
+- Decided 2026-11-12: RH18 (22a) and RH30 BRITAS (21a) are rubble experiments
+  and stay out. The 12 same-named 12-hour-collapsed Abrolhos2 exports must
+  never replace the Database copies.
+
 ## Open scientific work (2026-09-09)
 
 - Doppler temporal spike/rate/flat-line thresholds remain exploratory display
@@ -30,7 +105,7 @@ Archive operations: sourceCode/batch/CORPUS_LOG.md.
   splice is evidence only. Pending source/interval decisions still require
   their independent evidence and owner ratification.
 
-## Environment (verified 2026-09-09)
+## Environment (verified 2026-09-09; build directories and the references above re-checked present 2026-10-06)
 
 - Absolute Anaconda base for QC/batch; packaging/v12_env for the source Qt
   launcher QCS.bat. Final release build: %TEMP%/qcs_build_v14; fresh work directory

@@ -13,6 +13,153 @@ corpus procedure, and `changelog/` the app releases. This file holds
 
 ---
 
+## 2026-11-12 — pool data back as ordinary sites (PISCINA_SGOM, PISCINA_PLES)
+
+No QC rule changed. The owner reversed the 2026-08-25 removal: pool data join
+the monitoring corpus as sites. Inside the pool, the sites are `PISCINA_SGOM`
+and `PISCINA_PLES`, HOBO and Seaguard. The Seaguard outside the pool (FORA,
+the control) belongs to the site itself, `SGOM` or `PLES`, as the HOBO FORA
+loggers already did: the 7 FORA HOBOs of 19a/20a are byte-identical to the
+site loggers in 2024S2/2025S1. The backups the 2026-08-25 entry cites
+(`CLAUDE\_deleted\20260825\...`) no longer exist, so the field archive
+(`\\Abrolhos2\EXPEDIÇÕES\RRDM`, read-only) was the only source.
+
+Owner decisions:
+- the unlabelled SGOM pool loggers of 18a ('Experimento Piscina') and 22a
+  ('PISCINA SGOM') were inside the pool;
+- 19a SGOM `Pis1`/`Pis2` are replicates;
+- the 22a SGOM pool Seaguard is cut before its second entry into the water.
+
+**Raw** (`stage_pools.py --apply`): 48 files copied with `shutil.copy2`,
+SHA-256 and mtime verified. Manifest:
+`diagnostics/abrolhos2_sweep_20261112/staging_pools_manifest.csv`.
+- HOBO into `PISCINA_SGOM` 2024S1/2024S2/2025S1/2026S1/2026S2 and
+  `PISCINA_PLES` 2024S2/2025S1/2026S1/2026S2.
+- 5 Seaguard sessions (each with `Config.xml` + `Layout.xml`) and 2 CO2 txt.
+- Of the duplicates, the explicit `FERNANDO\SGOM\DENTRO` copy was staged,
+  not the byte-identical `CLARA` one.
+- Not staged:
+  - the 22a Seaguard CSV exports (duplicates of their sessions);
+  - the field-note files. One of them is the source of the SGOM window:
+    'FICOU UM TEMPO NA AGUA, APOIADO NO BARCO, FORA DA PISCINA. CHECAR O
+    SEGUNDO MOMENTO Q ENTRA NA AGUA'.
+
+**Sources decided by the data:**
+- The 18a/19a pool csv exports are 12-hour COLLAPSED, 5 of 5 by
+  `light_clock_phase` (`pool_clock_check.py`). Their native `.hobo` clocks
+  are sound: light peak 9.2-12.7 h, 91-100% daylight.
+- So the binaries are qualified (`NATIVE_BINARY_SCOPES` PISCINA_* 2024S1,
+  2024S2). The csv carry ledger rows `pool-*`. An excluded export no longer
+  blocks its binary.
+- The 18a HOBO2 export has 3 samples and its binary does not decode, so that
+  logger is out.
+- 20a and later exports agree with their binaries.
+
+**Session window** (`session_windows.csv`, `rrdm22a-piscina-sgom-entry`): the
+22a SGOM pool Seaguard was first in the water 09:20-12:20 local at ~147 kPa
+beside the boat, then in air, and entered the pool at 13:17 local (pressure
+101.1 -> 146.5 kPa). The 255 earlier rows are dismissed (flag 5) through the
+pipeline's Depth-review path.
+
+**Forced replicate groups:** PISCINA_PLES/2026S2 and PISCINA_SGOM/2026S1. Each
+has one logger that stopped early: 723 of 902 rows, and 82 of 797.
+
+**Qualified** (candidate run in a short-path folder, inspected, then
+`promote_pools.py --apply`): 14 new products, 27,478 rows.
+- 9 HOBO products:
+  - PISCINA_SGOM: 2024S1 3,917 rows (HOBO1 only), 2024S2 1,957, 2025S1
+    2,329, 2026S1 797, 2026S2 2,307.
+  - PISCINA_PLES: 2024S2 1,965, 2025S1 2,322, 2026S1 4,307, 2026S2 902.
+    In 2026S2, 498 Flag_T=3 are withheld by the sustained replicate policy;
+    HOBO2 has an anomalous light phase.
+- 5 Seaguard FUNDEIO products:
+  - PISCINA_PLES 2024S2 143 rows and 2026S1 1,550 (+CO2);
+  - PISCINA_SGOM 2026S1 1,685, of which 255 are dismissed (+CO2 at 1,430);
+  - PLES 2026S1 1,578; SGOM 2026S1 1,719.
+The index went 289 -> 303 (+14, 0 removed, 0 changed), and the integrity
+sweep found no pipeline defect. The index backup is:
+
+```
+\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\_deleted\pools_20261112T155508
+```
+
+---
+
+## 2026-11-12 — RRDM 23a SET 2026 staged and qualified (2026S2); PLES 2025S2 gains HOBO3
+
+No QC rule changed. New raw data entered, and one published product was
+requalified with an extra replicate.
+
+**Raw** (`stage_rrdm_23a.py --apply`, from `\\Abrolhos2\EXPEDIÇÕES\RRDM\RRDM 23a
+SET 2026`, read-only): 21 files copied with `shutil.copy2`, each SHA-256- and
+mtime-verified, plus 1 derived file. Targets:
+- `HOBO\raw\2026S2\{PNOR,PLES,PAB3,SGOM,RODORASO,TIM2,ESQNORTE,ESQRODO,ESQSUL}`;
+- `HOBO\raw\2025S2\PLES\bruto\HOBO3_PLES_220325_220926.hobo`;
+- `SEAGUARD\raw\2026S2\CENTROIDE13\FUNDEIO\{EXPORT\SENSORES,EXPORT\DOPPLER,MINICO2}`.
+
+The derived file is `MINICO2\miniCO2_centroid13_19a20set2026.txt`. It is the
+logger's text-export format written from the delivered `.xlsx` (kept beside
+it, untouched) and reads back to the same 193 values. Manifest:
+`diagnostics/abrolhos2_sweep_20261112/staging_manifest.csv`. Not staged:
+`HOBO2_RODORASO_A5_230326_0.hobo`, a byte-identical copy. Raw names are kept as
+delivered (`HOBO2_ESQNORTE_B2_10032025`, `HOBO2_TIM2_A6_210326.hobo_160926`).
+
+**Why from `.hobo`:** only TIM2 had HOBOware exports (owner: qualify from the
+binaries). The native path (`NATIVE_BINARY_SCOPES` in `qualify_site.py`)
+refuses stale whole-memory dumps. The evidence is in the same diagnostics
+folder:
+- In 157 Database export pairs, the decode is 100% exact where timestamps
+  are shared.
+- 4 of 39 64 KB dumps overrun the export, two of them inside the deployment.
+- Stale bytes equal the previous same-serial dump.
+
+Data decisions (`replicate_decisions.csv`, rows `rrdm23a-*`):
+- **SGOM HOBO1** (.hobo and its 1-sample csv) excluded: its whole decode is
+  PNOR's 2025-09..2026-03 deployment of the same logger.
+- **RODORASO (A5) HOBO2** excluded: 95% stale.
+- **ESQRODO HOBO1** temperature excluded (owner): +3.1 degC against its twin
+  and both neighbours. The save-time guard also refuses the whole binary,
+  whose decode runs to 2027-03-02.
+
+SGOM and RODORASO have no 2026S2 HOBO product. Forced replicate groups:
+PLES/2026S2 (HOBO1 stopped on 2026-04-04, same launch) and PLES/2025S2
+(HOBO3).
+
+**Qualified** (candidate run under `QCS_QUALIFIED_OUTPUT_ROOT`, inspected, then
+`promote_rrdm_23a.py --apply`). New, with rows:
+
+| product | rows |
+|---|---|
+| `ESQNORTE_2026S2_HOBO_QLF` | 2,460 |
+| `ESQRODO_2026S2_HOBO_QLF` | 2,474 |
+| `ESQSUL_2026S2_HOBO_QLF` | 2,499 |
+| `PAB3_2026S2_HOBO_QLF` | 705 (to 2026-05-09) |
+| `PLES_2026S2_HOBO_QLF` | 2,278 |
+| `PNOR_2026S2_HOBO_QLF` | 2,369 |
+| `TIM2_2026S2_HOBO_QLF` | 2,145 |
+| `CENTROIDE13_2026S2_SEAGUARD_FUNDEIO_QLF` | 9,904, from the CSV export, GMT-3 applied, CO2 at all 9,904 |
+
+The CENTROIDE13 ADCP CSV is archived only: there is no DCPS CSV reader, and
+the export lacks the cell geometry. Requalified: `PLES_2025S2_HOBO_QLF`. It
+keeps 2,208 rows and Flag_T all 1; the temperature now averages in HOBO3,
+median change +0.098 degC, max 0.202. HOBO3 was verified first: +0.22 degC vs
+HOBO1, 166/166 days within 0.5 degC, change-corr +0.99. Flag patterns match
+the site's earlier products (ESQRODO flat-line BAD 144, vs 219 in 2025S2).
+
+Index 281 -> 289 products: +8, 0 removed, 1 changed (PLES 2025S2). The
+integrity sweep found no pipeline defect. No Curated Database workbook is
+part of this operation. One was exported to the Desktop and verified at
+289/289 products, then moved to the Recycle Bin the same day at the owner's
+request: the qualified products on the server are the archive, and the app
+builds the workbook itself when asked. Backup of the replaced PLES folder
+(9 files, SHA-256-verified) and of the previous index:
+
+```
+\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\_deleted\rrdm23a_20261112T133924
+```
+
+---
+
 ## 2026-09-08 — Original Doppler presentation restored
 
 The owner rejected the general appearance introduced during the corrections.

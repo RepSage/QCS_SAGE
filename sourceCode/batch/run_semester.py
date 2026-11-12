@@ -24,7 +24,7 @@ for raw in (qs.SG_RAW, qs.H_RAW):
             d for d in os.listdir(p)
             if os.path.isdir(os.path.join(p, d))
             and d.upper() != '_SEM_SITIO'
-            and not d.upper().startswith('PISCINA_')
+            # pool sites (PISCINA_*) are ordinary sites since v14.1.0
         )
 
 sites = sorted(sites)

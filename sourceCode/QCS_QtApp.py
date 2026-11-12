@@ -25,6 +25,14 @@ import threading
 import warnings
 from numbers import Real
 
+# Single instance + splash BEFORE the heavy imports below (v14.1.0, GitHub
+# issue #49 - see QCS_QtStartup). Only when this file is the program: tests
+# and tools that import it, and the windowless --shot mode, are untouched.
+_EARLY = None
+if __name__ == '__main__' and '--shot' not in sys.argv:
+    import QCS_QtStartup
+    _EARLY = QCS_QtStartup.early_startup()
+
 import matplotlib
 # Agg, not QtAgg (v12.3): under QtAgg every figure IS a QWidget, and Qt forbids
 # building a widget outside the interface thread - which is exactly what the
@@ -3518,6 +3526,10 @@ class QtShell(QMainWindow):
         elif len(names) > 1:
             print('Info: %d files selected - each will be qualified independently, '
                   'in sequence (one _QLF output per file).' % len(names))
+        if first.lower().endswith(('.csv', '.xlsx')) and data.is_dcps_export(first):
+            # said at selection, not only at RUN (GitHub issue #49): the run
+            # gate in QCS_Main.apply_input_settings refuses it
+            print('Warning: %s' % data.DCPS_EXPORT_REFUSAL)
         if self.input_type.currentText() == 'Seaguard' and first.lower().endswith('.bin'):
             if data.is_seaguard_doppler(first):
                 self._doppler_file = True
@@ -4265,7 +4277,8 @@ def _install_qt_facade(shell):
 
 
 def main():
-    app = QApplication(sys.argv)
+    # the early startup (single instance + splash) may have created it
+    app = QApplication.instance() or QApplication(sys.argv)
     app.setWindowIcon(_app_icon())
     dark = qm.USER_PREFS.get('ui_theme') == 'dark'
     qtheme.apply_style(dark)
@@ -4289,6 +4302,13 @@ def main():
     # acknowledgement. Give that dialog a visible main window: otherwise the
     # installer appears not to have reopened QCS until the notice is dismissed.
     shell.show()
+    if _EARLY is not None:
+        _app, instance, splash = _EARLY
+        splash.finish(shell)
+        # started from the installer the window can open BEHIND whatever had
+        # the focus; and a second start now brings THIS window forward
+        QCS_QtStartup.bring_to_front(shell)
+        instance.on_activate(lambda: QCS_QtStartup.bring_to_front(shell))
     shell.start_background_update_check()   # silent unless a newer release exists
     if qm.SETTINGS_RESET_FROM:
         QMessageBox.information(

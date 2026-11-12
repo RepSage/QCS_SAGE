@@ -20,6 +20,10 @@ absolute path — a bare `python` resolves to the Microsoft Store stub and fails
 & "C:\Users\LAMB\anaconda3\python.exe" batch\normalize_buraca_funda_session.py --verify-existing # recheck the BXML session-name move
 ```
 
+A corpus round ends with the qualified products on the server; it does **not**
+export a Curated Database workbook. The app builds that workbook when an
+operator asks for one (owner decision, 2026-11-12).
+
 `build_index.py` ends by running **`sweep_value_integrity.py`** over the indexed
 products (the lost-separator gates and the "impossible value not flagged" check)
 and exits non-zero if the sweep finds a pipeline defect — a corpus round is not
@@ -48,11 +52,21 @@ untouched — used for light-mode reruns.
   collision-free before the merge. The previous campaign-to-semester mapping
   and every moved file's SHA-256 are recorded by
   `reorganize_raw_semesters.py` and in `CORPUS_LOG.md`.
-- **`_PISCINAS`, `_EXPERIMENTOS`, `_SEM_SITIO`, and direct `PISCINA_*` sites are
-  excluded**,
-  not monitoring corpus inputs. Their raw and qualified trees were removed
-  from the active lanes on 2026-08-25, and the batch and catalog code explicitly
-  refuse to ingest those folders if they are restored later.
+- **Pool data are ordinary SITES** (since 2026-11-12, owner):
+  - `PISCINA_SGOM` and `PISCINA_PLES` hold every logger inside the pool, HOBO
+    and Seaguard.
+  - The Seaguard outside the pool (FORA, the control) belongs to the site
+    itself (`SGOM`, `PLES`), as the HOBO FORA loggers always did.
+  - They are staged by `stage_pools.py` and promoted by `promote_pools.py`.
+  - The old special-collection folders `_PISCINAS`, `_EXPERIMENTOS` and
+    `_SEM_SITIO` stay excluded. They were removed from the active lanes on
+    2026-08-25, and the batch and catalog code refuse them if they are
+    restored.
+- **Seaguard session windows** (`session_windows.csv`): a ratified time
+  window for one session, in local time. The rows outside it come back as
+  Depth-review dismissals, flag 5, through the real pipeline. It is used
+  where a field note says the instrument was elsewhere for part of the
+  session.
 
 - **Semester naming** `<SITE>_<YEAR>S<n>_<INSTRUMENT>[_<TIPO>][_k]_QLF` — the
   semester tag unifies the two corpora (the same expedition is labeled
@@ -80,6 +94,23 @@ untouched — used for light-mode reruns.
 - **Sheets rule** (`_sheets`): one export per logger — `.xlsx`, falling back
   to `.csv` only when that logger has no xlsx (exact-stem grouping so
   HOBO1/HOBO2 stay apart).
+- **Native `.hobo` without an export** (since 2026-11-12, RRDM 23a): a
+  `bruto\*.hobo` whose exact stem has no export in `planilha` is qualified
+  from its native decode, but only inside `NATIVE_BINARY_SCOPES`. Opt-in,
+  because the archive holds never-qualified binaries, and a re-run of an old
+  semester must not change its membership. Two guards refuse a stale
+  whole-memory dump. (1) The decode may not run past the file's save time
+  (mtime), so stage with `shutil.copy2`. (2) Its bytes may not equal the
+  previous dump of the same serial before the decode ends. Guard (2) needs
+  that predecessor in the raw tree; otherwise a ledger decision covers it.
+  Each admitted binary gets a `native :` provenance line. Evidence and
+  validation (157 export pairs): `diagnostics/abrolhos2_sweep_20261112/`.
+- **Seaguard CSV exports**: a deployment whose native session is lost goes
+  under `<SITE>\<TIPO>\EXPORT\SENSORES\*.csv` and is read by `read_ctd`; its
+  cast start is the first record time (GMT). `EXPORT\DOPPLER` is archived
+  only: the DCPS reader needs the native session's cell geometry. A miniCO2
+  delivered as `.xlsx` is staged untouched, beside a derived text export that
+  reads back to the same values (`stage_rrdm_23a.py`).
 - **Clock repairs live in the raw itself** (owner decision, 2026-08-07):
   `correct_clock.py` applies the −12 h AM/PM repair IN PLACE to the affected
   raw CSVs — gated (a file must be accused by `light_clock_phase` first, so

@@ -475,8 +475,8 @@ def toggle_all_controls(enabled=False):
         cb.config(state='normal' if enabled else 'disabled')
     for cb in site_widgets.values():
         cb.config(state='normal' if enabled else 'disabled')
-    for cb in parameter_widgets.values():
-        cb.config(state='normal' if enabled else 'disabled')
+    for param, cb in parameter_widgets.items():
+        cb.config(state='normal' if enabled and param_applies(param) else 'disabled')
 
     # X-axis time window (mooring)
     time_start_entry.config(state='normal' if enabled else 'disabled')
@@ -628,15 +628,31 @@ def disagreement_bars_available_for_selection():
         instrument_combobox.get(), selected)
 
 
+# A parameter that belongs to one Seaguard collection type only (v14.1.0,
+# GitHub issue #50): 'Depth (m)' is a Mooring panel parameter (a tidal depth
+# series), but it is the Y axis of a profile - so it is selectable only while
+# the Data type is TSCP Mooring, and unchecked otherwise.
+MOORING_ONLY_PARAMS = ('Depth (m)',)
+
+
+def param_applies(param):
+    if param not in MOORING_ONLY_PARAMS:
+        return True
+    widget = globals().get('dType_combobox')
+    return widget is not None and widget.get() == 'TSCP Mooring'
+
+
 def toggle_parameter_checkboxes():
     # the parameter filter applies to every family (for HOBO it selects between
     # temperature and light); active whenever a panel is selected
-    if panel1.get() or panel2.get() or panel3.get():
-        for cb in parameter_widgets.values():
+    active = panel1.get() or panel2.get() or panel3.get()
+    for param, cb in parameter_widgets.items():
+        if active and param_applies(param):
             set_enabled_style(cb)
-    else:
-        for cb in parameter_widgets.values():
+        else:
             set_disabled_style(cb)
+            if not param_applies(param):
+                parameter_vars[param].set(False)
 
     toggle_scale_controls()
 
@@ -2213,9 +2229,11 @@ def build_step2(parent):
         ]
         # Conductivity/Pressure remain opt-in with the derived products: they
         # are available for inspection without making already-dense panels the
-        # default (owner review, v13.1).
+        # default (owner review, v13.1). Depth joins them for MOORING panels
+        # (v14.1.0, GitHub issue #50); param_applies() greys it out for a
+        # profile, whose Y axis it is.
         secondary_params = [
-            'Conductivity (mS/cm)', 'Pressure (dbar)',
+            'Conductivity (mS/cm)', 'Pressure (dbar)', 'Depth (m)',
             'Density (kg/m3)', 'Soundspeed (m/s)',
         ]
     parameter_names = main_params + secondary_params

@@ -362,7 +362,8 @@ def pick_co2(co2s, cast_start_gmt):
 def plan(site, sem):
     """[{kind, tipo, campaign, start, files, co2}] across EVERY campaign of the
     semester (a semester can hold two expeditions)."""
-    if site.upper() == '_SEM_SITIO' or site.upper().startswith('PISCINA_'):
+    # pool sites (PISCINA_*) are ordinary sites since v14.1.0 (owner, 2026-11-12)
+    if site.upper() == '_SEM_SITIO':
         return []
     items = []
     # Both raw trees are semester-first: raw\<YEAR>S<n>\<site>.
@@ -374,11 +375,14 @@ def plan(site, sem):
             # logger spanning 2016-2018) - group them from the data
             pl = os.path.join(cdir, 'planilha')
             dropped = _excluded_in(pl)
+            native, refused = _native_binaries(cdir, site, sem)
+            dropped += refused
             for grp, span in _group_replicates(
-                    _sheets(pl), site=site, sem=sem):
+                    _sheets(pl) + native, site=site, sem=sem):
                 items.append({'kind': 'HOBO', 'tipo': None, 'campaign': camp,
                               'start': span[0] if span else camp, 'files': grp,
-                              'co2': None, 'excluded': _exclusions_for(dropped, span)})
+                              'co2': None, 'excluded': _exclusions_for(dropped, span),
+                              'native': [_NATIVE_NOTES[f] for f in grp if f in _NATIVE_NOTES]})
     # SEAGUARD / DOPPLER
     for camp in sorted(os.listdir(SG_RAW)):
         cdir = os.path.join(SG_RAW, camp, site)
@@ -398,6 +402,16 @@ def plan(site, sem):
                     items.append({'kind': kind, 'tipo': tipo, 'campaign': camp,
                                   'start': start, 'files': bins,
                                   'co2': pick_co2(co2s, start) if kind == 'SEAGUARD' else None})
+            # The instrument's own scalar CSV export, for a deployment whose
+            # native session no longer exists (owner, 2026-11-12: CENTROIDE13,
+            # RRDM 23a). read_ctd takes it like a session. EXPORT\DOPPLER is
+            # archived only: the DCPS reader needs the native session's
+            # geometry, which a CSV export does not carry.
+            for csv_path in sorted(glob.glob(os.path.join(tdir, 'EXPORT', 'SENSORES', '*.csv'))):
+                start = _export_start_gmt(csv_path)
+                items.append({'kind': 'SEAGUARD', 'tipo': tipo, 'campaign': camp,
+                              'start': start, 'files': [csv_path],
+                              'co2': pick_co2(co2s, start)})
     # One export, one product: drop the campaigns that merely RE-FILE it
     items = [i for i in items
              if i['kind'] != 'HOBO'
@@ -481,7 +495,9 @@ def _exclusions_for(dropped, span):
     hide it entirely."""
     out = []
     for base, why, xspan in dropped:
-        if xspan is None:
+        if xspan == 'folder':
+            out.append((base, why))
+        elif xspan is None:
             out.append((base, why + ' [its own span is unreadable, so it could '
                                     'not be tied to one deployment of this folder]'))
         elif span and abs(xspan[0] - span[0]) <= _REPL_TOL and abs(xspan[1] - span[1]) <= _REPL_TOL:
@@ -521,6 +537,237 @@ def _span(path):
         return None
 
 
+# Ratified time windows for Seaguard sessions (v14.1.0): the batch's stand-in
+# for an operator's Depth-review cut. Times are LOCAL (GMT-3), the timebase the
+# pipeline works in once 'Correct GMT-3' is applied. Rows outside the window are
+# returned as Depth-review dismissals, so the real pipeline flags them 5 and
+# blanks them; the raw session is never touched.
+SESSION_WINDOWS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'session_windows.csv')
+
+
+def _session_windows():
+    cols = ['decision_id', 'session', 'keep_from', 'keep_to', 'reason', 'reviewer', 'reviewed_at']
+    frame = pd.read_csv(SESSION_WINDOWS_FILE, dtype=str, keep_default_na=False)
+    if list(frame.columns) != cols or frame['session'].duplicated().any():
+        raise ValueError('invalid session window file: %s' % SESSION_WINDOWS_FILE)
+    out = {}
+    for row in frame.to_dict('records'):
+        if not (row['decision_id'] and row['reason'] and row['reviewer'] and row['reviewed_at']):
+            raise ValueError('incomplete session window: %s' % row)
+        lo = pd.Timestamp(row['keep_from']) if row['keep_from'] else None
+        hi = pd.Timestamp(row['keep_to']) if row['keep_to'] else None
+        if lo is None and hi is None or (lo is not None and hi is not None and lo > hi):
+            raise ValueError('empty or reversed session window: %s' % row['decision_id'])
+        out[row['session']] = (row['decision_id'], lo, hi)
+    return out
+
+
+SESSION_WINDOWS = _session_windows()
+
+
+def _install_session_window(session):
+    """Replaces data.trim_by_depth for one run; returns (restore, note) or (None, None)."""
+    win = SESSION_WINDOWS.get(session)
+    if not win:
+        return None, None
+    decision, lo, hi = win
+    original = qm.data.trim_by_depth
+    seen = {}
+
+    def windowed(frame, tk_root=None, locked=None, progress=None):
+        t = pd.to_datetime(frame['Datetime'])
+        outside = pd.Series(False, index=frame.index)
+        if lo is not None:
+            outside |= t < lo
+        if hi is not None:
+            outside |= t > hi
+        seen.update(first=t.min(), dismissed=int(outside.sum()), rows=len(frame))
+        return set(frame.index[outside.to_numpy()])
+
+    qm.data.trim_by_depth = windowed
+
+    def restore():
+        qm.data.trim_by_depth = original
+        if not seen:
+            raise RuntimeError('session window %s was never applied (no Depth review ran)' % decision)
+        return ('%s: kept %s .. %s local, %d of %d rows dismissed (5); first row %s'
+                % (decision, lo or 'start', hi or 'end', seen['dismissed'], seen['rows'], seen['first']))
+    return restore, decision
+
+
+def _export_start_gmt(csv_path):
+    """First record time of a Seaguard CSV export, on the instrument's own
+    (GMT) clock - the same basis as a session folder stamp, which pick_co2
+    shifts to local itself."""
+    df = dh.read_ctd({'raw_data_path': os.path.dirname(csv_path),
+                      'file_name': os.path.basename(csv_path)})
+    return pd.to_datetime(df['Datetime']).min().to_pydatetime()
+
+
+# ---------------- native .hobo binaries without an export (2026-11-12) -------
+# A binary is qualified from its native decode only inside these scopes
+# ((site, semester); '*' = every site). Opt-in on purpose: the archive holds
+# binaries that were never qualified because they have no export (21 in
+# 2026-11), and a re-run of an old semester must not change its membership.
+NATIVE_BINARY_SCOPES = {('*', '2026S2'), ('PLES', '2025S2'),
+                        # pool loggers whose only exports are 12-hour COLLAPSED
+                        # csv (ledger rows *-collapsed); their binaries carry a
+                        # sound clock (diagnostics pool_clock_check.py)
+                        ('PISCINA_SGOM', '2024S1'), ('PISCINA_SGOM', '2024S2'),
+                        ('PISCINA_PLES', '2024S2')}
+# A 64 KB .hobo is a whole-memory dump: a launch does not clear memory and the
+# header carries no sample count, so a lost terminator makes the decoder read
+# an older deployment's bytes as new samples - plausible, QC-passing, and
+# agreeing with no export (proof and validation against 157 export pairs:
+# diagnostics/abrolhos2_sweep_20261112/). Two guards, both measured there:
+#  - the decode may not run more than _STALE_OVERRUN_H past the moment the
+#    file was SAVED (its mtime, when it falls inside the series; staging must
+#    preserve it, as shutil.copy2 does);
+#  - the bytes may not be identical to the previous dump of the SAME SERIAL
+#    before the decode ends (stale memory is byte-identical to what the logger
+#    held at its previous readout; genuine boundaries fall 4-9 samples AFTER
+#    the decoded end in every validated pair).
+# The second guard needs that predecessor in the raw tree; when it is not
+# there the binary still needs a ledger decision or a replicate cross-check.
+_STALE_RUN = 256
+_STALE_OVERRUN_H = 48     # genuine overrun <= 23.3 h, proven stale >= 9 days
+_HOBO_HEADERS = None
+_NATIVE_NOTES = {}
+
+
+def _hobo_header(path):
+    """(serial, launch, sample-stream start offset, bytes) of a .hobo, or None."""
+    with open(path, 'rb') as f:
+        blob = f.read()
+    if not blob.startswith(b'HOBO'):
+        return None
+    tags, i = {}, 0
+    while i < min(len(blob), 0x400) - 2:            # the reader's own TLV walk
+        if blob[i] == 0x88:
+            t, ln = blob[i + 1], blob[i + 2]
+            if t not in tags and 0 < ln < 64:
+                tags[t] = blob[i + 3:i + 3 + ln]
+            i += 3 + ln if 0 < ln < 64 else 1
+        else:
+            i += 1
+    p = tags.get(0x07)
+    if p is None or len(p) < 7:
+        return None
+    try:
+        launch = pd.Timestamp(2000 + p[1], p[2], p[3], p[4], p[5], p[6])
+    except ValueError:
+        return None
+    return (tags.get(0x06, b'').decode('ascii', 'replace'), launch,
+            blob.rfind(b'\x88\x11\x00', 0, 0x300) + 3, blob)
+
+
+def _all_hobo_headers():
+    """Every .hobo binary under the raw HOBO tree (any semester, any folder)."""
+    global _HOBO_HEADERS
+    if _HOBO_HEADERS is None:
+        _HOBO_HEADERS = []
+        for root, _d, fs in os.walk(H_RAW):
+            for f in fs:
+                if f.lower().endswith('.hobo'):
+                    h = _hobo_header(os.path.join(root, f))
+                    if h:
+                        _HOBO_HEADERS.append((os.path.join(root, f),) + h)
+    return _HOBO_HEADERS
+
+
+def _stale_from_sample(blob, dstart, prev_blob):
+    """Sample index from which `blob` is byte-identical to `prev_blob` over
+    _STALE_RUN non-padding bytes, or None."""
+    n = min(len(blob), len(prev_blob))
+    k = dstart + 64
+    while k + _STALE_RUN <= n:
+        window_a, window_b = blob[k:k + _STALE_RUN], prev_blob[k:k + _STALE_RUN]
+        if window_a == window_b:
+            if window_a.count(0xFF) == _STALE_RUN:
+                return None                 # common padding: nothing stale before it
+            return (k - dstart) * 8 // 18
+        # skip past the last differing byte of this window
+        last = max(j for j in range(_STALE_RUN) if window_a[j] != window_b[j])
+        k += last + 1
+    return None
+
+
+def _native_guard(path):
+    """(None, note) when the binary may be qualified from its native decode;
+    (reason, None) when it may not."""
+    try:
+        df, info = dh.read_hobo({'raw_data_path': os.path.dirname(path),
+                                 'file_name': os.path.basename(path),
+                                 'input_type': 'HOBO', 'correct_gmt3h': False}, {})
+    except Exception as e:
+        return 'native decode refused: %s' % str(e)[:120], None
+    # since v14.1.0 the reader WARNS when the decode runs past the file's save
+    # time and leaves the decision to the operator. The corpus refuses the
+    # whole dump, but only past _STALE_OVERRUN and only when the save time
+    # falls inside the series: genuine data overran its save time by up to
+    # 23.3 h in the export-verified pairs (a PC clock off), by YEARS when the
+    # PC clock was reset (save time before the data - unusable), while every
+    # proven stale tail overran by 9 days or more (hobo_savetime_margin.py).
+    after = info.get('after_save')
+    if after and after['saved_inside_series'] and after['hours_past'] > _STALE_OVERRUN_H:
+        return ('stale memory: the native decode runs to %s, %.0f h past the moment '
+                'the file was saved (%s)' % (after['decoded_end'], after['hours_past'],
+                                             after['saved'].floor('min'))), None
+    t = pd.to_datetime(df['Datetime']).reset_index(drop=True)
+    saved = pd.Timestamp(os.path.getmtime(path), unit='s') - pd.Timedelta(hours=3)
+    hdr = _hobo_header(path)
+    if hdr is None:
+        return 'no readable header', None
+    serial, launch, dstart, blob = hdr
+    earlier = [h for h in _all_hobo_headers()
+               if h[1] == serial and h[2] < launch and os.path.normcase(h[0]) != os.path.normcase(path)]
+    if not earlier:
+        prev_note = 'no earlier dump of serial %s in the raw tree' % serial
+    else:
+        prev = max(earlier, key=lambda h: h[2])
+        s = _stale_from_sample(blob, dstart, prev[4])
+        if s is not None and s < len(t):
+            return ('stale memory: from sample %d of %d the dump is byte-identical '
+                    'to the previous dump of serial %s (%s)'
+                    % (s, len(t), serial, os.path.basename(prev[0]))), None
+        prev_note = 'fresh against the previous dump of serial %s (%s)' % (
+            serial, os.path.basename(prev[0]))
+    return None, ('%s: native decode, no HOBOware export; %d samples to %s, '
+                  'file saved %s; %s' % (os.path.basename(path), len(t), t.iloc[-1],
+                                         saved.floor('min'), prev_note))
+
+
+def _native_binaries(cdir, site, sem):
+    """([binaries admitted], [(file, reason, span) refused]) of a site folder:
+    the bruto\\*.hobo whose exact stem has no USABLE export in planilha. An
+    export excluded by the ledger (a 12-hour collapsed csv, say) does not
+    block its binary; a ledger row on the binary itself always keeps it out."""
+    if (('*', sem) not in NATIVE_BINARY_SCOPES
+            and (str(site).upper(), sem) not in NATIVE_BINARY_SCOPES):
+        return [], []
+    pl = os.path.join(cdir, 'planilha')
+    exported = ({os.path.splitext(f)[0] for f in os.listdir(pl) if f not in EXCLUDED_REPLICATES}
+                if os.path.isdir(pl) else set())
+    admitted, refused = [], []
+    for b in sorted(glob.glob(os.path.join(cdir, 'bruto', '*.hobo'))):
+        base = os.path.basename(b)
+        if os.path.splitext(base)[0] in exported:
+            continue
+        if base in EXCLUDED_REPLICATES:
+            refused.append((base, EXCLUDED_REPLICATES[base], _span(b)))
+            continue
+        why, note = _native_guard(b)
+        if why:
+            log('    (native %s refused: %s)' % (base, why))
+            # a refused decode has no trustworthy span of its own: report it on
+            # every product of the folder
+            refused.append((base, why, 'folder'))
+        else:
+            _NATIVE_NOTES[b] = note
+            admitted.append(b)
+    return admitted, refused
+
+
 _TEMP_ONLY_CACHE = {}
 
 
@@ -556,6 +803,40 @@ FORCED_REPLICATE_GROUPS = {
         (
             'HOBO2_PAB3_180925_110326.xlsx',  # 4,269 rows, ends 2026-03-15
             'HOBO1_PAB3_180925_110326.xlsx',  # stopped early on 2026-02-15
+        ),
+    ),
+    # owner, 2026-11-12: add HOBO3 to 2025S2 if verifiably valid. Verified:
+    # 166 days, +0.22 degC vs HOBO1, all days within 0.5 degC, change-corr
+    # +0.99 (diagnostics/abrolhos2_sweep_20261112/hobo3_ples_check.py). It
+    # stopped on 2025-09-05, 17 days before HOBO1, beyond the span rule.
+    ('PLES', '2025S2'): (
+        (
+            'HOBO1_PLES_A1_220325_190925.xlsx',  # 2,208 rows, ends 2025-09-22
+            'HOBO3_PLES_220325_220926.hobo',     # native decode, ends 2025-09-05
+        ),
+    ),
+    # launched 2 min apart on 2026-03-16; HOBO1 stopped on 2026-04-04 and
+    # agrees with HOBO2 until then (97.4% of 2-h slots within 0.5 degC) - the
+    # PAB3 2026S1 situation. Owner-confirmed 2026-11-12.
+    ('PLES', '2026S2'): (
+        (
+            'HOBO2_PLES_160326_220926.hobo',     # 2,278 samples, ends 2026-09-22
+            'HOBO1_PLES_160326_220926.hobo',     # stopped on 2026-04-04
+        ),
+    ),
+    # pool replicates launched the same morning, one of which stopped early
+    # (the PLES/PAB3 situation; owner, 2026-11-12: pool loggers of one
+    # campaign are replicates)
+    ('PISCINA_PLES', '2026S2'): (
+        (
+            'HOBO1_PISCINA_PLES_230926.xlsx',    # 902 rows, ends 2026-05-31
+            'HOBO2_PISCINA_PLES_230926.xlsx',    # 723 rows, ends 2026-05-16
+        ),
+    ),
+    ('PISCINA_SGOM', '2026S1'): (
+        (
+            'HOBO2_SGOM_PISCINA_210325.xlsx',    # 797 rows, ends 2025-05-26
+            'HOBO1_SGOM_PISCINA_210325.xlsx',    # 82 rows, stopped on 2025-03-28
         ),
     ),
 }
@@ -936,8 +1217,16 @@ def do_site(site, sem):
                                             t0 + pd.Timedelta(days=400)))
             else:
                 qm.set_replicate_reference(None)
-            csv, root, err = run_qualification(files, 'HOBO' if kind == 'HOBO' else 'Seaguard',
-                                               dtype, site, name, co2=it['co2'])
+            restore, window_note = None, None
+            if kind == 'SEAGUARD' and str(files).lower().endswith('.bin'):
+                restore, _decision = _install_session_window(
+                    os.path.basename(os.path.dirname(files)))
+            try:
+                csv, root, err = run_qualification(files, 'HOBO' if kind == 'HOBO' else 'Seaguard',
+                                                   dtype, site, name, co2=it['co2'])
+            finally:
+                if restore:
+                    window_note = restore()
             if not csv:
                 log('    FAILED: %s' % err); done.append((name, None, 0, err)); continue
             if kind == 'HOBO':
@@ -964,6 +1253,10 @@ def do_site(site, sem):
                     'fixed-%dd window' % int(qm.CONFIG['tsSettings'].get('lux_fixed_days', 60))
                     if LIGHT_MODE == 'fixed' else 'adaptive (reviewed)')
                 block += _clock_lines()
+                for note in it.get('native') or []:
+                    block += '\n    native   : %s' % note
+            if window_note:
+                block += '\n    window   : %s' % window_note
             for fn, why in it.get('excluded') or []:
                 block += '\n    EXCLUDED : %s\n               (%s)' % (fn, why)
             write_provenance(dest, name, block)

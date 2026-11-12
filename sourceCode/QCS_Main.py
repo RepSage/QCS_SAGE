@@ -959,6 +959,11 @@ def apply_input_settings(vals):
             ui_warn("Warning", "Unsupported file format (use .csv, .xlsx, a "
                     "Seaguard .bin session or a raw HOBO .hobo file):\n%s" % f)
             return False
+        # a DCPS spreadsheet export used to be read as a scalar PROFILE, and
+        # refused as Doppler without saying why (GitHub issue #49, v14.1.0)
+        if f.lower().endswith(('.csv', '.xlsx')) and data.is_dcps_export(f):
+            ui_warn("Warning", "%s\n\n%s" % (data.DCPS_EXPORT_REFUSAL, f))
+            return False
     INPUT['replicate_files'] = replicate_files
     INPUT['n_replicates'] = n_rep
     data_path = replicate_files[0]   # drives file_name/raw_data_path below
