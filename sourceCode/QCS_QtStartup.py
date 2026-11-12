@@ -21,17 +21,25 @@ import os
 import re
 import sys
 
-from PySide6.QtCore import QDir, QLockFile, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QDir, QLockFile, QRect, Qt
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QSplashScreen
+
+import QCS_QtTheme as qtheme   # splash colours/sizes; light (~0.1 s), no app state
 
 _ICON = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'qcs_icon.png')
 _ACTIVATE = b'activate\n'
 
 
 def instance_key():
-    """One instance per Windows user (two users on one machine each get theirs)."""
+    """One instance per Windows user (two users on one machine each get theirs).
+    QCS_INSTANCE_KEY overrides it - for release smoke tests only, so a test
+    copy never talks to the operator's running QCS (a test that used the real
+    key brought the operator's window forward and exited, 2026-11-12)."""
+    override = os.environ.get('QCS_INSTANCE_KEY')
+    if override:
+        return re.sub(r'[^A-Za-z0-9_.-]', '_', override)
     user = os.environ.get('USERNAME') or os.environ.get('USER') or 'user'
     return 'QCS-SAGE-%s' % re.sub(r'[^A-Za-z0-9_.-]', '_', user)
 
@@ -101,18 +109,40 @@ class SingleInstance:
             self._pending = True
 
 
+def splash_pixmap(app):
+    """The splash card (owner design, 2026-11-12): the icon in a white border
+    and the message in bold on the white band below it, in the system UI font.
+    Drawn at the screen's device-pixel ratio so it stays sharp on scaled
+    displays. Sizes and colours live in QCS_QtTheme."""
+    icon_px, margin, band = qtheme.SPLASH_ICON_PX, qtheme.SPLASH_MARGIN_PX, qtheme.SPLASH_BAND_PX
+    width, height = icon_px + 2 * margin, icon_px + margin + band
+    screen = app.primaryScreen()
+    ratio = screen.devicePixelRatio() if screen else 1.0
+    pix = QPixmap(round(width * ratio), round(height * ratio))
+    pix.setDevicePixelRatio(ratio)
+    pix.fill(QColor(qtheme.SPLASH_CARD))
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    icon = QPixmap(_ICON)
+    if not icon.isNull():
+        painter.drawPixmap(QRect(margin, margin, icon_px, icon_px), icon)
+    font = QFont(app.font())                 # the system UI family (Segoe UI)
+    font.setPointSize(qtheme.SPLASH_POINT_SIZE)
+    font.setBold(True)
+    painter.setFont(font)
+    painter.setPen(QColor(qtheme.SPLASH_TEXT))
+    painter.drawText(QRect(0, margin + icon_px, width, band), int(Qt.AlignmentFlag.AlignCenter),
+                     qtheme.SPLASH_MESSAGE)
+    painter.setPen(QPen(QColor(qtheme.SPLASH_OUTLINE), 1))
+    painter.drawRect(0, 0, width - 1, height - 1)
+    painter.end()
+    return pix
+
+
 def show_splash(app):
     """A splash on screen at once; the caller closes it with finish(window)."""
-    pix = QPixmap(_ICON)
-    if pix.isNull():
-        pix = QPixmap(220, 220)
-        pix.fill(Qt.GlobalColor.white)
-    else:
-        pix = pix.scaled(220, 220, Qt.AspectRatioMode.KeepAspectRatio,
-                         Qt.TransformationMode.SmoothTransformation)
-    splash = QSplashScreen(pix)
-    splash.showMessage('Starting QCS...', Qt.AlignmentFlag.AlignBottom
-                       | Qt.AlignmentFlag.AlignHCenter)
+    splash = QSplashScreen(splash_pixmap(app))
     splash.show()
     app.processEvents()
     return splash

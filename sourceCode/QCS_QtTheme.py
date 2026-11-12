@@ -43,6 +43,19 @@ LOG_COLORS = {'light': {'error': '#b30000', 'warning': '#9a6a00',
 ACCENT = '#2a6fb5'
 ACCENT_DARK = '#4a90d9'      # lighter, for the dark scheme
 
+# Startup splash (owner design, 2026-11-12): a white card - the icon inside a
+# white border, 'QCS initializing...' in bold on the white band below it, a
+# hairline outline so the card stays visible over a white window. Sizes are
+# logical pixels; the text uses the system UI font family (Segoe UI).
+SPLASH_CARD = '#ffffff'
+SPLASH_TEXT = '#333333'
+SPLASH_OUTLINE = '#c8c8c8'
+SPLASH_ICON_PX = 200
+SPLASH_MARGIN_PX = 32
+SPLASH_BAND_PX = 68
+SPLASH_POINT_SIZE = 18
+SPLASH_MESSAGE = 'QCS initializing...'
+
 
 def _set_clear_button_visible(field, button, action, visible, animate):
     """Show/hide a trailing clear action, optionally with a short fade."""
