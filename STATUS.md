@@ -51,13 +51,23 @@ Next:
      installer lines;
    - the manual updated (version, startup, DCPS refusal, .hobo warning,
      Depth, pool sites).
-   Suite 93/93. **Blocked on owner permission:** the build venv from
-   `packaging/README.md` no longer exists (`%TEMP%` was cleaned), so the
-   PyPI packages must be downloaded again. `gh` is not installed, which
-   affects the PR, the Release and the .exe upload.
-   Then: build, offscreen smoke test, a check that `PYZ-00.toc` contains
-   `QCS_QtStartup` + `PySide6.QtNetwork`, release-audit, tag, push, PR
-   closing #49/#50, and the Release in the v11.6 format.
+   Suite 93/93. The owner authorized the build download; the owner
+   publishes the PR and Release on GitHub by hand (`gh` stays uninstalled).
+   - **Built 2026-11-12.** venv `%TEMP%\qcs_build_env` (freeze in
+     `%TEMP%\qcs_build_env_freeze.txt`), PyInstaller `--clean`, workpath
+     `%TEMP%\qcs_build_work_1410`. Bundle: 2,950 files, 303.7 MB. 604 more
+     files than v14.0.3 are `tzdata`, pulled in by newer dependencies.
+     `QCS_Setup_v14.1.0.exe`: 83,474,019 bytes, SHA-256 `d2fdafb5…723a`.
+   - Frozen offscreen smoke test PASS (`diagnostics/release_v1410/frozen_smoke.json`):
+     the toc contains `QCS_QtStartup` and `QtNetwork`; `--shot` exits 0; a
+     second instance exits in 0.9 s; no crash log. All 2,950 compiler inputs
+     match the bundle. The PR and Release bodies are drafted in
+     `diagnostics/release_v1410/{pr_body,release_body}.md`.
+   - **Next:** read the release-audit (running). Then add the installer
+     lines to the changelog Verification, push the branch, and the owner
+     opens the PR (closes #49/#50) and merges. Then tag `v14.1.0` on the
+     merge commit (push `refs/tags/v14.1.0` explicitly), and the owner
+     publishes the Release with the .exe.
 
 ## RRDM 23a SET 2026 - imported (2026-11-12; record in CORPUS_LOG, code in `4a84f93`)
 
