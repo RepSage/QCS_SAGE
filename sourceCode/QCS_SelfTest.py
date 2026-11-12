@@ -2097,9 +2097,6 @@ with _tempfile.TemporaryDirectory() as _curated_root:
     _special_dir = _os.path.join(
         _curated_root, 'HOBO', 'qualified', '2026S1',
         '_PISCINAS', 'SGOM_NA')
-    _pool_site_dir = _os.path.join(
-        _curated_root, 'SEAGUARD', 'qualified', '2026S1',
-        'PISCINA_SGOM_FORA')
     _unknown_site_dir = _os.path.join(
         _curated_root, 'SEAGUARD', 'qualified', '2026S1',
         '_SEM_SITIO')
@@ -2107,7 +2104,6 @@ with _tempfile.TemporaryDirectory() as _curated_root:
         _os.makedirs(_folder)
     _os.makedirs(_raw_dir)
     _os.makedirs(_special_dir)
-    _os.makedirs(_pool_site_dir)
     _os.makedirs(_unknown_site_dir)
     pd.DataFrame({
         'Datetime': ['2026-01-01 00:00'], 'Site': ['SHOULD_NOT_APPEAR'],
@@ -2118,13 +2114,6 @@ with _tempfile.TemporaryDirectory() as _curated_root:
         'Flag_T': [1], 'Flag_lux': [1],
     }).to_csv(_os.path.join(
         _special_dir, 'SGOM_NA_2026S1_HOBO_QLF.csv'), index=False)
-    pd.DataFrame({
-        'Datetime': ['2026-01-01 00:00'], 'Site': ['PISCINA_SGOM_FORA'],
-        'Temperature (degC)': [30.0], 'Salinity (PSU)': [36.0],
-        'Flag': ['1'],
-    }).to_csv(_os.path.join(
-        _pool_site_dir,
-        'PISCINA_SGOM_FORA_2026S1_SEAGUARD_FUNDEIO_QLF.csv'), index=False)
     pd.DataFrame({
         'Datetime': ['2026-01-01 00:00'], 'Site': ['_SEM_SITIO'],
         'Temperature (degC)': [30.0], 'Salinity (PSU)': [36.0],
@@ -2228,7 +2217,26 @@ with _tempfile.TemporaryDirectory() as _curated_root:
         'HOBO', file_list=[_workbook])
     assert len(_curated_hobo) == 2
     assert set(_curated_hobo['Source file']) == {_hobo_name}
-ok.append('curated database (dynamic filters / cancellation / visualization handoff)')
+# v14.1.0: pool data are ordinary SITES (owner, 2026-11-12) - PISCINA_SGOM and
+# PISCINA_PLES sit beside the monitoring sites in the same sheets. Only the
+# old special-collection folders (_PISCINAS, _EXPERIMENTOS, _SEM_SITIO) stay
+# out, as the block above checks.
+with _tempfile.TemporaryDirectory() as _pool_root:
+    for _family, _name, _cols in (
+            ('SEAGUARD', 'PISCINA_SGOM_2026S1_SEAGUARD_FUNDEIO_QLF.csv',
+             {'Salinity (PSU)': [36.0], 'Flag': ['1']}),
+            ('HOBO', 'PISCINA_SGOM_2026S1_HOBO_QLF.csv',
+             {'Luminosity (lux)': [100.0], 'Flag_T': [1], 'Flag_lux': [1]})):
+        _pool_dir = _os.path.join(_pool_root, _family, 'qualified', '2026S1', 'PISCINA_SGOM')
+        _os.makedirs(_pool_dir)
+        pd.DataFrame(dict({'Datetime': ['2026-03-20 12:00'], 'Site': ['PISCINA_SGOM'],
+                           'Temperature (degC)': [30.0]}, **_cols)).to_csv(
+            _os.path.join(_pool_dir, _name), index=False)
+    _pool_catalog, _ = _curated.discover_qualified_corpus(_pool_root)
+    assert sorted(_pool_catalog['instrument']) == ['HOBO', 'Seaguard (Mooring)'], _pool_catalog
+    assert _curated.available_filters(_pool_catalog)['sites'] == ['PISCINA_SGOM']
+ok.append('curated database (dynamic filters / cancellation / visualization handoff; '
+          'pool sites catalogued as ordinary sites)')
 
 from QCS_ReplicateSelfTest import run as _replicate_selftests
 ok.extend(_replicate_selftests())

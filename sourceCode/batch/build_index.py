@@ -21,7 +21,9 @@ import pandas as pd
 
 ROOT = r"\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE"
 EXCLUDED_COLLECTIONS = {'_EXPERIMENTOS', '_PISCINAS', '_SEM_SITIO'}
-EXCLUDED_SITE_PREFIXES = ('PISCINA_',)
+# pool sites (PISCINA_SGOM, PISCINA_PLES) are ordinary sites since v14.1.0
+# (owner, 2026-11-12); only the old special-collection folders stay out
+EXCLUDED_SITE_PREFIXES = ()
 
 
 def parse_provenance(path):

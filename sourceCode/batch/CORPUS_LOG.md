@@ -13,6 +13,78 @@ corpus procedure, and `changelog/` the app releases. This file holds
 
 ---
 
+## 2026-11-12 — pool data back as ordinary sites (PISCINA_SGOM, PISCINA_PLES)
+
+No QC rule changed. The owner reversed the 2026-08-25 removal: pool data join
+the monitoring corpus as sites. Inside the pool, the sites are `PISCINA_SGOM`
+and `PISCINA_PLES`, HOBO and Seaguard. The Seaguard outside the pool (FORA,
+the control) belongs to the site itself, `SGOM` or `PLES`, as the HOBO FORA
+loggers already did: the 7 FORA HOBOs of 19a/20a are byte-identical to the
+site loggers in 2024S2/2025S1. The backups the 2026-08-25 entry cites
+(`CLAUDE\_deleted\20260825\...`) no longer exist, so the field archive
+(`\\Abrolhos2\EXPEDIÇÕES\RRDM`, read-only) was the only source.
+
+Owner decisions:
+- the unlabelled SGOM pool loggers of 18a ('Experimento Piscina') and 22a
+  ('PISCINA SGOM') were inside the pool;
+- 19a SGOM `Pis1`/`Pis2` are replicates;
+- the 22a SGOM pool Seaguard is cut before its second entry into the water.
+
+**Raw** (`stage_pools.py --apply`): 48 files copied with `shutil.copy2`,
+SHA-256 and mtime verified. Manifest:
+`diagnostics/abrolhos2_sweep_20261112/staging_pools_manifest.csv`.
+- HOBO into `PISCINA_SGOM` 2024S1/2024S2/2025S1/2026S1/2026S2 and
+  `PISCINA_PLES` 2024S2/2025S1/2026S1/2026S2.
+- 5 Seaguard sessions (each with `Config.xml` + `Layout.xml`) and 2 CO2 txt.
+- Of the duplicates, the explicit `FERNANDO\SGOM\DENTRO` copy was staged,
+  not the byte-identical `CLARA` one.
+- Not staged:
+  - the 22a Seaguard CSV exports (duplicates of their sessions);
+  - the field-note files. One of them is the source of the SGOM window:
+    'FICOU UM TEMPO NA AGUA, APOIADO NO BARCO, FORA DA PISCINA. CHECAR O
+    SEGUNDO MOMENTO Q ENTRA NA AGUA'.
+
+**Sources decided by the data:**
+- The 18a/19a pool csv exports are 12-hour COLLAPSED, 5 of 5 by
+  `light_clock_phase` (`pool_clock_check.py`). Their native `.hobo` clocks
+  are sound: light peak 9.2-12.7 h, 91-100% daylight.
+- So the binaries are qualified (`NATIVE_BINARY_SCOPES` PISCINA_* 2024S1,
+  2024S2). The csv carry ledger rows `pool-*`. An excluded export no longer
+  blocks its binary.
+- The 18a HOBO2 export has 3 samples and its binary does not decode, so that
+  logger is out.
+- 20a and later exports agree with their binaries.
+
+**Session window** (`session_windows.csv`, `rrdm22a-piscina-sgom-entry`): the
+22a SGOM pool Seaguard was first in the water 09:20-12:20 local at ~147 kPa
+beside the boat, then in air, and entered the pool at 13:17 local (pressure
+101.1 -> 146.5 kPa). The 255 earlier rows are dismissed (flag 5) through the
+pipeline's Depth-review path.
+
+**Forced replicate groups:** PISCINA_PLES/2026S2 and PISCINA_SGOM/2026S1. Each
+has one logger that stopped early: 723 of 902 rows, and 82 of 797.
+
+**Qualified** (candidate run in a short-path folder, inspected, then
+`promote_pools.py --apply`): 14 new products, 27,478 rows.
+- 9 HOBO products:
+  - PISCINA_SGOM: 2024S1 3,917 rows (HOBO1 only), 2024S2 1,957, 2025S1
+    2,329, 2026S1 797, 2026S2 2,307.
+  - PISCINA_PLES: 2024S2 1,965, 2025S1 2,322, 2026S1 4,307, 2026S2 902.
+    In 2026S2, 498 Flag_T=3 are withheld by the sustained replicate policy;
+    HOBO2 has an anomalous light phase.
+- 5 Seaguard FUNDEIO products:
+  - PISCINA_PLES 2024S2 143 rows and 2026S1 1,550 (+CO2);
+  - PISCINA_SGOM 2026S1 1,685, of which 255 are dismissed (+CO2 at 1,430);
+  - PLES 2026S1 1,578; SGOM 2026S1 1,719.
+The index went 289 -> 303 (+14, 0 removed, 0 changed), and the integrity
+sweep found no pipeline defect. The index backup is:
+
+```
+\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\_deleted\pools_20261112T155508
+```
+
+---
+
 ## 2026-11-12 — RRDM 23a SET 2026 staged and qualified (2026S2); PLES 2025S2 gains HOBO3
 
 No QC rule changed. New raw data entered, and one published product was

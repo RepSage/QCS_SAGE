@@ -39,9 +39,12 @@ Done (committed; suite 93/93, ruff clean):
   (needs the owner's screen).
 
 Next:
-1. Pools as a separate collection. Owner decisions are needed before any
-   write: naming, and which source for 18a/19a, whose csv starts 8-12 h off
-   the .hobo.
+1. **Pools: done 2026-11-12.** They are ordinary sites `PISCINA_SGOM` /
+   `PISCINA_PLES`, with the Seaguard FORA under `SGOM` / `PLES`: 14 products,
+   27,478 rows, index 289 -> 303, integrity clean. The record is in
+   CORPUS_LOG 2026-11-12. Still owner-unconfirmed: the forced replicate
+   groups PISCINA_PLES/2026S2 and PISCINA_SGOM/2026S1, where one logger
+   stopped early (my call, on the PLES/PAB3 precedent).
 2. Release ritual: `QCS_VERSION`, `changelog/v14.1.0.md`, manual HTML,
    installer build and smoke test, tag, PR closing #49/#50 (needs `gh` or
    the browser), and a GitHub Release in the v11.6 format.
@@ -54,49 +57,6 @@ Next:
 - Decided 2026-11-12: RH18 (22a) and RH30 BRITAS (21a) are rubble experiments
   and stay out. The 12 same-named 12-hour-collapsed Abrolhos2 exports must
   never replace the Database copies.
-
-## Pool data (piscinas) re-inclusion - design agreed, after 23a (2026-11-12)
-
-Owner agreed (2026-11-12): a separate collection, part of v14.1.0. Nothing
-is implemented yet. The data has been excluded since
-2026-08-25, and it is still refused in code: `QCS_Curated.py`
-(`_EXCLUDED_*`, app code, so a release), `build_index.py`, `qualify_site.py`
-`plan`/`plan_buckets`, `run_semester.py` and the self-tests near
-`QCS_SelfTest.py:2013`. **Discrepancy:** CORPUS_LOG cites recovery backups
-under `_deleted\20260825\{special_collections,seaguard_pool_sites}` and the
-2026-09-03 SGOM/HOBO backups; none of them exists any more
-(`DATABASE\_deleted` holds only three 2026-09-08 folders, and `CLAUDE\` no
-longer exists). The field archive is the only source.
-
-Inventory (`diagnostics/abrolhos2_sweep_20261112/`: `sweep_pools.py` ->
-`pool_files.csv`, `pool_vs_db.py` -> `pool_vs_db.csv`, `probe_pool_hobo.py`
--> `probe_pool_hobo.csv`): 1.2 M files walked on both servers (Abrolhos2
-is a superset for pools), 70 distinct pool data files. **The 7 FORA HOBOs
-(19a/20a, PLES + SGOM) are byte-identical to the site loggers already in
-2024S2/2025S1**, so they stay where they are. Pool-only data:
-- HOBO DENTRO, SGOM: 18a (Oct 2023-Mar 2024, HOBO1 only; HOBO2 3 rows,
-  .hobo refused), 19a Pis1/Pis2, 20a (CLARA folder), 22a (HOBO1 82 rows,
-  HOBO2 ends 2025-05-26), 23a HOBO1/2 (Mar-Sep 2026, .hobo only).
-- HOBO DENTRO, PLES: none in 18a; 19a (files misnamed `*_SGOM_PISCINA_*`
-  in `PLES\DENTRO`), 20a (FERNANDO), 22a HOBO1 xlsx only (Mar 2025-Mar 2026),
-  23a HOBO1/2 (both stop in May 2026).
-- Seaguard: 19a PLES DENTRO session (Sep 2024); 22a PLES/SGOM DENTRO/FORA
-  sessions + 2 CO2 txt (DENTRO). This matches the 5 removed products.
-- **The 18a/19a pool exports are csv whose start differs from the .hobo by
-  8-12 h**; the 20a+ xlsx agree with the .hobo. Run the clock check before using them.
-- Only paths containing PISCIN* were swept; pool data stored under another
-  folder name would be missed.
-- The 64 KB pool dumps need the same stale-memory guard as 23a. Their
-  boundaries agree with the decode ends: SGOM 22a HOBO1/HOBO2 and PLES 23a
-  HOBO2.
-Agreed design: restore
-`_PISCINAS` (HOBO) and `PISCINA_*` (Seaguard) as a separate collection type
-in the Curated Database, never mixed into the monitoring sheets. Then a MINOR
-release (QC unchanged), staging from Abrolhos2, and qualification (23a
-done 2026-11-12). Pool binaries without an export can use the native path:
-add their scope to `NATIVE_BINARY_SCOPES`. Staging the pool dumps also puts
-in the raw tree the predecessor the stale guard needs for RODORASO 23a
-(`HOBO1_SGOM_PISCINA_210325`).
 
 ## Open scientific work (2026-09-09)
 

@@ -52,11 +52,21 @@ untouched — used for light-mode reruns.
   collision-free before the merge. The previous campaign-to-semester mapping
   and every moved file's SHA-256 are recorded by
   `reorganize_raw_semesters.py` and in `CORPUS_LOG.md`.
-- **`_PISCINAS`, `_EXPERIMENTOS`, `_SEM_SITIO`, and direct `PISCINA_*` sites are
-  excluded**,
-  not monitoring corpus inputs. Their raw and qualified trees were removed
-  from the active lanes on 2026-08-25, and the batch and catalog code explicitly
-  refuse to ingest those folders if they are restored later.
+- **Pool data are ordinary SITES** (since 2026-11-12, owner):
+  - `PISCINA_SGOM` and `PISCINA_PLES` hold every logger inside the pool, HOBO
+    and Seaguard.
+  - The Seaguard outside the pool (FORA, the control) belongs to the site
+    itself (`SGOM`, `PLES`), as the HOBO FORA loggers always did.
+  - They are staged by `stage_pools.py` and promoted by `promote_pools.py`.
+  - The old special-collection folders `_PISCINAS`, `_EXPERIMENTOS` and
+    `_SEM_SITIO` stay excluded. They were removed from the active lanes on
+    2026-08-25, and the batch and catalog code refuse them if they are
+    restored.
+- **Seaguard session windows** (`session_windows.csv`): a ratified time
+  window for one session, in local time. The rows outside it come back as
+  Depth-review dismissals, flag 5, through the real pipeline. It is used
+  where a field note says the instrument was elsewhere for part of the
+  session.
 
 - **Semester naming** `<SITE>_<YEAR>S<n>_<INSTRUMENT>[_<TIPO>][_k]_QLF` — the
   semester tag unifies the two corpora (the same expedition is labeled

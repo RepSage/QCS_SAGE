@@ -362,7 +362,8 @@ def pick_co2(co2s, cast_start_gmt):
 def plan(site, sem):
     """[{kind, tipo, campaign, start, files, co2}] across EVERY campaign of the
     semester (a semester can hold two expeditions)."""
-    if site.upper() == '_SEM_SITIO' or site.upper().startswith('PISCINA_'):
+    # pool sites (PISCINA_*) are ordinary sites since v14.1.0 (owner, 2026-11-12)
+    if site.upper() == '_SEM_SITIO':
         return []
     items = []
     # Both raw trees are semester-first: raw\<YEAR>S<n>\<site>.
@@ -536,6 +537,64 @@ def _span(path):
         return None
 
 
+# Ratified time windows for Seaguard sessions (v14.1.0): the batch's stand-in
+# for an operator's Depth-review cut. Times are LOCAL (GMT-3), the timebase the
+# pipeline works in once 'Correct GMT-3' is applied. Rows outside the window are
+# returned as Depth-review dismissals, so the real pipeline flags them 5 and
+# blanks them; the raw session is never touched.
+SESSION_WINDOWS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'session_windows.csv')
+
+
+def _session_windows():
+    cols = ['decision_id', 'session', 'keep_from', 'keep_to', 'reason', 'reviewer', 'reviewed_at']
+    frame = pd.read_csv(SESSION_WINDOWS_FILE, dtype=str, keep_default_na=False)
+    if list(frame.columns) != cols or frame['session'].duplicated().any():
+        raise ValueError('invalid session window file: %s' % SESSION_WINDOWS_FILE)
+    out = {}
+    for row in frame.to_dict('records'):
+        if not (row['decision_id'] and row['reason'] and row['reviewer'] and row['reviewed_at']):
+            raise ValueError('incomplete session window: %s' % row)
+        lo = pd.Timestamp(row['keep_from']) if row['keep_from'] else None
+        hi = pd.Timestamp(row['keep_to']) if row['keep_to'] else None
+        if lo is None and hi is None or (lo is not None and hi is not None and lo > hi):
+            raise ValueError('empty or reversed session window: %s' % row['decision_id'])
+        out[row['session']] = (row['decision_id'], lo, hi)
+    return out
+
+
+SESSION_WINDOWS = _session_windows()
+
+
+def _install_session_window(session):
+    """Replaces data.trim_by_depth for one run; returns (restore, note) or (None, None)."""
+    win = SESSION_WINDOWS.get(session)
+    if not win:
+        return None, None
+    decision, lo, hi = win
+    original = qm.data.trim_by_depth
+    seen = {}
+
+    def windowed(frame, tk_root=None, locked=None, progress=None):
+        t = pd.to_datetime(frame['Datetime'])
+        outside = pd.Series(False, index=frame.index)
+        if lo is not None:
+            outside |= t < lo
+        if hi is not None:
+            outside |= t > hi
+        seen.update(first=t.min(), dismissed=int(outside.sum()), rows=len(frame))
+        return set(frame.index[outside.to_numpy()])
+
+    qm.data.trim_by_depth = windowed
+
+    def restore():
+        qm.data.trim_by_depth = original
+        if not seen:
+            raise RuntimeError('session window %s was never applied (no Depth review ran)' % decision)
+        return ('%s: kept %s .. %s local, %d of %d rows dismissed (5); first row %s'
+                % (decision, lo or 'start', hi or 'end', seen['dismissed'], seen['rows'], seen['first']))
+    return restore, decision
+
+
 def _export_start_gmt(csv_path):
     """First record time of a Seaguard CSV export, on the instrument's own
     (GMT) clock - the same basis as a session folder stamp, which pick_co2
@@ -550,7 +609,12 @@ def _export_start_gmt(csv_path):
 # ((site, semester); '*' = every site). Opt-in on purpose: the archive holds
 # binaries that were never qualified because they have no export (21 in
 # 2026-11), and a re-run of an old semester must not change its membership.
-NATIVE_BINARY_SCOPES = {('*', '2026S2'), ('PLES', '2025S2')}
+NATIVE_BINARY_SCOPES = {('*', '2026S2'), ('PLES', '2025S2'),
+                        # pool loggers whose only exports are 12-hour COLLAPSED
+                        # csv (ledger rows *-collapsed); their binaries carry a
+                        # sound clock (diagnostics pool_clock_check.py)
+                        ('PISCINA_SGOM', '2024S1'), ('PISCINA_SGOM', '2024S2'),
+                        ('PISCINA_PLES', '2024S2')}
 # A 64 KB .hobo is a whole-memory dump: a launch does not clear memory and the
 # header carries no sample count, so a lost terminator makes the decoder read
 # an older deployment's bytes as new samples - plausible, QC-passing, and
@@ -675,13 +739,15 @@ def _native_guard(path):
 
 def _native_binaries(cdir, site, sem):
     """([binaries admitted], [(file, reason, span) refused]) of a site folder:
-    the bruto\\*.hobo whose exact stem has no export in planilha (any export,
-    even an excluded one - an excluded export never lets its binary in)."""
+    the bruto\\*.hobo whose exact stem has no USABLE export in planilha. An
+    export excluded by the ledger (a 12-hour collapsed csv, say) does not
+    block its binary; a ledger row on the binary itself always keeps it out."""
     if (('*', sem) not in NATIVE_BINARY_SCOPES
             and (str(site).upper(), sem) not in NATIVE_BINARY_SCOPES):
         return [], []
     pl = os.path.join(cdir, 'planilha')
-    exported = {os.path.splitext(f)[0] for f in os.listdir(pl)} if os.path.isdir(pl) else set()
+    exported = ({os.path.splitext(f)[0] for f in os.listdir(pl) if f not in EXCLUDED_REPLICATES}
+                if os.path.isdir(pl) else set())
     admitted, refused = [], []
     for b in sorted(glob.glob(os.path.join(cdir, 'bruto', '*.hobo'))):
         base = os.path.basename(b)
@@ -756,6 +822,21 @@ FORCED_REPLICATE_GROUPS = {
         (
             'HOBO2_PLES_160326_220926.hobo',     # 2,278 samples, ends 2026-09-22
             'HOBO1_PLES_160326_220926.hobo',     # stopped on 2026-04-04
+        ),
+    ),
+    # pool replicates launched the same morning, one of which stopped early
+    # (the PLES/PAB3 situation; owner, 2026-11-12: pool loggers of one
+    # campaign are replicates)
+    ('PISCINA_PLES', '2026S2'): (
+        (
+            'HOBO1_PISCINA_PLES_230926.xlsx',    # 902 rows, ends 2026-05-31
+            'HOBO2_PISCINA_PLES_230926.xlsx',    # 723 rows, ends 2026-05-16
+        ),
+    ),
+    ('PISCINA_SGOM', '2026S1'): (
+        (
+            'HOBO2_SGOM_PISCINA_210325.xlsx',    # 797 rows, ends 2025-05-26
+            'HOBO1_SGOM_PISCINA_210325.xlsx',    # 82 rows, stopped on 2025-03-28
         ),
     ),
 }
@@ -1136,8 +1217,16 @@ def do_site(site, sem):
                                             t0 + pd.Timedelta(days=400)))
             else:
                 qm.set_replicate_reference(None)
-            csv, root, err = run_qualification(files, 'HOBO' if kind == 'HOBO' else 'Seaguard',
-                                               dtype, site, name, co2=it['co2'])
+            restore, window_note = None, None
+            if kind == 'SEAGUARD' and str(files).lower().endswith('.bin'):
+                restore, _decision = _install_session_window(
+                    os.path.basename(os.path.dirname(files)))
+            try:
+                csv, root, err = run_qualification(files, 'HOBO' if kind == 'HOBO' else 'Seaguard',
+                                                   dtype, site, name, co2=it['co2'])
+            finally:
+                if restore:
+                    window_note = restore()
             if not csv:
                 log('    FAILED: %s' % err); done.append((name, None, 0, err)); continue
             if kind == 'HOBO':
@@ -1166,6 +1255,8 @@ def do_site(site, sem):
                 block += _clock_lines()
                 for note in it.get('native') or []:
                     block += '\n    native   : %s' % note
+            if window_note:
+                block += '\n    window   : %s' % window_note
             for fn, why in it.get('excluded') or []:
                 block += '\n    EXCLUDED : %s\n               (%s)' % (fn, why)
             write_provenance(dest, name, block)
