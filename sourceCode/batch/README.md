@@ -20,6 +20,10 @@ absolute path — a bare `python` resolves to the Microsoft Store stub and fails
 & "C:\Users\LAMB\anaconda3\python.exe" batch\normalize_buraca_funda_session.py --verify-existing # recheck the BXML session-name move
 ```
 
+A corpus round ends with the qualified products on the server; it does **not**
+export a Curated Database workbook. The app builds that workbook when an
+operator asks for one (owner decision, 2026-11-12).
+
 `build_index.py` ends by running **`sweep_value_integrity.py`** over the indexed
 products (the lost-separator gates and the "impossible value not flagged" check)
 and exits non-zero if the sweep finds a pipeline defect — a corpus round is not

@@ -3,74 +3,62 @@
 Volatile state. Durable rules: CLAUDE.md. Released program changes: changelog/.
 Archive operations: sourceCode/batch/CORPUS_LOG.md.
 
-## Release state (checked 2026-10-06)
+## Release state (checked 2026-11-12)
 
-- **No open program version.** v14.0.3 is released and nothing has changed
-  since:
-  - `QCS_VERSION = 'v14.0.3'`, and `changelog/v14.0.3.md` exists.
-  - The local tag `v14.0.3` matches the one on `origin`, and local `master` =
-    `origin/master` (`6ab1df6`).
-  - The GitHub Release "v14.0.3 - startup visibility and per-database depth
-    limits" was published 2026-09-09 with `QCS_Setup_v14.0.3.exe`.
-  - This machine has 14.0.3 installed (uninstall registry, install date
-    2026-09-09, `C:\Program Files (x86)\QCS\`).
-- **Uncommitted in the working tree:** the `AGENTS.md` deletion below and this
-  file's edits of 2026-10-06. Nothing was committed.
+- Last release: v14.0.3. It is tagged at `6ab1df6` = `origin/master`, the
+  GitHub Release was published 2026-09-09, and v14.0.3 is installed on this
+  machine. `QCS_VERSION` is still `'v14.0.3'` on the v14.1.0 branch.
 
-## Codex bridge (2026-10-06)
+## v14.1.0 - open on branch `pools-and-field-issues` (2026-11-12)
 
-- `AGENTS.md` deleted at the owner's request (uncommitted deletion of a tracked
-  file). Codex now reaches `CLAUDE.md` through the global bridge
-  (`~/.codex/AGENTS.md`), which makes every project's `CLAUDE.md` canonical
-  unconditionally. Nothing else in the repo referenced `AGENTS.md`.
+Scope (owner, 2026-11-12): the app's stale-.hobo warning, pools as a separate
+collection, the updated ledger, and GitHub issues #49 and #50. The branch is
+not pushed, so nothing is on GitHub yet. `gh` is NOT installed; issues were
+read through the public REST API.
 
-## RRDM 23a SET 2026 - imported into DATABASE, uncommitted (2026-11-12)
+Done (committed; suite 93/93, ruff clean):
+- `4a84f93` 23a batch work.
+- `1ffb6b5` stale .hobo: the app WARNS, never cuts. The owner revised
+  'cut and warn' after the corpus sweep: in 12 of 157 export-verified pairs
+  genuine data ends after the file save time (7 with PC clocks years
+  behind, 4 by 11-23 h), while proven stale tails overrun by >= 9 days. The
+  batch refuses only above 48 h with the save time inside the series. All
+  188 corpus decodes are unchanged, and the 23a replay is 9/9
+  byte-identical. Evidence: `hobo_savetime_margin.py`,
+  `hobo_tail_check_v1410.csv`.
+- `97657a7` installer: the 'open the user manual' checkbox is translated
+  (#49). The manual stays in English.
+- `7d7f0ab` #50: Depth (m) is an opt-in Mooring panel parameter, with its
+  own colour, tidal (dashed, never fitted), and greyed out for profiles
+  (`param_applies`). Panel 3 drops it.
+- `4074f66` #49: DCPS spreadsheet exports are refused with the reason
+  (`is_dcps_export`); one instance per user, with a splash before the heavy
+  imports (`QCS_QtStartup`). Offscreen checks in
+  `diagnostics/v1410_single_instance/`: 5/5, and the shell boots with prefs
+  untouched. NOT verified: a real clean-install launch from the installer
+  (needs the owner's screen).
 
-- **Done 2026-11-12:** 23a is staged and qualified as 2026S2: 7 HOBO
-  products and CENTROIDE13 Seaguard (scalar CSV + CO2). `PLES_2025S2` was
-  requalified with HOBO3. The index went 281 -> 289 and the integrity sweep
-  is clean. Operation, numbers and the backup path
-  (`_deleted\rrdm23a_20261112T133924`) are in CORPUS_LOG 2026-11-12.
-  Evidence: `diagnostics/abrolhos2_sweep_20261112/`.
-- **Uncommitted repo changes:** `qualify_site.py` (native-binary path with
-  stale guards, `EXPORT\SENSORES` CSV route, forced groups PLES/2025S2 and
-  PLES/2026S2), new `stage_rrdm_23a.py` and `promote_rrdm_23a.py`, 4
-  `rrdm23a-*` ledger rows, `QCS_ReplicateSelfTest` (pins the 8 `legacy-*`
-  rows instead of the total), and the batch README, CORPUS_LOG and
-  CLAUDE.md gotcha. Suite 93/93; ruff clean. Proposed commit prefix: none of
-  this changes the app, so no version bump. Use `v14.0.3:` per the subject
-  rule, or ask the owner.
-- **Owner confirmed (2026-11-12)** the PLES/2026S2 forced group. The SGOM H1
-  and A5 H2 stale exclusions were reported to the owner, not explicitly
-  ratified.
-- **Owner decisions 2026-11-12:**
-  - No curated workbook is generated after a corpus round. The qualified
-    products on the server are the archive, and the app builds the workbook
-    when asked. The test export was moved to the Recycle Bin, together with
-    its script.
-  - **No Doppler CSV reader:** DCPS is read only from the session (`.bin` +
-    `Config.xml` + `Layout.xml`). The `.bin` carries the cell geometry;
-    without `Config.xml` native quality is unmapped, so no cell can be GOOD.
-    The CSV export lacks both. CENTROIDE13's ADCP CSV stays archived only.
-- **Release question (answered 2026-11-12):** no app code changed; only a
-  self-test assertion did. However, `replicate_decisions.csv` is bundled by
-  `QCS.spec`, so the installed 14.0.3 lacks the 4 `rrdm23a-*` rows, which
-  matters only for a manual GUI qualification of those files. Recommended:
-  commit now with no tag. Ship the ledger with the next version, together
-  with the app's stale-dump guard and the pools.
-- **Program defect, not fixed:** the app reads a stale 64 KB dump silently.
-  Candidate for v14.1.0: warn or cut past the file save time (this alone does
-  not catch a dump that is stale from the start, like SGOM H1).
-- **Decided 2026-11-12:** RH18 (22a) and RH30 BRITAS (21a) are rubble
-  experiments and stay out. The 12 same-named 12-hour-collapsed server
-  exports must never replace the Database copies. Also done that day: the
-  `SGOM_Fora` QCS folder was deleted from Abrolhos2, with a backup in the
-  diagnostics folder.
+Next:
+1. Pools as a separate collection. Owner decisions are needed before any
+   write: naming, and which source for 18a/19a, whose csv starts 8-12 h off
+   the .hobo.
+2. Release ritual: `QCS_VERSION`, `changelog/v14.1.0.md`, manual HTML,
+   installer build and smoke test, tag, PR closing #49/#50 (needs `gh` or
+   the browser), and a GitHub Release in the v11.6 format.
+
+## RRDM 23a SET 2026 - imported (2026-11-12; record in CORPUS_LOG, code in `4a84f93`)
+
+- Still open: the SGOM H1 and A5 H2 stale exclusions were reported to the
+  owner but not explicitly ratified (ledger rows `rrdm23a-*`, reviewer
+  "Batch evidence, reported to the owner").
+- Decided 2026-11-12: RH18 (22a) and RH30 BRITAS (21a) are rubble experiments
+  and stay out. The 12 same-named 12-hour-collapsed Abrolhos2 exports must
+  never replace the Database copies.
 
 ## Pool data (piscinas) re-inclusion - design agreed, after 23a (2026-11-12)
 
-Owner agreed (2026-11-12) to the recommendation below: a separate collection,
-a MINOR release, after 23a. Nothing is implemented. The data has been excluded since
+Owner agreed (2026-11-12): a separate collection, part of v14.1.0. Nothing
+is implemented yet. The data has been excluded since
 2026-08-25, and it is still refused in code: `QCS_Curated.py`
 (`_EXCLUDED_*`, app code, so a release), `build_index.py`, `qualify_site.py`
 `plan`/`plan_buckets`, `run_semester.py` and the self-tests near
