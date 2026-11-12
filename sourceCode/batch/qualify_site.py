@@ -556,8 +556,9 @@ NATIVE_BINARY_SCOPES = {('*', '2026S2'), ('PLES', '2025S2')}
 # an older deployment's bytes as new samples - plausible, QC-passing, and
 # agreeing with no export (proof and validation against 157 export pairs:
 # diagnostics/abrolhos2_sweep_20261112/). Two guards, both measured there:
-#  - the decode may not run past the moment the file was SAVED (its mtime;
-#    staging must preserve it, as shutil.copy2 does);
+#  - the decode may not run more than _STALE_OVERRUN_H past the moment the
+#    file was SAVED (its mtime, when it falls inside the series; staging must
+#    preserve it, as shutil.copy2 does);
 #  - the bytes may not be identical to the previous dump of the SAME SERIAL
 #    before the decode ends (stale memory is byte-identical to what the logger
 #    held at its previous readout; genuine boundaries fall 4-9 samples AFTER
@@ -565,6 +566,7 @@ NATIVE_BINARY_SCOPES = {('*', '2026S2'), ('PLES', '2025S2')}
 # The second guard needs that predecessor in the raw tree; when it is not
 # there the binary still needs a ledger decision or a replicate cross-check.
 _STALE_RUN = 256
+_STALE_OVERRUN_H = 48     # genuine overrun <= 23.3 h, proven stale >= 9 days
 _HOBO_HEADERS = None
 _NATIVE_NOTES = {}
 
@@ -630,19 +632,25 @@ def _native_guard(path):
     """(None, note) when the binary may be qualified from its native decode;
     (reason, None) when it may not."""
     try:
-        df, _ = dh.read_hobo({'raw_data_path': os.path.dirname(path),
-                              'file_name': os.path.basename(path),
-                              'input_type': 'HOBO', 'correct_gmt3h': False}, {})
+        df, info = dh.read_hobo({'raw_data_path': os.path.dirname(path),
+                                 'file_name': os.path.basename(path),
+                                 'input_type': 'HOBO', 'correct_gmt3h': False}, {})
     except Exception as e:
         return 'native decode refused: %s' % str(e)[:120], None
+    # since v14.1.0 the reader WARNS when the decode runs past the file's save
+    # time and leaves the decision to the operator. The corpus refuses the
+    # whole dump, but only past _STALE_OVERRUN and only when the save time
+    # falls inside the series: genuine data overran its save time by up to
+    # 23.3 h in the export-verified pairs (a PC clock off), by YEARS when the
+    # PC clock was reset (save time before the data - unusable), while every
+    # proven stale tail overran by 9 days or more (hobo_savetime_margin.py).
+    after = info.get('after_save')
+    if after and after['saved_inside_series'] and after['hours_past'] > _STALE_OVERRUN_H:
+        return ('stale memory: the native decode runs to %s, %.0f h past the moment '
+                'the file was saved (%s)' % (after['decoded_end'], after['hours_past'],
+                                             after['saved'].floor('min'))), None
     t = pd.to_datetime(df['Datetime']).reset_index(drop=True)
-    step = (t.iloc[1] - t.iloc[0]) if len(t) > 1 else pd.Timedelta(0)
-    # the logger clock and this machine's are both local GMT-3 (fixed: Brazil
-    # has kept no daylight saving since 2019)
     saved = pd.Timestamp(os.path.getmtime(path), unit='s') - pd.Timedelta(hours=3)
-    if t.iloc[-1] > saved + max(step, pd.Timedelta(hours=1)):
-        return ('stale memory: the native decode runs to %s, past the moment the '
-                'file was saved (%s)' % (t.iloc[-1], saved.floor('min'))), None
     hdr = _hobo_header(path)
     if hdr is None:
         return 'no readable header', None

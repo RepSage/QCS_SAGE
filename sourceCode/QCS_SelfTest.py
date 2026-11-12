@@ -1475,7 +1475,30 @@ with _tempfile2.TemporaryDirectory() as tmp:
         raise AssertionError('an unrecognized layout was not refused')
     except ValueError as e:
         assert 'does not fit the deciphered layout' in str(e), e
-ok.append('read_hobo (.hobo binary: spec round-trip, timebase launch+1s, light lag, refusal)')
+    # v14.1.0 save-time check: a decode running past the file's save time is
+    # WARNED about, never cut - the save time is the clock of a PC, which in
+    # 12 of 157 export-verified corpus pairs was earlier than the genuine
+    # data. Samples 12:10:31 .. 14:00:31 local (GMT-03); saved at 12:20 local.
+    with open(p, 'wb') as f:
+        f.write(_build_mini_hobo(_tcodes, _lcodes))
+    _saved_utc = pd.Timestamp(2026, 3, 10, 15, 20, 0)          # = 12:20 local
+    _epoch = (_saved_utc - pd.Timestamp(1970, 1, 1)).total_seconds()
+    _os2.utime(p, (_epoch, _epoch))
+    d, info = data.read_hobo({'raw_data_path': tmp,
+                              'file_name': 'HOBO_TEST_010326.hobo'}, {})
+    assert len(d) == len(_tcodes), 'the save-time check must not remove samples'
+    after = info.get('after_save')
+    assert after and after['saved_inside_series'] and after['samples_after'] == 11, after
+    assert any('after the file was saved' in m and 'Nothing was removed' in m
+               for m in info['messages'])
+    # saved before the first sample: the PC clock is unusable - warn, keep all
+    _epoch = (pd.Timestamp(2026, 3, 10, 13, 0) - pd.Timestamp(1970, 1, 1)).total_seconds()
+    _os2.utime(p, (_epoch, _epoch))                             # = 10:00 local
+    d, info = data.read_hobo({'raw_data_path': tmp, 'file_name': 'HOBO_TEST_010326.hobo'}, {})
+    assert len(d) == len(_tcodes) and not info['after_save']['saved_inside_series']
+    assert any('before the first decoded sample' in m for m in info['messages'])
+ok.append('read_hobo (.hobo binary: spec round-trip, timebase launch+1s, light lag, refusal, '
+          'save-time warning without removal)')
 
 # ------------------------------------------- 34. DCPS manual review (v13.0)
 # The current pipeline gained an interactive stop, and its two cuts reach the

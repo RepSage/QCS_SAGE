@@ -1704,6 +1704,56 @@ def _read_hobo_binary(file_path, say):
     return df
 
 
+def _hobo_check_save_time(df, file_path, say, info):
+    """Warns - never cuts, never refuses - when the native decode of a .hobo
+    runs past the moment the file was SAVED (its modification time) (v14.1.0,
+    owner decision 2026-11-12).
+
+    A 64 KB .hobo is a dump of the whole logger memory: a launch does not
+    clear it and the header carries no sample count, so when the deployment's
+    terminator is lost the decoder runs on into the previous deployment's
+    bytes, relabelled on the new clock (4 of 39 64 KB dumps in 157 Database
+    export pairs; diagnostics/abrolhos2_sweep_20261112). But the save time is
+    NOT proof by itself: it is the clock of the PC that saved the file, and in
+    12 of the same 157 export-verified pairs the GENUINE data ends after it -
+    7 by years (a PC clock reset to 2017-2018) and 4 by 11-23 h - while every
+    proven stale tail overruns by 9 days or more. Cutting would have destroyed
+    real data, so the operator decides (manual cut, or the HOBOware export).
+    Stale samples can also sit BEFORE the save time (a logger that stopped
+    early, or one that never recorded and decodes wholly as its previous
+    deployment); the warning says so. Sets info['after_save']."""
+    if df.empty:
+        return
+    times = pd.to_datetime(df['Datetime'])
+    step = times.diff().median() if len(times) > 1 else pd.Timedelta(0)
+    # the series is on GMT-03 (the reader shifts any other logger offset to
+    # it), and so is this archive's clock: Brazil has kept no daylight saving
+    # since 2019
+    saved = pd.Timestamp(os.path.getmtime(file_path), unit='s') - pd.Timedelta(hours=3)
+    if times.max() <= saved + max(step, pd.Timedelta(hours=1)):
+        return
+    past_h = (times.max() - saved).total_seconds() / 3600
+    inside = bool(saved >= times.min())
+    info['after_save'] = {'saved': saved, 'decoded_end': times.max(),
+                          'hours_past': past_h, 'saved_inside_series': inside,
+                          'samples_after': int((times > saved).sum())}
+    if not inside:
+        say('Warning: the file was saved (%s) before the first decoded sample '
+            '(%s): the clock of the PC that saved it was wrong, so the save '
+            'time cannot be used to check this binary for stale memory. '
+            'Compare it with a HOBOware export or its replicate.'
+            % (saved.floor('min'), times.min()))
+        return
+    say('Warning: the native decode runs to %s, %.0f h after the file was saved '
+        '(%s); %d sample(s) are dated after the save time. Either they are stale '
+        'memory of an older deployment (a 64 KB .hobo is a whole-memory dump) or '
+        'the clock of the PC that launched or saved the logger was wrong. Nothing '
+        'was removed: compare with a HOBOware export or the replicate and cut '
+        'manually what does not belong (the samples before the save time may '
+        'also be stale when the logger stopped early).'
+        % (times.max(), past_h, saved.floor('min'), int((times > saved).sum())))
+
+
 def read_hobo(INPUT, tsSettings):
     """Reads HOBOware exports (.xlsx/.csv) from Pendant Temp/Light sensors.
 
@@ -1724,6 +1774,7 @@ def read_hobo(INPUT, tsSettings):
     # so no deployment window - exactly like an export without event columns).
     if file_name.lower().endswith('.hobo'):
         df = _read_hobo_binary(file_path, say)
+        _hobo_check_save_time(df, file_path, say, info)
         return _hobo_finish(df, tsSettings, say, info, file_name)
 
     # ---------- raw read with header line detection ----------
