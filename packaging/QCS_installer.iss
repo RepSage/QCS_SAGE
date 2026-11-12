@@ -58,6 +58,11 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 ; it happens (owner, 2026-08-19).
 english.LaunchAfterInstall=Launch QCS after installation
 brazilianportuguese.LaunchAfterInstall=Abrir o QCS após a instalação
+; the other Finish-page checkbox was hard-coded in English, so a Portuguese
+; install showed one translated and one English line (GitHub issue #49). The
+; manual itself stays in English, the project's language.
+english.OpenManual=Open the user manual
+brazilianportuguese.OpenManual=Abrir o manual do usuário (em inglês)
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
@@ -79,7 +84,7 @@ Name: "{autodesktop}\QCS"; Filename: "{app}\QCS.exe"; Tasks: desktopicon
 ; the two Finish-page checkboxes (v12.1, owner request): open the manual and
 ; start the program. 'postinstall' is what makes them checkboxes; the manual
 ; needs shellexec because it is an .html, not an executable.
-Filename: "{app}\Quality Control System (SAGE) - User Manual.html"; Description: "Open the user manual"; Flags: postinstall shellexec skipifsilent nowait unchecked
+Filename: "{app}\Quality Control System (SAGE) - User Manual.html"; Description: "{cm:OpenManual}"; Flags: postinstall shellexec skipifsilent nowait unchecked
 ; runasoriginaluser on BOTH: an install into Program Files runs elevated, and
 ; an app started from here inherits that token. Windows then blocks drag-and-
 ; drop from Explorer into it (UIPI: a lower integrity level cannot post to a
