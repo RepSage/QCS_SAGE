@@ -99,6 +99,12 @@ then behaves exactly as on a source install (dialog on first launch, v11.1).
 
 ## Icons (fixed 2026-08-13)
 
+**Since v14.1.1 both files are GENERATED** by `packaging/make_icon.py`, a
+vector drawing. Change the icon there and rerun it with the packaging venv;
+never edit the PNG/ICO by hand. Every `.ico` size, 16 to 256 px, is drawn
+natively. The earlier raster icon, from v5.0 with no source, carried a
+straight seam at 75% of its height.
+
 `sourceCode/qcs_icon.ico` + `.png` are wired in THREE places, each covering a
 different surface — miss one and that surface silently falls back to a default:
 
