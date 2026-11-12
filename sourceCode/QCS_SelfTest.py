@@ -798,7 +798,25 @@ with _tempfile.TemporaryDirectory() as tmp:
     with open(p_scalar, 'wb') as f:
         f.write(_build_mini_aadi())
     assert data.is_seaguard_doppler(p_scalar) is False
-ok.append('is_seaguard_doppler (DCPS template detected; scalar session rejected)')
+    # v14.1.0 (GitHub issue #49): a DCPS SPREADSHEET export is recognised -
+    # it used to be read as a scalar profile - and a scalar export is not.
+    # Header rows as the AADI export writes them (CENTROIDE13, RRDM 23a).
+    _meta = 'Description;Seaguard II Platform\nProduct Name;SeaGuard II\n'
+    _dcps_csv = _os.path.join(tmp, 'adcp_export.csv')
+    with open(_dcps_csv, 'w', encoding='utf-8') as f:
+        f.write(_meta + ';;DCPS #930;;;\n;;;;Vector;;Profile\n;;;;;Surface;;Column 1\n'
+                ';;;;EventReg Values[Flags];Cell State1(0..0);Horizontal Speed(0..0)[cm/s]\n'
+                'Record Time;Record Number;Sensor Status;Heading[Deg.M]\n')
+    _scalar_csv = _os.path.join(tmp, 'scalar_export.csv')
+    with open(_scalar_csv, 'w', encoding='utf-8') as f:
+        f.write(_meta + 'Record Time;Record Number;Temperature[DegC];Pressure[kPa]\n'
+                '19.09.2026 15:16:10;1;25.1;101.3\n')
+    assert data.is_dcps_export(_dcps_csv) is True
+    assert data.is_dcps_export(_scalar_csv) is False
+    assert data.is_dcps_export(p_dcps) is False          # a .bin is not an export
+    assert 'Data000.bin' in data.DCPS_EXPORT_REFUSAL and 'Config.xml' in data.DCPS_EXPORT_REFUSAL
+ok.append('is_seaguard_doppler (DCPS template detected; scalar session rejected); '
+          'is_dcps_export (DCPS spreadsheet recognised; scalar export not)')
 
 # 22) Settings -> current QC plumbing (v8.1). Before v8.1 the pipeline read a
 # CONFIG['dopplerSettings'] that nothing ever wrote, so the Settings window

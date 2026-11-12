@@ -595,6 +595,38 @@ def is_seaguard_doppler(file_path):
         return False
 
 
+DCPS_EXPORT_REFUSAL = (
+    'This spreadsheet was exported from a Doppler current profiler (DCPS). '
+    'QCS reads current data only from the native session: the Data000.bin '
+    'file with its Config.xml beside it. An export carries neither the cell '
+    'geometry of the binary nor the configuration the current QC needs '
+    '(firmware status map, AutoBeam mode, direction reference), so it cannot '
+    'be qualified - as Doppler or as a scalar profile.')
+
+
+def is_dcps_export(file_path):
+    """True when a .csv/.xlsx is a Seaguard export of a DCPS / Doppler current
+    profiler (GitHub issue #49, v14.1.0): its multi-row header names the DCPS
+    node ('DCPS #930') and per-cell columns ('Cell State1(0..0)',
+    'Horizontal Speed(0..0)[cm/s]'). Only the first rows are read."""
+    name = str(file_path).lower()
+    try:
+        if name.endswith('.csv'):
+            with open(file_path, encoding='utf-8', errors='replace') as f:
+                head = ' '.join(next(f, '') for _ in range(40))
+        elif name.endswith('.xlsx'):
+            sample = pd.read_excel(file_path, header=None, nrows=40)
+            head = ' '.join(str(v) for v in sample.to_numpy().ravel() if pd.notna(v))
+        else:
+            return False
+    except Exception:
+        return False
+    if re.search(r'\bDCPS\s*#\s*\d+', head):
+        return True
+    return bool(re.search(r'Cell State\s*1?\s*\(\d+\.\.\d+\)', head)
+                and re.search(r'Horizontal Speed\s*\(\d+\.\.\d+\)', head))
+
+
 def _decode_dcps_bin(file_path, *, diagnostics=None, metadata=None):
     """Decodes ONE DCPS DataNNN.bin. Returns (records, slots, columns):
     records = [(Timestamp, {slot_index: value}, vector_or_None), ...];
