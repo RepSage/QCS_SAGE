@@ -1921,6 +1921,51 @@ try:
         for fig in _scalar_across_figs
         for name in fig._qcs_line_names.values())
 
+    # v14.1.0 (GitHub issue #50): Depth is a Mooring panel parameter. It must
+    # have its own colour (Panel 1 indexed the colour table and raised
+    # KeyError), and like Pressure it is tidal, so it is drawn as a dashed raw
+    # line and never fitted, even with tendency lines on.
+    _depth_frame = _scalar_frame.assign(
+        **{'Depth (m)': _scalar_frame['Pressure (dbar)'] * 0.99})
+    _depth_settings = dict(_scalar_settings,
+                           parameterList=['Temperature (degC)', 'Depth (m)'])
+    _depth_figs = []
+    assert _data_view.plot_scalar_multi_params_at_site(
+        _depth_frame, _depth_settings, 'A',
+        figures=_depth_figs, show=False) == 1
+    _depth_lines = [line for line in _depth_figs[0].axes[1].lines
+                    if len(line.get_xdata())]
+    assert _depth_lines and all(line.get_linestyle() == '--' for line in _depth_lines), \
+        [line.get_linestyle() for line in _depth_lines]
+    _depth_across = []
+    assert _data_view.plot_scalar_multi_params_across_sites(
+        _depth_frame, _depth_settings, figures=_depth_across, show=False) == 2
+    # ...but a profile's Y axis is depth: Panel 3 never takes it as a parameter
+    assert _data_view.plot_database_panel3(
+        _depth_frame, dict(_depth_settings, parameterList=['Depth (m)'])) is None
+    assert 'Depth (m)' in _data_view.getParamColors()[0]
+    assert 'Depth (m)' in _data_view.TIDAL_PARAMS
+    # the interface gate both shells share (Qt mirrors the tk widget state).
+    # QCS_DatabaseView installs the app's output redirect on import, which
+    # would swallow the rest of this suite's output: stub it, as for QCS_Main.
+    _orig_rdr2 = _thm.install_output_redirect
+    _thm.install_output_redirect = lambda *a, **k: type(
+        'S', (), {'history': [], 'set_sink': lambda *a, **k: None,
+                  'write': lambda *a, **k: None, 'flush': lambda *a, **k: None})()
+    try:
+        import QCS_DatabaseView as _dbv_gate
+    finally:
+        _thm.install_output_redirect = _orig_rdr2
+    _saved_combo = getattr(_dbv_gate, 'dType_combobox', None)
+    try:
+        for _dtype, _expected in (('TSCP Mooring', True), ('TSCP Profile', False),
+                                  ('TSCP Doppler', False), ('', False)):
+            _dbv_gate.dType_combobox = type('C', (), {'get': lambda self, v=_dtype: v})()
+            assert _dbv_gate.param_applies('Depth (m)') is _expected, _dtype
+            assert _dbv_gate.param_applies('Pressure (dbar)')
+    finally:
+        _dbv_gate.dType_combobox = _saved_combo
+
     _broad_frame = pd.concat([
         pd.DataFrame({
             'Datetime': pd.to_datetime(['2025-01-01', '2025-01-02'])
