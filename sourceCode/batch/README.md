@@ -72,8 +72,7 @@ untouched — used for light-mode reruns.
   semester tag unifies the two corpora (the same expedition is labeled
   "ABRIL 2019" by Seaguard and "MAI 2019" by HOBO). `_k` numbers multiple
   casts chronologically; a semester can span two expeditions.
-- **Timebase** (see the tooltip of "Correct GMT-3" and the Timebase section of
-  the repo's `CLAUDE.md`):
+- **Timebase** (see the tooltip of "Correct GMT-3"):
   Seaguard clocks record GMT → the correction is ALWAYS applied
   (`correct_gmt3h = input_type == 'Seaguard'`); HOBO exports and the CO2
   logger are already local. Getting this wrong once shifted the whole corpus

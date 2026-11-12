@@ -50,8 +50,9 @@ python -m pip install -r sourceCode/requirements.txt
   - `qcs_user_settings.json` — user preferences (auto-generated).
 - `changelog/` — change history, one file per version.
 - `Quality Control System (SAGE) - User Manual.html` — user manual.
-- `CLAUDE.md` — durable rules and architecture gotchas.
-- `STATUS.md` — current state, dated; read it before starting work.
+- `CLAUDE.md` and `STATUS.md` — the maintainer's working notes (durable rules;
+  dated current state). Since v14.1.0 they are kept locally and are not part of
+  the repository.
 - `ruff.toml` — lint configuration.
 
 ## Version

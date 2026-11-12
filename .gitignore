@@ -11,6 +11,12 @@ qcs_user_settings.json
 # Claude Code local configuration
 .claude/
 
+# Local working notes: project rules and volatile status stay on this machine,
+# not in the repository (owner decision, 2026-11-12). Their history up to
+# v14.1.0 remains in the commits that carried them.
+/CLAUDE.md
+/STATUS.md
+
 # Ruff linter cache
 .ruff_cache/
 

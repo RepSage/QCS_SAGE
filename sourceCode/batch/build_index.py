@@ -110,7 +110,7 @@ def main(out_csv):
     if shared:
         stale = sorted({p for ps in shared.values() for p in ps})
         print('\nWARNING: %d raw export(s) feed more than one product - likely a stale\n'
-              'product from an earlier run (see STATUS.md). Products involved:' % len(shared))
+              'product from an earlier run (see CORPUS_LOG.md). Products involved:' % len(shared))
         for p in stale:
             print('   %s' % p)
     return df
