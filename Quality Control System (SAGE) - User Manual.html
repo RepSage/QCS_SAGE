@@ -152,7 +152,7 @@
 </head>
 <body>
     <h1>User Manual of the QCS (Quality Control System)</h1>
-    <p style="text-align:center; opacity:0.7;"><em>For version v14.0.3</em></p>
+    <p style="text-align:center; opacity:0.7;"><em>For version v14.1.0</em></p>
 
     <div class="indice">
         <h2>Contents</h2>
@@ -205,7 +205,10 @@
         <p>Two first-run notes: Windows SmartScreen may warn about an unrecognized publisher (the
         installer carries no code-signing certificate) — choose <em>"More info &rarr; Run
         anyway"</em>. And the very first launch takes ~15–20&nbsp;s while the plotting library
-        builds its font cache, one time only; after that the program opens in a few seconds.</p>
+        builds its font cache, one time only; after that the program opens in a few seconds.
+        A small QCS splash appears at once while it loads, and QCS runs as <strong>one
+        window per user</strong>: starting it again (from the installer, a shortcut or the
+        Start menu) brings the open window to the front instead of opening a second copy.</p>
     </div>
 
     <h3>The interface at a glance</h3>
@@ -277,7 +280,11 @@
             (groups sampled at different rates are interpolated onto the finest one), so every
             variable is qualified together. Selecting a <strong>Doppler current-profiler
             (DCPS)</strong> group's <code>Data000.bin</code> auto-sets the Data type to
-            <strong>TSCP Doppler</strong> and runs the CURRENT pipeline instead:
+            <strong>TSCP Doppler</strong> and runs the CURRENT pipeline instead
+            (current data are read <strong>only</strong> from that native session &mdash;
+            <code>Data000.bin</code> with its <code>Config.xml</code> beside it; a spreadsheet
+            exported from the profiler is recognised and refused with that explanation, because
+            it carries neither the cell geometry nor the configuration the current QC needs):
             one row per record &times; depth cell, a manual review (see
             <em>Check variables</em> below), four current quality tests (speed range;
             signal quality &mdash; both native cell states, record validity, return strength
@@ -353,7 +360,13 @@
             reading HOBOware shows at launch (taken in air during configuration) is not
             stored in the binary, so the series starts one interval after launch. A file
             from an older HOBOware generation that does not fit the deciphered layout is
-            refused with a clear message &mdash; qualify those from their exported sheets.</td>
+            refused with a clear message &mdash; qualify those from their exported sheets.
+            A 64&nbsp;KB <code>.hobo</code> is a dump of the logger's whole memory, and a
+            launch does not clear it: when the deployment's end marker is lost, the decode can
+            run on into an <strong>older deployment's samples</strong>. If the decode runs past
+            the moment the file was saved, the log warns &mdash; nothing is removed, because a
+            wrong PC clock causes the same symptom &mdash; and you should compare the logger
+            with its HOBOware export or its replicate and cut what does not belong.</td>
         </tr>
         <tr>
             <td>Recent</td>
@@ -784,7 +797,10 @@
             into the qualification, does not take a row it could never be plotted from. What
             is left comes in two groups: the sensor group starts checked in the same order
             used by Quality control settings, and a "Rarely used" group containing the
-            opt-in Conductivity and Pressure variables followed by the derived Density and
+            opt-in Conductivity, Pressure and (for a <strong>mooring</strong>) Depth variables
+            &mdash; Depth, like Pressure, is tidal, so it is drawn as a dashed line and never
+            fitted, and it is greyed out for a profile, whose vertical axis it is &mdash; followed
+            by the derived Density and
             Soundspeed products &mdash; which
             heads that block in the parameter list AND in the Scale settings column, so the two
             break at the same variable &mdash; always starts
@@ -2018,9 +2034,11 @@
     progress bar remains empty with <em>Calculating...</em> while discovering
     files, then <em>Catalog 0/N</em> and the current read position, without
     an indeterminate full-bar animation. It reads
-    neither <code>_EXPERIMENTOS</code>, <code>_PISCINAS</code>, nor direct site folders whose
-    names begin with <code>PISCINA_</code>: those experiment and pool deployments are outside
-    the monitoring corpus and are ignored even if such a folder is restored later. It reads
+    neither <code>_EXPERIMENTOS</code>, <code>_PISCINAS</code> nor <code>_SEM_SITIO</code>
+    folders: those special collections are ignored even if restored later. Pool data are
+    ordinary <strong>sites</strong> since v14.1.0: <code>PISCINA_SGOM</code> and
+    <code>PISCINA_PLES</code> hold the loggers inside each pool (HOBO and Seaguard), and
+    appear in the site list beside the monitoring sites. It reads
     each qualified product's Site and Datetime columns so the filters describe the data itself;
     a prebuilt <code>qualified_index.csv</code> is not required.</p>
     <p>During <strong>Build curated database</strong>, the bar is cleared before it becomes

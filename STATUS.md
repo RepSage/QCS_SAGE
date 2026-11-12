@@ -45,9 +45,19 @@ Next:
    CORPUS_LOG 2026-11-12. Still owner-unconfirmed: the forced replicate
    groups PISCINA_PLES/2026S2 and PISCINA_SGOM/2026S1, where one logger
    stopped early (my call, on the PLES/PAB3 precedent).
-2. Release ritual: `QCS_VERSION`, `changelog/v14.1.0.md`, manual HTML,
-   installer build and smoke test, tag, PR closing #49/#50 (needs `gh` or
-   the browser), and a GitHub Release in the v11.6 format.
+2. Release ritual (2026-11-12). Done:
+   - `QCS_VERSION` and `AppVersion` set to v14.1.0;
+   - `changelog/v14.1.0.md`, with the Verification section lacking the
+     installer lines;
+   - the manual updated (version, startup, DCPS refusal, .hobo warning,
+     Depth, pool sites).
+   Suite 93/93. **Blocked on owner permission:** the build venv from
+   `packaging/README.md` no longer exists (`%TEMP%` was cleaned), so the
+   PyPI packages must be downloaded again. `gh` is not installed, which
+   affects the PR, the Release and the .exe upload.
+   Then: build, offscreen smoke test, a check that `PYZ-00.toc` contains
+   `QCS_QtStartup` + `PySide6.QtNetwork`, release-audit, tag, push, PR
+   closing #49/#50, and the Release in the v11.6 format.
 
 ## RRDM 23a SET 2026 - imported (2026-11-12; record in CORPUS_LOG, code in `4a84f93`)
 
