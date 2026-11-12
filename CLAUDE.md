@@ -321,6 +321,13 @@ archive and diff the counts against the previous `qualified_index.csv`.
     Verification` gives the suite count and the lint result; `## Install` names
     the `.exe` and says what installing over an existing copy does.
   - The body is NOT hard-wrapped (the changelog file is; the release is not).
+- **PRs, merges and Releases go through the GitHub REST API with the git
+  credential helper - `gh` is NOT needed and is not installed.** The proven
+  script is `diagnostics/release_v1403_20260909/release_api.py` (create-pr,
+  merge-pr, publish as draft -> upload the .exe -> verify the digest ->
+  publish, verify). Publishing the Release is part of the release work. In
+  v14.1.0 it was wrongly handed to the owner on the claim that `gh` was
+  required, and the PR went out without its 'Closes #N' lines.
 - On each release: add a file to `changelog/` listing the version's changes,
   update the HTML user manual (`Quality Control System (SAGE) - User Manual.html`)
   with the version and changes, and tag the version in Git. The installer is
