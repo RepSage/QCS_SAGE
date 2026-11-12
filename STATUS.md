@@ -17,6 +17,11 @@ Archive operations: sourceCode/batch/CORPUS_LOG.md.
   `diagnostics/release_v1410/release_body.md`. Issues #49 and #50 were
   commented on and closed as completed (`release_api.py close-issues`).
 - Owner still to do: install v14.1.0 on this machine; it has 14.0.3.
+- **PR #52 open (2026-11-12), branch `docs-after-v1410`: this STATUS and the
+  CLAUDE.md release-API rule.** The permission layer blocks me from merging
+  my own PR without review, so the owner merges it. After the merge:
+  fast-forward the local master, then delete `docs-after-v1410` locally and
+  on origin.
 - Not tested: an installer launch on the owner's desktop, including the
   Finish-page 'Launch QCS'.
 - Still owner-unconfirmed:
