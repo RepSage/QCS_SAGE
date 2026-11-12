@@ -13,6 +13,81 @@ corpus procedure, and `changelog/` the app releases. This file holds
 
 ---
 
+## 2026-11-12 — RRDM 23a SET 2026 staged and qualified (2026S2); PLES 2025S2 gains HOBO3
+
+No QC rule changed. New raw data entered, and one published product was
+requalified with an extra replicate.
+
+**Raw** (`stage_rrdm_23a.py --apply`, from `\\Abrolhos2\EXPEDIÇÕES\RRDM\RRDM 23a
+SET 2026`, read-only): 21 files copied with `shutil.copy2`, each SHA-256- and
+mtime-verified, plus 1 derived file. Targets:
+- `HOBO\raw\2026S2\{PNOR,PLES,PAB3,SGOM,RODORASO,TIM2,ESQNORTE,ESQRODO,ESQSUL}`;
+- `HOBO\raw\2025S2\PLES\bruto\HOBO3_PLES_220325_220926.hobo`;
+- `SEAGUARD\raw\2026S2\CENTROIDE13\FUNDEIO\{EXPORT\SENSORES,EXPORT\DOPPLER,MINICO2}`.
+
+The derived file is `MINICO2\miniCO2_centroid13_19a20set2026.txt`. It is the
+logger's text-export format written from the delivered `.xlsx` (kept beside
+it, untouched) and reads back to the same 193 values. Manifest:
+`diagnostics/abrolhos2_sweep_20261112/staging_manifest.csv`. Not staged:
+`HOBO2_RODORASO_A5_230326_0.hobo`, a byte-identical copy. Raw names are kept as
+delivered (`HOBO2_ESQNORTE_B2_10032025`, `HOBO2_TIM2_A6_210326.hobo_160926`).
+
+**Why from `.hobo`:** only TIM2 had HOBOware exports (owner: qualify from the
+binaries). The native path (`NATIVE_BINARY_SCOPES` in `qualify_site.py`)
+refuses stale whole-memory dumps. The evidence is in the same diagnostics
+folder:
+- In 157 Database export pairs, the decode is 100% exact where timestamps
+  are shared.
+- 4 of 39 64 KB dumps overrun the export, two of them inside the deployment.
+- Stale bytes equal the previous same-serial dump.
+
+Data decisions (`replicate_decisions.csv`, rows `rrdm23a-*`):
+- **SGOM HOBO1** (.hobo and its 1-sample csv) excluded: its whole decode is
+  PNOR's 2025-09..2026-03 deployment of the same logger.
+- **RODORASO (A5) HOBO2** excluded: 95% stale.
+- **ESQRODO HOBO1** temperature excluded (owner): +3.1 degC against its twin
+  and both neighbours. The save-time guard also refuses the whole binary,
+  whose decode runs to 2027-03-02.
+
+SGOM and RODORASO have no 2026S2 HOBO product. Forced replicate groups:
+PLES/2026S2 (HOBO1 stopped on 2026-04-04, same launch) and PLES/2025S2
+(HOBO3).
+
+**Qualified** (candidate run under `QCS_QUALIFIED_OUTPUT_ROOT`, inspected, then
+`promote_rrdm_23a.py --apply`). New, with rows:
+
+| product | rows |
+|---|---|
+| `ESQNORTE_2026S2_HOBO_QLF` | 2,460 |
+| `ESQRODO_2026S2_HOBO_QLF` | 2,474 |
+| `ESQSUL_2026S2_HOBO_QLF` | 2,499 |
+| `PAB3_2026S2_HOBO_QLF` | 705 (to 2026-05-09) |
+| `PLES_2026S2_HOBO_QLF` | 2,278 |
+| `PNOR_2026S2_HOBO_QLF` | 2,369 |
+| `TIM2_2026S2_HOBO_QLF` | 2,145 |
+| `CENTROIDE13_2026S2_SEAGUARD_FUNDEIO_QLF` | 9,904, from the CSV export, GMT-3 applied, CO2 at all 9,904 |
+
+The CENTROIDE13 ADCP CSV is archived only: there is no DCPS CSV reader, and
+the export lacks the cell geometry. Requalified: `PLES_2025S2_HOBO_QLF`. It
+keeps 2,208 rows and Flag_T all 1; the temperature now averages in HOBO3,
+median change +0.098 degC, max 0.202. HOBO3 was verified first: +0.22 degC vs
+HOBO1, 166/166 days within 0.5 degC, change-corr +0.99. Flag patterns match
+the site's earlier products (ESQRODO flat-line BAD 144, vs 219 in 2025S2).
+
+Index 281 -> 289 products: +8, 0 removed, 1 changed (PLES 2025S2). The
+integrity sweep found no pipeline defect. No Curated Database workbook is
+part of this operation. One was exported to the Desktop and verified at
+289/289 products, then moved to the Recycle Bin the same day at the owner's
+request: the qualified products on the server are the archive, and the app
+builds the workbook itself when asked. Backup of the replaced PLES folder
+(9 files, SHA-256-verified) and of the previous index:
+
+```
+\\Abrolhos\Projetos\Seaguard & HOBO\DATABASE\_deleted\rrdm23a_20261112T133924
+```
+
+---
+
 ## 2026-09-08 — Original Doppler presentation restored
 
 The owner rejected the general appearance introduced during the corrections.

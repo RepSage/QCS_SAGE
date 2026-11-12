@@ -116,6 +116,15 @@ archive and diff the counts against the previous `qualified_index.csv`.
   sustained disagreement is withheld with Flag_T=3. Combined reports must count
   the combined table and retain individual report identity. Reference advice
   requires ratification; closing a review never accepts its initial recommendation.
+- **A 64 KB `.hobo` is a whole-memory dump and can decode STALE data.** A
+  launch does not clear memory, and the header has no sample count, so a lost
+  terminator makes the native reader append an older deployment's samples on
+  the new clock. These samples are plausible, pass QC, and agree with no
+  export. A logger that failed at launch decodes as ENTIRELY another site's
+  data (23a SGOM HOBO1 = PNOR's previous semester). Before qualifying a
+  binary with no export, cut at the file save time and compare it with the
+  previous dump of the same serial (identical bytes = stale). Cross-check its
+  replicate (`diagnostics/abrolhos2_sweep_20261112/`).
 - **HOBO vs. Seaguard**: HOBO files run only the temperature tests plus the light
   fouling-window test (`light_cutoff_window`), and have their own output column
   layout. Layout detection: `detect_qualified_layout()` in `QCS_DataHandler.py`.

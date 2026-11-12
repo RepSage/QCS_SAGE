@@ -80,6 +80,23 @@ untouched — used for light-mode reruns.
 - **Sheets rule** (`_sheets`): one export per logger — `.xlsx`, falling back
   to `.csv` only when that logger has no xlsx (exact-stem grouping so
   HOBO1/HOBO2 stay apart).
+- **Native `.hobo` without an export** (since 2026-11-12, RRDM 23a): a
+  `bruto\*.hobo` whose exact stem has no export in `planilha` is qualified
+  from its native decode, but only inside `NATIVE_BINARY_SCOPES`. Opt-in,
+  because the archive holds never-qualified binaries, and a re-run of an old
+  semester must not change its membership. Two guards refuse a stale
+  whole-memory dump. (1) The decode may not run past the file's save time
+  (mtime), so stage with `shutil.copy2`. (2) Its bytes may not equal the
+  previous dump of the same serial before the decode ends. Guard (2) needs
+  that predecessor in the raw tree; otherwise a ledger decision covers it.
+  Each admitted binary gets a `native :` provenance line. Evidence and
+  validation (157 export pairs): `diagnostics/abrolhos2_sweep_20261112/`.
+- **Seaguard CSV exports**: a deployment whose native session is lost goes
+  under `<SITE>\<TIPO>\EXPORT\SENSORES\*.csv` and is read by `read_ctd`; its
+  cast start is the first record time (GMT). `EXPORT\DOPPLER` is archived
+  only: the DCPS reader needs the native session's cell geometry. A miniCO2
+  delivered as `.xlsx` is staged untouched, beside a derived text export that
+  reads back to the same values (`stage_rrdm_23a.py`).
 - **Clock repairs live in the raw itself** (owner decision, 2026-08-07):
   `correct_clock.py` applies the −12 h AM/PM repair IN PLACE to the affected
   raw CSVs — gated (a file must be accused by `light_clock_phase` first, so
